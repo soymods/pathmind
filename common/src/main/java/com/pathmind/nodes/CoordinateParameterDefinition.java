@@ -4,10 +4,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
 
 final class CoordinateParameterDefinition {
     static NodeBehaviorDefinition create() {
@@ -24,9 +23,9 @@ final class CoordinateParameterDefinition {
         return resolveBlockPosition(null, parameterNode);
     }
 
-    private static Optional<Vec3d> resolvePositionTarget(Node owner, Node parameterNode, RuntimeParameterData data,
+    private static Optional<Vec3> resolvePositionTarget(Node owner, Node parameterNode, RuntimeParameterData data,
                                                          CompletableFuture<Void> future) {
-        Vec3d vector = resolvePositionVector(owner, parameterNode);
+        Vec3 vector = resolvePositionVector(owner, parameterNode);
         BlockPos pos = new BlockPos((int) Math.floor(vector.x), (int) Math.floor(vector.y), (int) Math.floor(vector.z));
         if (data != null) {
             data.targetBlockPos = pos;
@@ -35,8 +34,8 @@ final class CoordinateParameterDefinition {
         return Optional.of(vector);
     }
 
-    private static Vec3d resolvePositionVector(Node owner, Node parameterNode) {
-        return new Vec3d(
+    private static Vec3 resolvePositionVector(Node owner, Node parameterNode) {
+        return new Vec3(
             Node.parseNodeDouble(parameterNode, "X", 0.0),
             Node.parseNodeDouble(parameterNode, "Y", 0.0),
             Node.parseNodeDouble(parameterNode, "Z", 0.0)
@@ -52,17 +51,17 @@ final class CoordinateParameterDefinition {
             return new BlockPos(xs.get(0), ys.get(0), zs.get(0));
         }
 
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         if (client == null || client.player == null) {
             return new BlockPos(xs.get(0), ys.get(0), zs.get(0));
         }
 
-        BlockPos playerPos = client.player.getBlockPos();
+        BlockPos playerPos = client.player.blockPosition();
         BlockPos bestPos = null;
         double bestDistanceSq = Double.MAX_VALUE;
         for (int i = 0; i < candidateCount; i++) {
             BlockPos candidate = new BlockPos(valueAt(xs, i), valueAt(ys, i), valueAt(zs, i));
-            double distanceSq = playerPos.getSquaredDistance(candidate);
+            double distanceSq = playerPos.distSqr(candidate);
             if (distanceSq < bestDistanceSq) {
                 bestDistanceSq = distanceSq;
                 bestPos = candidate;
@@ -108,11 +107,11 @@ final class CoordinateParameterDefinition {
     }
 
     private static int currentAxisValue(String parameterName) {
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         if (client == null || client.player == null) {
             return 0;
         }
-        BlockPos playerPos = client.player.getBlockPos();
+        BlockPos playerPos = client.player.blockPosition();
         if ("X".equalsIgnoreCase(parameterName)) {
             return playerPos.getX();
         }

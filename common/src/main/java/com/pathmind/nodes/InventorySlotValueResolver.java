@@ -5,13 +5,12 @@ import com.pathmind.util.InventorySlotModeHelper;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.entity.player.PlayerInventory;
-import net.minecraft.item.ItemStack;
-import net.minecraft.screen.ScreenHandler;
-import net.minecraft.screen.slot.Slot;
-import net.minecraft.util.math.MathHelper;
+import net.minecraft.client.Minecraft;
+import net.minecraft.util.Mth;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.item.ItemStack;
 
 final class InventorySlotValueResolver {
 
@@ -51,20 +50,20 @@ final class InventorySlotValueResolver {
         if (slotValue == null) {
             return null;
         }
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         if (client == null || client.player == null) {
             return null;
         }
         Slot slot = resolveInventorySlot(
-            client.player.currentScreenHandler,
+            client.player.containerMenu,
             client.player.getInventory(),
             slotValue.intValue(),
             resolveComparableSlotSelectionType(values)
         );
-        return slot != null ? slot.getStack() : null;
+        return slot != null ? slot.getItem() : null;
     }
 
-    private static Slot resolveInventorySlot(ScreenHandler handler, PlayerInventory inventory, int slotValue, SlotSelectionType selectionType) {
+    private static Slot resolveInventorySlot(AbstractContainerMenu handler, Inventory inventory, int slotValue, SlotSelectionType selectionType) {
         if (handler == null) {
             return null;
         }
@@ -89,14 +88,14 @@ final class InventorySlotValueResolver {
         return handler.getSlot(handlerSlot);
     }
 
-    private static int mapPlayerInventorySlot(ScreenHandler handler, int inventorySlot) {
+    private static int mapPlayerInventorySlot(AbstractContainerMenu handler, int inventorySlot) {
         if (handler == null) {
             return -1;
         }
         List<Slot> slots = handler.slots;
         for (int slotIdx = 0; slotIdx < slots.size(); slotIdx++) {
             Slot slot = slots.get(slotIdx);
-            if (slot.inventory instanceof PlayerInventory && slot.getIndex() == inventorySlot) {
+            if (slot.container instanceof Inventory && slot.getContainerSlot() == inventorySlot) {
                 return slotIdx;
             }
         }
@@ -107,12 +106,12 @@ final class InventorySlotValueResolver {
         if (slot == null) {
             return false;
         }
-        boolean playerInventorySlot = slot.inventory instanceof PlayerInventory;
+        boolean playerInventorySlot = slot.container instanceof Inventory;
         return selectionType == SlotSelectionType.GUI_CONTAINER ? !playerInventorySlot : playerInventorySlot;
     }
 
-    private static int clampInventorySlot(PlayerInventory inventory, int slot) {
-        return MathHelper.clamp(slot, 0, inventory.size() - 1);
+    private static int clampInventorySlot(Inventory inventory, int slot) {
+        return Mth.clamp(slot, 0, inventory.getContainerSize() - 1);
     }
 
     private static String getRuntimeValue(Map<String, String> values, String key) {

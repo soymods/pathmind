@@ -17,12 +17,9 @@ val neoforgeVersion = rootProject.extra["neoforgeVersion"] as? String
     ?: throw GradleException(
         "NeoForge version not configured for Minecraft $requestedMinecraftVersion. " +
             "Check https://maven.neoforged.net/releases/net/neoforged/neoforge/ and " +
-            "update neoforgeVersion in the root build.gradle.kts supportedMinecraftVersions map."
+            "update the target in gradle/minecraft-versions.properties."
     )
-val renderWidgetButtonVersions = setOf(
-    "1.21", "1.21.1", "1.21.2", "1.21.3", "1.21.4", "1.21.5", "1.21.6", "1.21.7", "1.21.8", "1.21.9", "1.21.10"
-)
-val usesRenderWidgetButton = requestedMinecraftVersion in renderWidgetButtonVersions
+val neoForgeUiFamily = rootProject.extra["neoForgeUiFamily"] as String
 
 base {
     archivesName.set("${rootProject.property("archives_base_name") as String}-neoforge")
@@ -48,24 +45,32 @@ configurations {
 
 dependencies {
     minecraft("com.mojang:minecraft:$requestedMinecraftVersion")
-    mappings(loom.officialMojangMappings())
+    mappings(
+        if (requestedMinecraftVersion == "1.21.11") {
+            loom.officialMojangMappings()
+        } else {
+            rootProject.files("gradle/mappings/$requestedMinecraftVersion-canonical-1.21.11.jar")
+        }
+    )
 
     "neoForge"("net.neoforged:neoforge:$neoforgeVersion")
 
     modApi("dev.architectury:architectury-neoforge:$architecturyApiVersion")
 
     common(project(":common", "namedElements")) { isTransitive = false }
-    runtimeCommon(project(":common", "transformProductionNeoForgeMojangElements")) { isTransitive = false }
-    shadowCommon(project(":common", "transformProductionNeoForgeMojangElements")) { isTransitive = false }
+    runtimeCommon(project(":common", "transformProductionNeoForge")) { isTransitive = false }
+    shadowCommon(project(":common", "transformProductionNeoForge")) { isTransitive = false }
 }
 
 sourceSets {
     main {
         java {
-            if (usesRenderWidgetButton) {
+            if (neoForgeUiFamily == "legacy") {
                 srcDir("src/compat/legacy/base/java")
-            } else {
+            } else if (neoForgeUiFamily == "modern") {
                 srcDir("src/compat/modern/java")
+            } else {
+                throw GradleException("Unknown NeoForge UI family '$neoForgeUiFamily' for Minecraft $requestedMinecraftVersion")
             }
         }
     }

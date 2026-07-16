@@ -332,11 +332,12 @@ If new UI repeats button, popup, dropdown, row, or validation styling, first add
 
 ## Compat Source Set Rules
 
-The project has three relevant source trees:
+The active project has two relevant source trees:
 
-- `common/src`: shared Architectury/common code and the source of truth for most compat UI files.
-- `fabric/src`: Fabric platform source set.
-- `src`: legacy/top-level Fabric source tree that is still kept aligned for compatibility.
+- `common/src`: shared Architectury/common code and the NeoForge source of compat UI files.
+- `fabric/src`: Fabric platform source set, including its current compat UI copies.
+
+The root `src` directory contains no active Java or resource sources and is not a build input. Do not copy compatibility changes there.
 
 Version-specific UI files are split under:
 
@@ -344,7 +345,9 @@ Version-specific UI files are split under:
 - `compat/mid`
 - `compat/modern`
 
-For mirrored files, make the change in `common/src` first, then copy the exact result to `src` and `fabric/src`. If a source set truly needs a different implementation, leave a short comment near the divergent code explaining why, and include that divergence in this document so future cleanup passes do not erase it accidentally.
+The compatibility baseline found 27 byte-identical common/Fabric file pairs and 9 divergent pairs. The divergent pairs are `PathmindVisualEditorScreen`, `PathmindMarketplaceScreen`, and `PathmindSettingsPopupController` in all three families. Their differences currently include product behavior rather than only Minecraft APIs, so neither side may be blindly copied over the other. Compare both implementations and deliberately apply a change to every applicable loader until the compatibility-contract extraction removes these copies.
+
+See [`minecraft-compatibility-baseline.md`](minecraft-compatibility-baseline.md) for the complete inventory and [`minecraft-multiversion-roadmap.md`](minecraft-multiversion-roadmap.md) for the consolidation plan.
 
 Useful mirror check:
 
@@ -360,9 +363,8 @@ rels = [
     'compat/legacy/base/java/com/pathmind/screen/PathmindMarketplaceScreen.java',
 ]
 for rel in rels:
-    for root in ['src', 'fabric/src']:
-        same = (Path('common/src') / rel).read_bytes() == (Path(root) / rel).read_bytes()
-        print(f'{rel} {root}: {"ok" if same else "DRIFT"}')
+    same = (Path('common/src') / rel).read_bytes() == (Path('fabric/src') / rel).read_bytes()
+    print(f'{rel}: {"identical" if same else "review divergence"}')
 PY
 ```
 

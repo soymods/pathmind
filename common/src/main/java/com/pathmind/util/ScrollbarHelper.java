@@ -1,6 +1,6 @@
 package com.pathmind.util;
 
-import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.gui.GuiGraphics;
 
 /**
  * Shared scrollbar metrics/rendering helpers for Pathmind UI.
@@ -50,7 +50,7 @@ public final class ScrollbarHelper {
         return clampScroll(Math.round(progress * metrics.maxScroll()), metrics.maxScroll());
     }
 
-    public static void renderSettingsStyle(DrawContext context, Metrics metrics, int trackColor, int borderColor, int thumbColor) {
+    public static void renderSettingsStyle(GuiGraphics context, Metrics metrics, int trackColor, int borderColor, int thumbColor) {
         if (metrics.maxScroll() <= 0) {
             return;
         }
@@ -59,16 +59,16 @@ public final class ScrollbarHelper {
         context.fill(metrics.trackLeft() + 1, metrics.thumbTop(), metrics.trackRight() - 1, metrics.thumbTop() + metrics.thumbHeight(), thumbColor);
     }
 
-    public static void renderCutoffDividers(DrawContext context, int left, int right, int top, int bottom,
+    public static void renderCutoffDividers(GuiGraphics context, int left, int right, int top, int bottom,
                                             int scrollOffset, int maxScroll, int color) {
         if (maxScroll <= 0) {
             return;
         }
         if (scrollOffset > 0) {
-            context.drawHorizontalLine(left, right, top, color);
+            context.hLine(left, right, top, color);
         }
         if (scrollOffset < maxScroll) {
-            context.drawHorizontalLine(left, right, bottom - 1, color);
+            context.hLine(left, right, bottom - 1, color);
         }
     }
 

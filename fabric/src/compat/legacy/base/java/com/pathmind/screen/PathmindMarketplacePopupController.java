@@ -6,11 +6,10 @@ import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.ScrollbarHelper;
 import com.pathmind.util.TextRenderUtil;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.widget.TextFieldWidget;
-import net.minecraft.text.Text;
-
 import java.util.List;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.network.chat.Component;
 
 final class PathmindMarketplacePopupController {
     private final PathmindMarketplaceScreen screen;
@@ -19,7 +18,7 @@ final class PathmindMarketplacePopupController {
         this.screen = screen;
     }
 
-    void renderPresetPopup(DrawContext context, int mouseX, int mouseY, PathmindMarketplaceScreen.Layout layout) {
+    void renderPresetPopup(GuiGraphics context, int mouseX, int mouseY, PathmindMarketplaceScreen.Layout layout) {
         screen.popupAuthorHitRect = null;
         PathmindMarketplaceScreen.PopupLayout popup = screen.getPopupLayout(layout);
         context.fill(0, 0, screen.screenWidth(), screen.screenHeight(), screen.presetPopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND));
@@ -43,14 +42,14 @@ final class PathmindMarketplacePopupController {
             screen.presetPopupAnimation.getAnimatedPopupColor(UITheme.PANEL_INNER_BORDER)
         );
 
-        context.drawTextWithShadow(screen.textRenderer(), Text.translatable("pathmind.marketplace.presetDetails"), popupX + 12, popupY + 10,
+        context.drawString(screen.textRenderer(), Component.translatable("pathmind.marketplace.presetDetails"), popupX + 12, popupY + 10,
             screen.presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_HEADER));
         int popupCloseX = popupX + popupWidth - 18;
         int popupCloseY = popupY + 10;
         boolean popupCloseHovered = PathmindMarketplaceScreen.isPointInRect(mouseX, mouseY, popupCloseX - 2, popupCloseY - 2, 12, 12);
         PathmindPopupRenderer.drawCloseIcon(context, popupCloseX, popupCloseY,
             screen.presetPopupAnimation.getAnimatedPopupColor(popupCloseHovered ? UITheme.TEXT_HEADER : UITheme.TEXT_PRIMARY));
-        context.drawHorizontalLine(popupX, popupX + popupWidth - 1, popupY + 28,
+        context.hLine(popupX, popupX + popupWidth - 1, popupY + 28,
             screen.presetPopupAnimation.getAnimatedPopupColor(UITheme.BORDER_SUBTLE));
 
         int contentTop = popupY + 40;
@@ -99,15 +98,15 @@ final class PathmindMarketplacePopupController {
 
         int cursorY = previewY + previewHeight + 12;
         if (screen.popupMetadataEditing) {
-            cursorY = screen.drawPopupEditableField(context, mouseX, mouseY, textX, cursorY, textWidth, Text.translatable("pathmind.field.title").getString(), screen.publishNameField) + 3;
+            cursorY = screen.drawPopupEditableField(context, mouseX, mouseY, textX, cursorY, textWidth, Component.translatable("pathmind.field.title").getString(), screen.publishNameField) + 3;
         } else {
-            context.drawTextWithShadow(screen.textRenderer(),
-                Text.literal(TextRenderUtil.trimWithEllipsis(screen.textRenderer(), screen.popupPreset.getName(), textWidth)),
+            context.drawString(screen.textRenderer(),
+                Component.literal(TextRenderUtil.trimWithEllipsis(screen.textRenderer(), screen.popupPreset.getName(), textWidth)),
                 textX, cursorY, screen.presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_HEADER));
             cursorY += 14;
         }
-        String popupAuthorLabel = Text.translatable("pathmind.marketplace.byAuthor", TextRenderUtil.trimWithEllipsis(screen.textRenderer(), screen.fallback(screen.popupPreset.getAuthorName(), Text.translatable("pathmind.marketplace.unknown").getString()), textWidth - 20)).getString();
-        screen.popupAuthorHitRect = new PathmindMarketplaceScreen.Rect(textX, cursorY, screen.textRenderer().getWidth(popupAuthorLabel), screen.textRenderer().fontHeight + 1);
+        String popupAuthorLabel = Component.translatable("pathmind.marketplace.byAuthor", TextRenderUtil.trimWithEllipsis(screen.textRenderer(), screen.fallback(screen.popupPreset.getAuthorName(), Component.translatable("pathmind.marketplace.unknown").getString()), textWidth - 20)).getString();
+        screen.popupAuthorHitRect = new PathmindMarketplaceScreen.Rect(textX, cursorY, screen.textRenderer().width(popupAuthorLabel), screen.textRenderer().lineHeight + 1);
         boolean popupAuthorHovered = PathmindMarketplaceScreen.isPointInRect(mouseX, mouseY, screen.popupAuthorHitRect.x(), screen.popupAuthorHitRect.y(), screen.popupAuthorHitRect.width(), screen.popupAuthorHitRect.height());
         screen.renderAuthorLink(
             context,
@@ -121,25 +120,25 @@ final class PathmindMarketplacePopupController {
         );
         cursorY += 14;
 
-        int downloadsWidth = Math.max(54, screen.textRenderer().getWidth(screen.popupPreset.getDownloadsCount() + " downloads") + 12);
-        int likesWidth = Math.max(42, screen.textRenderer().getWidth(Text.translatable("pathmind.marketplace.likesShort", screen.popupPreset.getLikesCount()).getString()) + 12);
-        screen.drawPopupStatPill(context, textX, cursorY, downloadsWidth, Text.translatable("pathmind.marketplace.downloads").getString(), Integer.toString(screen.popupPreset.getDownloadsCount()));
-        screen.drawPopupStatPill(context, textX + downloadsWidth + 6, cursorY, likesWidth, Text.translatable("pathmind.marketplace.likes").getString(), Integer.toString(screen.popupPreset.getLikesCount()));
+        int downloadsWidth = Math.max(54, screen.textRenderer().width(screen.popupPreset.getDownloadsCount() + " downloads") + 12);
+        int likesWidth = Math.max(42, screen.textRenderer().width(Component.translatable("pathmind.marketplace.likesShort", screen.popupPreset.getLikesCount()).getString()) + 12);
+        screen.drawPopupStatPill(context, textX, cursorY, downloadsWidth, Component.translatable("pathmind.marketplace.downloads").getString(), Integer.toString(screen.popupPreset.getDownloadsCount()));
+        screen.drawPopupStatPill(context, textX + downloadsWidth + 6, cursorY, likesWidth, Component.translatable("pathmind.marketplace.likes").getString(), Integer.toString(screen.popupPreset.getLikesCount()));
         cursorY += 24;
         PathmindMarketplaceScreen.CompatibilityStatus compatibility = screen.getCompatibilityStatus(screen.popupPreset);
         int badgeY = cursorY;
         int badgeX = textX;
-        badgeX += screen.drawStatusBadge(context, badgeX, badgeY, screen.popupPreset.isPublished() ? Text.translatable("pathmind.option.public").getString() : Text.translatable("pathmind.option.private").getString(),
+        badgeX += screen.drawStatusBadge(context, badgeX, badgeY, screen.popupPreset.isPublished() ? Component.translatable("pathmind.option.public").getString() : Component.translatable("pathmind.option.private").getString(),
             screen.popupPreset.isPublished() ? screen.getAccentColor() : UITheme.STATE_WARNING, true) + 6;
-        badgeX += screen.drawStatusBadge(context, badgeX, badgeY, compatibility.isFullyCompatible() ? Text.translatable("pathmind.marketplace.compatible").getString() : Text.translatable("pathmind.marketplace.versionCheck").getString(),
+        badgeX += screen.drawStatusBadge(context, badgeX, badgeY, compatibility.isFullyCompatible() ? Component.translatable("pathmind.marketplace.compatible").getString() : Component.translatable("pathmind.marketplace.versionCheck").getString(),
             compatibility.summaryColor(), true) + 6;
         if (screen.isPresetSavedLocally(screen.popupPreset)) {
-            screen.drawStatusBadge(context, badgeX, badgeY, Text.translatable("pathmind.marketplace.saved").getString(), UITheme.MARKETPLACE_SAVE, true);
+            screen.drawStatusBadge(context, badgeX, badgeY, Component.translatable("pathmind.marketplace.saved").getString(), UITheme.MARKETPLACE_SAVE, true);
         }
         cursorY += 22;
 
         if (screen.popupMetadataEditing) {
-            cursorY = screen.drawPopupEditableField(context, mouseX, mouseY, textX, cursorY, textWidth, Text.translatable("pathmind.field.tags").getString(), screen.publishTagsField) + 1;
+            cursorY = screen.drawPopupEditableField(context, mouseX, mouseY, textX, cursorY, textWidth, Component.translatable("pathmind.field.tags").getString(), screen.publishTagsField) + 1;
         } else {
             String tagsLine = PathmindMarketplaceScreen.formatTags(screen.popupPreset.getTags());
             if (!tagsLine.isBlank() && !"untagged".equalsIgnoreCase(tagsLine)) {
@@ -148,7 +147,7 @@ final class PathmindMarketplacePopupController {
                     textX,
                     cursorY,
                     textWidth,
-                    Text.translatable("pathmind.marketplace.tagsValue", tagsLine).getString(),
+                    Component.translatable("pathmind.marketplace.tagsValue", tagsLine).getString(),
                     screen.presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_PRIMARY),
                     2
                 );
@@ -157,14 +156,14 @@ final class PathmindMarketplacePopupController {
 
         int visibilityY = cursorY + 10;
         String visibilityLabel = screen.popupMetadataEditing
-            ? Text.translatable("pathmind.field.visibility").getString()
-            : Text.translatable("pathmind.marketplace.visibilityValue", screen.popupPreset.isPublished()
-                ? Text.translatable("pathmind.option.public").getString()
-                : Text.translatable("pathmind.option.private").getString()).getString();
+            ? Component.translatable("pathmind.field.visibility").getString()
+            : Component.translatable("pathmind.marketplace.visibilityValue", screen.popupPreset.isPublished()
+                ? Component.translatable("pathmind.option.public").getString()
+                : Component.translatable("pathmind.option.private").getString()).getString();
         int visibilityColor = screen.popupMetadataEditing
             ? UITheme.TEXT_LABEL
             : (screen.popupPreset.isPublished() ? screen.getAccentColor() : UITheme.STATE_WARNING);
-        context.drawTextWithShadow(screen.textRenderer(), Text.literal(visibilityLabel), textX, visibilityY,
+        context.drawString(screen.textRenderer(), Component.literal(visibilityLabel), textX, visibilityY,
             screen.presetPopupAnimation.getAnimatedPopupColor(visibilityColor));
         if (screen.popupMetadataEditing) {
             screen.presetVisibilityToggle.setValue(screen.publishVisibilityPublic);
@@ -176,7 +175,7 @@ final class PathmindMarketplacePopupController {
         int descriptionTop = cursorY + 8;
         int descriptionHeight = screen.popupMetadataEditing
             ? 46
-            : Math.max(42, screen.measureWrappedValueHeight(textWidth - 16, screen.fallback(screen.popupPreset.getDescription(), Text.translatable("pathmind.marketplace.noDescription").getString()), 5) + 18);
+            : Math.max(42, screen.measureWrappedValueHeight(textWidth - 16, screen.fallback(screen.popupPreset.getDescription(), Component.translatable("pathmind.marketplace.noDescription").getString()), 5) + 18);
         UIStyleHelper.drawBeveledPanel(
             context,
             textX,
@@ -187,7 +186,7 @@ final class PathmindMarketplacePopupController {
             screen.presetPopupAnimation.getAnimatedPopupColor(UITheme.BORDER_SUBTLE),
             screen.presetPopupAnimation.getAnimatedPopupColor(UITheme.PANEL_INNER_BORDER)
         );
-        context.drawTextWithShadow(screen.textRenderer(), Text.translatable("pathmind.marketplace.about"), textX + 8, descriptionTop + 6,
+        context.drawString(screen.textRenderer(), Component.translatable("pathmind.marketplace.about"), textX + 8, descriptionTop + 6,
             screen.presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_LABEL));
         if (screen.popupMetadataEditing) {
             int fieldY = descriptionTop + 18;
@@ -201,7 +200,7 @@ final class PathmindMarketplacePopupController {
             cursorY = descriptionTop + descriptionHeight;
         } else {
             cursorY = screen.drawWrappedValue(context, textX + 8, descriptionTop + 18, textWidth - 16,
-                screen.fallback(screen.popupPreset.getDescription(), Text.translatable("pathmind.marketplace.noDescription").getString()),
+                screen.fallback(screen.popupPreset.getDescription(), Component.translatable("pathmind.marketplace.noDescription").getString()),
                 screen.presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_PRIMARY), 5);
         }
 
@@ -217,21 +216,21 @@ final class PathmindMarketplacePopupController {
             screen.presetPopupAnimation.getAnimatedPopupColor(UITheme.BORDER_SUBTLE),
             screen.presetPopupAnimation.getAnimatedPopupColor(UITheme.PANEL_INNER_BORDER)
         );
-        context.drawTextWithShadow(screen.textRenderer(), Text.translatable("pathmind.marketplace.compatibility"), textX + 8, cursorY + 14,
+        context.drawString(screen.textRenderer(), Component.translatable("pathmind.marketplace.compatibility"), textX + 8, cursorY + 14,
             screen.presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_LABEL));
-        context.drawTextWithShadow(screen.textRenderer(), Text.literal(TextRenderUtil.trimWithEllipsis(screen.textRenderer(),
+        context.drawString(screen.textRenderer(), Component.literal(TextRenderUtil.trimWithEllipsis(screen.textRenderer(),
                 compatibilityStatus.minecraftLine() + "  •  " + compatibilityStatus.pathmindLine(), textWidth - 16)),
             textX + 8, cursorY + 24,
             screen.presetPopupAnimation.getAnimatedPopupColor(compatibilityStatus.minecraftColor()));
         cursorY += compatibilityHeight + 18;
 
-        String sharedLine = Text.translatable("pathmind.marketplace.publishedUpdated", PathmindMarketplaceScreen.formatTimestamp(screen.popupPreset.getCreatedAt()), PathmindMarketplaceScreen.formatTimestamp(screen.popupPreset.getUpdatedAt())).getString();
+        String sharedLine = Component.translatable("pathmind.marketplace.publishedUpdated", PathmindMarketplaceScreen.formatTimestamp(screen.popupPreset.getCreatedAt()), PathmindMarketplaceScreen.formatTimestamp(screen.popupPreset.getUpdatedAt())).getString();
         cursorY = screen.drawWrappedValue(context, textX, cursorY, textWidth, sharedLine,
             screen.presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_TERTIARY), 2);
 
         if (screen.authSession == null) {
             cursorY = screen.drawWrappedValue(context, textX, cursorY, textWidth,
-                Text.translatable("pathmind.marketplace.signInLikeImport").getString(),
+                Component.translatable("pathmind.marketplace.signInLikeImport").getString(),
                 screen.presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_TERTIARY), 2);
         }
         context.disableScissor();
@@ -248,8 +247,8 @@ final class PathmindMarketplacePopupController {
         );
 
         if (!screen.popupStatusMessage.isEmpty()) {
-            context.drawTextWithShadow(screen.textRenderer(),
-                Text.literal(TextRenderUtil.trimWithEllipsis(screen.textRenderer(), screen.popupStatusMessage, textWidth)),
+            context.drawString(screen.textRenderer(),
+                Component.literal(TextRenderUtil.trimWithEllipsis(screen.textRenderer(), screen.popupStatusMessage, textWidth)),
                 textX, popupY + popupHeight - 40, screen.presetPopupAnimation.getAnimatedPopupColor(screen.popupStatusColor));
         }
 
@@ -283,20 +282,20 @@ final class PathmindMarketplacePopupController {
         screen.popupDeleteHoverAnimation.tick();
         if (showUpdateButton) {
             screen.drawAnimatedActionButton(context, updateButtonX, buttonY, popup.buttonWidth(), popup.buttonHeight(),
-                screen.publishBusy ? Text.translatable("pathmind.status.working").getString() : Text.translatable("pathmind.button.update").getString(), updateHovered, !updateEnabled, screen.presetPopupAnimation, screen.popupUpdateHoverAnimation.getValue());
+                screen.publishBusy ? Component.translatable("pathmind.status.working").getString() : Component.translatable("pathmind.button.update").getString(), updateHovered, !updateEnabled, screen.presetPopupAnimation, screen.popupUpdateHoverAnimation.getValue());
         }
         screen.drawAnimatedActionButton(context, authButtonX, buttonY, popup.buttonWidth(), popup.buttonHeight(),
             screen.getPopupAuthButtonLabel(), authHovered, screen.authBusy || screen.publishBusy, screen.presetPopupAnimation);
         if (ownPreset) {
             screen.drawAnimatedActionButton(context, deleteButtonX, buttonY, popup.buttonWidth(), popup.buttonHeight(),
-                screen.deleteBusy ? "..." : Text.translatable("pathmind.button.delete").getString(), deleteHovered, screen.deleteBusy || screen.publishBusy, screen.presetPopupAnimation, screen.popupDeleteHoverAnimation.getValue());
+                screen.deleteBusy ? "..." : Component.translatable("pathmind.button.delete").getString(), deleteHovered, screen.deleteBusy || screen.publishBusy, screen.presetPopupAnimation, screen.popupDeleteHoverAnimation.getValue());
         }
         screen.drawAnimatedActionButton(context, downloadButtonX, buttonY, popup.buttonWidth(), popup.buttonHeight(),
-            screen.importingPreset ? Text.translatable("pathmind.status.downloading").getString() : Text.translatable("pathmind.button.download").getString(), downloadHovered, screen.importingPreset || screen.deleteBusy, screen.presetPopupAnimation);
+            screen.importingPreset ? Component.translatable("pathmind.status.downloading").getString() : Component.translatable("pathmind.button.download").getString(), downloadHovered, screen.importingPreset || screen.deleteBusy, screen.presetPopupAnimation);
         context.disableScissor();
     }
 
-    void renderAccountPopup(DrawContext context, int mouseX, int mouseY, PathmindMarketplaceScreen.Layout layout) {
+    void renderAccountPopup(GuiGraphics context, int mouseX, int mouseY, PathmindMarketplaceScreen.Layout layout) {
         PathmindMarketplaceScreen.AccountPopupLayout popup = screen.getAccountPopupLayout(layout);
         context.fill(0, 0, screen.screenWidth(), screen.screenHeight(), screen.accountPopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND));
         int[] bounds = screen.accountPopupAnimation.getScaledPopupBounds(screen.screenWidth(), screen.screenHeight(), popup.width(), popup.height());
@@ -311,7 +310,7 @@ final class PathmindMarketplacePopupController {
         PathmindPopupRenderer.drawHeaderBar(
             context,
             screen.textRenderer(),
-            Text.translatable("pathmind.marketplace.account"),
+            Component.translatable("pathmind.marketplace.account"),
             popupX,
             popupY,
             popupWidth,
@@ -324,16 +323,16 @@ final class PathmindMarketplacePopupController {
         screen.renderAccountAvatar(context, popupX + 14, popupY + 42, avatarSize);
         int textX = contentX + avatarSize + 12;
         int textWidth = popupWidth - (textX - popupX) - 12;
-        context.drawTextWithShadow(screen.textRenderer(),
-            Text.literal(TextRenderUtil.trimWithEllipsis(screen.textRenderer(),
-                screen.fallback(screen.authSession.getDisplayName(), screen.fallback(screen.authSession.getEmail(), Text.translatable("pathmind.status.discordUser").getString())), textWidth)),
+        context.drawString(screen.textRenderer(),
+            Component.literal(TextRenderUtil.trimWithEllipsis(screen.textRenderer(),
+                screen.fallback(screen.authSession.getDisplayName(), screen.fallback(screen.authSession.getEmail(), Component.translatable("pathmind.status.discordUser").getString())), textWidth)),
             textX, contentY + 2, screen.accountPopupAnimation.getAnimatedPopupColor(screen.getAccentColor()));
         contentY += 16;
         contentY = screen.drawWrappedValue(context, textX, contentY + 2, textWidth,
-            Text.translatable("pathmind.marketplace.provider", screen.fallback(screen.authSession.getProvider(), "discord")).getString(),
+            Component.translatable("pathmind.marketplace.provider", screen.fallback(screen.authSession.getProvider(), "discord")).getString(),
             screen.accountPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_SECONDARY), 2);
         screen.drawWrappedValue(context, textX, contentY, textWidth,
-            Text.translatable("pathmind.marketplace.userId", screen.fallback(screen.authSession.getUserId(), Text.translatable("pathmind.marketplace.unknown").getString())).getString(),
+            Component.translatable("pathmind.marketplace.userId", screen.fallback(screen.authSession.getUserId(), Component.translatable("pathmind.marketplace.unknown").getString())).getString(),
             screen.accountPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_TERTIARY), 2);
         int closeButtonX = popupX + (popup.closeButtonX() - popup.x());
         int signOutButtonX = popupX + (popup.signOutButtonX() - popup.x());
@@ -341,13 +340,13 @@ final class PathmindMarketplacePopupController {
         boolean closeHovered = PathmindMarketplaceScreen.isPointInRect(mouseX, mouseY, closeButtonX, buttonY, popup.buttonWidth(), popup.buttonHeight());
         boolean signOutHovered = PathmindMarketplaceScreen.isPointInRect(mouseX, mouseY, signOutButtonX, buttonY, popup.buttonWidth(), popup.buttonHeight());
         screen.drawAnimatedActionButton(context, closeButtonX, buttonY, popup.buttonWidth(), popup.buttonHeight(),
-            Text.translatable("pathmind.button.close").getString(), closeHovered, false, screen.accountPopupAnimation);
+            Component.translatable("pathmind.button.close").getString(), closeHovered, false, screen.accountPopupAnimation);
         screen.drawAnimatedActionButton(context, signOutButtonX, buttonY, popup.buttonWidth(), popup.buttonHeight(),
-            Text.translatable("pathmind.button.signOut").getString(), signOutHovered, screen.authBusy, screen.accountPopupAnimation);
+            Component.translatable("pathmind.button.signOut").getString(), signOutHovered, screen.authBusy, screen.accountPopupAnimation);
         context.disableScissor();
     }
 
-    void renderPublishPopup(DrawContext context, int mouseX, int mouseY, PathmindMarketplaceScreen.Layout layout) {
+    void renderPublishPopup(GuiGraphics context, int mouseX, int mouseY, PathmindMarketplaceScreen.Layout layout) {
         PathmindMarketplaceScreen.PublishPopupLayout popup = screen.getPublishPopupLayout(layout);
         context.fill(0, 0, screen.screenWidth(), screen.screenHeight(), screen.publishPopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND));
         int[] bounds = screen.publishPopupAnimation.getScaledPopupBounds(screen.screenWidth(), screen.screenHeight(), popup.width(), popup.height());
@@ -366,7 +365,7 @@ final class PathmindMarketplacePopupController {
         int contentY = contentTop - scrollOffset;
         PathmindPopupRenderer.beginPopup(context, popupX, popupY, popupWidth, popupHeight, screen.publishPopupAnimation);
 
-        Text title = screen.editingPreset == null ? Text.translatable("pathmind.marketplace.publishPreset") : Text.translatable("pathmind.marketplace.editMetadata");
+        Component title = screen.editingPreset == null ? Component.translatable("pathmind.marketplace.publishPreset") : Component.translatable("pathmind.marketplace.editMetadata");
         PathmindPopupRenderer.drawHeaderBar(
             context,
             screen.textRenderer(),
@@ -382,37 +381,37 @@ final class PathmindMarketplacePopupController {
         context.enableScissor(popupX + 8, contentTop, popupX + popupWidth - 8, contentBottom);
         int sourceY = contentY;
         String sourceLine = screen.editingPreset == null
-            ? Text.translatable("pathmind.marketplace.sourcePresetValue", screen.fallback(screen.publishSourcePresetName, Text.translatable("pathmind.marketplace.unknown").getString())).getString()
-            : Text.translatable("pathmind.marketplace.editingListingBy", screen.fallback(screen.editingPreset.getAuthorName(), Text.translatable("pathmind.marketplace.unknown").getString())).getString();
+            ? Component.translatable("pathmind.marketplace.sourcePresetValue", screen.fallback(screen.publishSourcePresetName, Component.translatable("pathmind.marketplace.unknown").getString())).getString()
+            : Component.translatable("pathmind.marketplace.editingListingBy", screen.fallback(screen.editingPreset.getAuthorName(), Component.translatable("pathmind.marketplace.unknown").getString())).getString();
         screen.drawWrappedValue(context, contentX, sourceY, contentWidth, sourceLine,
             screen.publishPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_SECONDARY), 2);
 
         int fieldWidth = popupWidth - 24;
         int fieldHeight = 18;
         int labelGap = 11;
-        drawPublishField(context, mouseX, mouseY, contentX, contentY + 13, fieldWidth, fieldHeight, Text.translatable("pathmind.field.name").getString(), screen.publishNameField, labelGap);
-        drawPublishField(context, mouseX, mouseY, contentX, contentY + 52, fieldWidth, fieldHeight, Text.translatable("pathmind.field.description").getString(), screen.publishDescriptionField, labelGap);
-        drawPublishField(context, mouseX, mouseY, contentX, contentY + 91, fieldWidth, fieldHeight, Text.translatable("pathmind.field.tags").getString(), screen.publishTagsField, labelGap);
+        drawPublishField(context, mouseX, mouseY, contentX, contentY + 13, fieldWidth, fieldHeight, Component.translatable("pathmind.field.name").getString(), screen.publishNameField, labelGap);
+        drawPublishField(context, mouseX, mouseY, contentX, contentY + 52, fieldWidth, fieldHeight, Component.translatable("pathmind.field.description").getString(), screen.publishDescriptionField, labelGap);
+        drawPublishField(context, mouseX, mouseY, contentX, contentY + 91, fieldWidth, fieldHeight, Component.translatable("pathmind.field.tags").getString(), screen.publishTagsField, labelGap);
 
-        screen.drawWrappedValue(context, contentX, contentY + 126, contentWidth, Text.translatable("pathmind.marketplace.tagsHint").getString(),
+        screen.drawWrappedValue(context, contentX, contentY + 126, contentWidth, Component.translatable("pathmind.marketplace.tagsHint").getString(),
             screen.publishPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_TERTIARY), 2);
 
         int visibilityLabelY = contentY + 149;
-        context.drawTextWithShadow(screen.textRenderer(), Text.translatable("pathmind.field.visibility"), contentX, visibilityLabelY,
+        context.drawString(screen.textRenderer(), Component.translatable("pathmind.field.visibility"), contentX, visibilityLabelY,
             screen.publishPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_LABEL));
         PathmindMarketplaceScreen.Rect publishToggle = screen.getPublishPopupVisibilityToggleRect(popupX, popupWidth, visibilityLabelY);
         screen.publishVisibilityToggle.setValue(screen.publishVisibilityPublic);
         screen.publishVisibilityToggle.setPosition(publishToggle.x(), publishToggle.y());
         screen.publishVisibilityToggle.render(context, mouseX, mouseY, screen.publishPopupAnimation.getPopupAlpha());
         String visibilityHint = screen.publishVisibilityPublic
-            ? Text.translatable("pathmind.marketplace.visiblePublic").getString()
-            : Text.translatable("pathmind.marketplace.visiblePrivate").getString();
+            ? Component.translatable("pathmind.marketplace.visiblePublic").getString()
+            : Component.translatable("pathmind.marketplace.visiblePrivate").getString();
         screen.drawWrappedValue(context, contentX + 78, visibilityLabelY + 2, contentWidth - 78, visibilityHint,
             screen.publishPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_SECONDARY), 2);
 
         if (!screen.publishStatusMessage.isEmpty()) {
-            context.drawTextWithShadow(screen.textRenderer(),
-                Text.literal(TextRenderUtil.trimWithEllipsis(screen.textRenderer(), screen.publishStatusMessage, contentWidth)),
+            context.drawString(screen.textRenderer(),
+                Component.literal(TextRenderUtil.trimWithEllipsis(screen.textRenderer(), screen.publishStatusMessage, contentWidth)),
                 contentX,
                 contentY + 204,
                 screen.publishPopupAnimation.getAnimatedPopupColor(screen.publishStatusColor));
@@ -447,16 +446,16 @@ final class PathmindMarketplacePopupController {
         boolean authHovered = PathmindMarketplaceScreen.isPointInRect(mouseX, mouseY, authButtonX, buttonY, popup.buttonWidth(), popup.buttonHeight());
         boolean submitHovered = PathmindMarketplaceScreen.isPointInRect(mouseX, mouseY, submitButtonX, buttonY, popup.buttonWidth(), popup.buttonHeight());
         screen.drawAnimatedActionButton(context, cancelButtonX, buttonY, popup.buttonWidth(), popup.buttonHeight(),
-            Text.translatable("pathmind.button.cancel").getString(), cancelHovered, false, screen.publishPopupAnimation);
+            Component.translatable("pathmind.button.cancel").getString(), cancelHovered, false, screen.publishPopupAnimation);
         screen.drawAnimatedActionButton(context, authButtonX, buttonY, popup.buttonWidth(), popup.buttonHeight(),
             screen.getPublishAuthButtonLabel(), authHovered, screen.publishBusy || screen.authSession != null, screen.publishPopupAnimation);
         screen.drawAnimatedActionButton(context, submitButtonX, buttonY, popup.buttonWidth(), popup.buttonHeight(),
-            screen.publishBusy ? Text.translatable("pathmind.status.working").getString() : (screen.editingPreset == null ? Text.translatable("pathmind.marketplace.publish").getString() : Text.translatable("pathmind.button.save").getString()),
+            screen.publishBusy ? Component.translatable("pathmind.status.working").getString() : (screen.editingPreset == null ? Component.translatable("pathmind.marketplace.publish").getString() : Component.translatable("pathmind.button.save").getString()),
             submitHovered, screen.publishBusy, screen.publishPopupAnimation);
         context.disableScissor();
     }
 
-    void renderConfirmPopup(DrawContext context, int mouseX, int mouseY, PathmindMarketplaceScreen.Layout layout) {
+    void renderConfirmPopup(GuiGraphics context, int mouseX, int mouseY, PathmindMarketplaceScreen.Layout layout) {
         PathmindMarketplaceScreen.ConfirmAction confirmAction = screen.pendingConfirmAction != null ? screen.pendingConfirmAction : screen.renderConfirmAction;
         if (confirmAction == null) {
             return;
@@ -484,11 +483,11 @@ final class PathmindMarketplacePopupController {
         );
 
         boolean deleteAction = confirmAction == PathmindMarketplaceScreen.ConfirmAction.DELETE;
-        String title = deleteAction ? Text.translatable("pathmind.marketplace.deleteUploadedPreset").getString() : Text.translatable("pathmind.marketplace.updateUploadedPreset").getString();
-        String lineOne = deleteAction ? Text.translatable("pathmind.marketplace.deleteUploadedConfirm").getString() : Text.translatable("pathmind.marketplace.overwriteUploadedConfirm").getString();
-        String lineTwo = deleteAction ? Text.translatable("pathmind.marketplace.deleteUploadedWarning").getString() : Text.translatable("pathmind.marketplace.overwriteUploadedWarning").getString();
+        String title = deleteAction ? Component.translatable("pathmind.marketplace.deleteUploadedPreset").getString() : Component.translatable("pathmind.marketplace.updateUploadedPreset").getString();
+        String lineOne = deleteAction ? Component.translatable("pathmind.marketplace.deleteUploadedConfirm").getString() : Component.translatable("pathmind.marketplace.overwriteUploadedConfirm").getString();
+        String lineTwo = deleteAction ? Component.translatable("pathmind.marketplace.deleteUploadedWarning").getString() : Component.translatable("pathmind.marketplace.overwriteUploadedWarning").getString();
 
-        context.drawCenteredTextWithShadow(screen.textRenderer(), Text.literal(title),
+        context.drawCenteredString(screen.textRenderer(), Component.literal(title),
             popupX + popupWidth / 2, popupY + 14, screen.confirmPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_PRIMARY));
         int contentX = popupX + 20;
         int contentWidth = popupWidth - 40;
@@ -505,7 +504,7 @@ final class PathmindMarketplacePopupController {
         boolean checkboxHovered = PathmindMarketplaceScreen.isPointInRect(mouseX, mouseY, checkboxX - 2, checkboxY - 2, 14, 14);
         PathmindPopupRenderer.drawCheckbox(context, checkboxX, checkboxY, skipConfirm, checkboxHovered,
             screen.getAccentColor(), screen.confirmPopupAnimation);
-        context.drawTextWithShadow(screen.textRenderer(), Text.translatable("pathmind.option.dontShowAgain"),
+        context.drawString(screen.textRenderer(), Component.translatable("pathmind.option.dontShowAgain"),
             checkboxX + 18, checkboxY + 1, screen.confirmPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_SECONDARY));
 
         int cancelButtonX = popupX + (popup.cancelButtonX() - popup.x());
@@ -514,15 +513,15 @@ final class PathmindMarketplacePopupController {
         boolean cancelHovered = PathmindMarketplaceScreen.isPointInRect(mouseX, mouseY, cancelButtonX, buttonY, popup.buttonWidth(), popup.buttonHeight());
         boolean confirmHovered = PathmindMarketplaceScreen.isPointInRect(mouseX, mouseY, confirmButtonX, buttonY, popup.buttonWidth(), popup.buttonHeight());
         screen.drawAnimatedActionButton(context, cancelButtonX, buttonY, popup.buttonWidth(), popup.buttonHeight(),
-            Text.translatable("pathmind.button.cancel").getString(), cancelHovered, false, screen.confirmPopupAnimation);
+            Component.translatable("pathmind.button.cancel").getString(), cancelHovered, false, screen.confirmPopupAnimation);
         screen.drawAnimatedActionButton(context, confirmButtonX, buttonY, popup.buttonWidth(), popup.buttonHeight(),
-            deleteAction ? Text.translatable("pathmind.button.delete").getString() : Text.translatable("pathmind.button.update").getString(),
+            deleteAction ? Component.translatable("pathmind.button.delete").getString() : Component.translatable("pathmind.button.update").getString(),
             confirmHovered, false, screen.confirmPopupAnimation);
         context.disableScissor();
     }
 
-    private int drawPublishField(DrawContext context, int mouseX, int mouseY, int x, int y, int width, int height,
-                                 String label, TextFieldWidget field, int labelGap) {
+    private int drawPublishField(GuiGraphics context, int mouseX, int mouseY, int x, int y, int width, int height,
+                                 String label, EditBox field, int labelGap) {
         return PathmindPopupRenderer.drawPopupTextFieldRow(context, screen.textRenderer(), field, mouseX, mouseY,
             x, y, width, label, screen.getAccentColor(), screen.publishPopupAnimation);
     }

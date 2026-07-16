@@ -1,8 +1,5 @@
 package com.pathmind.util;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.PlayerListEntry;
-
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.HashMap;
@@ -10,6 +7,8 @@ import java.util.HashSet;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.PlayerInfo;
 
 /**
  * Tracks players who recently appeared in the current server player list.
@@ -26,7 +25,7 @@ public final class ServerJoinTracker {
     private ServerJoinTracker() {
     }
 
-    public static void recordClientJoin(MinecraftClient client) {
+    public static void recordClientJoin(Minecraft client) {
         clear();
         if (client == null || client.player == null) {
             return;
@@ -34,14 +33,14 @@ public final class ServerJoinTracker {
         record(GameProfileCompatibilityBridge.getName(client.player.getGameProfile()), System.currentTimeMillis());
     }
 
-    public static void tick(MinecraftClient client) {
-        if (client == null || client.getNetworkHandler() == null || client.world == null) {
+    public static void tick(Minecraft client) {
+        if (client == null || client.getConnection() == null || client.level == null) {
             clearKnownPlayers();
             return;
         }
         long now = System.currentTimeMillis();
         Set<String> currentPlayers = new HashSet<>();
-        for (PlayerListEntry entry : client.getNetworkHandler().getPlayerList()) {
+        for (PlayerInfo entry : client.getConnection().getOnlinePlayers()) {
             if (entry == null || entry.getProfile() == null) {
                 continue;
             }

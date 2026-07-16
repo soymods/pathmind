@@ -9,26 +9,6 @@ import com.pathmind.util.InputCompatibilityBridge;
 import com.pathmind.util.DropdownLayoutHelper;
 import com.pathmind.util.TextRenderUtil;
 import com.pathmind.util.VillagerDataCompatibilityBridge;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.item.ItemStack;
-import net.minecraft.world.World;
-import net.minecraft.registry.Registries;
-import net.minecraft.registry.RegistryKey;
-import net.minecraft.registry.RegistryKeys;
-import net.minecraft.registry.entry.RegistryEntry;
-import net.minecraft.text.Text;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.random.Random;
-import net.minecraft.village.TradeOffer;
-import net.minecraft.village.TradeOfferList;
-import net.minecraft.village.TradeOffers;
-import net.minecraft.village.VillagerData;
-import net.minecraft.village.VillagerProfession;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.passive.VillagerEntity;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
@@ -37,6 +17,26 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.core.Holder;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.util.Mth;
+import net.minecraft.util.RandomSource;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.npc.villager.VillagerData;
+import net.minecraft.world.entity.npc.villager.VillagerProfession;
+import net.minecraft.world.entity.npc.villager.VillagerTrades;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.trading.MerchantOffer;
+import net.minecraft.world.item.trading.MerchantOffers;
+import net.minecraft.world.level.Level;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 
@@ -76,7 +76,7 @@ public class VillagerTradeSelector {
     private int searchSelectionAnchor = -1;
     private long searchCaretBlinkLastToggle = 0L;
     private boolean searchCaretVisible = true;
-    private TextRenderer lastTextRenderer;
+    private Font lastTextRenderer;
 
     private int renderX;
     private int renderY;
@@ -162,21 +162,21 @@ public class VillagerTradeSelector {
         return searchFocused;
     }
 
-    public int render(DrawContext context, TextRenderer textRenderer, int x, int y, int width, int mouseX, int mouseY, float alpha) {
+    public int render(GuiGraphics context, Font textRenderer, int x, int y, int width, int mouseX, int mouseY, float alpha) {
         this.lastTextRenderer = textRenderer;
         this.renderX = x;
         this.renderY = y;
         this.renderWidth = width;
 
         int sectionY = y;
-        context.drawTextWithShadow(
+        context.drawString(
             textRenderer,
-            Text.translatable("pathmind.villagerTrade.profession"),
+            Component.translatable("pathmind.villagerTrade.profession"),
             x,
             sectionY,
             AnimationHelper.multiplyAlpha(UITheme.TEXT_PRIMARY, alpha)
         );
-        sectionY += textRenderer.fontHeight + 4;
+        sectionY += textRenderer.lineHeight + 4;
 
         dropdownX = x;
         dropdownY = sectionY;
@@ -191,17 +191,17 @@ public class VillagerTradeSelector {
         DrawContextBridge.drawBorder(context, dropdownX, dropdownY, dropdownWidth, dropdownHeight, AnimationHelper.multiplyAlpha(borderColor, alpha));
         String professionLabel = selectedProfession != null
             ? selectedProfession.displayName
-            : Text.translatable("pathmind.option.none").getString();
-        context.drawTextWithShadow(
+            : Component.translatable("pathmind.option.none").getString();
+        context.drawString(
             textRenderer,
-            Text.literal(professionLabel),
+            Component.literal(professionLabel),
             dropdownX + TEXT_PADDING,
             dropdownY + 6,
             AnimationHelper.multiplyAlpha(UITheme.TEXT_PRIMARY, alpha)
         );
-        context.drawTextWithShadow(
+        context.drawString(
             textRenderer,
-            Text.literal("▼"),
+            Component.literal("▼"),
             dropdownX + dropdownWidth - 12,
             dropdownY + 6,
             AnimationHelper.multiplyAlpha(UITheme.TEXT_PRIMARY, alpha)
@@ -220,11 +220,11 @@ public class VillagerTradeSelector {
         DrawContextBridge.drawBorder(context, searchX, searchY, searchWidth, searchHeight, AnimationHelper.multiplyAlpha(searchBorder, alpha));
         String displayText = searchQuery;
         boolean showPlaceholder = displayText == null || displayText.isEmpty();
-        int textY = searchY + (searchHeight - textRenderer.fontHeight) / 2 + 1;
+        int textY = searchY + (searchHeight - textRenderer.lineHeight) / 2 + 1;
         if (showPlaceholder) {
-            context.drawTextWithShadow(
+            context.drawString(
                 textRenderer,
-                Text.translatable("pathmind.villagerTrade.searchTrades"),
+                Component.translatable("pathmind.villagerTrade.searchTrades"),
                 searchX + TEXT_PADDING,
                 textY,
                 AnimationHelper.multiplyAlpha(UITheme.TEXT_TERTIARY, alpha)
@@ -234,20 +234,20 @@ public class VillagerTradeSelector {
                 ? displayText
                 : trimDisplayString(textRenderer, displayText, searchWidth - TEXT_PADDING * 2);
             if (searchFocused && hasSearchSelection()) {
-                int start = MathHelper.clamp(searchSelectionStart, 0, displayText.length());
-                int end = MathHelper.clamp(searchSelectionEnd, 0, displayText.length());
+                int start = Mth.clamp(searchSelectionStart, 0, displayText.length());
+                int end = Mth.clamp(searchSelectionEnd, 0, displayText.length());
                 if (start != end) {
-                    int selStartX = searchX + TEXT_PADDING + textRenderer.getWidth(displayText.substring(0, Math.min(start, end)));
-                    int selEndX = searchX + TEXT_PADDING + textRenderer.getWidth(displayText.substring(0, Math.max(start, end)));
-                    selStartX = MathHelper.clamp(selStartX, searchX + 2, searchX + searchWidth - 2);
-                    selEndX = MathHelper.clamp(selEndX, searchX + 2, searchX + searchWidth - 2);
+                    int selStartX = searchX + TEXT_PADDING + textRenderer.width(displayText.substring(0, Math.min(start, end)));
+                    int selEndX = searchX + TEXT_PADDING + textRenderer.width(displayText.substring(0, Math.max(start, end)));
+                    selStartX = Mth.clamp(selStartX, searchX + 2, searchX + searchWidth - 2);
+                    selEndX = Mth.clamp(selEndX, searchX + 2, searchX + searchWidth - 2);
                     context.fill(selStartX, searchY + 3, selEndX, searchY + searchHeight - 3,
                         AnimationHelper.multiplyAlpha(UITheme.TEXT_SELECTION_BG, alpha));
                 }
             }
-            context.drawTextWithShadow(
+            context.drawString(
                 textRenderer,
-                Text.literal(trimmed),
+                Component.literal(trimmed),
                 searchX + TEXT_PADDING,
                 textY,
                 AnimationHelper.multiplyAlpha(UITheme.TEXT_PRIMARY, alpha)
@@ -257,8 +257,8 @@ public class VillagerTradeSelector {
         if (searchFocused) {
             updateSearchCaretBlink();
             if (searchCaretVisible) {
-                int caretIndex = MathHelper.clamp(searchCaretPosition, 0, displayText.length());
-                int caretX = searchX + TEXT_PADDING + textRenderer.getWidth(displayText.substring(0, caretIndex));
+                int caretIndex = Mth.clamp(searchCaretPosition, 0, displayText.length());
+                int caretX = searchX + TEXT_PADDING + textRenderer.width(displayText.substring(0, caretIndex));
                 caretX = Math.min(caretX, searchX + searchWidth - 2);
                 int caretTopY = searchY + 3;
                 int caretBottomY = searchY + searchHeight - 3;
@@ -284,7 +284,7 @@ public class VillagerTradeSelector {
 
         int visibleRows = LIST_VISIBLE_ROWS;
         int maxScroll = Math.max(0, filteredTrades.size() - visibleRows);
-        listScrollIndex = MathHelper.clamp(listScrollIndex, 0, maxScroll);
+        listScrollIndex = Mth.clamp(listScrollIndex, 0, maxScroll);
 
         int rowTop = listY + LIST_PADDING;
         for (int i = 0; i < visibleRows; i++) {
@@ -303,9 +303,9 @@ public class VillagerTradeSelector {
             }
             context.fill(listX + 1, rowY, listX + listWidth - 1, rowY + LIST_ROW_HEIGHT, AnimationHelper.multiplyAlpha(rowBg, alpha));
             String rowText = trimDisplayString(textRenderer, entry.displayText, listWidth - TEXT_PADDING * 2);
-            context.drawTextWithShadow(
+            context.drawString(
                 textRenderer,
-                Text.literal(rowText),
+                Component.literal(rowText),
                 listX + TEXT_PADDING,
                 rowY + 5,
                 AnimationHelper.multiplyAlpha(UITheme.TEXT_PRIMARY, alpha)
@@ -313,9 +313,9 @@ public class VillagerTradeSelector {
         }
 
         if (filteredTrades.isEmpty()) {
-            String emptyMessage = Text.translatable("pathmind.villagerTrade.noTradesFound").getString();
+            String emptyMessage = Component.translatable("pathmind.villagerTrade.noTradesFound").getString();
             if (selectedProfession != null && "open_gui".equals(selectedProfession.id)) {
-                emptyMessage = Text.translatable("pathmind.villagerTrade.openTradeScreen").getString();
+                emptyMessage = Component.translatable("pathmind.villagerTrade.openTradeScreen").getString();
             }
             int maxTextWidth = Math.max(0, listWidth - TEXT_PADDING * 2);
             int emptyTextX = listX + TEXT_PADDING;
@@ -341,14 +341,14 @@ public class VillagerTradeSelector {
         sectionY += listHeight + SECTION_SPACING;
 
         String selectedText = buildSelectedTradeText();
-        context.drawTextWithShadow(
+        context.drawString(
             textRenderer,
-            Text.literal(selectedText),
+            Component.literal(selectedText),
             x,
             sectionY,
             AnimationHelper.multiplyAlpha(UITheme.TEXT_SECONDARY, alpha)
         );
-        sectionY += textRenderer.fontHeight;
+        sectionY += textRenderer.lineHeight;
 
         if (dropdownOpen || dropdownAnimation.getValue() > 0.001f || dropdownAnimation.isAnimating()) {
             renderDropdown(context, textRenderer, mouseX, mouseY, alpha);
@@ -429,7 +429,7 @@ public class VillagerTradeSelector {
             return false;
         }
         listScrollIndex -= (int) Math.signum(amount);
-        listScrollIndex = MathHelper.clamp(listScrollIndex, 0, maxScroll);
+        listScrollIndex = Mth.clamp(listScrollIndex, 0, maxScroll);
         return true;
     }
 
@@ -524,7 +524,7 @@ public class VillagerTradeSelector {
         professions.clear();
         List<ProfessionOption> options = new ArrayList<>();
         options.add(new ProfessionOption(OPEN_GUI_PROFESSION_ID, "Open Villager GUI", null, null));
-        for (Identifier id : Registries.VILLAGER_PROFESSION.getIds()) {
+        for (Identifier id : BuiltInRegistries.VILLAGER_PROFESSION.keySet()) {
             if (id == null) {
                 continue;
             }
@@ -533,12 +533,12 @@ public class VillagerTradeSelector {
                 continue;
             }
             String display = titleCase(path);
-            RegistryKey<VillagerProfession> key = RegistryKey.of(RegistryKeys.VILLAGER_PROFESSION, id);
-            RegistryEntry<VillagerProfession> entry = Registries.VILLAGER_PROFESSION.getEntry(id).orElse(null);
+            ResourceKey<VillagerProfession> key = ResourceKey.create(Registries.VILLAGER_PROFESSION, id);
+            Holder<VillagerProfession> entry = BuiltInRegistries.VILLAGER_PROFESSION.get(id).orElse(null);
             if (entry == null) {
                 continue;
             }
-            RegistryKey<VillagerProfession> resolvedKey = entry.getKey().orElse(key);
+            ResourceKey<VillagerProfession> resolvedKey = entry.unwrapKey().orElse(key);
             options.add(new ProfessionOption(path, display, resolvedKey, entry));
         }
         options.sort(Comparator.comparing(option -> option.id, String.CASE_INSENSITIVE_ORDER));
@@ -584,11 +584,11 @@ public class VillagerTradeSelector {
             return;
         }
 
-        Map<?, it.unimi.dsi.fastutil.ints.Int2ObjectMap<TradeOffers.Factory[]>> primary =
-            TradeOffers.PROFESSION_TO_LEVELED_TRADE;
-        Map<?, it.unimi.dsi.fastutil.ints.Int2ObjectMap<TradeOffers.Factory[]>> secondary =
-            TradeOffers.REBALANCED_PROFESSION_TO_LEVELED_TRADE;
-        it.unimi.dsi.fastutil.ints.Int2ObjectMap<TradeOffers.Factory[]> levelMap =
+        Map<?, it.unimi.dsi.fastutil.ints.Int2ObjectMap<VillagerTrades.ItemListing[]>> primary =
+            VillagerTrades.TRADES;
+        Map<?, it.unimi.dsi.fastutil.ints.Int2ObjectMap<VillagerTrades.ItemListing[]>> secondary =
+            VillagerTrades.EXPERIMENTAL_TRADES;
+        it.unimi.dsi.fastutil.ints.Int2ObjectMap<VillagerTrades.ItemListing[]> levelMap =
             resolveTradeLevels(primary, selectedProfession);
         if ((levelMap == null || levelMap.isEmpty()) && secondary != null && !secondary.isEmpty()) {
             levelMap = resolveTradeLevels(secondary, selectedProfession);
@@ -597,27 +597,27 @@ public class VillagerTradeSelector {
             return;
         }
 
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         if (client == null) {
             return;
         }
-        net.minecraft.server.world.ServerWorld serverWorld = client.getServer() != null
-            ? client.getServer().getOverworld()
+        net.minecraft.server.level.ServerLevel serverWorld = client.getSingleplayerServer() != null
+            ? client.getSingleplayerServer().overworld()
             : null;
-        World fallbackWorld = client.world;
-        World activeWorld = serverWorld != null ? serverWorld : fallbackWorld;
+        Level fallbackWorld = client.level;
+        Level activeWorld = serverWorld != null ? serverWorld : fallbackWorld;
         if (activeWorld == null) {
             return;
         }
-        VillagerEntity villager = new VillagerEntity(EntityType.VILLAGER, activeWorld);
+        Villager villager = new Villager(EntityType.VILLAGER, activeWorld);
         if (villager == null) {
             return;
         }
 
-        Random random = Random.create();
-        for (it.unimi.dsi.fastutil.ints.Int2ObjectMap.Entry<TradeOffers.Factory[]> entry : levelMap.int2ObjectEntrySet()) {
+        RandomSource random = RandomSource.create();
+        for (it.unimi.dsi.fastutil.ints.Int2ObjectMap.Entry<VillagerTrades.ItemListing[]> entry : levelMap.int2ObjectEntrySet()) {
             int level = entry.getIntKey();
-            TradeOffers.Factory[] factories = entry.getValue();
+            VillagerTrades.ItemListing[] factories = entry.getValue();
             if (factories == null) {
                 continue;
             }
@@ -629,42 +629,42 @@ public class VillagerTradeSelector {
             villager.setVillagerData(data);
 
             boolean levelHasOffers = false;
-            for (TradeOffers.Factory factory : factories) {
+            for (VillagerTrades.ItemListing factory : factories) {
                 if (factory == null) {
                     continue;
                 }
-                TradeOffer offer = createOffer(factory, serverWorld, fallbackWorld, villager, random);
+                MerchantOffer offer = createOffer(factory, serverWorld, fallbackWorld, villager, random);
                 if (offer == null) {
                     continue;
                 }
-                ItemStack sell = offer.getSellItem();
+                ItemStack sell = offer.getResult();
                 if (sell == null || sell.isEmpty()) {
                     continue;
                 }
-                ItemStack buyFirst = offer.getDisplayedFirstBuyItem();
-                ItemStack buySecond = offer.getDisplayedSecondBuyItem();
+                ItemStack buyFirst = offer.getCostA();
+                ItemStack buySecond = offer.getCostB();
                 trades.add(TradeEntry.fromOffer(level, buyFirst, buySecond, sell));
                 levelHasOffers = true;
             }
 
             if (!levelHasOffers && serverWorld != null) {
-                TradeOfferList offers = villager.getOffers();
+                MerchantOffers offers = villager.getOffers();
                 if (offers != null) {
                     offers.clear();
                 }
                 invokeFillRecipes(villager, serverWorld);
                 offers = villager.getOffers();
                 if (offers != null) {
-                    for (TradeOffer offer : offers) {
+                    for (MerchantOffer offer : offers) {
                         if (offer == null) {
                             continue;
                         }
-                        ItemStack sell = offer.getSellItem();
+                        ItemStack sell = offer.getResult();
                         if (sell == null || sell.isEmpty()) {
                             continue;
                         }
-                        ItemStack buyFirst = offer.getDisplayedFirstBuyItem();
-                        ItemStack buySecond = offer.getDisplayedSecondBuyItem();
+                        ItemStack buyFirst = offer.getCostA();
+                        ItemStack buySecond = offer.getCostB();
                         trades.add(TradeEntry.fromOffer(level, buyFirst, buySecond, sell));
                     }
                 }
@@ -685,16 +685,16 @@ public class VillagerTradeSelector {
         }
     }
 
-    private it.unimi.dsi.fastutil.ints.Int2ObjectMap<TradeOffers.Factory[]> resolveTradeLevels(
-        Map<?, it.unimi.dsi.fastutil.ints.Int2ObjectMap<TradeOffers.Factory[]>> map,
+    private it.unimi.dsi.fastutil.ints.Int2ObjectMap<VillagerTrades.ItemListing[]> resolveTradeLevels(
+        Map<?, it.unimi.dsi.fastutil.ints.Int2ObjectMap<VillagerTrades.ItemListing[]>> map,
         ProfessionOption option
     ) {
         if (map == null || map.isEmpty() || option == null) {
             return null;
         }
-        it.unimi.dsi.fastutil.ints.Int2ObjectMap<TradeOffers.Factory[]> levelMap = map.get(option.key);
+        it.unimi.dsi.fastutil.ints.Int2ObjectMap<VillagerTrades.ItemListing[]> levelMap = map.get(option.key);
         if ((levelMap == null || levelMap.isEmpty()) && option.entry != null) {
-            RegistryKey<VillagerProfession> resolvedKey = option.entry.getKey().orElse(null);
+            ResourceKey<VillagerProfession> resolvedKey = option.entry.unwrapKey().orElse(null);
             if (resolvedKey != null) {
                 levelMap = map.get(resolvedKey);
             }
@@ -709,26 +709,26 @@ public class VillagerTradeSelector {
             }
         }
         if (levelMap == null || levelMap.isEmpty()) {
-            for (Map.Entry<?, it.unimi.dsi.fastutil.ints.Int2ObjectMap<TradeOffers.Factory[]>> entry : map.entrySet()) {
+            for (Map.Entry<?, it.unimi.dsi.fastutil.ints.Int2ObjectMap<VillagerTrades.ItemListing[]>> entry : map.entrySet()) {
                 Object key = entry.getKey();
                 String keyPath = null;
-                if (key instanceof RegistryKey<?> registryKey) {
-                    Identifier id = registryKey.getValue();
+                if (key instanceof ResourceKey<?> registryKey) {
+                    Identifier id = registryKey.identifier();
                     keyPath = id != null ? id.getPath() : null;
-                } else if (key instanceof RegistryEntry<?> registryEntry) {
-                    RegistryKey<?> registryKey = registryEntry.getKey().orElse(null);
+                } else if (key instanceof Holder<?> registryEntry) {
+                    ResourceKey<?> registryKey = registryEntry.unwrapKey().orElse(null);
                     if (registryKey != null) {
-                        Identifier id = registryKey.getValue();
+                        Identifier id = registryKey.identifier();
                         keyPath = id != null ? id.getPath() : null;
                     } else {
                         Object value = registryEntry.value();
                         if (value instanceof VillagerProfession profession) {
-                            Identifier id = Registries.VILLAGER_PROFESSION.getId(profession);
+                            Identifier id = BuiltInRegistries.VILLAGER_PROFESSION.getKey(profession);
                             keyPath = id != null ? id.getPath() : null;
                         }
                     }
                 } else if (key instanceof VillagerProfession profession) {
-                    Identifier id = Registries.VILLAGER_PROFESSION.getId(profession);
+                    Identifier id = BuiltInRegistries.VILLAGER_PROFESSION.getKey(profession);
                     keyPath = id != null ? id.getPath() : null;
                 } else if (key instanceof Identifier id) {
                     keyPath = id.getPath();
@@ -749,7 +749,7 @@ public class VillagerTradeSelector {
             return option.entry.value();
         }
         if (option.key != null) {
-            return Registries.VILLAGER_PROFESSION.get(option.key);
+            return BuiltInRegistries.VILLAGER_PROFESSION.getValue(option.key);
         }
         return null;
     }
@@ -762,7 +762,7 @@ public class VillagerTradeSelector {
         } catch (NoSuchMethodException ignored) {
         }
         try {
-            Method method = VillagerData.class.getMethod("withProfession", RegistryEntry.class);
+            Method method = VillagerData.class.getMethod("withProfession", Holder.class);
             method.setAccessible(true);
             return method;
         } catch (NoSuchMethodException ignored) {
@@ -781,7 +781,7 @@ public class VillagerTradeSelector {
         Class<?> paramType = VILLAGERDATA_WITH_PROFESSION.getParameterTypes()[0];
         if (paramType.isAssignableFrom(VillagerProfession.class)) {
             argument = resolveProfession(option);
-        } else if (RegistryEntry.class.isAssignableFrom(paramType)) {
+        } else if (Holder.class.isAssignableFrom(paramType)) {
             argument = option.entry;
         }
         if (argument == null) {
@@ -821,7 +821,7 @@ public class VillagerTradeSelector {
             clearSearchSelection();
             return;
         }
-        int totalWidth = lastTextRenderer.getWidth(value);
+        int totalWidth = lastTextRenderer.width(value);
         if (relativeX >= totalWidth) {
             searchCaretPosition = value.length();
             clearSearchSelection();
@@ -830,7 +830,7 @@ public class VillagerTradeSelector {
         int bestIndex = 0;
         int bestDiff = Integer.MAX_VALUE;
         for (int i = 1; i <= value.length(); i++) {
-            int width = lastTextRenderer.getWidth(value.substring(0, i));
+            int width = lastTextRenderer.width(value.substring(0, i));
             int diff = Math.abs(relativeX - width);
             if (diff < bestDiff) {
                 bestDiff = diff;
@@ -842,7 +842,7 @@ public class VillagerTradeSelector {
     }
 
     private void moveSearchCaret(int newPosition, boolean shiftHeld) {
-        int clamped = MathHelper.clamp(newPosition, 0, searchQuery.length());
+        int clamped = Mth.clamp(newPosition, 0, searchQuery.length());
         if (shiftHeld) {
             if (!hasSearchSelection()) {
                 searchSelectionAnchor = searchCaretPosition;
@@ -904,14 +904,14 @@ public class VillagerTradeSelector {
             return;
         }
         String value = searchQuery != null ? searchQuery : "";
-        int caret = MathHelper.clamp(searchCaretPosition, 0, value.length());
+        int caret = Mth.clamp(searchCaretPosition, 0, value.length());
         setSearchQuery(value.substring(0, caret - 1) + value.substring(caret));
         searchCaretPosition = caret - 1;
     }
 
     private void deleteCharAfterCaret() {
         String value = searchQuery != null ? searchQuery : "";
-        int caret = MathHelper.clamp(searchCaretPosition, 0, value.length());
+        int caret = Mth.clamp(searchCaretPosition, 0, value.length());
         if (caret >= value.length()) {
             return;
         }
@@ -926,29 +926,29 @@ public class VillagerTradeSelector {
             // selection cleared in deleteSearchSelection
         }
         String value = searchQuery != null ? searchQuery : "";
-        int caret = MathHelper.clamp(searchCaretPosition, 0, value.length());
+        int caret = Mth.clamp(searchCaretPosition, 0, value.length());
         setSearchQuery(value.substring(0, caret) + text + value.substring(caret));
         searchCaretPosition = caret + text.length();
     }
 
     private void setSearchQuery(String value) {
         searchQuery = value != null ? value : "";
-        searchCaretPosition = MathHelper.clamp(searchCaretPosition, 0, searchQuery.length());
+        searchCaretPosition = Mth.clamp(searchCaretPosition, 0, searchQuery.length());
         updateFilteredTrades();
     }
 
     private String getClipboardText() {
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client != null && client.keyboard != null) {
-            return client.keyboard.getClipboard();
+        Minecraft client = Minecraft.getInstance();
+        if (client != null && client.keyboardHandler != null) {
+            return client.keyboardHandler.getClipboard();
         }
         return "";
     }
 
     private void setClipboardText(String text) {
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client != null && client.keyboard != null) {
-            client.keyboard.setClipboard(text == null ? "" : text);
+        Minecraft client = Minecraft.getInstance();
+        if (client != null && client.keyboardHandler != null) {
+            client.keyboardHandler.setClipboard(text == null ? "" : text);
         }
     }
 
@@ -963,39 +963,39 @@ public class VillagerTradeSelector {
     }
 
     private static List<TradeEntry> extractTradesFromOpenMerchantScreen() {
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         if (client == null) {
             return List.of();
         }
-        if (!(client.currentScreen instanceof net.minecraft.client.gui.screen.ingame.MerchantScreen merchantScreen)) {
+        if (!(client.screen instanceof net.minecraft.client.gui.screens.inventory.MerchantScreen merchantScreen)) {
             return List.of();
         }
-        net.minecraft.screen.MerchantScreenHandler screenHandler = merchantScreen.getScreenHandler();
+        net.minecraft.world.inventory.MerchantMenu screenHandler = merchantScreen.getMenu();
         if (screenHandler == null) {
             return List.of();
         }
-        net.minecraft.village.TradeOfferList offers = screenHandler.getRecipes();
+        net.minecraft.world.item.trading.MerchantOffers offers = screenHandler.getOffers();
         if (offers == null || offers.isEmpty()) {
             return List.of();
         }
         List<TradeEntry> extracted = new ArrayList<>();
-        for (net.minecraft.village.TradeOffer offer : offers) {
+        for (net.minecraft.world.item.trading.MerchantOffer offer : offers) {
             if (offer == null) {
                 continue;
             }
-            ItemStack sell = offer.getSellItem();
+            ItemStack sell = offer.getResult();
             if (sell == null || sell.isEmpty()) {
                 continue;
             }
-            ItemStack buyFirst = offer.getDisplayedFirstBuyItem();
-            ItemStack buySecond = offer.getDisplayedSecondBuyItem();
+            ItemStack buyFirst = offer.getCostA();
+            ItemStack buySecond = offer.getCostB();
             extracted.add(TradeEntry.fromOffer(1, buyFirst, buySecond, sell));
         }
         return extracted;
     }
 
-    private static TradeOffer createOffer(TradeOffers.Factory factory, net.minecraft.server.world.ServerWorld serverWorld,
-                                   World fallbackWorld, VillagerEntity villager, Random random) {
+    private static MerchantOffer createOffer(VillagerTrades.ItemListing factory, net.minecraft.server.level.ServerLevel serverWorld,
+                                   Level fallbackWorld, Villager villager, RandomSource random) {
         if (factory == null || villager == null) {
             return null;
         }
@@ -1008,19 +1008,19 @@ public class VillagerTradeSelector {
                 if (params.length == 3) {
                     if (serverWorld != null && params[0].isInstance(serverWorld) && params[1].isInstance(villager)) {
                         Object offer = method.invoke(factory, serverWorld, villager, random);
-                        if (offer instanceof TradeOffer tradeOffer) {
+                        if (offer instanceof MerchantOffer tradeOffer) {
                             return tradeOffer;
                         }
                     }
                     if (fallbackWorld != null && params[0].isInstance(fallbackWorld) && params[1].isInstance(villager)) {
                         Object offer = method.invoke(factory, fallbackWorld, villager, random);
-                        if (offer instanceof TradeOffer tradeOffer) {
+                        if (offer instanceof MerchantOffer tradeOffer) {
                             return tradeOffer;
                         }
                     }
                 } else if (params.length == 2 && params[0].isInstance(villager)) {
                     Object offer = method.invoke(factory, villager, random);
-                    if (offer instanceof TradeOffer tradeOffer) {
+                    if (offer instanceof MerchantOffer tradeOffer) {
                         return tradeOffer;
                     }
                 }
@@ -1031,12 +1031,12 @@ public class VillagerTradeSelector {
         return null;
     }
 
-    private static void invokeFillRecipes(VillagerEntity villager, net.minecraft.server.world.ServerWorld serverWorld) {
+    private static void invokeFillRecipes(Villager villager, net.minecraft.server.level.ServerLevel serverWorld) {
         if (villager == null || serverWorld == null) {
             return;
         }
         try {
-            Method method = VillagerEntity.class.getDeclaredMethod("fillRecipes", net.minecraft.server.world.ServerWorld.class);
+            Method method = Villager.class.getDeclaredMethod("fillRecipes", net.minecraft.server.level.ServerLevel.class);
             method.setAccessible(true);
             method.invoke(villager, serverWorld);
         } catch (ReflectiveOperationException ignored) {
@@ -1092,7 +1092,7 @@ public class VillagerTradeSelector {
         return null;
     }
 
-    private void renderDropdown(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY, float alpha) {
+    private void renderDropdown(GuiGraphics context, Font textRenderer, int mouseX, int mouseY, float alpha) {
         float animProgress = DropdownLayoutHelper.updateOpenAnimation(dropdownAnimation, dropdownOpen);
         if (animProgress <= 0.001f) {
             return;
@@ -1101,7 +1101,7 @@ public class VillagerTradeSelector {
         int dropdownY = this.dropdownY + dropdownHeight;
         int dropdownWidth = this.dropdownWidth;
         int totalOptions = professions.size();
-        int screenHeight = MinecraftClient.getInstance().getWindow().getScaledHeight();
+        int screenHeight = Minecraft.getInstance().getWindow().getGuiScaledHeight();
         DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
             totalOptions,
             DROPDOWN_OPTION_HEIGHT,
@@ -1117,7 +1117,7 @@ public class VillagerTradeSelector {
         float dropdownAlpha = alpha * animProgress;
         context.fill(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + dropdownHeight, AnimationHelper.multiplyAlpha(UITheme.BACKGROUND_SIDEBAR, dropdownAlpha));
         DrawContextBridge.drawBorder(context, dropdownX, dropdownY, dropdownWidth, dropdownHeight, AnimationHelper.multiplyAlpha(UITheme.BORDER_DEFAULT, dropdownAlpha));
-        context.drawHorizontalLine(dropdownX, dropdownX + dropdownWidth, dropdownY + dropdownHeight, AnimationHelper.multiplyAlpha(UITheme.BORDER_DEFAULT, dropdownAlpha));
+        context.hLine(dropdownX, dropdownX + dropdownWidth, dropdownY + dropdownHeight, AnimationHelper.multiplyAlpha(UITheme.BORDER_DEFAULT, dropdownAlpha));
 
         float smoothScrollOffset = DropdownLayoutHelper.updateSmoothScroll(dropdownSmoothScroll, dropdownScrollIndex, layout.maxScrollOffset);
         DropdownLayoutHelper.ScrollWindow scrollWindow = DropdownLayoutHelper.getSmoothScrollWindow(
@@ -1143,9 +1143,9 @@ public class VillagerTradeSelector {
                 bg = adjustColor(bg, 1.2f);
             }
             context.fill(dropdownX + 1, optionTop, dropdownX + dropdownWidth - 1, optionTop + DROPDOWN_OPTION_HEIGHT, AnimationHelper.multiplyAlpha(bg, dropdownAlpha));
-            context.drawTextWithShadow(
+            context.drawString(
                 textRenderer,
-                Text.literal(option.displayName),
+                Component.literal(option.displayName),
                 dropdownX + TEXT_PADDING,
                 optionTop + 5,
                 AnimationHelper.multiplyAlpha(UITheme.TEXT_PRIMARY, dropdownAlpha)
@@ -1181,7 +1181,7 @@ public class VillagerTradeSelector {
         int dropdownY = this.dropdownY + dropdownHeight;
         int dropdownWidth = this.dropdownWidth;
         int totalOptions = professions.size();
-        int screenHeight = MinecraftClient.getInstance().getWindow().getScaledHeight();
+        int screenHeight = Minecraft.getInstance().getWindow().getGuiScaledHeight();
         DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
             totalOptions,
             DROPDOWN_OPTION_HEIGHT,
@@ -1235,7 +1235,7 @@ public class VillagerTradeSelector {
         int dropdownY = this.dropdownY + dropdownHeight;
         int dropdownWidth = this.dropdownWidth;
         int totalOptions = professions.size();
-        int screenHeight = MinecraftClient.getInstance().getWindow().getScaledHeight();
+        int screenHeight = Minecraft.getInstance().getWindow().getGuiScaledHeight();
         DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
             totalOptions,
             DROPDOWN_OPTION_HEIGHT,
@@ -1270,23 +1270,23 @@ public class VillagerTradeSelector {
         return "Selected: " + selectedTradeKey;
     }
 
-    private String trimDisplayString(TextRenderer renderer, String text, int availableWidth) {
+    private String trimDisplayString(Font renderer, String text, int availableWidth) {
         return TextRenderUtil.trimWithEllipsis(renderer, text, availableWidth);
     }
 
-    private void renderWrappedText(DrawContext context, TextRenderer textRenderer, String message,
+    private void renderWrappedText(GuiGraphics context, Font textRenderer, String message,
                                    int x, int y, int maxWidth, int color) {
         if (message == null || message.isEmpty() || maxWidth <= 0) {
             return;
         }
-        List<net.minecraft.text.OrderedText> lines = textRenderer.wrapLines(Text.literal(message), maxWidth);
+        List<net.minecraft.util.FormattedCharSequence> lines = textRenderer.split(Component.literal(message), maxWidth);
         if (lines == null || lines.isEmpty()) {
             return;
         }
         int lineY = y;
         for (int i = 0; i < lines.size(); i++) {
-            context.drawTextWithShadow(textRenderer, lines.get(i), x, lineY, color);
-            lineY += textRenderer.fontHeight + 2;
+            context.drawString(textRenderer, lines.get(i), x, lineY, color);
+            lineY += textRenderer.lineHeight + 2;
         }
     }
 
@@ -1340,11 +1340,11 @@ public class VillagerTradeSelector {
     private static final class ProfessionOption {
         private final String id;
         private final String displayName;
-        private final RegistryKey<VillagerProfession> key;
-        private final RegistryEntry<VillagerProfession> entry;
+        private final ResourceKey<VillagerProfession> key;
+        private final Holder<VillagerProfession> entry;
 
-        private ProfessionOption(String id, String displayName, RegistryKey<VillagerProfession> key,
-                                 RegistryEntry<VillagerProfession> entry) {
+        private ProfessionOption(String id, String displayName, ResourceKey<VillagerProfession> key,
+                                 Holder<VillagerProfession> entry) {
             this.id = id;
             this.displayName = displayName;
             this.key = key;
@@ -1381,7 +1381,7 @@ public class VillagerTradeSelector {
             display += " -> " + sellText;
             String search = buildSearch(firstBuy) + " " + buildSearch(secondBuy) + " " + buildSearch(sell);
             String sellId = getItemId(sell);
-            String sellName = sell != null ? sell.getName().getString() : sellId;
+            String sellName = sell != null ? sell.getHoverName().getString() : sellId;
             String tradeKey = buildTradeKey(firstBuy, secondBuy, sell);
             return new TradeEntry(level, display, search.toLowerCase(Locale.ROOT), tradeKey, sellId, sellName);
         }
@@ -1390,7 +1390,7 @@ public class VillagerTradeSelector {
             if (stack == null || stack.isEmpty()) {
                 return "";
             }
-            String name = stack.getName().getString();
+            String name = stack.getHoverName().getString();
             int count = stack.getCount();
             if (count > 1) {
                 return count + "x " + name;
@@ -1403,7 +1403,7 @@ public class VillagerTradeSelector {
                 return "";
             }
             StringBuilder builder = new StringBuilder();
-            builder.append(stack.getName().getString());
+            builder.append(stack.getHoverName().getString());
             String id = getItemId(stack);
             if (!id.isEmpty()) {
                 builder.append(' ').append(id);
@@ -1415,7 +1415,7 @@ public class VillagerTradeSelector {
             if (stack == null || stack.isEmpty()) {
                 return "";
             }
-            Identifier id = Registries.ITEM.getId(stack.getItem());
+            Identifier id = BuiltInRegistries.ITEM.getKey(stack.getItem());
             return id != null ? id.toString() : "";
         }
 
@@ -1430,7 +1430,7 @@ public class VillagerTradeSelector {
             if (stack == null || stack.isEmpty()) {
                 return "none@0";
             }
-            Identifier id = Registries.ITEM.getId(stack.getItem());
+            Identifier id = BuiltInRegistries.ITEM.getKey(stack.getItem());
             String itemId = id != null ? id.toString() : "unknown";
             return itemId + "@" + stack.getCount();
         }

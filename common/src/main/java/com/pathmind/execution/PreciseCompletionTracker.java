@@ -3,10 +3,10 @@ package com.pathmind.execution;
 import java.util.concurrent.CompletableFuture;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import net.minecraft.client.Minecraft;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.Optional;
-import net.minecraft.client.MinecraftClient;
 import com.pathmind.util.BaritoneApiProxy;
 import com.pathmind.ui.overlay.NodeErrorNotificationOverlay;
 import com.pathmind.ui.theme.UITheme;
@@ -459,7 +459,7 @@ public class PreciseCompletionTracker {
     }
 
     private void notifyPlayer(String message) {
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         if (client == null) {
             return;
         }

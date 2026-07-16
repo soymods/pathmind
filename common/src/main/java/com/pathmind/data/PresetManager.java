@@ -1,8 +1,6 @@
 package com.pathmind.data;
 
 import dev.architectury.platform.Platform;
-import net.minecraft.client.MinecraftClient;
-
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -20,6 +18,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import net.minecraft.client.Minecraft;
 
 /**
  * Utility class that manages Pathmind workspace presets.
@@ -445,9 +444,9 @@ public final class PresetManager {
     }
 
     private static Path getMinecraftDirectory() {
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client != null && client.runDirectory != null) {
-            return client.runDirectory.toPath();
+        Minecraft client = Minecraft.getInstance();
+        if (client != null && client.gameDirectory != null) {
+            return client.gameDirectory.toPath();
         }
         try {
             Path gameFolder = Platform.getGameFolder();

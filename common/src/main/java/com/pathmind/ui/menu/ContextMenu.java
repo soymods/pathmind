@@ -6,12 +6,11 @@ import com.pathmind.ui.animation.PopupAnimationHandler;
 import com.pathmind.ui.sidebar.Sidebar;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.MatrixStackBridge;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.text.Text;
-
 import java.util.ArrayList;
 import java.util.List;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.network.chat.Component;
 
 /**
  * Main context menu that displays node categories.
@@ -261,7 +260,7 @@ public class ContextMenu {
     /**
      * Renders the context menu.
      */
-    public void render(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY) {
+    public void render(GuiGraphics context, Font textRenderer, int mouseX, int mouseY) {
         if (!isOpen) {
             return;
         }
@@ -273,7 +272,7 @@ public class ContextMenu {
 
         int menuHeight = getMenuHeight();
 
-        var matrices = context.getMatrices();
+        var matrices = context.pose();
         MatrixStackBridge.push(matrices);
         // Scale around the menu's top-left anchor.
         MatrixStackBridge.translate(matrices, menuX, menuY);
@@ -288,8 +287,8 @@ public class ContextMenu {
         int separatorY = itemY + ITEM_HEIGHT - 1;
         ContextMenuRenderer.renderSeparator(context, menuX + 4, separatorY, MENU_WIDTH - 8);
         int searchTextX = menuX + 8;
-        int searchTextY = itemY + (ITEM_HEIGHT - textRenderer.fontHeight) / 2;
-        context.drawTextWithShadow(textRenderer, Text.translatable(SEARCH_LABEL_KEY), searchTextX, searchTextY, UITheme.CONTEXT_MENU_TEXT);
+        int searchTextY = itemY + (ITEM_HEIGHT - textRenderer.lineHeight) / 2;
+        context.drawString(textRenderer, Component.translatable(SEARCH_LABEL_KEY), searchTextX, searchTextY, UITheme.CONTEXT_MENU_TEXT);
         int iconColor = searchHovered ? UITheme.TEXT_PRIMARY : UITheme.TEXT_SECONDARY;
         int iconX = menuX + MENU_WIDTH - SEARCH_ICON_X_OFFSET;
         int iconY = itemY + (ITEM_HEIGHT - 8) / 2;
@@ -298,8 +297,8 @@ public class ContextMenu {
 
         ContextMenuRenderer.renderMenuItem(context, menuX, itemY, MENU_WIDTH, ITEM_HEIGHT, stickyNoteHovered);
         int noteTextX = menuX + 8;
-        int noteTextY = itemY + (ITEM_HEIGHT - textRenderer.fontHeight) / 2;
-        context.drawTextWithShadow(textRenderer, Text.translatable(STICKY_NOTE_LABEL_KEY), noteTextX, noteTextY, UITheme.CONTEXT_MENU_TEXT);
+        int noteTextY = itemY + (ITEM_HEIGHT - textRenderer.lineHeight) / 2;
+        context.drawString(textRenderer, Component.translatable(STICKY_NOTE_LABEL_KEY), noteTextX, noteTextY, UITheme.CONTEXT_MENU_TEXT);
         ContextMenuRenderer.renderSeparator(context, menuX + 4, itemY - 1, MENU_WIDTH - 8);
         ContextMenuRenderer.renderSeparator(context, menuX + 4, itemY + ITEM_HEIGHT - 1, MENU_WIDTH - 8);
         itemY += ITEM_HEIGHT;

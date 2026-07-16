@@ -1,5 +1,6 @@
 package com.pathmind.screen;
 
+import com.mojang.blaze3d.platform.NativeImage;
 import com.pathmind.data.NodeGraphData;
 import com.pathmind.data.NodeGraphPersistence;
 import com.pathmind.marketplace.MarketplacePreset;
@@ -8,17 +9,15 @@ import com.pathmind.nodes.Node;
 import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.TextureCompatibilityBridge;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.texture.NativeImage;
-import net.minecraft.client.texture.NativeImageBackedTexture;
-import net.minecraft.util.Identifier;
-
 import java.util.ArrayDeque;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.texture.DynamicTexture;
+import net.minecraft.resources.Identifier;
 import java.util.HashSet;
 
 final class PathmindMarketplacePreviewLoader {
@@ -41,7 +40,7 @@ final class PathmindMarketplacePreviewLoader {
         return cache.get(preset.getId());
     }
 
-    void request(MinecraftClient client, MarketplacePreset preset, String accessToken) {
+    void request(Minecraft client, MarketplacePreset preset, String accessToken) {
         String presetId = preset == null ? null : preset.getId();
         if (presetId == null || cache.containsKey(presetId) || loading.contains(presetId) || queued.contains(presetId)) {
             return;
@@ -64,7 +63,7 @@ final class PathmindMarketplacePreviewLoader {
         queue.removeIf(queuedPreset -> preset.getId().equals(queuedPreset.getId()));
     }
 
-    private void startRequest(MinecraftClient client, MarketplacePreset preset, String presetId, String accessToken) {
+    private void startRequest(Minecraft client, MarketplacePreset preset, String presetId, String accessToken) {
         loading.add(presetId);
         MarketplaceService.fetchPresetGraphData(preset, accessToken).whenComplete((graphData, throwable) -> {
             if (client == null) {
@@ -80,7 +79,7 @@ final class PathmindMarketplacePreviewLoader {
         });
     }
 
-    private void drainQueue(MinecraftClient client, String accessToken) {
+    private void drainQueue(Minecraft client, String accessToken) {
         while (loading.size() < MAX_CONCURRENT_REQUESTS && !queue.isEmpty()) {
             MarketplacePreset queuedPreset = queue.poll();
             String queuedPresetId = queuedPreset == null ? null : queuedPreset.getId();
@@ -95,7 +94,7 @@ final class PathmindMarketplacePreviewLoader {
         }
     }
 
-    private PathmindMarketplaceScreen.PreviewGraphModel buildModel(MinecraftClient client, String presetId, NodeGraphData graphData) {
+    private PathmindMarketplaceScreen.PreviewGraphModel buildModel(Minecraft client, String presetId, NodeGraphData graphData) {
         List<Node> rebuiltNodes = NodeGraphPersistence.convertToNodes(graphData);
         Map<String, Node> nodeLookup = new HashMap<>();
         for (Node node : rebuiltNodes) {
@@ -167,7 +166,7 @@ final class PathmindMarketplacePreviewLoader {
         }
         for (int x = 0; x < THUMBNAIL_WIDTH; x++) {
             for (int y = 0; y < THUMBNAIL_HEIGHT; y++) {
-                image.setColor(x, y, 0x00000000);
+                image.setPixelABGR(x, y, 0x00000000);
             }
         }
     }
@@ -232,7 +231,7 @@ final class PathmindMarketplacePreviewLoader {
         if (image == null || x < 0 || y < 0 || x >= THUMBNAIL_WIDTH || y >= THUMBNAIL_HEIGHT) {
             return;
         }
-        image.setColor(x, y, toNativeImageColor(argbColor));
+        image.setPixelABGR(x, y, toNativeImageColor(argbColor));
     }
 
     private int toNativeImageColor(int argbColor) {
@@ -243,13 +242,13 @@ final class PathmindMarketplacePreviewLoader {
         return (alpha << 24) | (blue << 16) | (green << 8) | red;
     }
 
-    private Identifier registerThumbnailTexture(MinecraftClient client, String presetId, NativeImage image) {
+    private Identifier registerThumbnailTexture(Minecraft client, String presetId, NativeImage image) {
         if (client == null || presetId == null || presetId.isBlank() || image == null) {
             return null;
         }
-        NativeImageBackedTexture texture = TextureCompatibilityBridge.createNativeImageBackedTexture("pathmind_marketplace_preview", image);
-        Identifier id = Identifier.of("pathmind", "textures/dynamic/marketplace_preview_" + Integer.toHexString(presetId.hashCode()));
-        client.getTextureManager().registerTexture(id, texture);
+        DynamicTexture texture = TextureCompatibilityBridge.createNativeImageBackedTexture("pathmind_marketplace_preview", image);
+        Identifier id = Identifier.fromNamespaceAndPath("pathmind", "textures/dynamic/marketplace_preview_" + Integer.toHexString(presetId.hashCode()));
+        client.getTextureManager().register(id, texture);
         return id;
     }
 }

@@ -3,9 +3,9 @@ package com.pathmind.screen;
 import com.pathmind.PathmindCommon;
 import com.pathmind.util.DrawContextBridge;
 import com.pathmind.util.MatrixStackBridge;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.util.Identifier;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.resources.Identifier;
 import org.lwjgl.glfw.GLFW;
 
 final class PathmindCursor {
@@ -29,30 +29,30 @@ final class PathmindCursor {
     private PathmindCursor() {
     }
 
-    static void hideSystemCursor(MinecraftClient client) {
+    static void hideSystemCursor(Minecraft client) {
         if (client == null) {
             return;
         }
-        GLFW.glfwSetInputMode(client.getWindow().getHandle(), GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_HIDDEN);
+        GLFW.glfwSetInputMode(client.getWindow().handle(), GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_HIDDEN);
         fallbackSystemCursorVisible = false;
     }
 
-    static void showSystemCursor(MinecraftClient client) {
+    static void showSystemCursor(Minecraft client) {
         if (client == null) {
             return;
         }
-        GLFW.glfwSetInputMode(client.getWindow().getHandle(), GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_NORMAL);
+        GLFW.glfwSetInputMode(client.getWindow().handle(), GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_NORMAL);
         fallbackSystemCursorVisible = false;
     }
 
-    static void renderDefault(DrawContext context, int mouseX, int mouseY) {
+    static void renderDefault(GuiGraphics context, int mouseX, int mouseY) {
         render(context, DEFAULT_TEXTURE, mouseX, mouseY);
     }
 
-    static void render(DrawContext context, Identifier texture, int mouseX, int mouseY) {
-        MinecraftClient client = MinecraftClient.getInstance();
+    static void render(GuiGraphics context, Identifier texture, int mouseX, int mouseY) {
+        Minecraft client = Minecraft.getInstance();
         DrawContextBridge.startNewRootLayer(context);
-        Object matrices = context.getMatrices();
+        Object matrices = context.pose();
         boolean rendered = false;
         MatrixStackBridge.push(matrices);
         try {
@@ -65,11 +65,11 @@ final class PathmindCursor {
         syncSystemCursorFallback(client, rendered);
     }
 
-    private static void syncSystemCursorFallback(MinecraftClient client, boolean customCursorRendered) {
+    private static void syncSystemCursorFallback(Minecraft client, boolean customCursorRendered) {
         if (client == null) {
             return;
         }
-        long window = client.getWindow().getHandle();
+        long window = client.getWindow().handle();
         if (customCursorRendered) {
             GLFW.glfwSetInputMode(window, GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_HIDDEN);
             fallbackSystemCursorVisible = false;

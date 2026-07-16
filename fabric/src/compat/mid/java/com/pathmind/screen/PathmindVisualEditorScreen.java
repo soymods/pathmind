@@ -48,22 +48,9 @@ import com.pathmind.util.ScrollbarHelper;
 import com.pathmind.util.TextRenderUtil;
 import com.pathmind.util.VersionSupport;
 import com.pathmind.util.LoaderMetadata;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.gui.Click;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.resource.language.LanguageManager;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.widget.TextFieldWidget;
-import net.minecraft.client.input.CharInput;
-import net.minecraft.client.input.KeyInput;
 import com.pathmind.util.RenderStateBridge;
 import com.pathmind.util.OverlayProtection;
 import com.pathmind.util.UiUtilsProxy;
-import net.minecraft.text.Text;
-import net.minecraft.util.Util;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.math.MathHelper;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.system.MemoryStack;
@@ -81,6 +68,18 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import net.minecraft.Util;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.CharacterEvent;
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.util.Mth;
 
 /**
  * The main visual editor screen for Pathmind.
@@ -205,8 +204,8 @@ public class PathmindVisualEditorScreen extends Screen {
     private static final int NODE_SEARCH_RESULT_TEXT_PADDING = 6;
     private static final String INFO_POPUP_AUTHOR = "soymods";
     private static final String INFO_POPUP_TARGET_VERSION = VersionSupport.SUPPORTED_RANGE;
-    private static final Text TITLE_TEXT = Text.literal("Pathmind");
-    private static final Text INFO_POPUP_TITLE_TEXT = Text.literal("Pathmind");
+    private static final Component TITLE_TEXT = Component.literal("Pathmind");
+    private static final Component INFO_POPUP_TITLE_TEXT = Component.literal("Pathmind");
 
     NodeGraph nodeGraph;
     private Sidebar sidebar;
@@ -231,7 +230,7 @@ public class PathmindVisualEditorScreen extends Screen {
     private int rightClickStartY = -1;
     private long rightClickStartTime = 0;
     private boolean cuttingConnections = false;
-    private TextFieldWidget nodeSearchField;
+    private EditBox nodeSearchField;
     private boolean nodeSearchOpen = false;
     private int nodeSearchFieldX = 0;
     private int nodeSearchFieldY = 0;
@@ -284,15 +283,15 @@ public class PathmindVisualEditorScreen extends Screen {
     private long animatingPresetDeletionExecuteAtMs = 0L;
     private String activePresetName = "";
     final PopupAnimationHandler createPresetPopupAnimation = new PopupAnimationHandler();
-    TextFieldWidget createPresetField;
+    EditBox createPresetField;
     String createPresetStatus = "";
     int createPresetStatusColor = UITheme.TEXT_SECONDARY;
     boolean createRoutineNaming = false;
     String pendingRoutineRenameId = "";
     String pendingLibraryRoutineRenameId = "";
     final PopupAnimationHandler renamePresetPopupAnimation = new PopupAnimationHandler();
-    TextFieldWidget renamePresetField;
-    private TextFieldWidget inlinePresetRenameField;
+    EditBox renamePresetField;
+    private EditBox inlinePresetRenameField;
     String renamePresetStatus = "";
     int renamePresetStatusColor = UITheme.TEXT_SECONDARY;
     String pendingPresetRenameName = "";
@@ -328,9 +327,9 @@ public class PathmindVisualEditorScreen extends Screen {
     int nodeDelayMs = 150;
     boolean nodeDelayDragging = false;
     boolean createListRadiusDragging = false;
-    TextFieldWidget nodeDelayField;
-    TextFieldWidget createListRadiusField;
-    TextFieldWidget settingsNodeSearchField;
+    EditBox nodeDelayField;
+    EditBox createListRadiusField;
+    EditBox settingsNodeSearchField;
     boolean settingsNodeListView = true;
     NodeType settingsNodeTargetType = null;
     Node settingsNodeTarget = null;
@@ -411,7 +410,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     public PathmindVisualEditorScreen() {
-        super(Text.translatable("screen.pathmind.visual_editor.title"));
+        super(Component.translatable("screen.pathmind.visual_editor.title"));
         this.baritoneAvailable = BaritoneDependencyChecker.isBaritoneApiPresent();
         this.uiUtilsAvailable = UiUtilsProxy.isAvailable();
         this.nodeGraph = new NodeGraph();
@@ -430,7 +429,7 @@ public class PathmindVisualEditorScreen extends Screen {
         this.showChatErrors = currentSettings.showChatErrors == null || currentSettings.showChatErrors;
         this.showHudOverlays = currentSettings.showHudOverlays == null || currentSettings.showHudOverlays;
         this.skipPresetDeleteConfirm = currentSettings.skipPresetDeleteConfirm != null && currentSettings.skipPresetDeleteConfirm;
-        this.nodeDelayMs = MathHelper.clamp(
+        this.nodeDelayMs = Mth.clamp(
             currentSettings.nodeDelayMs != null ? currentSettings.nodeDelayMs : 150,
             NODE_DELAY_MIN_MS,
             NODE_DELAY_MAX_MS
@@ -466,48 +465,48 @@ public class PathmindVisualEditorScreen extends Screen {
         nodeGraph.setActivePreset(activePresetName);
 
         if (createPresetField == null) {
-            createPresetField = new PathmindTextField(this.textRenderer, 0, 0, 200, 20, Text.translatable("pathmind.field.presetName"));
+            createPresetField = new PathmindTextField(this.font, 0, 0, 200, 20, Component.translatable("pathmind.field.presetName"));
             createPresetField.setMaxLength(64);
-            createPresetField.setDrawsBackground(false);
+            createPresetField.setBordered(false);
             createPresetField.setVisible(false);
             createPresetField.setEditable(false);
-            createPresetField.setEditableColor(UITheme.TEXT_PRIMARY);
-            createPresetField.setUneditableColor(UITheme.TEXT_TERTIARY);
-            createPresetField.setChangedListener(value -> clearCreatePresetStatus());
-            this.addSelectableChild(createPresetField);
+            createPresetField.setTextColor(UITheme.TEXT_PRIMARY);
+            createPresetField.setTextColorUneditable(UITheme.TEXT_TERTIARY);
+            createPresetField.setResponder(value -> clearCreatePresetStatus());
+            this.addWidget(createPresetField);
         }
 
         if (renamePresetField == null) {
-            renamePresetField = new PathmindTextField(this.textRenderer, 0, 0, 200, 20, Text.translatable("pathmind.field.newPresetName"));
+            renamePresetField = new PathmindTextField(this.font, 0, 0, 200, 20, Component.translatable("pathmind.field.newPresetName"));
             renamePresetField.setMaxLength(64);
-            renamePresetField.setDrawsBackground(false);
+            renamePresetField.setBordered(false);
             renamePresetField.setVisible(false);
             renamePresetField.setEditable(false);
-            renamePresetField.setEditableColor(UITheme.TEXT_PRIMARY);
-            renamePresetField.setUneditableColor(UITheme.TEXT_TERTIARY);
-            renamePresetField.setChangedListener(value -> clearRenamePresetStatus());
-            this.addSelectableChild(renamePresetField);
+            renamePresetField.setTextColor(UITheme.TEXT_PRIMARY);
+            renamePresetField.setTextColorUneditable(UITheme.TEXT_TERTIARY);
+            renamePresetField.setResponder(value -> clearRenamePresetStatus());
+            this.addWidget(renamePresetField);
         }
         if (inlinePresetRenameField == null) {
-            inlinePresetRenameField = new PathmindTextField(this.textRenderer, 0, 0, 200, 20, Text.translatable("pathmind.field.newPresetName"));
+            inlinePresetRenameField = new PathmindTextField(this.font, 0, 0, 200, 20, Component.translatable("pathmind.field.newPresetName"));
             inlinePresetRenameField.setMaxLength(64);
-            inlinePresetRenameField.setDrawsBackground(false);
+            inlinePresetRenameField.setBordered(false);
             inlinePresetRenameField.setVisible(false);
             inlinePresetRenameField.setEditable(false);
-            inlinePresetRenameField.setEditableColor(UITheme.TEXT_PRIMARY);
-            inlinePresetRenameField.setUneditableColor(UITheme.TEXT_TERTIARY);
-            this.addSelectableChild(inlinePresetRenameField);
+            inlinePresetRenameField.setTextColor(UITheme.TEXT_PRIMARY);
+            inlinePresetRenameField.setTextColorUneditable(UITheme.TEXT_TERTIARY);
+            this.addWidget(inlinePresetRenameField);
         }
         if (nodeDelayField == null) {
-            nodeDelayField = new PathmindTextField(this.textRenderer, 0, 0, 120, 20, Text.translatable("pathmind.field.delay"));
+            nodeDelayField = new PathmindTextField(this.font, 0, 0, 120, 20, Component.translatable("pathmind.field.delay"));
             nodeDelayField.setMaxLength(6);
-            nodeDelayField.setDrawsBackground(false);
+            nodeDelayField.setBordered(false);
             nodeDelayField.setVisible(false);
             nodeDelayField.setEditable(false);
-            nodeDelayField.setEditableColor(UITheme.TEXT_HEADER);
-            nodeDelayField.setUneditableColor(UITheme.TEXT_HEADER);
-            nodeDelayField.setTextPredicate(value -> value == null || value.isEmpty() || value.chars().allMatch(Character::isDigit));
-            nodeDelayField.setChangedListener(value -> {
+            nodeDelayField.setTextColor(UITheme.TEXT_HEADER);
+            nodeDelayField.setTextColorUneditable(UITheme.TEXT_HEADER);
+            nodeDelayField.setFilter(value -> value == null || value.isEmpty() || value.chars().allMatch(Character::isDigit));
+            nodeDelayField.setResponder(value -> {
                 Integer parsed = parseDelayFieldValue(value);
                 if (parsed != null && parsed != nodeDelayMs) {
                     nodeDelayMs = parsed;
@@ -515,18 +514,18 @@ public class PathmindVisualEditorScreen extends Screen {
                     SettingsManager.save(currentSettings);
                 }
             });
-            this.addSelectableChild(nodeDelayField);
+            this.addWidget(nodeDelayField);
         }
         if (createListRadiusField == null) {
-            createListRadiusField = new PathmindTextField(this.textRenderer, 0, 0, 120, 20, Text.translatable("pathmind.field.radius"));
+            createListRadiusField = new PathmindTextField(this.font, 0, 0, 120, 20, Component.translatable("pathmind.field.radius"));
             createListRadiusField.setMaxLength(6);
-            createListRadiusField.setDrawsBackground(false);
+            createListRadiusField.setBordered(false);
             createListRadiusField.setVisible(false);
             createListRadiusField.setEditable(false);
-            createListRadiusField.setEditableColor(UITheme.TEXT_HEADER);
-            createListRadiusField.setUneditableColor(UITheme.TEXT_HEADER);
-            createListRadiusField.setTextPredicate(value -> value == null || value.isEmpty() || value.chars().allMatch(Character::isDigit));
-            createListRadiusField.setChangedListener(value -> {
+            createListRadiusField.setTextColor(UITheme.TEXT_HEADER);
+            createListRadiusField.setTextColorUneditable(UITheme.TEXT_HEADER);
+            createListRadiusField.setFilter(value -> value == null || value.isEmpty() || value.chars().allMatch(Character::isDigit));
+            createListRadiusField.setResponder(value -> {
                 Node targetNode = getEffectiveSettingsTargetNode();
                 Integer parsed = parseCreateListRadiusFieldValue(value);
                 if (parsed != null && (targetNode == null || targetNode.getType() == NodeType.CREATE_LIST)
@@ -534,32 +533,32 @@ public class PathmindVisualEditorScreen extends Screen {
                     setCreateListSettingsRadius(targetNode, parsed);
                 }
             });
-            this.addSelectableChild(createListRadiusField);
+            this.addWidget(createListRadiusField);
         }
         if (nodeSearchField == null) {
-            nodeSearchField = new PathmindTextField(this.textRenderer, 0, 0, NODE_SEARCH_FIELD_WIDTH, NODE_SEARCH_FIELD_HEIGHT, Text.translatable("pathmind.search.nodes"));
+            nodeSearchField = new PathmindTextField(this.font, 0, 0, NODE_SEARCH_FIELD_WIDTH, NODE_SEARCH_FIELD_HEIGHT, Component.translatable("pathmind.search.nodes"));
             nodeSearchField.setMaxLength(64);
-            nodeSearchField.setDrawsBackground(false);
+            nodeSearchField.setBordered(false);
             nodeSearchField.setVisible(false);
             nodeSearchField.setEditable(false);
-            nodeSearchField.setEditableColor(UITheme.TEXT_PRIMARY);
-            nodeSearchField.setUneditableColor(UITheme.TEXT_TERTIARY);
+            nodeSearchField.setTextColor(UITheme.TEXT_PRIMARY);
+            nodeSearchField.setTextColorUneditable(UITheme.TEXT_TERTIARY);
             nodeSearchField.setHeight(Math.max(10, NODE_SEARCH_FIELD_HEIGHT - TEXT_FIELD_VERTICAL_PADDING * 2));
-            nodeSearchField.setChangedListener(value -> updateNodeSearchMatch());
-            this.addSelectableChild(nodeSearchField);
+            nodeSearchField.setResponder(value -> updateNodeSearchMatch());
+            this.addWidget(nodeSearchField);
         }
         if (settingsNodeSearchField == null) {
-            settingsNodeSearchField = new PathmindTextField(this.textRenderer, 0, 0, NODE_SEARCH_FIELD_WIDTH, SETTINGS_NODE_TYPE_SEARCH_HEIGHT, Text.translatable("pathmind.search.nodeSettings"));
+            settingsNodeSearchField = new PathmindTextField(this.font, 0, 0, NODE_SEARCH_FIELD_WIDTH, SETTINGS_NODE_TYPE_SEARCH_HEIGHT, Component.translatable("pathmind.search.nodeSettings"));
             settingsNodeSearchField.setMaxLength(64);
-            settingsNodeSearchField.setDrawsBackground(false);
+            settingsNodeSearchField.setBordered(false);
             settingsNodeSearchField.setVisible(false);
             settingsNodeSearchField.setEditable(false);
-            settingsNodeSearchField.setEditableColor(UITheme.TEXT_PRIMARY);
-            settingsNodeSearchField.setUneditableColor(UITheme.TEXT_TERTIARY);
+            settingsNodeSearchField.setTextColor(UITheme.TEXT_PRIMARY);
+            settingsNodeSearchField.setTextColorUneditable(UITheme.TEXT_TERTIARY);
             settingsNodeSearchField.setSuggestion(tr("pathmind.search.nodeSettings"));
             settingsNodeSearchField.setHeight(Math.max(10, SETTINGS_NODE_TYPE_SEARCH_HEIGHT - TEXT_FIELD_VERTICAL_PADDING * 2));
-            settingsNodeSearchField.setChangedListener(value -> settingsNodeSelectorScrollOffset = 0);
-            this.addSelectableChild(settingsNodeSearchField);
+            settingsNodeSearchField.setResponder(value -> settingsNodeSelectorScrollOffset = 0);
+            this.addWidget(settingsNodeSearchField);
         }
 
         updateImportExportPathFromPreset();
@@ -591,7 +590,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     @Override
-    public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+    public void render(GuiGraphics context, int mouseX, int mouseY, float delta) {
         OverlayProtection.setPathmindRendering(true);
         try {
         recoverStaleLeftMouseDrag(mouseX, mouseY);
@@ -626,7 +625,7 @@ public class PathmindVisualEditorScreen extends Screen {
             draggingFromRoutineLibrary);
         sidebar.render(
             context,
-            this.textRenderer,
+            this.font,
             mouseX,
             mouseY,
             TITLE_BAR_HEIGHT,
@@ -686,12 +685,12 @@ public class PathmindVisualEditorScreen extends Screen {
 
         // Render parameter overlay if visible
         if (parameterOverlay != null && parameterOverlay.isVisible()) {
-            parameterOverlay.render(context, this.textRenderer, mouseX, mouseY, delta);
+            parameterOverlay.render(context, this.font, mouseX, mouseY, delta);
         }
 
         // Render book text editor overlay if visible
         if (bookTextEditorOverlay != null && bookTextEditorOverlay.isVisible()) {
-            bookTextEditorOverlay.render(context, this.textRenderer, mouseX, mouseY, delta);
+            bookTextEditorOverlay.render(context, this.font, mouseX, mouseY, delta);
         }
 
         if (clearPopupAnimation.isVisible()) {
@@ -745,10 +744,10 @@ public class PathmindVisualEditorScreen extends Screen {
             nodeGraph.closeContextMenu();
         } else {
             nodeGraph.updateNodeContextMenuHover(mouseX, mouseY);
-            nodeGraph.renderNodeContextMenu(context, this.textRenderer);
-            nodeGraph.renderStartModeDropdown(context, this.textRenderer, mouseX, mouseY);
+            nodeGraph.renderNodeContextMenu(context, this.font);
+            nodeGraph.renderStartModeDropdown(context, this.font, mouseX, mouseY);
             nodeGraph.updateContextMenuHover(mouseX, mouseY);
-            nodeGraph.renderContextMenu(context, this.textRenderer, mouseX, mouseY);
+            nodeGraph.renderContextMenu(context, this.font, mouseX, mouseY);
         }
         renderPresetContextMenu(context, mouseX, mouseY);
         renderNodeSearchField(context, mouseX, mouseY, delta);
@@ -759,14 +758,14 @@ public class PathmindVisualEditorScreen extends Screen {
         }
         renderDraggedPresetDropdownTab(context, mouseX, mouseY);
         DrawContextBridge.startNewRootLayer(context);
-        NodeErrorNotificationOverlay.getInstance().render(context, this.textRenderer, this.width, this.height);
+        NodeErrorNotificationOverlay.getInstance().render(context, this.font, this.width, this.height);
         if (currentSettings != null && Boolean.TRUE.equals(currentSettings.showProfilerOverlay)) {
             DrawContextBridge.startNewRootLayer(context);
-            nodeGraph.renderProfilerOverlay(context, this.textRenderer);
+            nodeGraph.renderProfilerOverlay(context, this.font);
         }
         if (nodeGraph.isScreenCoordinateCaptureActive()) {
             DrawContextBridge.startNewRootLayer(context);
-            nodeGraph.renderScreenCoordinateCaptureOverlay(context, this.textRenderer, mouseX, mouseY);
+            nodeGraph.renderScreenCoordinateCaptureOverlay(context, this.font, mouseX, mouseY);
         }
         DrawContextBridge.startNewRootLayer(context);
         renderCustomCursor(context, mouseX, mouseY);
@@ -779,7 +778,7 @@ public class PathmindVisualEditorScreen extends Screen {
         if (systemCursorHidden) {
             return;
         }
-        PathmindCursor.hideSystemCursor(this.client != null ? this.client : MinecraftClient.getInstance());
+        PathmindCursor.hideSystemCursor(this.minecraft != null ? this.minecraft : Minecraft.getInstance());
         systemCursorHidden = true;
     }
 
@@ -787,20 +786,20 @@ public class PathmindVisualEditorScreen extends Screen {
         if (!systemCursorHidden) {
             return;
         }
-        PathmindCursor.showSystemCursor(this.client != null ? this.client : MinecraftClient.getInstance());
+        PathmindCursor.showSystemCursor(this.minecraft != null ? this.minecraft : Minecraft.getInstance());
         systemCursorHidden = false;
     }
 
-    private void renderCustomCursor(DrawContext context, int mouseX, int mouseY) {
+    private void renderCustomCursor(GuiGraphics context, int mouseX, int mouseY) {
         NodeGraph.StickyNoteResizeCorner resizeCorner = getHoveredStickyNoteResizeCorner(mouseX, mouseY);
         PathmindCursor.render(context, resolveCursorTexture(mouseX, mouseY, resizeCorner), mouseX, mouseY);
     }
 
-    private Identifier resolveCursorTexture(int mouseX, int mouseY) {
+    private ResourceLocation resolveCursorTexture(int mouseX, int mouseY) {
         return resolveCursorTexture(mouseX, mouseY, getHoveredStickyNoteResizeCorner(mouseX, mouseY));
     }
 
-    private Identifier resolveCursorTexture(int mouseX, int mouseY, NodeGraph.StickyNoteResizeCorner resizeCorner) {
+    private ResourceLocation resolveCursorTexture(int mouseX, int mouseY, NodeGraph.StickyNoteResizeCorner resizeCorner) {
         if (nodeGraph.isConnectionCutActive()) {
             return PathmindCursor.CUT_TEXTURE;
         }
@@ -873,7 +872,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private boolean handleNodeDoubleClickExecution(Node clickedNode) {
-        if (clickedNode == null || this.client == null || this.client.player == null || this.client.world == null) {
+        if (clickedNode == null || this.minecraft == null || this.minecraft.player == null || this.minecraft.level == null) {
             return false;
         }
 
@@ -892,12 +891,12 @@ public class PathmindVisualEditorScreen extends Screen {
         isDraggingFromSidebar = false;
         draggingNodeType = null;
         draggingSidebarNode = null;
-        this.client.setScreen(null);
+        this.minecraft.setScreen(null);
         return true;
     }
 
     private void recoverStaleLeftMouseDrag(int mouseX, int mouseY) {
-        MinecraftClient client = this.client != null ? this.client : MinecraftClient.getInstance();
+        Minecraft client = this.minecraft != null ? this.minecraft : Minecraft.getInstance();
         if (InputCompatibilityBridge.isMouseButtonPressed(client, GLFW.GLFW_MOUSE_BUTTON_LEFT)) {
             return;
         }
@@ -1008,7 +1007,7 @@ public class PathmindVisualEditorScreen extends Screen {
         return UITheme.OVERLAY_BACKGROUND;
     }
 
-    private void renderPopupScrimOverlay(DrawContext context) {
+    private void renderPopupScrimOverlay(GuiGraphics context) {
         if (!isPopupObscuringWorkspace()) {
             return;
         }
@@ -1079,7 +1078,7 @@ public class PathmindVisualEditorScreen extends Screen {
         if (!uiUtilsAvailable && nodeGraph.containsUiUtilsNodes()) { missingUiUtilsPopupAnimation.show(); } else { missingUiUtilsPopupAnimation.hide(); }
     }
     
-    private void renderDraggingNode(DrawContext context, int mouseX, int mouseY) {
+    private void renderDraggingNode(GuiGraphics context, int mouseX, int mouseY) {
         if (draggingNodeType == null && draggingSidebarNode == null) return;
 
         float scale = nodeGraph.getZoomScale();
@@ -1099,7 +1098,7 @@ public class PathmindVisualEditorScreen extends Screen {
         int screenNodeX = nodeGraph.worldToScreenX(previewPosition[0]);
         int screenNodeY = nodeGraph.worldToScreenY(previewPosition[1]);
 
-        var matrices = context.getMatrices();
+        var matrices = context.pose();
         MatrixStackBridge.push(matrices);
         MatrixStackBridge.scale(matrices, scale, scale);
 
@@ -1122,9 +1121,9 @@ public class PathmindVisualEditorScreen extends Screen {
         // Node header
         if (renderType != NodeType.START && renderType != NodeType.EVENT_FUNCTION) {
             context.fill(x + 1, y + 1, x + width - 1, y + 14, nodeColor);
-            context.drawTextWithShadow(
-                this.textRenderer,
-                Text.literal(renderType == NodeType.TEMPLATE ? tempNode.getTemplateName() : renderType.getDisplayName()),
+            context.drawString(
+                this.font,
+                Component.literal(renderType == NodeType.TEMPLATE ? tempNode.getTemplateName() : renderType.getDisplayName()),
                 x + 4,
                 y + 4,
                 UITheme.TEXT_HEADER
@@ -1134,7 +1133,7 @@ public class PathmindVisualEditorScreen extends Screen {
         MatrixStackBridge.pop(matrices);
     }
 
-    private void renderZoomControls(DrawContext context, int mouseX, int mouseY, boolean disabled) {
+    private void renderZoomControls(GuiGraphics context, int mouseX, int mouseY, boolean disabled) {
         int buttonY = getZoomButtonY();
         NodeGraph.ZoomLevel level = nodeGraph.getZoomLevel();
         boolean minusActive = level != NodeGraph.ZoomLevel.FOCUSED;
@@ -1143,7 +1142,7 @@ public class PathmindVisualEditorScreen extends Screen {
         drawZoomButton(context, getZoomPlusButtonX(), buttonY, mouseX, mouseY, disabled, false, plusActive);
     }
 
-    private void drawZoomButton(DrawContext context, int x, int y, int mouseX, int mouseY, boolean disabled, boolean isMinus, boolean active) {
+    private void drawZoomButton(GuiGraphics context, int x, int y, int mouseX, int mouseY, boolean disabled, boolean isMinus, boolean active) {
         boolean hovered = !disabled && isPointInRect(mouseX, mouseY, x, y, ZOOM_BUTTON_SIZE, ZOOM_BUTTON_SIZE);
         String hoverKey = isMinus ? "zoom-minus-button" : "zoom-plus-button";
         float hoverProgress = getHoverProgress(hoverKey, hovered || active);
@@ -1156,14 +1155,14 @@ public class PathmindVisualEditorScreen extends Screen {
             iconColor = getAccentColor();
         }
 
-        Text iconText = Text.literal(isMinus ? "-" : "+");
-        int iconWidth = this.textRenderer.getWidth(iconText);
+        Component iconText = Component.literal(isMinus ? "-" : "+");
+        int iconWidth = this.font.width(iconText);
         int iconX = x + (ZOOM_BUTTON_SIZE - iconWidth) / 2 + 1;
-        int iconY = y + (ZOOM_BUTTON_SIZE - this.textRenderer.fontHeight) / 2 + 2;
-        context.drawTextWithShadow(this.textRenderer, iconText, iconX, iconY, iconColor);
+        int iconY = y + (ZOOM_BUTTON_SIZE - this.font.lineHeight) / 2 + 2;
+        context.drawString(this.font, iconText, iconX, iconY, iconColor);
     }
     
-    private void renderNodeGraph(DrawContext context, int mouseX, int mouseY, float delta, boolean onlyDragged) {
+    private void renderNodeGraph(GuiGraphics context, int mouseX, int mouseY, float delta, boolean onlyDragged) {
         if (!onlyDragged) {
             // Node graph background
             routineWorkspaceAnimation.animateTo(getActiveRoutineWorkspace() == null ? 0f : 1f, UITheme.TRANSITION_ANIM_MS);
@@ -1181,17 +1180,17 @@ public class PathmindVisualEditorScreen extends Screen {
         nodeGraph.updateScreenCoordinateCapturePreview(mouseX, mouseY);
         
         // Render nodes
-        nodeGraph.render(context, this.textRenderer, mouseX, mouseY, delta, onlyDragged);
+        nodeGraph.render(context, this.font, mouseX, mouseY, delta, onlyDragged);
     }
 
-    private void renderDraggedWorkspaceLayer(DrawContext context, int mouseX, int mouseY, float delta) {
+    private void renderDraggedWorkspaceLayer(GuiGraphics context, int mouseX, int mouseY, float delta) {
         if (nodeGraph.isAnyNodeBeingDragged()) {
             renderNodeGraph(context, mouseX, mouseY, delta, true);
         }
         nodeGraph.renderSelectionBox(context);
     }
     
-    private void renderGrid(DrawContext context) {
+    private void renderGrid(GuiGraphics context) {
         int gridSize = 20;
         int startX = Sidebar.getCollapsedWidth();
         int startY = TITLE_BAR_HEIGHT;
@@ -1220,7 +1219,7 @@ public class PathmindVisualEditorScreen extends Screen {
             if (screenX < startX || screenX > endX) {
                 continue;
             }
-            context.drawVerticalLine(screenX, startY, endY, UITheme.GRID_LINE);
+            context.vLine(screenX, startY, endY, UITheme.GRID_LINE);
         }
 
         int firstHorizontal = topWorld - Math.floorMod(topWorld, gridSize);
@@ -1229,12 +1228,12 @@ public class PathmindVisualEditorScreen extends Screen {
             if (screenY < startY || screenY > endY) {
                 continue;
             }
-            context.drawHorizontalLine(startX, endX, screenY, UITheme.GRID_LINE);
+            context.hLine(startX, endX, screenY, UITheme.GRID_LINE);
         }
     }
 
     @Override
-    public boolean mouseClicked(Click click, boolean inBounds) {
+    public boolean mouseClicked(MouseButtonEvent click, boolean inBounds) {
         double mouseX = click.x();
         double mouseY = click.y();
         int button = click.button();
@@ -1392,8 +1391,8 @@ public class PathmindVisualEditorScreen extends Screen {
             if (isMarketplaceButtonClicked((int) mouseX, (int) mouseY, button)) {
                 saveRootPresetWorkspace();
                 PresetManager.setActivePreset(activePresetName);
-                if (this.client != null) {
-                    this.client.setScreen(new PathmindMarketplaceScreen(this));
+                if (this.minecraft != null) {
+                    this.minecraft.setScreen(new PathmindMarketplaceScreen(this));
                 }
                 return true;
             }
@@ -1462,7 +1461,7 @@ public class PathmindVisualEditorScreen extends Screen {
         if (button == 0 && nodeGraph.handleAmountSignDropdownClick(null, (int)mouseX, (int)mouseY)) {
             return true;
         }
-        if (button == 0 && nodeGraph.handleOperatorToggleClick(textRenderer, (int)mouseX, (int)mouseY)) {
+        if (button == 0 && nodeGraph.handleOperatorToggleClick(font, (int)mouseX, (int)mouseY)) {
             return true;
         }
 
@@ -1882,7 +1881,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
     
     @Override
-    public boolean mouseDragged(Click click, double deltaX, double deltaY) {
+    public boolean mouseDragged(MouseButtonEvent click, double deltaX, double deltaY) {
         double mouseX = click.x();
         double mouseY = click.y();
         int button = click.button();
@@ -2015,7 +2014,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
     
     @Override
-    public boolean mouseReleased(Click click) {
+    public boolean mouseReleased(MouseButtonEvent click) {
         double mouseX = click.x();
         double mouseY = click.y();
         int button = click.button();
@@ -2208,7 +2207,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     @Override
-    public boolean keyPressed(KeyInput input) {
+    public boolean keyPressed(KeyEvent input) {
         int keyCode = input.key();
         int scanCode = input.scancode();
         int modifiers = input.modifiers();
@@ -2450,7 +2449,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
         // Close screen with Escape key
         if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
-            close();
+            onClose();
             return true;
         }
         
@@ -2468,7 +2467,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
     
     @Override
-    public boolean charTyped(CharInput input) {
+    public boolean charTyped(CharacterEvent input) {
         int modifiers = input.modifiers();
         char chr = (char) input.codepoint();
         if (nodeSearchOpen) {
@@ -2538,11 +2537,11 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
-        if (nodeGraph.handleStopTargetCharTyped(chr, modifiers, this.textRenderer)) {
+        if (nodeGraph.handleStopTargetCharTyped(chr, modifiers, this.font)) {
             return true;
         }
 
-        if (nodeGraph.handleVariableCharTyped(chr, modifiers, this.textRenderer)) {
+        if (nodeGraph.handleVariableCharTyped(chr, modifiers, this.font)) {
             return true;
         }
 
@@ -2550,19 +2549,19 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
-        if (nodeGraph.handleParameterCharTyped(chr, modifiers, this.textRenderer)) {
+        if (nodeGraph.handleParameterCharTyped(chr, modifiers, this.font)) {
             return true;
         }
 
-        if (nodeGraph.handleMessageCharTyped(chr, modifiers, this.textRenderer)) {
+        if (nodeGraph.handleMessageCharTyped(chr, modifiers, this.font)) {
             return true;
         }
 
-        if (nodeGraph.handleAmountCharTyped(chr, modifiers, this.textRenderer)) {
+        if (nodeGraph.handleAmountCharTyped(chr, modifiers, this.font)) {
             return true;
         }
 
-        if (nodeGraph.handleCoordinateCharTyped(chr, modifiers, this.textRenderer)) {
+        if (nodeGraph.handleCoordinateCharTyped(chr, modifiers, this.font)) {
             return true;
         }
 
@@ -2658,7 +2657,7 @@ public class PathmindVisualEditorScreen extends Screen {
                 && isPointInRect((int) mouseX, (int) mouseY, dropdownX, optionStartY, PRESET_DROPDOWN_WIDTH, dropdownHeight)) {
                 int delta = (int) Math.signum(verticalAmount);
                 if (delta != 0) {
-                    presetDropdownScrollOffset = MathHelper.clamp(presetDropdownScrollOffset - delta, 0, layout.maxScrollOffset);
+                    presetDropdownScrollOffset = Mth.clamp(presetDropdownScrollOffset - delta, 0, layout.maxScrollOffset);
                 }
             }
             return true;
@@ -2706,7 +2705,7 @@ public class PathmindVisualEditorScreen extends Screen {
         activeWorkspaceTabIndex = 0;
     }
 
-    private void renderWorkspaceTabs(DrawContext context, int mouseX, int mouseY) {
+    private void renderWorkspaceTabs(GuiGraphics context, int mouseX, int mouseY) {
         tickQueuedPresetDeletionAnimation();
         if (!isPopupObscuringWorkspace() && pendingPresetTabInteractionName != null && draggingPresetTabName == null) {
             updatePendingPresetTabInteraction(mouseX, mouseY);
@@ -2757,14 +2756,14 @@ public class PathmindVisualEditorScreen extends Screen {
         int addTabX = Math.max(getPresetTabStartX(), x - TAB_GAP);
         presetTabAddButtonFadeAnimation.animateTo(draggingPresetTabName != null ? 0f : 1f, 120, AnimationHelper::easeOutCubic);
         presetTabAddButtonFadeAnimation.tick();
-        float plusAlpha = MathHelper.clamp(presetTabAddButtonFadeAnimation.getValue(), 0f, 1f);
+        float plusAlpha = Mth.clamp(presetTabAddButtonFadeAnimation.getValue(), 0f, 1f);
         if (addTabX + PRESET_TAB_ADD_WIDTH <= rightLimit) {
             boolean hovered = isPointInRect(mouseX, mouseY, addTabX, y, PRESET_TAB_ADD_WIDTH, TAB_HEIGHT);
-            context.drawCenteredTextWithShadow(
-                this.textRenderer,
-                Text.literal("+"),
+            context.drawCenteredString(
+                this.font,
+                Component.literal("+"),
                 addTabX + PRESET_TAB_ADD_WIDTH / 2,
-                y + (TAB_HEIGHT - this.textRenderer.fontHeight) / 2 + 1,
+                y + (TAB_HEIGHT - this.font.lineHeight) / 2 + 1,
                 applyAlpha(hovered ? getAccentColor() : UITheme.ICON_MUTED_BRIGHT, plusAlpha)
             );
         }
@@ -2931,7 +2930,7 @@ public class PathmindVisualEditorScreen extends Screen {
         if (orderIndex < 0) {
             return;
         }
-        int clampedTarget = MathHelper.clamp(targetIndex, 1, presetTabOrder.size() - 1);
+        int clampedTarget = Mth.clamp(targetIndex, 1, presetTabOrder.size() - 1);
         if (clampedTarget != orderIndex) {
             presetTabOrder.remove(orderIndex);
             presetTabOrder.add(clampedTarget, draggingPresetTabName);
@@ -2958,7 +2957,7 @@ public class PathmindVisualEditorScreen extends Screen {
                 targetIndex++;
             }
         }
-        int clampedTarget = MathHelper.clamp(targetIndex, 0, currentSettings.presetGroupOrder.size() - 1);
+        int clampedTarget = Mth.clamp(targetIndex, 0, currentSettings.presetGroupOrder.size() - 1);
         if (clampedTarget != orderIndex) {
             currentSettings.presetGroupOrder.remove(orderIndex);
             currentSettings.presetGroupOrder.add(clampedTarget, groupKey);
@@ -2998,8 +2997,8 @@ public class PathmindVisualEditorScreen extends Screen {
         String groupTarget = getPresetGroupAt(mouseX, mouseY);
         presetContextMenuPresetName = target;
         presetContextMenuGroupKey = groupTarget;
-        presetContextMenuX = MathHelper.clamp(mouseX, 4, Math.max(4, this.width - PRESET_CONTEXT_MENU_WIDTH - 4));
-        presetContextMenuY = MathHelper.clamp(mouseY, 4, Math.max(4, this.height - getPresetContextMenuHeight() - 4));
+        presetContextMenuX = Mth.clamp(mouseX, 4, Math.max(4, this.width - PRESET_CONTEXT_MENU_WIDTH - 4));
+        presetContextMenuY = Mth.clamp(mouseY, 4, Math.max(4, this.height - getPresetContextMenuHeight() - 4));
         presetContextMenuOpen = true;
         presetDropdownOpen = false;
         nodeGraph.closeContextMenu();
@@ -3077,11 +3076,11 @@ public class PathmindVisualEditorScreen extends Screen {
         return PRESET_CONTEXT_MENU_ITEM_HEIGHT * (getPresetGroupKey(presetContextMenuPresetName).isEmpty() ? 4 : 5);
     }
 
-    private void renderPresetContextMenu(DrawContext context, int mouseX, int mouseY) {
+    private void renderPresetContextMenu(GuiGraphics context, int mouseX, int mouseY) {
         if (!presetContextMenuOpen) {
             return;
         }
-        Object matrices = context.getMatrices();
+        Object matrices = context.pose();
         MatrixStackBridge.push(matrices);
         try {
             MatrixStackBridge.translateZ(matrices, 600.0f);
@@ -3089,10 +3088,10 @@ public class PathmindVisualEditorScreen extends Screen {
             context.fill(presetContextMenuX, presetContextMenuY, presetContextMenuX + PRESET_CONTEXT_MENU_WIDTH, presetContextMenuY + height, UITheme.BACKGROUND_SECONDARY);
             DrawContextBridge.drawBorderInLayer(context, presetContextMenuX, presetContextMenuY, PRESET_CONTEXT_MENU_WIDTH, height, UITheme.BORDER_DEFAULT);
             int y = presetContextMenuY;
-            y = drawPresetContextMenuItem(context, mouseX, mouseY, y, Text.translatable("pathmind.context.createPreset").getString(), 0, false);
-            y = drawPresetContextMenuItem(context, mouseX, mouseY, y, Text.translatable("pathmind.context.createGroup").getString(), 0, getNextPresetGroupColorKey().isEmpty());
+            y = drawPresetContextMenuItem(context, mouseX, mouseY, y, Component.translatable("pathmind.context.createPreset").getString(), 0, false);
+            y = drawPresetContextMenuItem(context, mouseX, mouseY, y, Component.translatable("pathmind.context.createGroup").getString(), 0, getNextPresetGroupColorKey().isEmpty());
             if (presetContextMenuGroupKey != null && !presetContextMenuGroupKey.isEmpty()) {
-                y = drawPresetContextMenuItem(context, mouseX, mouseY, y, Text.translatable("pathmind.context.deleteGroup").getString(), 0, false);
+                y = drawPresetContextMenuItem(context, mouseX, mouseY, y, Component.translatable("pathmind.context.deleteGroup").getString(), 0, false);
                 y = drawPresetContextSeparator(context, y);
                 for (int i = 0; i < PRESET_GROUP_COLOR_KEYS.length; i++) {
                     y = drawPresetContextMenuItem(context, mouseX, mouseY, y, getPresetGroupColorLabel(PRESET_GROUP_COLOR_KEYS[i]), PRESET_GROUP_COLORS[i], PRESET_GROUP_COLOR_KEYS[i].equals(presetContextMenuGroupKey));
@@ -3102,23 +3101,23 @@ public class PathmindVisualEditorScreen extends Screen {
             if (presetContextMenuPresetName == null) {
                 return;
             }
-            y = drawPresetContextMenuItem(context, mouseX, mouseY, y, Text.translatable("pathmind.context.renamePreset").getString(), 0, isPresetRenameDisabled(presetContextMenuPresetName));
-            y = drawPresetContextMenuItem(context, mouseX, mouseY, y, Text.translatable("pathmind.context.deletePreset").getString(), 0, isPresetDeleteDisabled(presetContextMenuPresetName));
+            y = drawPresetContextMenuItem(context, mouseX, mouseY, y, Component.translatable("pathmind.context.renamePreset").getString(), 0, isPresetRenameDisabled(presetContextMenuPresetName));
+            y = drawPresetContextMenuItem(context, mouseX, mouseY, y, Component.translatable("pathmind.context.deletePreset").getString(), 0, isPresetDeleteDisabled(presetContextMenuPresetName));
             if (!getPresetGroupKey(presetContextMenuPresetName).isEmpty()) {
-                drawPresetContextMenuItem(context, mouseX, mouseY, y, Text.translatable("pathmind.context.ungroup").getString(), getPresetGroupColor(presetContextMenuPresetName), false);
+                drawPresetContextMenuItem(context, mouseX, mouseY, y, Component.translatable("pathmind.context.ungroup").getString(), getPresetGroupColor(presetContextMenuPresetName), false);
             }
         } finally {
             MatrixStackBridge.pop(matrices);
         }
     }
 
-    private int drawPresetContextSeparator(DrawContext context, int y) {
+    private int drawPresetContextSeparator(GuiGraphics context, int y) {
         int lineY = y + PRESET_CONTEXT_MENU_SEPARATOR_HEIGHT / 2;
-        context.drawHorizontalLine(presetContextMenuX + 5, presetContextMenuX + PRESET_CONTEXT_MENU_WIDTH - 6, lineY, UITheme.BORDER_SUBTLE);
+        context.hLine(presetContextMenuX + 5, presetContextMenuX + PRESET_CONTEXT_MENU_WIDTH - 6, lineY, UITheme.BORDER_SUBTLE);
         return y + PRESET_CONTEXT_MENU_SEPARATOR_HEIGHT;
     }
 
-    private int drawPresetContextMenuItem(DrawContext context, int mouseX, int mouseY, int y, String label, int swatchColor, boolean disabled) {
+    private int drawPresetContextMenuItem(GuiGraphics context, int mouseX, int mouseY, int y, String label, int swatchColor, boolean disabled) {
         boolean hovered = !disabled && isPointInRect(mouseX, mouseY, presetContextMenuX, y, PRESET_CONTEXT_MENU_WIDTH, PRESET_CONTEXT_MENU_ITEM_HEIGHT);
         if (hovered) {
             context.fill(presetContextMenuX + 1, y + 1, presetContextMenuX + PRESET_CONTEXT_MENU_WIDTH - 1, y + PRESET_CONTEXT_MENU_ITEM_HEIGHT, UITheme.BUTTON_DEFAULT_HOVER);
@@ -3129,7 +3128,7 @@ public class PathmindVisualEditorScreen extends Screen {
             context.fill(textX, y + 6, textX + 7, y + 13, swatchColor);
             textX += 12;
         }
-        context.drawTextWithShadow(this.textRenderer, Text.literal(label), textX, y + 5, textColor);
+        context.drawString(this.font, Component.literal(label), textX, y + 5, textColor);
         return y + PRESET_CONTEXT_MENU_ITEM_HEIGHT;
     }
 
@@ -3446,7 +3445,7 @@ public class PathmindVisualEditorScreen extends Screen {
         }
         int targetIndex = getPresetTabDropIndex(mouseX);
         presetTabOrder.remove(presetName);
-        int clampedTarget = MathHelper.clamp(targetIndex, 1, presetTabOrder.size());
+        int clampedTarget = Mth.clamp(targetIndex, 1, presetTabOrder.size());
         presetTabOrder.add(clampedTarget, presetName);
         normalizePresetTabOrder();
         presetTabAppearAnimations.computeIfAbsent(presetName, key -> new AnimatedValue(1f)).setValue(1f);
@@ -3471,12 +3470,12 @@ public class PathmindVisualEditorScreen extends Screen {
         return targetIndex;
     }
 
-    private void renderDraggedPresetDropdownTab(DrawContext context, int mouseX, int mouseY) {
+    private void renderDraggedPresetDropdownTab(GuiGraphics context, int mouseX, int mouseY) {
         if (draggingPresetDropdownName == null) {
             return;
         }
-        int width = MathHelper.clamp(
-            this.textRenderer.getWidth(draggingPresetDropdownName) + PRESET_TAB_TEXT_PADDING * 2,
+        int width = Mth.clamp(
+            this.font.width(draggingPresetDropdownName) + PRESET_TAB_TEXT_PADDING * 2,
             TAB_MIN_WIDTH,
             TAB_MAX_WIDTH
         );
@@ -3497,7 +3496,7 @@ public class PathmindVisualEditorScreen extends Screen {
         return xs;
     }
 
-    private void drawPresetTab(DrawContext context, int mouseX, int mouseY, String label, int x, int y, int tabWidth, boolean dragging) {
+    private void drawPresetTab(GuiGraphics context, int mouseX, int mouseY, String label, int x, int y, int tabWidth, boolean dragging) {
         if (isPresetGroupTab(label)) {
             drawPresetGroupTab(context, mouseX, mouseY, label, x, y, tabWidth, dragging);
             return;
@@ -3533,8 +3532,8 @@ public class PathmindVisualEditorScreen extends Screen {
         int closeSpace = deletable ? (PRESET_TAB_CLOSE_GAP + PRESET_TAB_CLOSE_ICON_SIZE + PRESET_TAB_CLOSE_HITBOX_PADDING * 2) : 0;
         int textMaxWidth = Math.max(4, tabWidth - PRESET_TAB_TEXT_PADDING * 2 - closeSpace);
         if (!label.equals(inlinePresetRenameName)) {
-            String drawLabel = TextRenderUtil.trimWithEllipsis(this.textRenderer, displayLabel, textMaxWidth);
-            context.drawText(this.textRenderer, Text.literal(drawLabel), x + PRESET_TAB_TEXT_PADDING, y + (TAB_HEIGHT - this.textRenderer.fontHeight) / 2 + 1, textColor, false);
+            String drawLabel = TextRenderUtil.trimWithEllipsis(this.font, displayLabel, textMaxWidth);
+            context.drawString(this.font, Component.literal(drawLabel), x + PRESET_TAB_TEXT_PADDING, y + (TAB_HEIGHT - this.font.lineHeight) / 2 + 1, textColor, false);
         }
 
         if (deletable) {
@@ -3552,7 +3551,7 @@ public class PathmindVisualEditorScreen extends Screen {
         }
     }
 
-    private void drawPresetGroupTab(DrawContext context, int mouseX, int mouseY, String label, int x, int y, int tabWidth, boolean dragging) {
+    private void drawPresetGroupTab(GuiGraphics context, int mouseX, int mouseY, String label, int x, int y, int tabWidth, boolean dragging) {
         String groupKey = getPresetGroupKeyFromTab(label);
         int groupColor = getPresetGroupColorByKey(groupKey);
         boolean hovered = isPointInRect(mouseX, mouseY, x, y, tabWidth, TAB_HEIGHT);
@@ -3682,11 +3681,11 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private int[] getPresetTabTitleBounds(String label, int x, int y, int tabWidth) {
         int textMaxWidth = getPresetTabTextMaxWidth(label, tabWidth);
-        String drawLabel = TextRenderUtil.trimWithEllipsis(this.textRenderer, getPresetTabDisplayLabel(label), textMaxWidth);
+        String drawLabel = TextRenderUtil.trimWithEllipsis(this.font, getPresetTabDisplayLabel(label), textMaxWidth);
         int textX = x + PRESET_TAB_TEXT_PADDING;
-        int textY = y + (TAB_HEIGHT - this.textRenderer.fontHeight) / 2 + 1;
-        int textWidth = Math.max(4, this.textRenderer.getWidth(drawLabel));
-        return new int[]{textX, textY - 1, Math.min(textWidth, textMaxWidth), this.textRenderer.fontHeight + 2};
+        int textY = y + (TAB_HEIGHT - this.font.lineHeight) / 2 + 1;
+        int textWidth = Math.max(4, this.font.width(drawLabel));
+        return new int[]{textX, textY - 1, Math.min(textWidth, textMaxWidth), this.font.lineHeight + 2};
     }
 
     private void startInlinePresetRename(String presetName) {
@@ -3698,12 +3697,12 @@ public class PathmindVisualEditorScreen extends Screen {
         clearPendingPresetTabInteraction();
         endPresetTabDrag();
         inlinePresetRenameName = presetName;
-        inlinePresetRenameField.setText(presetName);
+        inlinePresetRenameField.setValue(presetName);
         inlinePresetRenameField.setVisible(true);
         inlinePresetRenameField.setEditable(true);
         inlinePresetRenameField.setFocused(true);
-        inlinePresetRenameField.setCursorToStart(false);
-        inlinePresetRenameField.setSelectionEnd(presetName.length());
+        inlinePresetRenameField.moveCursorToStart(false);
+        inlinePresetRenameField.setHighlightPos(presetName.length());
     }
 
     private boolean renamePresetInternal(String currentName, String desiredName) {
@@ -3744,7 +3743,7 @@ public class PathmindVisualEditorScreen extends Screen {
         }
         boolean renamed = false;
         if (commit && inlinePresetRenameField != null) {
-            renamed = renamePresetInternal(inlinePresetRenameName, inlinePresetRenameField.getText());
+            renamed = renamePresetInternal(inlinePresetRenameName, inlinePresetRenameField.getValue());
         }
         if (commit && !renamed) {
             inlinePresetRenameField.setFocused(true);
@@ -3758,7 +3757,7 @@ public class PathmindVisualEditorScreen extends Screen {
         }
     }
 
-    private void renderInlinePresetRenameField(DrawContext context, int mouseX, int mouseY, List<String> tabs, int[] tabWidths, int[] tabXs, int y, int dragIndex) {
+    private void renderInlinePresetRenameField(GuiGraphics context, int mouseX, int mouseY, List<String> tabs, int[] tabWidths, int[] tabXs, int y, int dragIndex) {
         if (!isInlinePresetRenameActive() || inlinePresetRenameField == null) {
             return;
         }
@@ -3778,7 +3777,7 @@ public class PathmindVisualEditorScreen extends Screen {
             int[] titleBounds = getPresetTabTitleBounds(label, drawX, y, tabWidth);
             int fieldX = titleBounds[0];
             int fieldWidth = getPresetTabTextMaxWidth(label, tabWidth);
-            int fieldHeight = Math.max(this.textRenderer.fontHeight + 2, titleBounds[3]);
+            int fieldHeight = Math.max(this.font.lineHeight + 2, titleBounds[3]);
             int fieldY = titleBounds[1];
             int frameX = Math.max(drawX + 2, fieldX - 3);
             int frameY = y + 2;
@@ -3788,8 +3787,8 @@ public class PathmindVisualEditorScreen extends Screen {
             DrawContextBridge.drawBorderInLayer(context, frameX, frameY, frameWidth, frameHeight, getAccentColor());
             inlinePresetRenameField.setVisible(true);
             inlinePresetRenameField.setEditable(true);
-            inlinePresetRenameField.setEditableColor(UITheme.TEXT_PRIMARY);
-            inlinePresetRenameField.setUneditableColor(UITheme.TEXT_TERTIARY);
+            inlinePresetRenameField.setTextColor(UITheme.TEXT_PRIMARY);
+            inlinePresetRenameField.setTextColorUneditable(UITheme.TEXT_TERTIARY);
             inlinePresetRenameField.setPosition(fieldX, fieldY);
             inlinePresetRenameField.setWidth(fieldWidth);
             inlinePresetRenameField.setHeight(fieldHeight);
@@ -3826,12 +3825,12 @@ public class PathmindVisualEditorScreen extends Screen {
     private float getPresetTabAppearProgress(String presetName) {
         AnimatedValue animation = presetTabAppearAnimations.computeIfAbsent(presetName, key -> new AnimatedValue(1f));
         animation.tick();
-        return MathHelper.clamp(animation.getValue(), 0f, 1f);
+        return Mth.clamp(animation.getValue(), 0f, 1f);
     }
 
     private int applyAlpha(int color, float alpha) {
         int targetAlpha = (color >>> 24) & 0xFF;
-        int appliedAlpha = MathHelper.clamp(Math.round(targetAlpha * MathHelper.clamp(alpha, 0f, 1f)), 0, 255);
+        int appliedAlpha = Mth.clamp(Math.round(targetAlpha * Mth.clamp(alpha, 0f, 1f)), 0, 255);
         return (color & 0x00FFFFFF) | (appliedAlpha << 24);
     }
 
@@ -3868,8 +3867,8 @@ public class PathmindVisualEditorScreen extends Screen {
             } else {
                 boolean deletable = !isPresetDeleteDisabled(label);
                 int closeSpace = deletable ? (PRESET_TAB_CLOSE_GAP + PRESET_TAB_CLOSE_ICON_SIZE + PRESET_TAB_CLOSE_HITBOX_PADDING * 2) : 0;
-                width = this.textRenderer.getWidth(label) + PRESET_TAB_TEXT_PADDING * 2 + closeSpace;
-                width = MathHelper.clamp(width, TAB_MIN_WIDTH, TAB_MAX_WIDTH);
+                width = this.font.width(label) + PRESET_TAB_TEXT_PADDING * 2 + closeSpace;
+                width = Mth.clamp(width, TAB_MIN_WIDTH, TAB_MAX_WIDTH);
             }
             preferred[i] = width;
             preferredTotal += width;
@@ -4016,7 +4015,7 @@ public class PathmindVisualEditorScreen extends Screen {
         return registry;
     }
 
-    private void renderRoutineWorkspaceExitButton(DrawContext context, int mouseX, int mouseY) {
+    private void renderRoutineWorkspaceExitButton(GuiGraphics context, int mouseX, int mouseY) {
         if (getActiveRoutineWorkspace() == null) return;
         int x = getRoutineExitButtonX();
         int y = getRoutineExitButtonY();
@@ -4381,11 +4380,11 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     @Override
-    public void close() {
+    public void onClose() {
         nodeGraph.persistSessionViewportState();
         autoSaveWorkspace();
         restoreSystemCursor();
-        super.close();
+        super.onClose();
     }
 
     @Override
@@ -4400,7 +4399,7 @@ public class PathmindVisualEditorScreen extends Screen {
         super.removed();
     }
 
-    private void renderClearConfirmationPopup(DrawContext context, int mouseX, int mouseY) {
+    private void renderClearConfirmationPopup(GuiGraphics context, int mouseX, int mouseY) {
         RenderStateBridge.setShaderColor(1f, 1f, 1f, clearPopupAnimation.getPopupAlpha());
 
         int popupWidth = 280;
@@ -4415,9 +4414,9 @@ public class PathmindVisualEditorScreen extends Screen {
         drawPopupContainer(context, popupX, popupY, scaledWidth, scaledHeight, clearPopupAnimation);
         boolean popupScissor = enablePopupScissor(context, popupX, popupY, scaledWidth, scaledHeight);
 
-        context.drawCenteredTextWithShadow(
-            this.textRenderer,
-            Text.translatable("pathmind.popup.clearWorkspace.title"),
+        context.drawCenteredString(
+            this.font,
+            Component.translatable("pathmind.popup.clearWorkspace.title"),
             popupX + scaledWidth / 2,
             popupY + 14,
             getPopupAnimatedColor(clearPopupAnimation, UITheme.TEXT_PRIMARY)
@@ -4425,7 +4424,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
         drawPopupTextWithEllipsis(
             context,
-            Text.translatable("pathmind.popup.clearWorkspace.message").getString(),
+            Component.translatable("pathmind.popup.clearWorkspace.message").getString(),
             popupX + 20,
             popupY + 48,
             scaledWidth - 40,
@@ -4442,14 +4441,14 @@ public class PathmindVisualEditorScreen extends Screen {
         boolean confirmHovered = isPointInRect(mouseX, mouseY, confirmX, buttonY, buttonWidth, buttonHeight);
 
         drawPopupButton(context, cancelX, buttonY, buttonWidth, buttonHeight, cancelHovered,
-            Text.translatable("pathmind.button.cancel"), PathmindPopupRenderer.ButtonStyle.DEFAULT, clearPopupAnimation);
+            Component.translatable("pathmind.button.cancel"), PathmindPopupRenderer.ButtonStyle.DEFAULT, clearPopupAnimation);
         drawPopupButton(context, confirmX, buttonY, buttonWidth, buttonHeight, confirmHovered,
-            Text.translatable("pathmind.button.clear"), PathmindPopupRenderer.ButtonStyle.PRIMARY, clearPopupAnimation);
+            Component.translatable("pathmind.button.clear"), PathmindPopupRenderer.ButtonStyle.PRIMARY, clearPopupAnimation);
         disablePopupScissor(context, popupScissor);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
 
-    private void renderImportExportPopup(DrawContext context, int mouseX, int mouseY, float delta) {
+    private void renderImportExportPopup(GuiGraphics context, int mouseX, int mouseY, float delta) {
         RenderStateBridge.setShaderColor(1f, 1f, 1f, importExportPopupAnimation.getPopupAlpha());
 
         int popupWidth = 360;
@@ -4464,26 +4463,26 @@ public class PathmindVisualEditorScreen extends Screen {
         drawPopupContainer(context, popupX, popupY, scaledWidth, scaledHeight, importExportPopupAnimation);
         boolean popupScissor = enablePopupScissor(context, popupX, popupY, scaledWidth, scaledHeight);
 
-        context.drawCenteredTextWithShadow(
-            this.textRenderer,
-            Text.translatable("pathmind.popup.importExport.title"),
+        context.drawCenteredString(
+            this.font,
+            Component.translatable("pathmind.popup.importExport.title"),
             popupX + scaledWidth / 2,
             popupY + 14,
             getPopupAnimatedColor(importExportPopupAnimation, UITheme.TEXT_PRIMARY)
         );
 
         int infoY = popupY + 44;
-        String importInfo = Text.translatable("pathmind.popup.importExport.importInfo").getString();
+        String importInfo = Component.translatable("pathmind.popup.importExport.importInfo").getString();
         drawPopupTextWithEllipsis(context, importInfo, popupX + 20, infoY, scaledWidth - 40,
             getPopupAnimatedColor(importExportPopupAnimation, UITheme.TEXT_SECONDARY));
 
-        String exportInfo = Text.translatable("pathmind.popup.importExport.exportInfo").getString();
+        String exportInfo = Component.translatable("pathmind.popup.importExport.exportInfo").getString();
         drawPopupTextWithEllipsis(context, exportInfo, popupX + 20, infoY + 14, scaledWidth - 40,
             getPopupAnimatedColor(importExportPopupAnimation, UITheme.TEXT_SECONDARY));
 
         Path defaultPath = NodeGraphPersistence.getDefaultSavePath();
         if (defaultPath != null) {
-            String defaultLabel = Text.translatable("pathmind.popup.importExport.defaultSave", defaultPath.toString()).getString();
+            String defaultLabel = Component.translatable("pathmind.popup.importExport.defaultSave", defaultPath.toString()).getString();
             drawPopupTextWithEllipsis(context, defaultLabel, popupX + 20, infoY + 30, scaledWidth - 40,
                 getPopupAnimatedColor(importExportPopupAnimation, UITheme.TEXT_TERTIARY));
         }
@@ -4506,16 +4505,16 @@ public class PathmindVisualEditorScreen extends Screen {
         boolean cancelHovered = isPointInRect(mouseX, mouseY, cancelX, buttonY, buttonWidth, buttonHeight);
 
         drawPopupButton(context, importX, buttonY, buttonWidth, buttonHeight, importHovered,
-            Text.translatable("pathmind.button.import"), PathmindPopupRenderer.ButtonStyle.PRIMARY, importExportPopupAnimation);
+            Component.translatable("pathmind.button.import"), PathmindPopupRenderer.ButtonStyle.PRIMARY, importExportPopupAnimation);
         drawPopupButton(context, exportX, buttonY, buttonWidth, buttonHeight, exportHovered,
-            Text.translatable("pathmind.button.export"), PathmindPopupRenderer.ButtonStyle.PRIMARY, importExportPopupAnimation);
+            Component.translatable("pathmind.button.export"), PathmindPopupRenderer.ButtonStyle.PRIMARY, importExportPopupAnimation);
         drawPopupButton(context, cancelX, buttonY, buttonWidth, buttonHeight, cancelHovered,
-            Text.translatable("pathmind.button.close"), PathmindPopupRenderer.ButtonStyle.DEFAULT, importExportPopupAnimation);
+            Component.translatable("pathmind.button.close"), PathmindPopupRenderer.ButtonStyle.DEFAULT, importExportPopupAnimation);
         disablePopupScissor(context, popupScissor);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
 
-    private void renderInfoPopup(DrawContext context, int mouseX, int mouseY) {
+    private void renderInfoPopup(GuiGraphics context, int mouseX, int mouseY) {
         RenderStateBridge.setShaderColor(1f, 1f, 1f, infoPopupAnimation.getPopupAlpha());
 
         int popupWidth = INFO_POPUP_WIDTH;
@@ -4530,8 +4529,8 @@ public class PathmindVisualEditorScreen extends Screen {
         drawPopupContainer(context, popupX, popupY, scaledWidth, scaledHeight, infoPopupAnimation);
         boolean popupScissor = enablePopupScissor(context, popupX, popupY, scaledWidth, scaledHeight);
 
-        context.drawCenteredTextWithShadow(
-            this.textRenderer,
+        context.drawCenteredString(
+            this.font,
             INFO_POPUP_TITLE_TEXT,
             popupX + scaledWidth / 2,
             popupY + 14,
@@ -4542,10 +4541,10 @@ public class PathmindVisualEditorScreen extends Screen {
         int lineSpacing = 12;
         int centerX = popupX + scaledWidth / 2;
 
-        String authorLine = Text.translatable("pathmind.popup.info.createdBy", INFO_POPUP_AUTHOR).getString();
-        String targetLine = Text.translatable("pathmind.popup.info.builtForMinecraft", INFO_POPUP_TARGET_VERSION).getString();
-        String currentLine = Text.translatable("pathmind.popup.info.runningMinecraft", getCurrentMinecraftVersion()).getString();
-        String buildLine = Text.translatable("pathmind.popup.info.currentBuild", getModVersion()).getString();
+        String authorLine = Component.translatable("pathmind.popup.info.createdBy", INFO_POPUP_AUTHOR).getString();
+        String targetLine = Component.translatable("pathmind.popup.info.builtForMinecraft", INFO_POPUP_TARGET_VERSION).getString();
+        String currentLine = Component.translatable("pathmind.popup.info.runningMinecraft", getCurrentMinecraftVersion()).getString();
+        String buildLine = Component.translatable("pathmind.popup.info.currentBuild", getModVersion()).getString();
         String loaderLine = LoaderMetadata.getLoaderName() + ": " + getLoaderVersion();
 
         int maxCenteredWidth = scaledWidth - 40;
@@ -4568,7 +4567,7 @@ public class PathmindVisualEditorScreen extends Screen {
             buttonWidth,
             buttonHeight,
             closeHovered,
-            Text.translatable("pathmind.button.close"),
+            Component.translatable("pathmind.button.close"),
             PathmindPopupRenderer.ButtonStyle.DEFAULT,
             infoPopupAnimation
         );
@@ -4576,7 +4575,7 @@ public class PathmindVisualEditorScreen extends Screen {
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
 
-    private void renderMissingBaritonePopup(DrawContext context, int mouseX, int mouseY) {
+    private void renderMissingBaritonePopup(GuiGraphics context, int mouseX, int mouseY) {
         RenderStateBridge.setShaderColor(1f, 1f, 1f, missingBaritonePopupAnimation.getPopupAlpha());
 
         int popupWidth = MISSING_BARITONE_POPUP_WIDTH;
@@ -4594,8 +4593,8 @@ public class PathmindVisualEditorScreen extends Screen {
         int centerX = popupX + scaledWidth / 2;
         int messageY = popupY + 16;
         int maxCenteredWidth = scaledWidth - 40;
-        drawPopupCenteredTextWithEllipsis(context, Text.translatable("pathmind.popup.missingBaritone.title").getString(), centerX, messageY, maxCenteredWidth, getPopupAnimatedColor(missingBaritonePopupAnimation, UITheme.TEXT_PRIMARY));
-        drawPopupCenteredTextWithEllipsis(context, Text.translatable("pathmind.popup.missingBaritone.message").getString(), centerX, messageY + 16, maxCenteredWidth, getPopupAnimatedColor(missingBaritonePopupAnimation, UITheme.TEXT_PRIMARY));
+        drawPopupCenteredTextWithEllipsis(context, Component.translatable("pathmind.popup.missingBaritone.title").getString(), centerX, messageY, maxCenteredWidth, getPopupAnimatedColor(missingBaritonePopupAnimation, UITheme.TEXT_PRIMARY));
+        drawPopupCenteredTextWithEllipsis(context, Component.translatable("pathmind.popup.missingBaritone.message").getString(), centerX, messageY + 16, maxCenteredWidth, getPopupAnimatedColor(missingBaritonePopupAnimation, UITheme.TEXT_PRIMARY));
         drawPopupCenteredTextWithEllipsis(context, BaritoneDependencyChecker.DOWNLOAD_URL, centerX, messageY + 30, maxCenteredWidth, getPopupAnimatedColor(missingBaritonePopupAnimation, UITheme.LINK_COLOR));
 
         int buttonWidth = 100;
@@ -4612,14 +4611,14 @@ public class PathmindVisualEditorScreen extends Screen {
         boolean copyHovered = isPointInRect(mouseX, mouseY, copyX, buttonY, buttonWidth, buttonHeight);
         boolean closeHovered = isPointInRect(mouseX, mouseY, closeX, buttonY, buttonWidth, buttonHeight);
 
-        drawPopupButton(context, openX, buttonY, buttonWidth, buttonHeight, openHovered, Text.translatable("pathmind.button.openLink"), PathmindPopupRenderer.ButtonStyle.PRIMARY, missingBaritonePopupAnimation);
-        drawPopupButton(context, copyX, buttonY, buttonWidth, buttonHeight, copyHovered, Text.translatable("pathmind.button.copyLink"), PathmindPopupRenderer.ButtonStyle.PRIMARY, missingBaritonePopupAnimation);
-        drawPopupButton(context, closeX, buttonY, buttonWidth, buttonHeight, closeHovered, Text.translatable("pathmind.button.close"), PathmindPopupRenderer.ButtonStyle.DEFAULT, missingBaritonePopupAnimation);
+        drawPopupButton(context, openX, buttonY, buttonWidth, buttonHeight, openHovered, Component.translatable("pathmind.button.openLink"), PathmindPopupRenderer.ButtonStyle.PRIMARY, missingBaritonePopupAnimation);
+        drawPopupButton(context, copyX, buttonY, buttonWidth, buttonHeight, copyHovered, Component.translatable("pathmind.button.copyLink"), PathmindPopupRenderer.ButtonStyle.PRIMARY, missingBaritonePopupAnimation);
+        drawPopupButton(context, closeX, buttonY, buttonWidth, buttonHeight, closeHovered, Component.translatable("pathmind.button.close"), PathmindPopupRenderer.ButtonStyle.DEFAULT, missingBaritonePopupAnimation);
         disablePopupScissor(context, popupScissor);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
 
-    private void renderMissingUiUtilsPopup(DrawContext context, int mouseX, int mouseY) {
+    private void renderMissingUiUtilsPopup(GuiGraphics context, int mouseX, int mouseY) {
         RenderStateBridge.setShaderColor(1f, 1f, 1f, missingUiUtilsPopupAnimation.getPopupAlpha());
 
         int popupWidth = MISSING_UI_UTILS_POPUP_WIDTH;
@@ -4637,8 +4636,8 @@ public class PathmindVisualEditorScreen extends Screen {
         int centerX = popupX + scaledWidth / 2;
         int messageY = popupY + 16;
         int maxCenteredWidth = scaledWidth - 40;
-        drawPopupCenteredTextWithEllipsis(context, Text.translatable("pathmind.popup.missingUiUtils.title").getString(), centerX, messageY, maxCenteredWidth, getPopupAnimatedColor(missingUiUtilsPopupAnimation, UITheme.TEXT_PRIMARY));
-        drawPopupCenteredTextWithEllipsis(context, Text.translatable("pathmind.popup.missingUiUtils.message").getString(), centerX, messageY + 16, maxCenteredWidth, getPopupAnimatedColor(missingUiUtilsPopupAnimation, UITheme.TEXT_PRIMARY));
+        drawPopupCenteredTextWithEllipsis(context, Component.translatable("pathmind.popup.missingUiUtils.title").getString(), centerX, messageY, maxCenteredWidth, getPopupAnimatedColor(missingUiUtilsPopupAnimation, UITheme.TEXT_PRIMARY));
+        drawPopupCenteredTextWithEllipsis(context, Component.translatable("pathmind.popup.missingUiUtils.message").getString(), centerX, messageY + 16, maxCenteredWidth, getPopupAnimatedColor(missingUiUtilsPopupAnimation, UITheme.TEXT_PRIMARY));
         drawPopupCenteredTextWithEllipsis(context, UI_UTILS_DOWNLOAD_URL, centerX, messageY + 30, maxCenteredWidth, getPopupAnimatedColor(missingUiUtilsPopupAnimation, UITheme.LINK_COLOR));
 
         int buttonWidth = 100;
@@ -4655,18 +4654,18 @@ public class PathmindVisualEditorScreen extends Screen {
         boolean copyHovered = isPointInRect(mouseX, mouseY, copyX, buttonY, buttonWidth, buttonHeight);
         boolean closeHovered = isPointInRect(mouseX, mouseY, closeX, buttonY, buttonWidth, buttonHeight);
 
-        drawPopupButton(context, openX, buttonY, buttonWidth, buttonHeight, openHovered, Text.translatable("pathmind.button.openLink"), PathmindPopupRenderer.ButtonStyle.PRIMARY, missingUiUtilsPopupAnimation);
-        drawPopupButton(context, copyX, buttonY, buttonWidth, buttonHeight, copyHovered, Text.translatable("pathmind.button.copyLink"), PathmindPopupRenderer.ButtonStyle.PRIMARY, missingUiUtilsPopupAnimation);
-        drawPopupButton(context, closeX, buttonY, buttonWidth, buttonHeight, closeHovered, Text.translatable("pathmind.button.close"), PathmindPopupRenderer.ButtonStyle.DEFAULT, missingUiUtilsPopupAnimation);
+        drawPopupButton(context, openX, buttonY, buttonWidth, buttonHeight, openHovered, Component.translatable("pathmind.button.openLink"), PathmindPopupRenderer.ButtonStyle.PRIMARY, missingUiUtilsPopupAnimation);
+        drawPopupButton(context, copyX, buttonY, buttonWidth, buttonHeight, copyHovered, Component.translatable("pathmind.button.copyLink"), PathmindPopupRenderer.ButtonStyle.PRIMARY, missingUiUtilsPopupAnimation);
+        drawPopupButton(context, closeX, buttonY, buttonWidth, buttonHeight, closeHovered, Component.translatable("pathmind.button.close"), PathmindPopupRenderer.ButtonStyle.DEFAULT, missingUiUtilsPopupAnimation);
         disablePopupScissor(context, popupScissor);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
 
-    private void drawTitle(DrawContext context, int mouseX, int mouseY, float underlineProgress) {
+    private void drawTitle(GuiGraphics context, int mouseX, int mouseY, float underlineProgress) {
         drawTitleMenuButton(context, mouseX, mouseY, underlineProgress);
     }
 
-    private void drawTitleMenuButton(DrawContext context, int mouseX, int mouseY, float hoverProgress) {
+    private void drawTitleMenuButton(GuiGraphics context, int mouseX, int mouseY, float hoverProgress) {
         int x = getTitleTextX();
         int y = getTitleTextY();
         boolean hovered = isTitleHovered(mouseX, mouseY);
@@ -4674,30 +4673,30 @@ public class PathmindVisualEditorScreen extends Screen {
         int centerX = x + PRESET_MENU_BUTTON_SIZE / 2;
         int centerY = y + PRESET_MENU_BUTTON_SIZE / 2;
         int lineHalfWidth = 4;
-        int alphaColor = applyAlpha(iconColor, MathHelper.clamp(0.75f + hoverProgress * 0.25f, 0f, 1f));
+        int alphaColor = applyAlpha(iconColor, Mth.clamp(0.75f + hoverProgress * 0.25f, 0f, 1f));
         for (int i = -1; i <= 1; i++) {
             int lineY = centerY + i * 3;
-            context.drawHorizontalLine(centerX - lineHalfWidth, centerX + lineHalfWidth, lineY, alphaColor);
+            context.hLine(centerX - lineHalfWidth, centerX + lineHalfWidth, lineY, alphaColor);
         }
     }
 
-    void drawPopupTextWithEllipsis(DrawContext context, String text, int x, int y, int maxWidth, int color) {
-        PathmindPopupRenderer.drawTextWithEllipsis(context, this.textRenderer, text, x, y, maxWidth, color);
+    void drawPopupTextWithEllipsis(GuiGraphics context, String text, int x, int y, int maxWidth, int color) {
+        PathmindPopupRenderer.drawTextWithEllipsis(context, this.font, text, x, y, maxWidth, color);
     }
 
-    private void drawPopupCenteredTextWithEllipsis(DrawContext context, String text, int centerX, int y, int maxWidth, int color) {
-        PathmindPopupRenderer.drawCenteredTextWithEllipsis(context, this.textRenderer, text, centerX, y, maxWidth, color);
+    private void drawPopupCenteredTextWithEllipsis(GuiGraphics context, String text, int centerX, int y, int maxWidth, int color) {
+        PathmindPopupRenderer.drawCenteredTextWithEllipsis(context, this.font, text, centerX, y, maxWidth, color);
     }
 
-    private String trimWithEllipsis(TextRenderer renderer, String text, int availableWidth) {
+    private String trimWithEllipsis(Font renderer, String text, int availableWidth) {
         return TextRenderUtil.trimWithEllipsis(renderer, text, availableWidth);
     }
 
-    boolean enablePopupScissor(DrawContext context, int popupX, int popupY, int scaledWidth, int scaledHeight) {
+    boolean enablePopupScissor(GuiGraphics context, int popupX, int popupY, int scaledWidth, int scaledHeight) {
         return PathmindPopupRenderer.enableScissor(context, popupX, popupY, scaledWidth, scaledHeight);
     }
 
-    void disablePopupScissor(DrawContext context, boolean enabled) {
+    void disablePopupScissor(GuiGraphics context, boolean enabled) {
         PathmindPopupRenderer.disableScissor(context, enabled);
     }
 
@@ -4850,22 +4849,22 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void openBaritoneDownloadLink() {
-        Util.getOperatingSystem().open(BaritoneDependencyChecker.DOWNLOAD_URL);
+        Util.getPlatform().openUri(BaritoneDependencyChecker.DOWNLOAD_URL);
     }
 
     private void copyBaritoneDownloadLink() {
-        if (this.client != null && this.client.keyboard != null) {
-            this.client.keyboard.setClipboard(BaritoneDependencyChecker.DOWNLOAD_URL);
+        if (this.minecraft != null && this.minecraft.keyboardHandler != null) {
+            this.minecraft.keyboardHandler.setClipboard(BaritoneDependencyChecker.DOWNLOAD_URL);
         }
     }
 
     private void openUiUtilsDownloadLink() {
-        Util.getOperatingSystem().open(UI_UTILS_DOWNLOAD_URL);
+        Util.getPlatform().openUri(UI_UTILS_DOWNLOAD_URL);
     }
 
     private void copyUiUtilsDownloadLink() {
-        if (this.client != null && this.client.keyboard != null) {
-            this.client.keyboard.setClipboard(UI_UTILS_DOWNLOAD_URL);
+        if (this.minecraft != null && this.minecraft.keyboardHandler != null) {
+            this.minecraft.keyboardHandler.setClipboard(UI_UTILS_DOWNLOAD_URL);
         }
     }
 
@@ -4899,21 +4898,21 @@ public class PathmindVisualEditorScreen extends Screen {
         return true;
     }
 
-    void drawPopupButton(DrawContext context, int x, int y, int width, int height, boolean hovered, Text label, boolean primary) {
+    void drawPopupButton(GuiGraphics context, int x, int y, int width, int height, boolean hovered, Component label, boolean primary) {
         PathmindPopupRenderer.ButtonStyle style = primary ? PathmindPopupRenderer.ButtonStyle.PRIMARY : PathmindPopupRenderer.ButtonStyle.DEFAULT;
         drawPopupButton(context, x, y, width, height, hovered, label, style);
     }
 
-    void drawPopupButton(DrawContext context, int x, int y, int width, int height, boolean hovered, Text label, PathmindPopupRenderer.ButtonStyle style) {
+    void drawPopupButton(GuiGraphics context, int x, int y, int width, int height, boolean hovered, Component label, PathmindPopupRenderer.ButtonStyle style) {
         drawPopupButton(context, x, y, width, height, hovered, label, style, null);
     }
 
-    void drawPopupButton(DrawContext context, int x, int y, int width, int height, boolean hovered,
-                                 Text label, PathmindPopupRenderer.ButtonStyle style, PopupAnimationHandler animation) {
+    void drawPopupButton(GuiGraphics context, int x, int y, int width, int height, boolean hovered,
+                                 Component label, PathmindPopupRenderer.ButtonStyle style, PopupAnimationHandler animation) {
         float hoverProgress = getHoverProgress(PathmindPopupRenderer.buttonHoverKey(style, label, x, y, width, height), hovered);
         PathmindPopupRenderer.drawButton(
             context,
-            this.textRenderer,
+            this.font,
             x,
             y,
             width,
@@ -4926,7 +4925,7 @@ public class PathmindVisualEditorScreen extends Screen {
         );
     }
 
-    void drawPopupContainer(DrawContext context, int x, int y, int width, int height, PopupAnimationHandler animation) {
+    void drawPopupContainer(GuiGraphics context, int x, int y, int width, int height, PopupAnimationHandler animation) {
         PathmindPopupRenderer.drawContainer(context, x, y, width, height, animation);
     }
 
@@ -4983,17 +4982,17 @@ public class PathmindVisualEditorScreen extends Screen {
                     .map(Path::toString)
                     .orElse("");
         importExportBusy = true;
-        setImportExportStatus(Text.translatable("pathmind.status.waitingForImportFile").getString(), UITheme.TEXT_SECONDARY);
+        setImportExportStatus(Component.translatable("pathmind.status.waitingForImportFile").getString(), UITheme.TEXT_SECONDARY);
         WorkspaceFileAccess.supplyAsync(() -> openWorkspaceImportDialog(defaultPath))
             .whenComplete((selection, throwable) -> runOnClientThread(() -> {
                 if (throwable != null) {
                     importExportBusy = false;
-                    setImportExportStatus(Text.translatable("pathmind.status.failedOpenImportDialog").getString(), UITheme.STATE_ERROR);
+                    setImportExportStatus(Component.translatable("pathmind.status.failedOpenImportDialog").getString(), UITheme.STATE_ERROR);
                     return;
                 }
                 if (selection == null) {
                     importExportBusy = false;
-                    setImportExportStatus(Text.translatable("pathmind.status.importCancelled").getString(), UITheme.TEXT_SECONDARY);
+                    setImportExportStatus(Component.translatable("pathmind.status.importCancelled").getString(), UITheme.TEXT_SECONDARY);
                     return;
                 }
                 try {
@@ -5001,7 +5000,7 @@ public class PathmindVisualEditorScreen extends Screen {
                     beginImportFromPath(path);
                 } catch (InvalidPathException ex) {
                     importExportBusy = false;
-                    setImportExportStatus(Text.translatable("pathmind.status.invalidFilePath").getString(), UITheme.STATE_ERROR);
+                    setImportExportStatus(Component.translatable("pathmind.status.invalidFilePath").getString(), UITheme.STATE_ERROR);
                 }
             }));
     }
@@ -5013,7 +5012,7 @@ public class PathmindVisualEditorScreen extends Screen {
             String fileLabel = fileName != null ? fileName.toString() : path.toString();
             String currentPresetName = activePresetName;
             NodeGraphData currentPresetSnapshot = snapshotRootPresetWorkspace();
-            setImportExportStatus(Text.translatable("pathmind.status.importingWorkspace").getString(), UITheme.TEXT_SECONDARY);
+            setImportExportStatus(Component.translatable("pathmind.status.importingWorkspace").getString(), UITheme.TEXT_SECONDARY);
             WorkspaceFileAccess.supplyAsync(() -> {
                 if (currentPresetSnapshot != null && currentPresetName != null && !currentPresetName.isBlank()) {
                     NodeGraphPersistence.saveNodeGraphDataForPreset(currentPresetName, currentPresetSnapshot);
@@ -5027,17 +5026,17 @@ public class PathmindVisualEditorScreen extends Screen {
             }).whenComplete((result, throwable) -> runOnClientThread(() -> {
                 importExportBusy = false;
                 if (throwable != null || result == null || !result.success) {
-                    setImportExportStatus(Text.translatable("pathmind.status.failedImportWorkspaceFrom", fileLabel).getString(), UITheme.STATE_ERROR);
+                    setImportExportStatus(Component.translatable("pathmind.status.failedImportWorkspaceFrom", fileLabel).getString(), UITheme.STATE_ERROR);
                     return;
                 }
                 applyImportedPreset(result.presetName, result.importedData);
                 setImportExportStatus(
-                    Text.translatable("pathmind.status.importedWorkspaceAsPreset", result.fileLabel, result.presetName).getString(),
+                    Component.translatable("pathmind.status.importedWorkspaceAsPreset", result.fileLabel, result.presetName).getString(),
                     UITheme.STATE_SUCCESS
                 );
             }));
         } catch (InvalidPathException ex) {
-            setImportExportStatus(Text.translatable("pathmind.status.invalidFilePath").getString(), UITheme.STATE_ERROR);
+            setImportExportStatus(Component.translatable("pathmind.status.invalidFilePath").getString(), UITheme.STATE_ERROR);
         }
     }
 
@@ -5046,17 +5045,17 @@ public class PathmindVisualEditorScreen extends Screen {
                 .orElseGet(NodeGraphPersistence::getDefaultSavePath);
         String defaultPathString = defaultSavePath != null ? defaultSavePath.toString() : "workspace.json";
         importExportBusy = true;
-        setImportExportStatus(Text.translatable("pathmind.status.waitingForExportPath").getString(), UITheme.TEXT_SECONDARY);
+        setImportExportStatus(Component.translatable("pathmind.status.waitingForExportPath").getString(), UITheme.TEXT_SECONDARY);
         WorkspaceFileAccess.supplyAsync(() -> openWorkspaceExportDialog(defaultPathString))
             .whenComplete((selection, throwable) -> runOnClientThread(() -> {
                 if (throwable != null) {
                     importExportBusy = false;
-                    setImportExportStatus(Text.translatable("pathmind.status.failedOpenExportDialog").getString(), UITheme.STATE_ERROR);
+                    setImportExportStatus(Component.translatable("pathmind.status.failedOpenExportDialog").getString(), UITheme.STATE_ERROR);
                     return;
                 }
                 if (selection == null) {
                     importExportBusy = false;
-                    setImportExportStatus(Text.translatable("pathmind.status.exportCancelled").getString(), UITheme.TEXT_SECONDARY);
+                    setImportExportStatus(Component.translatable("pathmind.status.exportCancelled").getString(), UITheme.TEXT_SECONDARY);
                     return;
                 }
                 try {
@@ -5064,7 +5063,7 @@ public class PathmindVisualEditorScreen extends Screen {
                     beginExportToPath(path);
                 } catch (InvalidPathException ex) {
                     importExportBusy = false;
-                    setImportExportStatus(Text.translatable("pathmind.status.invalidFilePath").getString(), UITheme.STATE_ERROR);
+                    setImportExportStatus(Component.translatable("pathmind.status.invalidFilePath").getString(), UITheme.STATE_ERROR);
                 }
             }));
     }
@@ -5072,20 +5071,20 @@ public class PathmindVisualEditorScreen extends Screen {
     private void beginExportToPath(Path path) {
         try {
             NodeGraphData snapshot = snapshotRootPresetWorkspace();
-            setImportExportStatus(Text.translatable("pathmind.status.exportingWorkspace").getString(), UITheme.TEXT_SECONDARY);
+            setImportExportStatus(Component.translatable("pathmind.status.exportingWorkspace").getString(), UITheme.TEXT_SECONDARY);
             WorkspaceFileAccess.supplyExportAsync(() -> NodeGraphPersistence.saveNodeGraphDataToPath(snapshot, path))
                 .whenComplete((success, throwable) -> runOnClientThread(() -> {
                     importExportBusy = false;
                     if (throwable != null || !Boolean.TRUE.equals(success)) {
-                        setImportExportStatus(Text.translatable("pathmind.status.failedExportWorkspace").getString(), UITheme.STATE_ERROR);
+                        setImportExportStatus(Component.translatable("pathmind.status.failedExportWorkspace").getString(), UITheme.STATE_ERROR);
                         return;
                     }
                     lastImportExportPath = path;
                     Path fileName = path.getFileName();
-                    setImportExportStatus(Text.translatable("pathmind.status.exportedWorkspaceTo", fileName != null ? fileName.toString() : path.toString()).getString(), UITheme.STATE_SUCCESS);
+                    setImportExportStatus(Component.translatable("pathmind.status.exportedWorkspaceTo", fileName != null ? fileName.toString() : path.toString()).getString(), UITheme.STATE_SUCCESS);
                 }));
         } catch (InvalidPathException ex) {
-            setImportExportStatus(Text.translatable("pathmind.status.invalidFilePath").getString(), UITheme.STATE_ERROR);
+            setImportExportStatus(Component.translatable("pathmind.status.invalidFilePath").getString(), UITheme.STATE_ERROR);
         }
     }
 
@@ -5093,10 +5092,10 @@ public class PathmindVisualEditorScreen extends Screen {
         try (MemoryStack stack = MemoryStack.stackPush()) {
             PointerBuffer filters = IS_MAC_OS ? null : createJsonFilterPatterns(stack);
             return TinyFileDialogs.tinyfd_openFileDialog(
-                Text.translatable("pathmind.dialog.importWorkspace").getString(),
+                Component.translatable("pathmind.dialog.importWorkspace").getString(),
                 defaultPath,
                 filters,
-                filters != null ? Text.translatable("pathmind.dialog.jsonFiles").getString() : null,
+                filters != null ? Component.translatable("pathmind.dialog.jsonFiles").getString() : null,
                 false
             );
         }
@@ -5106,10 +5105,10 @@ public class PathmindVisualEditorScreen extends Screen {
         try (MemoryStack stack = MemoryStack.stackPush()) {
             PointerBuffer filters = IS_MAC_OS ? null : createJsonFilterPatterns(stack);
             return TinyFileDialogs.tinyfd_saveFileDialog(
-                Text.translatable("pathmind.dialog.exportWorkspace").getString(),
+                Component.translatable("pathmind.dialog.exportWorkspace").getString(),
                 defaultPath,
                 filters,
-                filters != null ? Text.translatable("pathmind.dialog.jsonFiles").getString() : null
+                filters != null ? Component.translatable("pathmind.dialog.jsonFiles").getString() : null
             );
         }
     }
@@ -5141,12 +5140,12 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void runOnClientThread(Runnable task) {
-        MinecraftClient minecraftClient = this.client;
+        Minecraft minecraftClient = this.minecraft;
         if (minecraftClient == null || task == null) {
             return;
         }
         minecraftClient.execute(() -> {
-            if (this.client == null) {
+            if (this.minecraft == null) {
                 return;
             }
             task.run();
@@ -5286,7 +5285,7 @@ public class PathmindVisualEditorScreen extends Screen {
         bookTextEditorOverlay.show();
     }
 
-    private void renderPlayButton(DrawContext context, int mouseX, int mouseY, boolean disabled) {
+    private void renderPlayButton(GuiGraphics context, int mouseX, int mouseY, boolean disabled) {
         int buttonX = getPlayButtonX();
         int buttonY = getPlayButtonY();
         boolean executing = ExecutionManager.getInstance().isGlobalExecutionActive();
@@ -5306,7 +5305,7 @@ public class PathmindVisualEditorScreen extends Screen {
         );
     }
 
-    private void renderStopButton(DrawContext context, int mouseX, int mouseY, boolean disabled) {
+    private void renderStopButton(GuiGraphics context, int mouseX, int mouseY, boolean disabled) {
         int buttonX = getStopButtonX();
         int buttonY = getStopButtonY();
         boolean executing = ExecutionManager.getInstance().isGlobalExecutionActive();
@@ -5326,7 +5325,7 @@ public class PathmindVisualEditorScreen extends Screen {
         );
     }
 
-    private void renderPresetDropdown(DrawContext context, int mouseX, int mouseY, boolean disabled) {
+    private void renderPresetDropdown(GuiGraphics context, int mouseX, int mouseY, boolean disabled) {
         int dropdownX = getPresetDropdownX();
         int dropdownY = getPresetDropdownY();
 
@@ -5344,7 +5343,7 @@ public class PathmindVisualEditorScreen extends Screen {
         int optionStartY = dropdownY;
         int optionCount = availablePresets.size() + 1;
         DropdownLayoutHelper.Layout layout = getPresetDropdownLayout(optionStartY);
-        presetDropdownScrollOffset = MathHelper.clamp(presetDropdownScrollOffset, 0, layout.maxScrollOffset);
+        presetDropdownScrollOffset = Mth.clamp(presetDropdownScrollOffset, 0, layout.maxScrollOffset);
         int fullOptionsHeight = layout.height;
         int animatedHeight = DropdownLayoutHelper.getRevealHeight(fullOptionsHeight, animProgress);
 
@@ -5375,8 +5374,8 @@ public class PathmindVisualEditorScreen extends Screen {
                         + PRESET_RENAME_ICON_SIZE
                         + PRESET_TEXT_ICON_GAP;
                 int textMaxWidth = PRESET_DROPDOWN_WIDTH - PRESET_TEXT_LEFT_PADDING - iconSpace;
-                String presetLabel = TextRenderUtil.trimWithEllipsis(this.textRenderer, preset, textMaxWidth);
-                context.drawTextWithShadow(this.textRenderer, Text.literal(presetLabel), textX, optionY + 5, textColor);
+                String presetLabel = TextRenderUtil.trimWithEllipsis(this.font, preset, textMaxWidth);
+                context.drawString(this.font, Component.literal(presetLabel), textX, optionY + 5, textColor);
 
                 boolean renameDisabled = isPresetRenameDisabled(preset);
                 int renameLeft = getPresetRenameIconLeft(dropdownX);
@@ -5422,13 +5421,13 @@ public class PathmindVisualEditorScreen extends Screen {
                 }
                 drawTrashIcon(context, deleteLeft, deleteTop, deleteColor);
             } else {
-                context.drawHorizontalLine(dropdownX + 1, dropdownX + PRESET_DROPDOWN_WIDTH - 2, optionY, UITheme.BORDER_SUBTLE);
+                context.hLine(dropdownX + 1, dropdownX + PRESET_DROPDOWN_WIDTH - 2, optionY, UITheme.BORDER_SUBTLE);
                 boolean createHovered = animProgress >= 1f && isPointInRect(mouseX, mouseY, dropdownX + 1, optionY + 1, PRESET_DROPDOWN_WIDTH - 2, PRESET_OPTION_HEIGHT - 1);
                 UIStyleHelper.DropdownRowPalette createPalette = UIStyleHelper.getDropdownRowPalette(getAccentColor(), createHovered ? 1f : 0f, false, false);
                 UIStyleHelper.drawDropdownRow(context, dropdownX + 1, optionY + 1, PRESET_DROPDOWN_WIDTH - 2, PRESET_OPTION_HEIGHT - 1, createPalette);
                 int createTextWidth = PRESET_DROPDOWN_WIDTH - PRESET_TEXT_LEFT_PADDING * 2;
-                String createLabel = TextRenderUtil.trimWithEllipsis(this.textRenderer, Text.translatable("pathmind.preset.createNew").getString(), createTextWidth);
-                context.drawTextWithShadow(this.textRenderer, Text.literal(createLabel), dropdownX + PRESET_TEXT_LEFT_PADDING, optionY + 5, getAccentColor());
+                String createLabel = TextRenderUtil.trimWithEllipsis(this.font, Component.translatable("pathmind.preset.createNew").getString(), createTextWidth);
+                context.drawString(this.font, Component.literal(createLabel), dropdownX + PRESET_TEXT_LEFT_PADDING, optionY + 5, getAccentColor());
             }
         }
 
@@ -5459,7 +5458,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private int getPresetDropdownX() {
         int preferredX = getPresetOverflowTabRight() - PRESET_DROPDOWN_WIDTH;
-        return MathHelper.clamp(preferredX, PRESET_DROPDOWN_MARGIN, this.width - PRESET_DROPDOWN_WIDTH - PRESET_DROPDOWN_MARGIN);
+        return Mth.clamp(preferredX, PRESET_DROPDOWN_MARGIN, this.width - PRESET_DROPDOWN_WIDTH - PRESET_DROPDOWN_MARGIN);
     }
 
     private int getPresetDropdownY() {
@@ -5584,7 +5583,7 @@ public class PathmindVisualEditorScreen extends Screen {
         int dropdownX = getPresetDropdownX();
         int optionStartY = getPresetDropdownY();
         DropdownLayoutHelper.Layout layout = getPresetDropdownLayout(optionStartY);
-        presetDropdownScrollOffset = MathHelper.clamp(presetDropdownScrollOffset, 0, layout.maxScrollOffset);
+        presetDropdownScrollOffset = Mth.clamp(presetDropdownScrollOffset, 0, layout.maxScrollOffset);
         int optionsHeight = layout.height;
         if (!isPointInRect((int) mouseX, (int) mouseY, dropdownX, optionStartY, PRESET_DROPDOWN_WIDTH, optionsHeight)) {
             return false;
@@ -5632,7 +5631,7 @@ public class PathmindVisualEditorScreen extends Screen {
         closeRenamePresetPopup();
         createPresetPopupAnimation.show();
         if (createPresetField != null) {
-            createPresetField.setText("");
+            createPresetField.setValue("");
             createPresetField.setVisible(true);
             createPresetField.setEditable(true);
             createPresetField.setFocused(true);
@@ -5657,7 +5656,7 @@ public class PathmindVisualEditorScreen extends Screen {
         pendingRoutineRenameId = routine.getId();
         pendingLibraryRoutineRenameId = "";
         if (createPresetField != null) {
-            createPresetField.setText(routine.getName() == null ? "" : routine.getName());
+            createPresetField.setValue(routine.getName() == null ? "" : routine.getName());
             createPresetField.setFocused(true);
         }
     }
@@ -5669,7 +5668,7 @@ public class PathmindVisualEditorScreen extends Screen {
         pendingRoutineRenameId = "";
         pendingLibraryRoutineRenameId = routine.getId();
         if (createPresetField != null) {
-            createPresetField.setText(routine.getName() == null ? "" : routine.getName());
+            createPresetField.setValue(routine.getName() == null ? "" : routine.getName());
             createPresetField.setFocused(true);
         }
     }
@@ -5699,7 +5698,7 @@ public class PathmindVisualEditorScreen extends Screen {
         pendingPresetRenameName = presetName;
         renamePresetPopupAnimation.show();
         if (renamePresetField != null) {
-            renamePresetField.setText(presetName);
+            renamePresetField.setValue(presetName);
             renamePresetField.setVisible(true);
             renamePresetField.setEditable(true);
             renamePresetField.setFocused(true);
@@ -5720,8 +5719,8 @@ public class PathmindVisualEditorScreen extends Screen {
     private void openNodeSearch(int anchorX, int anchorY) {
         int minX = sidebar.getWidth() + 8;
         int maxX = this.width - NODE_SEARCH_FIELD_WIDTH - 8;
-        nodeSearchFieldX = MathHelper.clamp(anchorX, minX, Math.max(minX, maxX));
-        nodeSearchFieldY = MathHelper.clamp(anchorY, TITLE_BAR_HEIGHT + 8,
+        nodeSearchFieldX = Mth.clamp(anchorX, minX, Math.max(minX, maxX));
+        nodeSearchFieldY = Mth.clamp(anchorY, TITLE_BAR_HEIGHT + 8,
             Math.max(TITLE_BAR_HEIGHT + 8, this.height - NODE_SEARCH_FIELD_HEIGHT - 8));
         nodeSearchWorldX = nodeGraph.screenToWorldX(nodeSearchFieldX);
         nodeSearchWorldY = nodeGraph.screenToWorldY(nodeSearchFieldY);
@@ -5730,7 +5729,7 @@ public class PathmindVisualEditorScreen extends Screen {
         if (nodeSearchField != null) {
             nodeSearchField.setX(nodeSearchFieldX);
             nodeSearchField.setY(nodeSearchFieldY);
-            nodeSearchField.setText("");
+            nodeSearchField.setValue("");
             nodeSearchField.setVisible(true);
             nodeSearchField.setEditable(true);
             nodeSearchField.setFocused(true);
@@ -5756,12 +5755,12 @@ public class PathmindVisualEditorScreen extends Screen {
         if (!nodeSearchOpen || nodeSearchField == null) {
             return;
         }
-        String query = nodeSearchField.getText();
+        String query = nodeSearchField.getValue();
         nodeSearchField.setSuggestion(null);
         refreshNodeSearchResults(query);
     }
 
-    private void renderNodeSearchField(DrawContext context, int mouseX, int mouseY, float delta) {
+    private void renderNodeSearchField(GuiGraphics context, int mouseX, int mouseY, float delta) {
         if (!nodeSearchOpen || nodeSearchField == null) {
             return;
         }
@@ -5769,7 +5768,7 @@ public class PathmindVisualEditorScreen extends Screen {
         updateNodeSearchLayout();
         int transformedMouseX = toNodeSearchSpaceX(mouseX);
         int transformedMouseY = toNodeSearchSpaceY(mouseY);
-        var matrices = context.getMatrices();
+        var matrices = context.pose();
         MatrixStackBridge.push(matrices);
         MatrixStackBridge.translate(matrices, nodeSearchFieldX, nodeSearchFieldY);
         MatrixStackBridge.scale(matrices, nodeSearchScale, nodeSearchScale);
@@ -5897,7 +5896,7 @@ public class PathmindVisualEditorScreen extends Screen {
         return Math.max(1, score - Math.max(0, candidate.length() - query.length()));
     }
 
-    private void renderNodeSearchDropdown(DrawContext context, int mouseX, int mouseY) {
+    private void renderNodeSearchDropdown(GuiGraphics context, int mouseX, int mouseY) {
         if (nodeSearchResults.isEmpty()) {
             return;
         }
@@ -5921,24 +5920,24 @@ public class PathmindVisualEditorScreen extends Screen {
             if (selected) {
                 UIStyleHelper.drawDropdownRow(context, listX + 1, rowTop, listWidth - 2, NODE_SEARCH_RESULT_HEIGHT, rowPalette);
             }
-            int textY = rowTop + Math.max(0, (NODE_SEARCH_RESULT_HEIGHT - this.textRenderer.fontHeight) / 2);
+            int textY = rowTop + Math.max(0, (NODE_SEARCH_RESULT_HEIGHT - this.font.lineHeight) / 2);
             String label = trimToWidth(result.label, listWidth - (NODE_SEARCH_RESULT_TEXT_PADDING * 2) - 42);
-            context.drawTextWithShadow(this.textRenderer, Text.literal(label), listX + NODE_SEARCH_RESULT_TEXT_PADDING, textY, selected ? rowPalette.textColor() : UITheme.TEXT_PRIMARY);
+            context.drawString(this.font, Component.literal(label), listX + NODE_SEARCH_RESULT_TEXT_PADDING, textY, selected ? rowPalette.textColor() : UITheme.TEXT_PRIMARY);
             String category = trimToWidth(result.categoryLabel, 36);
-            int categoryWidth = this.textRenderer.getWidth(category);
-            context.drawTextWithShadow(this.textRenderer, Text.literal(category),
+            int categoryWidth = this.font.width(category);
+            context.drawString(this.font, Component.literal(category),
                 listX + listWidth - NODE_SEARCH_RESULT_TEXT_PADDING - categoryWidth, textY, UITheme.TEXT_TERTIARY);
         }
     }
 
     private String trimToWidth(String value, int maxWidth) {
-        if (value == null || value.isEmpty() || this.textRenderer == null || maxWidth <= 0) {
+        if (value == null || value.isEmpty() || this.font == null || maxWidth <= 0) {
             return value == null ? "" : value;
         }
-        if (this.textRenderer.getWidth(value) <= maxWidth) {
+        if (this.font.width(value) <= maxWidth) {
             return value;
         }
-        return this.textRenderer.trimToWidth(value, Math.max(0, maxWidth - this.textRenderer.getWidth("..."))) + "...";
+        return this.font.plainSubstrByWidth(value, Math.max(0, maxWidth - this.font.width("..."))) + "...";
     }
 
     private boolean isPointInNodeSearchField(int mouseX, int mouseY) {
@@ -5982,8 +5981,8 @@ public class PathmindVisualEditorScreen extends Screen {
         int scaledHeight = Math.max(1, Math.round(NODE_SEARCH_FIELD_HEIGHT * nodeSearchScale));
         int maxX = Math.max(minX, this.width - scaledWidth - 8);
         int maxY = Math.max(minY, this.height - scaledHeight - 8);
-        nodeSearchFieldX = MathHelper.clamp(nodeGraph.worldToScreenX(nodeSearchWorldX), minX, maxX);
-        nodeSearchFieldY = MathHelper.clamp(nodeGraph.worldToScreenY(nodeSearchWorldY), minY, maxY);
+        nodeSearchFieldX = Mth.clamp(nodeGraph.worldToScreenX(nodeSearchWorldX), minX, maxX);
+        nodeSearchFieldY = Mth.clamp(nodeGraph.worldToScreenY(nodeSearchWorldY), minY, maxY);
     }
 
     private int toNodeSearchSpaceX(int mouseX) {
@@ -6019,7 +6018,7 @@ public class PathmindVisualEditorScreen extends Screen {
             nodeSearchHoverIndex = 0;
             return;
         }
-        nodeSearchHoverIndex = MathHelper.clamp(nodeSearchHoverIndex + direction, 0, nodeSearchResults.size() - 1);
+        nodeSearchHoverIndex = Mth.clamp(nodeSearchHoverIndex + direction, 0, nodeSearchResults.size() - 1);
     }
 
     private void selectNodeSearchResult(NodeSearchResult result) {
@@ -6034,7 +6033,7 @@ public class PathmindVisualEditorScreen extends Screen {
         closeNodeSearch();
     }
 
-    private void drawNodeSearchIcon(DrawContext context, int x, int y, int color) {
+    private void drawNodeSearchIcon(GuiGraphics context, int x, int y, int color) {
         PathmindIconRenderer.drawSearch(context, x, y, color);
     }
 
@@ -6043,16 +6042,16 @@ public class PathmindVisualEditorScreen extends Screen {
             return;
         }
 
-        String desiredName = createPresetField.getText();
+        String desiredName = createPresetField.getValue();
         if (createRoutineNaming) {
             String routineName = desiredName == null ? "" : desiredName.trim();
             if (routineName.isEmpty()) {
-                setCreatePresetStatus(Text.translatable("pathmind.status.enterRoutineName").getString(), UITheme.STATE_ERROR);
+                setCreatePresetStatus(Component.translatable("pathmind.status.enterRoutineName").getString(), UITheme.STATE_ERROR);
                 return;
             }
             if (!pendingLibraryRoutineRenameId.isBlank()) {
                 if (!com.pathmind.routines.RoutineLibraryManager.rename(pendingLibraryRoutineRenameId, routineName)) {
-                    setCreatePresetStatus(Text.translatable("pathmind.status.routineNameExists").getString(), UITheme.STATE_ERROR);
+                    setCreatePresetStatus(Component.translatable("pathmind.status.routineNameExists").getString(), UITheme.STATE_ERROR);
                     return;
                 }
                 String libraryHostId = LIBRARY_ROUTINE_WORKSPACE_PREFIX + pendingLibraryRoutineRenameId;
@@ -6071,7 +6070,7 @@ public class PathmindVisualEditorScreen extends Screen {
                     && !routine.getId().equals(pendingRoutineRenameId)
                     && routineName.equalsIgnoreCase(routine.getName().trim()));
             if (duplicate) {
-                setCreatePresetStatus(Text.translatable("pathmind.status.routineNameExists").getString(), UITheme.STATE_ERROR);
+                setCreatePresetStatus(Component.translatable("pathmind.status.routineNameExists").getString(), UITheme.STATE_ERROR);
                 return;
             }
             if (!pendingRoutineRenameId.isBlank()) {
@@ -6090,13 +6089,13 @@ public class PathmindVisualEditorScreen extends Screen {
             return;
         }
         if (desiredName == null || desiredName.trim().isEmpty()) {
-            setCreatePresetStatus(Text.translatable("pathmind.status.enterPresetName").getString(), UITheme.STATE_ERROR);
+            setCreatePresetStatus(Component.translatable("pathmind.status.enterPresetName").getString(), UITheme.STATE_ERROR);
             return;
         }
 
         Optional<String> createdPreset = PresetManager.createPreset(desiredName);
         if (createdPreset.isEmpty()) {
-            setCreatePresetStatus(Text.translatable("pathmind.status.presetNameExistsOrInvalid").getString(), UITheme.STATE_ERROR);
+            setCreatePresetStatus(Component.translatable("pathmind.status.presetNameExistsOrInvalid").getString(), UITheme.STATE_ERROR);
             return;
         }
 
@@ -6110,18 +6109,18 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         if (pendingPresetRenameName == null || pendingPresetRenameName.trim().isEmpty()) {
-            setRenamePresetStatus(Text.translatable("pathmind.status.selectPresetToRename").getString(), UITheme.STATE_ERROR);
+            setRenamePresetStatus(Component.translatable("pathmind.status.selectPresetToRename").getString(), UITheme.STATE_ERROR);
             return;
         }
 
-        String desiredName = renamePresetField.getText();
+        String desiredName = renamePresetField.getValue();
         if (desiredName == null || desiredName.trim().isEmpty()) {
-            setRenamePresetStatus(Text.translatable("pathmind.status.enterPresetName").getString(), UITheme.STATE_ERROR);
+            setRenamePresetStatus(Component.translatable("pathmind.status.enterPresetName").getString(), UITheme.STATE_ERROR);
             return;
         }
 
         if (!renamePresetInternal(pendingPresetRenameName, desiredName)) {
-            setRenamePresetStatus(Text.translatable("pathmind.status.presetNameExistsOrInvalid").getString(), UITheme.STATE_ERROR);
+            setRenamePresetStatus(Component.translatable("pathmind.status.presetNameExistsOrInvalid").getString(), UITheme.STATE_ERROR);
             return;
         }
 
@@ -6369,7 +6368,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void openPublishPresetFlow() {
-        if (this.client == null) {
+        if (this.minecraft == null) {
             return;
         }
         saveRootPresetWorkspace();
@@ -6377,28 +6376,28 @@ public class PathmindVisualEditorScreen extends Screen {
         Optional<String> linkedPresetId = PresetManager.getMarketplaceLinkedPresetId(activePresetName);
         MarketplaceAuthManager.AuthSession cachedSession = MarketplaceAuthManager.getCachedSession().orElse(null);
         if (cachedSession != null && linkedPresetId.isPresent()) {
-            PathmindMarketplaceFlowController.resolveLinkedPreset(this.client, cachedSession, linkedPresetId, result -> {
+            PathmindMarketplaceFlowController.resolveLinkedPreset(this.minecraft, cachedSession, linkedPresetId, result -> {
                 if (result.status() == PathmindMarketplaceFlowController.LinkedPresetStatus.FOUND) {
-                    this.client.setScreen(new PathmindMarketplaceScreen(this, false, null, result.preset()));
+                    this.minecraft.setScreen(new PathmindMarketplaceScreen(this, false, null, result.preset()));
                 } else {
-                    this.client.setScreen(new PathmindMarketplaceScreen(this, true, activePresetName));
+                    this.minecraft.setScreen(new PathmindMarketplaceScreen(this, true, activePresetName));
                 }
             });
             return;
         }
-        this.client.setScreen(new PathmindMarketplaceScreen(this, true, activePresetName));
+        this.minecraft.setScreen(new PathmindMarketplaceScreen(this, true, activePresetName));
     }
 
     void reopenPublishPresetPopup(String presetName) {
-        if (this.client == null) {
+        if (this.minecraft == null) {
             return;
         }
         saveRootPresetWorkspace();
         PresetManager.setActivePreset(activePresetName);
-        this.client.setScreen(new PathmindMarketplaceScreen(this, true, presetName));
+        this.minecraft.setScreen(new PathmindMarketplaceScreen(this, true, presetName));
     }
 
-    private void renderWorkspaceButtons(DrawContext context, int mouseX, int mouseY) {
+    private void renderWorkspaceButtons(GuiGraphics context, int mouseX, int mouseY) {
         if (isPopupObscuringWorkspace()) {
             mouseX = Integer.MIN_VALUE;
             mouseY = Integer.MIN_VALUE;
@@ -6413,26 +6412,26 @@ public class PathmindVisualEditorScreen extends Screen {
 
         if (showWorkspaceTooltips && !isPopupObscuringWorkspace()) {
             if (publishHovered) {
-                TooltipRenderer.render(context, this.textRenderer, Text.translatable("pathmind.marketplace.publishPreset").getString(), mouseX, mouseY, this.width, this.height);
+                TooltipRenderer.render(context, this.font, Component.translatable("pathmind.marketplace.publishPreset").getString(), mouseX, mouseY, this.width, this.height);
             } else if (marketplaceHovered) {
-                TooltipRenderer.render(context, this.textRenderer, Text.translatable("pathmind.marketplace.title").getString(), mouseX, mouseY, this.width, this.height);
+                TooltipRenderer.render(context, this.font, Component.translatable("pathmind.marketplace.title").getString(), mouseX, mouseY, this.width, this.height);
             } else if (homeHovered) {
-                TooltipRenderer.render(context, this.textRenderer, Text.translatable("pathmind.tooltip.resetView").getString(), mouseX, mouseY, this.width, this.height);
+                TooltipRenderer.render(context, this.font, Component.translatable("pathmind.tooltip.resetView").getString(), mouseX, mouseY, this.width, this.height);
             } else if (clearHovered) {
-                TooltipRenderer.render(context, this.textRenderer, Text.translatable("pathmind.tooltip.clearWorkspace").getString(), mouseX, mouseY, this.width, this.height);
+                TooltipRenderer.render(context, this.font, Component.translatable("pathmind.tooltip.clearWorkspace").getString(), mouseX, mouseY, this.width, this.height);
             } else if (importHovered) {
-                TooltipRenderer.render(context, this.textRenderer, Text.translatable("pathmind.popup.importExport.title").getString(), mouseX, mouseY, this.width, this.height);
+                TooltipRenderer.render(context, this.font, Component.translatable("pathmind.popup.importExport.title").getString(), mouseX, mouseY, this.width, this.height);
             }
         }
     }
 
-    private boolean renderMarketplaceButton(DrawContext context, int mouseX, int mouseY, int buttonY) {
+    private boolean renderMarketplaceButton(GuiGraphics context, int mouseX, int mouseY, int buttonY) {
         int buttonX = getMarketplaceButtonX();
         boolean hovered = isPointInRect(mouseX, mouseY, buttonX, buttonY, MARKETPLACE_BUTTON_WIDTH, BOTTOM_BUTTON_SIZE);
         float hoverProgress = getHoverProgress("workspace-marketplace", hovered);
         return PathmindWorkspaceChrome.renderMarketplaceButton(
             context,
-            this.textRenderer,
+            this.font,
             buttonX,
             buttonY,
             MARKETPLACE_BUTTON_WIDTH,
@@ -6441,12 +6440,12 @@ public class PathmindVisualEditorScreen extends Screen {
             mouseY,
             hoverProgress,
             getAccentColor(),
-            Text.translatable("pathmind.marketplace.title").getString()
+            Component.translatable("pathmind.marketplace.title").getString()
         );
     }
 
 
-    private boolean renderPublishButton(DrawContext context, int mouseX, int mouseY, int buttonY) {
+    private boolean renderPublishButton(GuiGraphics context, int mouseX, int mouseY, int buttonY) {
         int buttonX = getPublishButtonX();
         boolean hovered = isPointInRect(mouseX, mouseY, buttonX, buttonY, BOTTOM_BUTTON_SIZE, BOTTOM_BUTTON_SIZE);
         float hoverProgress = getHoverProgress("workspace-publish", hovered);
@@ -6472,22 +6471,22 @@ public class PathmindVisualEditorScreen extends Screen {
             && !PresetManager.hasMarketplaceLinkedPresetChanges(activePresetName);
     }
 
-    private boolean renderHomeButton(DrawContext context, int mouseX, int mouseY, int buttonY) {
+    private boolean renderHomeButton(GuiGraphics context, int mouseX, int mouseY, int buttonY) {
         return renderWorkspaceIconButton(context, getHomeButtonX(), buttonY, mouseX, mouseY,
             false, false, "workspace-home", PathmindWorkspaceChrome::drawHomeIcon);
     }
 
-    private boolean renderClearButton(DrawContext context, int mouseX, int mouseY, int buttonY) {
+    private boolean renderClearButton(GuiGraphics context, int mouseX, int mouseY, int buttonY) {
         return renderWorkspaceIconButton(context, getClearButtonX(), buttonY, mouseX, mouseY,
             clearPopupAnimation.isVisible(), false, "workspace-clear", PathmindWorkspaceChrome::drawClearIcon);
     }
 
-    private boolean renderImportExportButton(DrawContext context, int mouseX, int mouseY, int buttonY) {
+    private boolean renderImportExportButton(GuiGraphics context, int mouseX, int mouseY, int buttonY) {
         return renderWorkspaceIconButton(context, getImportExportButtonX(), buttonY, mouseX, mouseY,
             importExportPopupAnimation.isVisible(), false, "workspace-import-export", PathmindWorkspaceChrome::drawImportExportIcon);
     }
 
-    private void renderValidationButton(DrawContext context, int mouseX, int mouseY, boolean disabled,
+    private void renderValidationButton(GuiGraphics context, int mouseX, int mouseY, boolean disabled,
                                         GraphValidationResult validationResult) {
         int buttonX = getValidationButtonX();
         int buttonY = getValidationButtonY();
@@ -6496,7 +6495,7 @@ public class PathmindVisualEditorScreen extends Screen {
         float hoverProgress = getHoverProgress("validation-button", hovered || active);
         PathmindValidationPanelRenderer.renderValidationButton(
             context,
-            this.textRenderer,
+            this.font,
             buttonX,
             buttonY,
             VALIDATION_BUTTON_SIZE,
@@ -6510,7 +6509,7 @@ public class PathmindVisualEditorScreen extends Screen {
         );
     }
 
-    private void renderValidationPanel(DrawContext context, int mouseX, int mouseY, GraphValidationResult validationResult) {
+    private void renderValidationPanel(GuiGraphics context, int mouseX, int mouseY, GraphValidationResult validationResult) {
         float progress = validationPanelAnimation.getValue();
         if (progress <= 0.001f || validationResult == null) {
             return;
@@ -6528,7 +6527,7 @@ public class PathmindVisualEditorScreen extends Screen {
         context.enableScissor(panelX, panelY, panelX + panelWidth, panelY + panelHeight);
         int issueTop = PathmindValidationPanelRenderer.renderPanelAndIssues(
             context,
-            this.textRenderer,
+            this.font,
             mouseX,
             mouseY,
             validationResult,
@@ -6544,7 +6543,7 @@ public class PathmindVisualEditorScreen extends Screen {
         );
         PathmindValidationPanelRenderer.renderFooter(
             context,
-            this.textRenderer,
+            this.font,
             validationResult,
             panelX,
             panelY,
@@ -6573,7 +6572,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
         PathmindValidationPanelRenderer.ClickedIssue clickedIssue = PathmindValidationPanelRenderer.findClickedIssue(
             validationResult,
-            this.textRenderer,
+            this.font,
             mouseX,
             mouseY,
             bounds[0],
@@ -6600,7 +6599,7 @@ public class PathmindVisualEditorScreen extends Screen {
     private int[] getValidationPanelBounds(GraphValidationResult validationResult, float progress) {
         return PathmindValidationPanelRenderer.getPanelBounds(
             validationResult,
-            this.textRenderer,
+            this.font,
             getValidationButtonX() + VALIDATION_BUTTON_SIZE,
             getValidationButtonY(),
             progress,
@@ -6624,16 +6623,16 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
 
-    private void renderSettingsButton(DrawContext context, int mouseX, int mouseY, boolean disabled) {
+    private void renderSettingsButton(GuiGraphics context, int mouseX, int mouseY, boolean disabled) {
         boolean hovered = renderWorkspaceIconButton(context, getSettingsButtonX(), getSettingsButtonY(), mouseX, mouseY,
             settingsPopupAnimation.isVisible(), disabled, "settings-button", PathmindWorkspaceChrome::drawSettingsIcon);
 
         if (hovered && showWorkspaceTooltips && !isPopupObscuringWorkspace()) {
-            TooltipRenderer.render(context, this.textRenderer, Text.translatable("pathmind.settings.title").getString(), mouseX, mouseY, this.width, this.height);
+            TooltipRenderer.render(context, this.font, Component.translatable("pathmind.settings.title").getString(), mouseX, mouseY, this.width, this.height);
         }
     }
 
-    private boolean renderWorkspaceIconButton(DrawContext context, int buttonX, int buttonY, int mouseX, int mouseY,
+    private boolean renderWorkspaceIconButton(GuiGraphics context, int buttonX, int buttonY, int mouseX, int mouseY,
                                               boolean active, boolean disabled, Object hoverKey,
                                               PathmindWorkspaceChrome.IconPainter iconPainter) {
         boolean hovered = !disabled && PathmindWorkspaceChrome.contains(mouseX, mouseY, buttonX, buttonY, BOTTOM_BUTTON_SIZE, BOTTOM_BUTTON_SIZE);
@@ -6786,12 +6785,12 @@ public class PathmindVisualEditorScreen extends Screen {
         return this.height;
     }
 
-    TextRenderer textRenderer() {
-        return this.textRenderer;
+    Font textRenderer() {
+        return this.font;
     }
 
-    MinecraftClient client() {
-        return this.client;
+    Minecraft client() {
+        return this.minecraft;
     }
 
     int[] getSettingsPopupBodyBounds(int popupX, int popupY, int popupWidth, int popupHeight) {
@@ -6931,7 +6930,7 @@ public class PathmindVisualEditorScreen extends Screen {
         settingsNodeSelectorScrollDragging = false;
         settingsNodeSelectorScrollDragOffset = 0;
         if (settingsNodeSearchField != null) {
-            settingsNodeSearchField.setText("");
+            settingsNodeSearchField.setValue("");
             settingsNodeSearchField.setFocused(false);
             settingsNodeSearchField.setVisible(true);
             settingsNodeSearchField.setEditable(true);
@@ -6961,7 +6960,7 @@ public class PathmindVisualEditorScreen extends Screen {
         settingsLastScrollEventMs = 0L;
         settingsLastScrollConsumer = 0;
         if (settingsNodeSearchField != null) {
-            settingsNodeSearchField.setText("");
+            settingsNodeSearchField.setValue("");
             settingsNodeSearchField.setFocused(false);
             settingsNodeSearchField.setVisible(false);
             settingsNodeSearchField.setEditable(false);
@@ -6970,7 +6969,7 @@ public class PathmindVisualEditorScreen extends Screen {
         settingsPopupAnimation.hide();
     }
 
-    private boolean handleSettingsPopupClick(Click click, boolean inBounds) {
+    private boolean handleSettingsPopupClick(MouseButtonEvent click, boolean inBounds) {
         double mouseX = click.x();
         double mouseY = click.y();
         int button = click.button();
@@ -7109,7 +7108,7 @@ public class PathmindVisualEditorScreen extends Screen {
         int delayRowCenterY = (profilerDividerY + delayDividerY) / 2;
         int sliderX = popupX + SETTINGS_POPUP_WIDTH - SETTINGS_SLIDER_WIDTH - 20;
         int sliderY = delayRowCenterY - SETTINGS_SLIDER_HEIGHT / 2;
-        String delayText = nodeDelayField != null ? nodeDelayField.getText() : Integer.toString(nodeDelayMs);
+        String delayText = nodeDelayField != null ? nodeDelayField.getValue() : Integer.toString(nodeDelayMs);
         int[] valueBox = getNodeDelayFieldBounds(popupX, SETTINGS_POPUP_WIDTH, delayRowCenterY, delayText);
         int valueBoxX = valueBox[0];
         int valueBoxY = valueBox[1];
@@ -7225,7 +7224,7 @@ public class PathmindVisualEditorScreen extends Screen {
                 int createListRadiusRowCenterY = (createListToggleDividerY + createListRadiusDividerY) / 2;
                 int createListSliderX = popupX + SETTINGS_POPUP_WIDTH - SETTINGS_SLIDER_WIDTH - 20;
                 int createListSliderY = createListRadiusRowCenterY - SETTINGS_SLIDER_HEIGHT / 2;
-                String radiusText = createListRadiusField != null ? createListRadiusField.getText() : Integer.toString(getCreateListSettingsRadius(targetNode));
+                String radiusText = createListRadiusField != null ? createListRadiusField.getValue() : Integer.toString(getCreateListSettingsRadius(targetNode));
                 int[] radiusValueBox = getCreateListRadiusFieldBounds(popupX, SETTINGS_POPUP_WIDTH, createListRadiusRowCenterY, radiusText);
                 if (createListRadiusField != null) {
                     if (bodyHovered && isPointInRect(mouseXi, mouseYi, radiusValueBox[0], radiusValueBox[1], radiusValueBox[2], radiusValueBox[3])) {
@@ -7271,8 +7270,8 @@ public class PathmindVisualEditorScreen extends Screen {
         } else {
             ExecutionManager.getInstance().executeGraph(nodeGraph.getNodes(), nodeGraph.getConnections());
         }
-        if (this.client != null && this.client.player != null) {
-            this.client.setScreen(null);
+        if (this.minecraft != null && this.minecraft.player != null) {
+            this.minecraft.setScreen(null);
         }
     }
 
@@ -7291,8 +7290,8 @@ public class PathmindVisualEditorScreen extends Screen {
             isDraggingFromSidebar = false;
             draggingNodeType = null;
             draggingSidebarNode = null;
-            if (this.client != null && this.client.player != null) {
-                this.client.setScreen(null);
+            if (this.minecraft != null && this.minecraft.player != null) {
+                this.minecraft.setScreen(null);
             }
         }
     }
@@ -7301,7 +7300,7 @@ public class PathmindVisualEditorScreen extends Screen {
         ExecutionManager.getInstance().requestStopAll();
     }
 
-    void drawLanguageDropdown(DrawContext context, int x, int y, int width, String currentLang, boolean hovered) {
+    void drawLanguageDropdown(GuiGraphics context, int x, int y, int width, String currentLang, boolean hovered) {
         DropdownLayoutHelper.updateOpenAnimation(languageDropdownAnimation, languageDropdownOpen);
 
         float hoverProgress = languageDropdownOpen ? 1f : getHoverProgress("settings-language-dropdown-bg", hovered);
@@ -7322,14 +7321,14 @@ public class PathmindVisualEditorScreen extends Screen {
         );
 
         int labelColor = settingsPopupAnimation.getAnimatedPopupColor(fieldPalette.textColor());
-        context.drawTextWithShadow(this.textRenderer, Text.literal(currentLang), x + 4, y + 6, labelColor);
+        context.drawString(this.font, Component.literal(currentLang), x + 4, y + 6, labelColor);
 
         int arrowCenterX = x + width - 10;
         int arrowCenterY = y + 10;
         UIStyleHelper.drawChevron(context, arrowCenterX, arrowCenterY, languageDropdownOpen, labelColor);
     }
 
-    private void drawLanguageDropdownOptions(DrawContext context, int x, int y, int width, int mouseX, int mouseY) {
+    private void drawLanguageDropdownOptions(GuiGraphics context, int x, int y, int width, int mouseX, int mouseY) {
         // Get animation progress
         float animProgress = languageDropdownAnimation.getValue();
 
@@ -7338,7 +7337,7 @@ public class PathmindVisualEditorScreen extends Screen {
             return;
         }
 
-        Object matrices = context.getMatrices();
+        Object matrices = context.pose();
         MatrixStackBridge.push(matrices);
         MatrixStackBridge.translateZ(matrices, 550.0f);
 
@@ -7382,7 +7381,7 @@ public class PathmindVisualEditorScreen extends Screen {
             int optionY = dropdownY + (i * 20);
 
             boolean optionHovered = animProgress >= 1f && mouseX >= x && mouseX <= x + width && mouseY >= optionY && mouseY <= optionY + 20;
-            String currentLang = this.client.getLanguageManager().getLanguage();
+            String currentLang = this.minecraft.getLanguageManager().getSelected();
             boolean selected = lang.equals(currentLang);
             UIStyleHelper.DropdownRowPalette rowPalette = UIStyleHelper.getDropdownRowPalette(getAccentColor(), optionHovered ? 1f : 0f, selected, false);
             UIStyleHelper.drawDropdownRow(
@@ -7399,7 +7398,7 @@ public class PathmindVisualEditorScreen extends Screen {
             );
 
             int textColor = settingsPopupAnimation.getAnimatedPopupColor(selected ? getAccentColor() : rowPalette.textColor());
-            context.drawTextWithShadow(this.textRenderer, Text.literal(langName), x + 4, optionY + 6, textColor);
+            context.drawString(this.font, Component.literal(langName), x + 4, optionY + 6, textColor);
         }
 
         context.disableScissor();
@@ -7407,7 +7406,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     String getLanguageDisplayName(String languageCode) {
-        return Text.translatable("pathmind.language." + languageCode).getString();
+        return Component.translatable("pathmind.language." + languageCode).getString();
     }
 
     private void onLanguageSelected(String languageCode) {
@@ -7416,25 +7415,25 @@ public class PathmindVisualEditorScreen extends Screen {
         SettingsManager.save(currentSettings);
 
         // Update Minecraft's language and reload resources
-        this.client.options.language = languageCode;
-        this.client.getLanguageManager().setLanguage(languageCode);
-        this.client.options.write();
-        this.client.reloadResources();
+        this.minecraft.options.languageCode = languageCode;
+        this.minecraft.getLanguageManager().setSelected(languageCode);
+        this.minecraft.options.save();
+        this.minecraft.reloadResourcePacks();
 
         // Reload the screen to update all text
-        this.client.setScreen(null);
-        this.client.setScreen(new PathmindVisualEditorScreen());
+        this.minecraft.setScreen(null);
+        this.minecraft.setScreen(new PathmindVisualEditorScreen());
     }
 
-    private void drawPencilIcon(DrawContext context, int x, int y, int color) {
+    private void drawPencilIcon(GuiGraphics context, int x, int y, int color) {
         PathmindIconRenderer.drawPencil(context, x, y, PRESET_RENAME_ICON_SIZE, color);
     }
 
-    private void drawTrashIcon(DrawContext context, int x, int y, int color) {
+    private void drawTrashIcon(GuiGraphics context, int x, int y, int color) {
         PathmindIconRenderer.drawTrash(context, x, y, PRESET_DELETE_ICON_SIZE, color);
     }
 
-    private void drawCloseXIcon(DrawContext context, int x, int y, int size, int color) {
+    private void drawCloseXIcon(GuiGraphics context, int x, int y, int size, int color) {
         PathmindIconRenderer.drawCloseX(context, x, y, size, color);
     }
 
@@ -7463,7 +7462,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private String getCurrentMinecraftVersion() {
-        return this.client != null ? this.client.getGameVersion() : "Unknown";
+        return this.minecraft != null ? this.minecraft.getLaunchedVersion() : "Unknown";
     }
 
     boolean isPointInRect(int mouseX, int mouseY, int x, int y, int width, int height) {

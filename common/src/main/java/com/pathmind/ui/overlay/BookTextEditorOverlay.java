@@ -8,15 +8,15 @@ import com.pathmind.ui.animation.PopupAnimationHandler;
 import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.DrawContextBridge;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.widget.ButtonWidget;
 import com.pathmind.util.RenderStateBridge;
-import net.minecraft.text.Text;
-import net.minecraft.util.math.MathHelper;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.function.Consumer;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.network.chat.Component;
+import net.minecraft.util.Mth;
 
 /**
  * Overlay for editing book text in WRITE_BOOK nodes.
@@ -52,10 +52,10 @@ public class BookTextEditorOverlay {
     private int selectionEnd;
     private int selectionAnchor;
     private final PopupAnimationHandler popupAnimation = new PopupAnimationHandler();
-    private ButtonWidget saveButton;
-    private ButtonWidget cancelButton;
-    private ButtonWidget prevPageButton;
-    private ButtonWidget nextPageButton;
+    private Button saveButton;
+    private Button cancelButton;
+    private Button prevPageButton;
+    private Button nextPageButton;
     private boolean pendingClose = false;
 
     private long caretBlinkLastToggle = 0L;
@@ -102,24 +102,24 @@ public class BookTextEditorOverlay {
         int prevButtonX = nextButtonX - PAGE_BUTTON_SIZE - PAGE_BUTTON_GAP;
 
         if (node.hasBookTextPageInput()) {
-            prevPageButton = ButtonWidget.builder(Text.literal("<"), button -> changePage(currentPage - 1))
-                .dimensions(prevButtonX, pageButtonY, PAGE_BUTTON_SIZE, PAGE_BUTTON_SIZE)
+            prevPageButton = Button.builder(Component.literal("<"), button -> changePage(currentPage - 1))
+                .bounds(prevButtonX, pageButtonY, PAGE_BUTTON_SIZE, PAGE_BUTTON_SIZE)
                 .build();
 
-            nextPageButton = ButtonWidget.builder(Text.literal(">"), button -> changePage(currentPage + 1))
-                .dimensions(nextButtonX, pageButtonY, PAGE_BUTTON_SIZE, PAGE_BUTTON_SIZE)
+            nextPageButton = Button.builder(Component.literal(">"), button -> changePage(currentPage + 1))
+                .bounds(nextButtonX, pageButtonY, PAGE_BUTTON_SIZE, PAGE_BUTTON_SIZE)
                 .build();
         } else {
             prevPageButton = null;
             nextPageButton = null;
         }
 
-        saveButton = ButtonWidget.builder(Text.translatable("pathmind.button.save"), button -> save())
-            .dimensions(buttonStartX, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT)
+        saveButton = Button.builder(Component.translatable("pathmind.button.save"), button -> save())
+            .bounds(buttonStartX, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT)
             .build();
 
-        cancelButton = ButtonWidget.builder(Text.translatable("pathmind.button.cancel"), button -> closeWithoutSave())
-            .dimensions(buttonStartX + BUTTON_WIDTH + BUTTON_SPACING, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT)
+        cancelButton = Button.builder(Component.translatable("pathmind.button.cancel"), button -> closeWithoutSave())
+            .bounds(buttonStartX + BUTTON_WIDTH + BUTTON_SPACING, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT)
             .build();
     }
 
@@ -149,7 +149,7 @@ public class BookTextEditorOverlay {
         return popupAnimation.getScaledPopupBoundsFromTopLeft(popupX, popupY, popupWidth, popupHeight);
     }
 
-    public void render(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY, float delta) {
+    public void render(GuiGraphics context, Font textRenderer, int mouseX, int mouseY, float delta) {
         popupAnimation.tick();
         if (pendingClose && popupAnimation.isFullyHidden()) {
             pendingClose = false;
@@ -179,23 +179,23 @@ public class BookTextEditorOverlay {
         // Render title
         String title = node.getBookTextEditorTitle();
         int titleColor = applyPopupAlpha(UITheme.TEXT_HEADER, popupAlpha);
-        context.drawTextWithShadow(
+        context.drawString(
             textRenderer,
-            Text.literal(title),
-            popupX + (popupWidth - textRenderer.getWidth(title)) / 2,
+            Component.literal(title),
+            popupX + (popupWidth - textRenderer.width(title)) / 2,
             popupY + 12,
             titleColor
         );
 
         if (node.hasBookTextPageInput()) {
             String pageLabel = "Page " + currentPage;
-            int pageLabelWidth = textRenderer.getWidth(pageLabel);
+            int pageLabelWidth = textRenderer.width(pageLabel);
             int pageLabelX = popupX + popupWidth - TEXT_AREA_MARGIN - PAGE_BUTTON_SIZE * 2 - PAGE_BUTTON_GAP - 8 - pageLabelWidth;
             int pageLabelY = popupY + 12;
             int pageLabelColor = applyPopupAlpha(UITheme.TEXT_SECONDARY, popupAlpha);
-            context.drawTextWithShadow(
+            context.drawString(
                 textRenderer,
-                Text.literal(pageLabel),
+                Component.literal(pageLabel),
                 Math.max(popupX + TEXT_AREA_MARGIN, pageLabelX),
                 pageLabelY,
                 pageLabelColor
@@ -217,7 +217,7 @@ public class BookTextEditorOverlay {
         int textX = textAreaX + TEXT_AREA_PADDING;
         int textY = textAreaY + TEXT_AREA_PADDING;
         int maxTextWidth = textAreaWidth - 2 * TEXT_AREA_PADDING;
-        int lineHeight = textRenderer.fontHeight + 2;
+        int lineHeight = textRenderer.lineHeight + 2;
 
         // Enable scissor for text area
         context.enableScissor(textAreaX + 1, textAreaY + 1, textAreaX + textAreaWidth - 1, textAreaY + textAreaHeight - 1);
@@ -234,7 +234,7 @@ public class BookTextEditorOverlay {
                 context,
                 caretPos[0],
                 caretPos[1],
-                caretPos[1] + textRenderer.fontHeight,
+                caretPos[1] + textRenderer.lineHeight,
                 applyPopupAlpha(UITheme.TEXT_PRIMARY, popupAlpha)
             );
         }
@@ -246,10 +246,10 @@ public class BookTextEditorOverlay {
         String counterText = charCount + "/" + maxChars;
         int counterColor = charCount >= maxChars ? UITheme.STATE_WARNING : UITheme.TEXT_SECONDARY;
         counterColor = applyPopupAlpha(counterColor, popupAlpha);
-        context.drawTextWithShadow(
+        context.drawString(
             textRenderer,
-            Text.literal(counterText),
-            textAreaX + textAreaWidth - textRenderer.getWidth(counterText) - CHAR_COUNTER_MARGIN,
+            Component.literal(counterText),
+            textAreaX + textAreaWidth - textRenderer.width(counterText) - CHAR_COUNTER_MARGIN,
             textAreaY + textAreaHeight + 4,
             counterColor
         );
@@ -264,7 +264,7 @@ public class BookTextEditorOverlay {
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
 
-    private void renderWrappedText(DrawContext context, TextRenderer textRenderer, String text,
+    private void renderWrappedText(GuiGraphics context, Font textRenderer, String text,
                                     int x, int y, int maxWidth, int lineHeight, int areaHeight, float popupAlpha) {
         if (text == null || text.isEmpty()) {
             return;
@@ -280,7 +280,7 @@ public class BookTextEditorOverlay {
             if (c == '\n') {
                 // Render current line and move to next
                 if (currentY >= y - lineHeight && currentY < y + areaHeight + lineHeight) {
-                    context.drawTextWithShadow(textRenderer, Text.literal(currentLine.toString()), currentX, currentY,
+                    context.drawString(textRenderer, Component.literal(currentLine.toString()), currentX, currentY,
                         applyPopupAlpha(UITheme.TEXT_PRIMARY, popupAlpha));
                 }
                 currentLine = new StringBuilder();
@@ -289,10 +289,10 @@ public class BookTextEditorOverlay {
             }
 
             String testLine = currentLine.toString() + c;
-            if (textRenderer.getWidth(testLine) > maxWidth) {
+            if (textRenderer.width(testLine) > maxWidth) {
                 // Line is full, render it and start new line
                 if (currentY >= y - lineHeight && currentY < y + areaHeight + lineHeight) {
-                    context.drawTextWithShadow(textRenderer, Text.literal(currentLine.toString()), currentX, currentY,
+                    context.drawString(textRenderer, Component.literal(currentLine.toString()), currentX, currentY,
                         applyPopupAlpha(UITheme.TEXT_PRIMARY, popupAlpha));
                 }
                 currentLine = new StringBuilder();
@@ -305,14 +305,14 @@ public class BookTextEditorOverlay {
 
         // Render remaining text
         if (currentLine.length() > 0 && currentY >= y - lineHeight && currentY < y + areaHeight + lineHeight) {
-            context.drawTextWithShadow(textRenderer, Text.literal(currentLine.toString()), currentX, currentY,
+            context.drawString(textRenderer, Component.literal(currentLine.toString()), currentX, currentY,
                 applyPopupAlpha(UITheme.TEXT_PRIMARY, popupAlpha));
         }
     }
 
-    private int[] getCaretScreenPosition(TextRenderer textRenderer, int startX, int startY, int maxWidth, int lineHeight) {
+    private int[] getCaretScreenPosition(Font textRenderer, int startX, int startY, int maxWidth, int lineHeight) {
         String text = textContent != null ? textContent : "";
-        int pos = MathHelper.clamp(caretPosition, 0, text.length());
+        int pos = Mth.clamp(caretPosition, 0, text.length());
 
         int currentY = startY;
         int currentX = startX;
@@ -331,21 +331,21 @@ public class BookTextEditorOverlay {
             }
 
             String testLine = currentLine.toString() + c;
-            if (textRenderer.getWidth(testLine) > maxWidth) {
+            if (textRenderer.width(testLine) > maxWidth) {
                 currentLine = new StringBuilder();
                 currentLine.append(c);
                 currentY += lineHeight;
-                currentX = startX + textRenderer.getWidth(currentLine.toString());
+                currentX = startX + textRenderer.width(currentLine.toString());
             } else {
                 currentLine.append(c);
-                currentX = startX + textRenderer.getWidth(currentLine.toString());
+                currentX = startX + textRenderer.width(currentLine.toString());
             }
         }
 
         return new int[]{currentX, currentY};
     }
 
-    private void renderButton(DrawContext context, TextRenderer textRenderer, ButtonWidget button, int mouseX, int mouseY, float popupAlpha) {
+    private void renderButton(GuiGraphics context, Font textRenderer, Button button, int mouseX, int mouseY, float popupAlpha) {
         if (button == null) return;
 
         boolean hovered = mouseX >= button.getX() && mouseX <= button.getX() + button.getWidth() &&
@@ -366,15 +366,15 @@ public class BookTextEditorOverlay {
                                      button.getWidth(), button.getHeight(), applyPopupAlpha(borderColor, popupAlpha));
 
         String label = button.getMessage().getString();
-        int textX = button.getX() + (button.getWidth() - textRenderer.getWidth(label)) / 2;
-        int textY = button.getY() + (button.getHeight() - textRenderer.fontHeight) / 2;
-        context.drawTextWithShadow(textRenderer, Text.literal(label), textX, textY,
+        int textX = button.getX() + (button.getWidth() - textRenderer.width(label)) / 2;
+        int textY = button.getY() + (button.getHeight() - textRenderer.lineHeight) / 2;
+        context.drawString(textRenderer, Component.literal(label), textX, textY,
             applyPopupAlpha(UITheme.TEXT_PRIMARY, popupAlpha));
     }
 
     private int applyPopupAlpha(int color, float alphaMultiplier) {
         int baseAlpha = (color >>> 24) & 0xFF;
-        int applied = Math.round(baseAlpha * MathHelper.clamp(alphaMultiplier, 0f, 1f));
+        int applied = Math.round(baseAlpha * Mth.clamp(alphaMultiplier, 0f, 1f));
         return (applied << 24) | (color & 0x00FFFFFF);
     }
 
@@ -626,7 +626,7 @@ public class BookTextEditorOverlay {
         return true;
     }
 
-    private boolean isOverButton(ButtonWidget button, double mouseX, double mouseY) {
+    private boolean isOverButton(Button button, double mouseX, double mouseY) {
         return UiHitTest.contains(mouseX, mouseY,
             button.getX(), button.getY(), button.getWidth(), button.getHeight());
     }

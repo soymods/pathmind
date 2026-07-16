@@ -1,6 +1,6 @@
 package com.pathmind.nodes;
 
-import net.minecraft.screen.slot.Slot;
+import net.minecraft.world.inventory.Slot;
 
 final class SlotResolution {
     final Slot slot;

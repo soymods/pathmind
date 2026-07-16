@@ -7,8 +7,8 @@ import com.pathmind.ui.overlay.NodeErrorNotificationOverlay;
 import com.pathmind.ui.overlay.VariablesOverlay;
 import com.pathmind.util.DrawContextBridge;
 import com.pathmind.util.MatrixStackBridge;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
 
 public final class PathmindHud {
 
@@ -30,72 +30,72 @@ public final class PathmindHud {
         variablesOverlay = variables;
     }
 
-    public static void renderHudOverlays(DrawContext drawContext, MinecraftClient client) {
-        if (client == null || client.player == null || client.textRenderer == null) {
+    public static void renderHudOverlays(GuiGraphics drawContext, Minecraft client) {
+        if (client == null || client.player == null || client.font == null) {
             return;
         }
         Boolean showHudOverlays = SettingsManager.getCurrent().showHudOverlays;
         if (showHudOverlays != null && !showHudOverlays) {
             return;
         }
-        int scaledWidth = client.getWindow().getScaledWidth();
-        int scaledHeight = client.getWindow().getScaledHeight();
+        int scaledWidth = client.getWindow().getGuiScaledWidth();
+        int scaledHeight = client.getWindow().getGuiScaledHeight();
         DrawContextBridge.startNewRootLayer(drawContext);
-        Object matrices = drawContext.getMatrices();
+        Object matrices = drawContext.pose();
         MatrixStackBridge.push(matrices);
         MatrixStackBridge.translateZ(matrices, 500.0f);
         try {
             if (activeNodeOverlay != null) {
-                activeNodeOverlay.render(drawContext, client.textRenderer, scaledWidth, scaledHeight);
+                activeNodeOverlay.render(drawContext, client.font, scaledWidth, scaledHeight);
             }
             if (variablesOverlay != null) {
-                variablesOverlay.render(drawContext, client.textRenderer, scaledWidth, scaledHeight);
+                variablesOverlay.render(drawContext, client.font, scaledWidth, scaledHeight);
             }
             if (navigatorDebugOverlay != null) {
-                navigatorDebugOverlay.render(drawContext, client.textRenderer, scaledWidth, scaledHeight);
+                navigatorDebugOverlay.render(drawContext, client.font, scaledWidth, scaledHeight);
             }
         } finally {
             MatrixStackBridge.pop(matrices);
         }
     }
 
-    public static void renderHudNotifications(DrawContext drawContext, MinecraftClient client) {
-        if (client == null || client.textRenderer == null || nodeErrorNotificationOverlay == null) {
+    public static void renderHudNotifications(GuiGraphics drawContext, Minecraft client) {
+        if (client == null || client.font == null || nodeErrorNotificationOverlay == null) {
             return;
         }
         Boolean showHudOverlays = SettingsManager.getCurrent().showHudOverlays;
         if (showHudOverlays != null && !showHudOverlays) {
             return;
         }
-        int scaledWidth = client.getWindow().getScaledWidth();
-        int scaledHeight = client.getWindow().getScaledHeight();
+        int scaledWidth = client.getWindow().getGuiScaledWidth();
+        int scaledHeight = client.getWindow().getGuiScaledHeight();
         DrawContextBridge.startNewRootLayer(drawContext);
-        Object matrices = drawContext.getMatrices();
+        Object matrices = drawContext.pose();
         MatrixStackBridge.push(matrices);
         MatrixStackBridge.translateZ(matrices, 500.0f);
         try {
-            nodeErrorNotificationOverlay.render(drawContext, client.textRenderer, scaledWidth, scaledHeight);
+            nodeErrorNotificationOverlay.render(drawContext, client.font, scaledWidth, scaledHeight);
         } finally {
             MatrixStackBridge.pop(matrices);
         }
     }
 
-    public static void renderScreenActiveNodeOverlay(DrawContext drawContext, MinecraftClient client) {
-        if (client == null || client.player != null || client.textRenderer == null || activeNodeOverlay == null) {
+    public static void renderScreenActiveNodeOverlay(GuiGraphics drawContext, Minecraft client) {
+        if (client == null || client.player != null || client.font == null || activeNodeOverlay == null) {
             return;
         }
         Boolean showHudOverlays = SettingsManager.getCurrent().showHudOverlays;
         if (showHudOverlays != null && !showHudOverlays) {
             return;
         }
-        int scaledWidth = client.getWindow().getScaledWidth();
-        int scaledHeight = client.getWindow().getScaledHeight();
+        int scaledWidth = client.getWindow().getGuiScaledWidth();
+        int scaledHeight = client.getWindow().getGuiScaledHeight();
         DrawContextBridge.startNewRootLayer(drawContext);
-        Object matrices = drawContext.getMatrices();
+        Object matrices = drawContext.pose();
         MatrixStackBridge.push(matrices);
         MatrixStackBridge.translateZ(matrices, 500.0f);
         try {
-            activeNodeOverlay.renderCompact(drawContext, client.textRenderer, scaledWidth, scaledHeight);
+            activeNodeOverlay.renderCompact(drawContext, client.font, scaledWidth, scaledHeight);
         } finally {
             MatrixStackBridge.pop(matrices);
         }

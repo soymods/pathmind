@@ -1,7 +1,7 @@
 package com.pathmind.nodes;
 
 import java.util.Locale;
-import net.minecraft.text.Text;
+import net.minecraft.network.chat.Component;
 
 /**
  * Enum representing different modes for generalized nodes.
@@ -103,11 +103,11 @@ public enum NodeMode {
     }
 
     public String getDisplayName() {
-        return Text.translatable(getTranslationKey()).getString();
+        return Component.translatable(getTranslationKey()).getString();
     }
 
     public String getDescription() {
-        return Text.translatable(getDescriptionKey()).getString();
+        return Component.translatable(getDescriptionKey()).getString();
     }
 
     public String getTranslationKey() {

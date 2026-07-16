@@ -2,8 +2,8 @@ package com.pathmind.ui.theme;
 
 import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.util.DrawContextBridge;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphics;
 
 /**
  * Shared rendering helpers for Pathmind UI chrome.
@@ -42,7 +42,7 @@ public final class UIStyleHelper {
     private UIStyleHelper() {
     }
 
-    public static void drawPanel(DrawContext context, int x, int y, int width, int height, int backgroundColor, int borderColor) {
+    public static void drawPanel(GuiGraphics context, int x, int y, int width, int height, int backgroundColor, int borderColor) {
         if (context == null || width <= 0 || height <= 0) {
             return;
         }
@@ -50,7 +50,7 @@ public final class UIStyleHelper {
         DrawContextBridge.drawBorder(context, x, y, width, height, borderColor);
     }
 
-    public static void drawBeveledPanel(DrawContext context, int x, int y, int width, int height,
+    public static void drawBeveledPanel(GuiGraphics context, int x, int y, int width, int height,
                                         int backgroundColor, int outerBorderColor, int innerBorderColor) {
         drawPanel(context, x, y, width, height, backgroundColor, outerBorderColor);
         if (width > 3 && height > 3) {
@@ -58,12 +58,12 @@ public final class UIStyleHelper {
         }
     }
 
-    public static void drawToolbarButtonFrame(DrawContext context, int x, int y, int width, int height,
+    public static void drawToolbarButtonFrame(GuiGraphics context, int x, int y, int width, int height,
                                               int backgroundColor, int outerBorderColor, int innerBorderColor) {
         drawBeveledPanel(context, x, y, width, height, backgroundColor, outerBorderColor, innerBorderColor);
     }
 
-    public static void drawToolbarButtonFrame(DrawContext context, int x, int y, int width, int height,
+    public static void drawToolbarButtonFrame(GuiGraphics context, int x, int y, int width, int height,
                                               ToolbarButtonPalette palette) {
         if (palette == null) {
             return;
@@ -72,7 +72,7 @@ public final class UIStyleHelper {
             palette.backgroundColor(), palette.borderColor(), palette.innerBorderColor());
     }
 
-    public static void drawTextButtonFrame(DrawContext context, int x, int y, int width, int height,
+    public static void drawTextButtonFrame(GuiGraphics context, int x, int y, int width, int height,
                                            TextButtonPalette palette) {
         if (palette == null) {
             return;
@@ -296,14 +296,14 @@ public final class UIStyleHelper {
         return new SliderPalette(trackColor, trackBorderColor, handleColor, handleBorderColor);
     }
 
-    public static void drawFieldFrame(DrawContext context, int x, int y, int width, int height, FieldPalette palette) {
+    public static void drawFieldFrame(GuiGraphics context, int x, int y, int width, int height, FieldPalette palette) {
         if (palette == null) {
             return;
         }
         drawBeveledPanel(context, x, y, width, height, palette.backgroundColor(), palette.borderColor(), palette.innerBorderColor());
     }
 
-    public static void drawDropdownRow(DrawContext context, int x, int y, int width, int height, DropdownRowPalette palette) {
+    public static void drawDropdownRow(GuiGraphics context, int x, int y, int width, int height, DropdownRowPalette palette) {
         if (palette == null || context == null || width <= 0 || height <= 0) {
             return;
         }
@@ -311,14 +311,14 @@ public final class UIStyleHelper {
         DrawContextBridge.drawBorder(context, x, y, width, height, palette.borderColor());
     }
 
-    public static void drawScrollContainer(DrawContext context, int x, int y, int width, int height, ScrollContainerPalette palette) {
+    public static void drawScrollContainer(GuiGraphics context, int x, int y, int width, int height, ScrollContainerPalette palette) {
         if (palette == null) {
             return;
         }
         drawBeveledPanel(context, x, y, width, height, palette.backgroundColor(), palette.borderColor(), palette.innerBorderColor());
     }
 
-    public static void drawToggleSwitch(DrawContext context, int x, int y, int width, int height, float progress, TogglePalette palette) {
+    public static void drawToggleSwitch(GuiGraphics context, int x, int y, int width, int height, float progress, TogglePalette palette) {
         if (context == null || palette == null || width <= 0 || height <= 0) {
             return;
         }
@@ -331,7 +331,7 @@ public final class UIStyleHelper {
         context.fill(knobLeft, y + 1, knobLeft + knobWidth, y + height - 1, palette.knobColor());
     }
 
-    public static void drawSliderTrack(DrawContext context, int x, int y, int width, int height, SliderPalette palette) {
+    public static void drawSliderTrack(GuiGraphics context, int x, int y, int width, int height, SliderPalette palette) {
         if (context == null || palette == null || width <= 0 || height <= 0) {
             return;
         }
@@ -339,7 +339,7 @@ public final class UIStyleHelper {
         DrawContextBridge.drawBorder(context, x, y, width, height, palette.trackBorderColor());
     }
 
-    public static void drawSliderHandle(DrawContext context, int x, int y, int width, int height, SliderPalette palette) {
+    public static void drawSliderHandle(GuiGraphics context, int x, int y, int width, int height, SliderPalette palette) {
         if (context == null || palette == null || width <= 0 || height <= 0) {
             return;
         }
@@ -347,23 +347,23 @@ public final class UIStyleHelper {
         DrawContextBridge.drawBorder(context, x, y, width, height, palette.handleBorderColor());
     }
 
-    public static void drawChevron(DrawContext context, int centerX, int centerY, boolean expanded, int color) {
+    public static void drawChevron(GuiGraphics context, int centerX, int centerY, boolean expanded, int color) {
         if (expanded) {
-            context.drawHorizontalLine(centerX - 3, centerX + 3, centerY - 2, color);
-            context.drawHorizontalLine(centerX - 2, centerX + 2, centerY - 1, color);
-            context.drawHorizontalLine(centerX - 1, centerX + 1, centerY, color);
+            context.hLine(centerX - 3, centerX + 3, centerY - 2, color);
+            context.hLine(centerX - 2, centerX + 2, centerY - 1, color);
+            context.hLine(centerX - 1, centerX + 1, centerY, color);
             return;
         }
-        context.drawHorizontalLine(centerX - 3, centerX + 3, centerY + 1, color);
-        context.drawHorizontalLine(centerX - 2, centerX + 2, centerY, color);
-        context.drawHorizontalLine(centerX - 1, centerX + 1, centerY - 1, color);
+        context.hLine(centerX - 3, centerX + 3, centerY + 1, color);
+        context.hLine(centerX - 2, centerX + 2, centerY, color);
+        context.hLine(centerX - 1, centerX + 1, centerY - 1, color);
     }
 
-    public static void drawTextCaret(DrawContext context, int caretX, int topY, int bottomY, int color) {
+    public static void drawTextCaret(GuiGraphics context, int caretX, int topY, int bottomY, int color) {
         drawTextCaret(context, caretX, topY, bottomY, caretX + 1, color);
     }
 
-    public static void drawTextCaret(DrawContext context, int caretX, int topY, int bottomY, int maxRight, int color) {
+    public static void drawTextCaret(GuiGraphics context, int caretX, int topY, int bottomY, int maxRight, int color) {
         if (context == null) {
             return;
         }
@@ -376,11 +376,11 @@ public final class UIStyleHelper {
         context.fill(caretX, startY, endX, endY, color);
     }
 
-    public static void drawTextCaretAtBaseline(DrawContext context, TextRenderer textRenderer, int caretX, int baselineY, int maxRight, int color) {
+    public static void drawTextCaretAtBaseline(GuiGraphics context, Font textRenderer, int caretX, int baselineY, int maxRight, int color) {
         if (textRenderer == null) {
             return;
         }
-        int topY = baselineY - textRenderer.fontHeight + 1;
+        int topY = baselineY - textRenderer.lineHeight + 1;
         drawTextCaret(context, caretX, topY, baselineY + 1, maxRight, color);
     }
 }

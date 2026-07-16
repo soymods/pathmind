@@ -10,28 +10,17 @@ architectury {
 }
 
 val requestedMinecraftVersion = rootProject.extra["requestedMinecraftVersion"] as String
-val yarnMappings = rootProject.extra["yarnMappings"] as String
 val fabricApiVersion = rootProject.extra["fabricApiVersion"] as String
+val fabricLoaderVersion = rootProject.extra["fabricLoaderVersion"] as String
+val fabricLoaderMinimumVersion = rootProject.extra["fabricLoaderMinimumVersion"] as String
+val targetJavaVersion = rootProject.extra["targetJavaVersion"] as Int
+val fabricBaseFamily = rootProject.extra["fabricBaseFamily"] as String
+val fabricUseItemFamily = rootProject.extra["fabricUseItemFamily"] as String
+val fabricRenderFamily = rootProject.extra["fabricRenderFamily"] as String
+val baritoneRuntimeSupported = rootProject.extra["baritoneRuntime"] as Boolean
 val architecturyApiVersion = providers.gradleProperty("architectury_api_version")
     .orElse(provider { rootProject.extra["architecturyApiVersion"] as String })
     .get()
-
-// Compat source set selection mirrors the MC-version-specific compat dirs.
-val legacyInputVersions = setOf(
-    "1.21", "1.21.1", "1.21.2", "1.21.3", "1.21.4", "1.21.5", "1.21.6", "1.21.7", "1.21.8"
-)
-val usesLegacyInputApis = requestedMinecraftVersion in legacyInputVersions
-val typedUseItemCallbackVersions = setOf("1.21", "1.21.1")
-val usesTypedUseItemCallback = requestedMinecraftVersion in typedUseItemCallbackVersions
-val oldLegacyRenderVersions = setOf("1.21", "1.21.1", "1.21.2", "1.21.3", "1.21.4")
-val usesOldLegacyRenderApis = requestedMinecraftVersion in oldLegacyRenderVersions
-val preAllocatorLegacyRenderVersions = setOf("1.21", "1.21.1")
-val allocatorLightmapLegacyRenderVersions = setOf("1.21.2", "1.21.3")
-val allocatorNoLightmapLegacyRenderVersions = setOf("1.21.4")
-val transitionalLegacyRenderVersions = setOf("1.21.5")
-val usesTransitionalLegacyRenderApis = requestedMinecraftVersion in transitionalLegacyRenderVersions
-val midInputVersions = setOf("1.21.9", "1.21.10")
-val usesMidInputApis = requestedMinecraftVersion in midInputVersions
 
 base {
     archivesName.set("${rootProject.property("archives_base_name") as String}-fabric")
@@ -56,8 +45,14 @@ configurations {
 
 dependencies {
     minecraft("com.mojang:minecraft:$requestedMinecraftVersion")
-    mappings("net.fabricmc:yarn:$yarnMappings:v2")
-    modImplementation("net.fabricmc:fabric-loader:${rootProject.property("loader_version")}")
+    mappings(
+        if (requestedMinecraftVersion == "1.21.11") {
+            loom.officialMojangMappings()
+        } else {
+            rootProject.files("gradle/mappings/$requestedMinecraftVersion-canonical-1.21.11.jar")
+        }
+    )
+    modImplementation("net.fabricmc:fabric-loader:$fabricLoaderVersion")
 
     modApi("dev.architectury:architectury-fabric:$architecturyApiVersion")
     modImplementation("net.fabricmc.fabric-api:fabric-api:$fabricApiVersion")
@@ -75,14 +70,13 @@ dependencies {
         candidates.firstOrNull { it.exists() }
     }
 
-    val baritoneRuntimeTargets = setOf("1.21.6", "1.21.7", "1.21.8")
     val enableBaritoneRuntime = (project.findProperty("withBaritoneRuntime") as? String)
         ?.toBooleanStrictOrNull() ?: false
 
     baritoneApiJar?.let { jar ->
         val baritoneApi = files(jar)
         modCompileOnly(baritoneApi)
-        if (enableBaritoneRuntime && requestedMinecraftVersion in baritoneRuntimeTargets) {
+        if (enableBaritoneRuntime && baritoneRuntimeSupported) {
             modLocalRuntime(baritoneApi)
         }
     }
@@ -94,29 +88,27 @@ sourceSets {
             setSrcDirs(listOf("src/main/java"))
             exclude("com/pathmind/screen/PathmindMarketplaceScreen.java")
             exclude("com/pathmind/screen/PathmindVisualEditorScreen.java")
-            if (usesLegacyInputApis) {
+            if (fabricBaseFamily == "legacy") {
                 srcDir("src/compat/legacy/base/java")
-                if (usesTypedUseItemCallback) {
-                    srcDir("src/compat/legacy/useitem/typed/java")
-                } else {
-                    srcDir("src/compat/legacy/useitem/action/java")
+                when (fabricUseItemFamily) {
+                    "typed" -> srcDir("src/compat/legacy/useitem/typed/java")
+                    "action" -> srcDir("src/compat/legacy/useitem/action/java")
+                    else -> throw GradleException("Unknown Fabric use-item family '$fabricUseItemFamily' for Minecraft $requestedMinecraftVersion")
                 }
-                if (usesOldLegacyRenderApis) {
-                    when (requestedMinecraftVersion) {
-                        in preAllocatorLegacyRenderVersions -> srcDir("src/compat/legacy/render/old/java")
-                        in allocatorLightmapLegacyRenderVersions -> srcDir("src/compat/legacy/render/old-allocator/java")
-                        in allocatorNoLightmapLegacyRenderVersions -> srcDir("src/compat/legacy/render/old-allocator-nolightmap/java")
-                        else -> throw GradleException("No legacy old render source set configured for Minecraft $requestedMinecraftVersion")
-                    }
-                } else if (usesTransitionalLegacyRenderApis) {
-                    srcDir("src/compat/legacy/render/transitional/java")
-                } else {
-                    srcDir("src/compat/legacy/render/late/java")
+                when (fabricRenderFamily) {
+                    "old" -> srcDir("src/compat/legacy/render/old/java")
+                    "old-allocator" -> srcDir("src/compat/legacy/render/old-allocator/java")
+                    "old-allocator-nolightmap" -> srcDir("src/compat/legacy/render/old-allocator-nolightmap/java")
+                    "transitional" -> srcDir("src/compat/legacy/render/transitional/java")
+                    "late" -> srcDir("src/compat/legacy/render/late/java")
+                    else -> throw GradleException("Unknown Fabric render family '$fabricRenderFamily' for Minecraft $requestedMinecraftVersion")
                 }
-            } else if (usesMidInputApis) {
+            } else if (fabricBaseFamily == "mid") {
                 srcDir("src/compat/mid/java")
-            } else {
+            } else if (fabricBaseFamily == "modern") {
                 srcDir("src/compat/modern/java")
+            } else {
+                throw GradleException("Unknown Fabric base family '$fabricBaseFamily' for Minecraft $requestedMinecraftVersion")
             }
         }
     }
@@ -126,7 +118,8 @@ tasks.processResources {
     val properties = mapOf(
         "version" to version,
         "minecraft_version" to requestedMinecraftVersion,
-        "loader_version" to rootProject.property("loader_version"),
+        "loader_version" to fabricLoaderMinimumVersion,
+        "java_version" to targetJavaVersion,
         "fabric_api_version" to fabricApiVersion,
         "architectury_api_version" to architecturyApiVersion
     )

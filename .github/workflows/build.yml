@@ -22,8 +22,8 @@ jobs:
         id: versions
         shell: bash
         run: |
-          VERSIONS="$(grep -E '^\s*"[0-9]+\.[0-9]+(\.[0-9]+)?"\s+to\s+MinecraftVersionSpec\(' build.gradle.kts \
-            | sed -E 's/^\s*"([^"]+)".*/\1/' \
+          VERSIONS="$(sed -n 's/^supported_versions=//p' gradle/minecraft-versions.properties \
+            | tr ',' '\n' \
             | jq -R . \
             | jq -s -c .)"
 
@@ -51,6 +51,9 @@ jobs:
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
+
+      - name: Verify compatibility manifest
+        run: ./gradlew verifyCompatibilityManifest -Pmc_version=1.21.11
 
       - name: Unit tests
         run: ./gradlew :common:test -Pmc_version=1.21.11
@@ -102,6 +105,22 @@ jobs:
           if [ -z "$(ls -A staging/)" ]; then
             echo "No suitable jars found."
             find fabric/build/libs neoforge/build/libs -maxdepth 1 -type f | sort || true
+            exit 1
+          fi
+
+          MOD_VERSION="$(sed -n 's/^mod_version=//p' gradle.properties)"
+          LOADERS="$(awk -F= -v key="version.${{ matrix.minecraft_version }}.release_loaders" '$1 == key { print $2 }' gradle/minecraft-versions.properties)"
+          IFS=',' read -ra EXPECTED_LOADERS <<< "$LOADERS"
+          for loader in "${EXPECTED_LOADERS[@]}"; do
+            expected="staging/pathmind-${loader}-${MOD_VERSION}+mc${{ matrix.minecraft_version }}.jar"
+            if [ ! -f "$expected" ]; then
+              echo "Missing expected release jar: $expected"
+              exit 1
+            fi
+          done
+          STAGED_COUNT="$(find staging -maxdepth 1 -type f -name '*.jar' | wc -l | tr -d ' ')"
+          if [ "$STAGED_COUNT" -ne "${#EXPECTED_LOADERS[@]}" ]; then
+            echo "Expected ${#EXPECTED_LOADERS[@]} release jars but staged $STAGED_COUNT."
             exit 1
           fi
 

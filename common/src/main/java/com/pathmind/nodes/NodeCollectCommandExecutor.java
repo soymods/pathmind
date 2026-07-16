@@ -5,25 +5,24 @@ import static com.pathmind.util.PathmindI18n.tr;
 import com.pathmind.execution.PreciseCompletionTracker;
 import com.pathmind.util.BaritoneApiProxy;
 import com.pathmind.util.BlockSelection;
-import net.minecraft.block.Block;
-import net.minecraft.block.BlockState;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.item.Item;
-import net.minecraft.item.Items;
-import net.minecraft.network.packet.c2s.play.PlayerActionC2SPacket;
-import net.minecraft.registry.Registries;
-import net.minecraft.util.Hand;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.Vec3d;
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.Vec3;
 
 final class NodeCollectCommandExecutor {
     private final Node owner;
@@ -158,7 +157,7 @@ final class NodeCollectCommandExecutor {
         List<String> targets = new ArrayList<>();
         for (String idString : blockIds) {
             Identifier identifier = Identifier.tryParse(idString);
-            if (identifier == null || !Registries.BLOCK.containsId(identifier)) {
+            if (identifier == null || !BuiltInRegistries.BLOCK.containsKey(identifier)) {
                 owner.sendParameterSearchFailure(tr("pathmind.error.unknownBlockForNode", idString, owner.getType().getDisplayName()), future);
                 return Collections.emptyList();
             }
@@ -190,8 +189,8 @@ final class NodeCollectCommandExecutor {
     }
 
     private Optional<BlockPos> findNearestCollectTarget(List<String> targets) {
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client == null || client.player == null || client.world == null || targets == null || targets.isEmpty()) {
+        Minecraft client = Minecraft.getInstance();
+        if (client == null || client.player == null || client.level == null || targets == null || targets.isEmpty()) {
             return Optional.empty();
         }
 
@@ -209,11 +208,11 @@ final class NodeCollectCommandExecutor {
         return owner.findNearestBlock(client, selections, Node.PARAMETER_SEARCH_RADIUS);
     }
 
-    private boolean isPlayerNearBlock(MinecraftClient client, BlockPos pos, double rangeSq) {
+    private boolean isPlayerNearBlock(Minecraft client, BlockPos pos, double rangeSq) {
         if (client == null || client.player == null || pos == null) {
             return false;
         }
-        double distanceSq = client.player.squaredDistanceTo(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5);
+        double distanceSq = client.player.distanceToSqr(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5);
         return distanceSq <= rangeSq;
     }
 
@@ -222,7 +221,7 @@ final class NodeCollectCommandExecutor {
                                                  BlockPos preferredTarget,
                                                  CompletableFuture<Void> future,
                                                  Runnable startMiningAction) {
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         Object customGoalProcess = baritone != null ? BaritoneApiProxy.getCustomGoalProcess(baritone) : null;
         if (client == null || client.player == null || preferredTarget == null || customGoalProcess == null
             || isPlayerNearBlock(client, preferredTarget, 6.25D)) {
@@ -254,8 +253,8 @@ final class NodeCollectCommandExecutor {
     }
 
     private void breakSpecificBlockForCollect(BlockPos targetPos, CompletableFuture<Void> future) {
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client == null || client.player == null || client.world == null || targetPos == null) {
+        Minecraft client = Minecraft.getInstance();
+        if (client == null || client.player == null || client.level == null || targetPos == null) {
             NodeExecutionCompletion.completeExceptionally(future, new RuntimeException("Minecraft client not available"));
             return;
         }
@@ -265,25 +264,25 @@ final class NodeCollectCommandExecutor {
         }
         runtimeState.runtimeParameterData.targetBlockPos = targetPos;
 
-        Vec3d eyePos = client.player.getEyePos();
-        Vec3d center = Vec3d.ofCenter(targetPos);
-        if (eyePos.squaredDistanceTo(center) > Node.getBlockInteractionReachSquared(client)) {
+        Vec3 eyePos = client.player.getEyePosition();
+        Vec3 center = Vec3.atCenterOf(targetPos);
+        if (eyePos.distanceToSqr(center) > Node.getBlockInteractionReachSquared(client)) {
             NodeExecutionCompletion.fail(owner, client, future, tr("pathmind.error.targetBlockOutOfReach"));
             return;
         }
 
-        Direction breakFace = Direction.getFacing(center.x - eyePos.x, center.y - eyePos.y, center.z - eyePos.z);
+        Direction breakFace = Direction.getApproximateNearest(center.x - eyePos.x, center.y - eyePos.y, center.z - eyePos.z);
         if (breakFace == null) {
             breakFace = Direction.UP;
         }
 
-        BlockState state = client.world.getBlockState(targetPos);
+        BlockState state = client.level.getBlockState(targetPos);
         if (state.isAir()) {
             NodeExecutionCompletion.complete(future);
             return;
         }
 
-        float delta = state.calcBlockBreakingDelta(client.player, client.world, targetPos);
+        float delta = state.getDestroyProgress(client.player, client.level, targetPos);
         if (delta <= 0.0F) {
             NodeExecutionCompletion.fail(owner, client, future, tr("pathmind.error.blockCannotBeBroken"));
             return;
@@ -295,30 +294,30 @@ final class NodeCollectCommandExecutor {
             try {
                 owner.runOnClientThread(client, () -> {
                     owner.orientPlayerTowardsRuntimeTarget(client, runtimeState.runtimeParameterData);
-                    if (client.interactionManager != null) {
-                        client.interactionManager.attackBlock(targetPos, finalBreakFace);
+                    if (client.gameMode != null) {
+                        client.gameMode.startDestroyBlock(targetPos, finalBreakFace);
                     }
-                    client.player.swingHand(Hand.MAIN_HAND);
+                    client.player.swing(InteractionHand.MAIN_HAND);
                 });
 
                 for (int i = 0; i < ticksToBreak; i++) {
                     Thread.sleep(50L);
                     Boolean isAir = owner.supplyFromClient(client,
-                        () -> client.world == null || client.world.getBlockState(targetPos).isAir());
+                        () -> client.level == null || client.level.getBlockState(targetPos).isAir());
                     if (Boolean.TRUE.equals(isAir)) {
                         break;
                     }
                     owner.runOnClientThread(client, () -> {
-                        if (client.interactionManager != null) {
-                            client.interactionManager.updateBlockBreakingProgress(targetPos, finalBreakFace);
+                        if (client.gameMode != null) {
+                            client.gameMode.continueDestroyBlock(targetPos, finalBreakFace);
                         }
                     });
                 }
 
                 owner.runOnClientThread(client, () -> {
-                    if (client.player != null && client.player.networkHandler != null) {
-                        client.player.networkHandler.sendPacket(new PlayerActionC2SPacket(
-                            PlayerActionC2SPacket.Action.STOP_DESTROY_BLOCK,
+                    if (client.player != null && client.player.connection != null) {
+                        client.player.connection.send(new ServerboundPlayerActionPacket(
+                            ServerboundPlayerActionPacket.Action.STOP_DESTROY_BLOCK,
                             targetPos,
                             finalBreakFace
                         ));
@@ -333,20 +332,20 @@ final class NodeCollectCommandExecutor {
     }
 
     private boolean hasRequiredBlockAlready(String blockId, int required) {
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         if (client == null || client.player == null || blockId == null) {
             return false;
         }
         Identifier identifier = BlockSelection.extractBlockIdentifier(blockId);
-        if (identifier == null || !Registries.BLOCK.containsId(identifier)) {
+        if (identifier == null || !BuiltInRegistries.BLOCK.containsKey(identifier)) {
             return false;
         }
-        Block block = Registries.BLOCK.get(identifier);
+        Block block = BuiltInRegistries.BLOCK.getValue(identifier);
         Item item = block.asItem();
         if (item == null || item == Items.AIR) {
             return false;
         }
-        int count = client.player.getInventory().count(item);
+        int count = client.player.getInventory().countItem(item);
         if (count >= required) {
             owner.sendNodeInfoMessage(client, "Already have " + count + " " + blockId + ", skipping mine.");
             return true;

@@ -8,9 +8,9 @@ import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.DrawContextBridge;
 import com.pathmind.util.RenderStateBridge;
 import com.pathmind.util.TextRenderUtil;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.widget.TextFieldWidget;
-import net.minecraft.text.Text;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.network.chat.Component;
 
 final class PathmindPresetPopupController {
     private final PathmindVisualEditorScreen screen;
@@ -169,7 +169,7 @@ final class PathmindPresetPopupController {
         return true;
     }
 
-    void renderCreatePresetPopup(DrawContext context, int mouseX, int mouseY, float delta) {
+    void renderCreatePresetPopup(GuiGraphics context, int mouseX, int mouseY, float delta) {
         int popupHeight = screen.getCreateNamingPopupHeight();
         RenderStateBridge.setShaderColor(1f, 1f, 1f, screen.createPresetPopupAnimation.getPopupAlpha());
 
@@ -186,7 +186,7 @@ final class PathmindPresetPopupController {
         PathmindPopupRenderer.drawTitle(
             context,
             screen.textRenderer(),
-            Text.translatable(screen.createRoutineNaming ? (screen.pendingRoutineRenameId.isBlank() ? "pathmind.popup.createRoutine.title" : "pathmind.popup.renameRoutine.title") : "pathmind.popup.createPreset.title"),
+            Component.translatable(screen.createRoutineNaming ? (screen.pendingRoutineRenameId.isBlank() ? "pathmind.popup.createRoutine.title" : "pathmind.popup.renameRoutine.title") : "pathmind.popup.createPreset.title"),
             popupX,
             contentY,
             scaledWidth,
@@ -195,7 +195,7 @@ final class PathmindPresetPopupController {
 
         screen.drawPopupTextWithEllipsis(
             context,
-            Text.translatable(screen.createRoutineNaming ? (screen.pendingRoutineRenameId.isBlank() ? "pathmind.popup.createRoutine.message" : "pathmind.popup.renameRoutine.message") : "pathmind.popup.createPreset.message").getString(),
+            Component.translatable(screen.createRoutineNaming ? (screen.pendingRoutineRenameId.isBlank() ? "pathmind.popup.createRoutine.message" : "pathmind.popup.renameRoutine.message") : "pathmind.popup.createPreset.message").getString(),
             popupX + 20,
             contentY + 44,
             scaledWidth - 40,
@@ -221,14 +221,14 @@ final class PathmindPresetPopupController {
 
         PathmindPopupLayout.ButtonRow buttonRow = PathmindPopupLayout.twoButtonRow(popupX, scaledWidth, contentY, popupHeight, 90, 20, 16);
         renderButtonRow(context, mouseX, mouseY, buttonRow,
-            Text.translatable("pathmind.button.cancel"),
-            Text.translatable(screen.createRoutineNaming && !screen.pendingRoutineRenameId.isBlank() ? "pathmind.button.rename" : "pathmind.button.create"),
+            Component.translatable("pathmind.button.cancel"),
+            Component.translatable(screen.createRoutineNaming && !screen.pendingRoutineRenameId.isBlank() ? "pathmind.button.rename" : "pathmind.button.create"),
             screen.createPresetPopupAnimation);
         PathmindPopupRenderer.disableScissor(context, popupScissor);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
 
-    void renderPublishPresetPopup(DrawContext context, int mouseX, int mouseY, float delta) {
+    void renderPublishPresetPopup(GuiGraphics context, int mouseX, int mouseY, float delta) {
         RenderStateBridge.setShaderColor(1f, 1f, 1f, screen.publishPresetPopupAnimation.getPopupAlpha());
         syncPublishPresetVisibilityToggleColors();
 
@@ -245,7 +245,7 @@ final class PathmindPresetPopupController {
         PathmindPopupRenderer.drawTitle(
             context,
             screen.textRenderer(),
-            screen.publishPresetEditingPreset == null ? Text.translatable("pathmind.marketplace.publishPreset") : Text.translatable("pathmind.marketplace.updateUploadedPreset"),
+            screen.publishPresetEditingPreset == null ? Component.translatable("pathmind.marketplace.publishPreset") : Component.translatable("pathmind.marketplace.updateUploadedPreset"),
             popupX,
             contentY,
             scaledWidth,
@@ -268,11 +268,11 @@ final class PathmindPresetPopupController {
         int fieldWidth = layout.fieldWidth();
         int fieldHeight = layout.nameField().height();
 
-        screen.drawPopupTextWithEllipsis(context, Text.translatable("pathmind.field.name").getString(), fieldX, layout.nameField().y() - 10, fieldWidth,
+        screen.drawPopupTextWithEllipsis(context, Component.translatable("pathmind.field.name").getString(), fieldX, layout.nameField().y() - 10, fieldWidth,
             screen.getPopupAnimatedColor(screen.publishPresetPopupAnimation, UITheme.TEXT_SECONDARY));
-        screen.drawPopupTextWithEllipsis(context, Text.translatable("pathmind.field.description").getString(), fieldX, layout.descriptionField().y() - 10, fieldWidth,
+        screen.drawPopupTextWithEllipsis(context, Component.translatable("pathmind.field.description").getString(), fieldX, layout.descriptionField().y() - 10, fieldWidth,
             screen.getPopupAnimatedColor(screen.publishPresetPopupAnimation, UITheme.TEXT_SECONDARY));
-        screen.drawPopupTextWithEllipsis(context, Text.translatable("pathmind.field.tags").getString(), fieldX, layout.tagsField().y() - 10, fieldWidth,
+        screen.drawPopupTextWithEllipsis(context, Component.translatable("pathmind.field.tags").getString(), fieldX, layout.tagsField().y() - 10, fieldWidth,
             screen.getPopupAnimatedColor(screen.publishPresetPopupAnimation, UITheme.TEXT_SECONDARY));
 
         renderPublishPresetField(context, mouseX, mouseY, delta, screen.publishPresetNameField, layout.nameField());
@@ -280,17 +280,17 @@ final class PathmindPresetPopupController {
         renderPublishPresetField(context, mouseX, mouseY, delta, screen.publishPresetTagsField, layout.tagsField());
 
         int visibilityY = layout.visibilityRow().y();
-        screen.drawPopupTextWithEllipsis(context, Text.translatable("pathmind.field.visibility").getString(), fieldX, visibilityY - 10, fieldWidth,
+        screen.drawPopupTextWithEllipsis(context, Component.translatable("pathmind.field.visibility").getString(), fieldX, visibilityY - 10, fieldWidth,
             screen.getPopupAnimatedColor(screen.publishPresetPopupAnimation, UITheme.TEXT_SECONDARY));
         renderPublishVisibilityToggle(context, mouseX, mouseY, layout.visibilityRow(), layout.visibilityToggle());
 
-        String accountLabel = screen.publishPresetBusy ? Text.translatable("pathmind.status.working").getString() : screen.publishPresetSession == null
-            ? Text.translatable("pathmind.marketplace.signIn").getString()
+        String accountLabel = screen.publishPresetBusy ? Component.translatable("pathmind.status.working").getString() : screen.publishPresetSession == null
+            ? Component.translatable("pathmind.marketplace.signIn").getString()
             : TextRenderUtil.trimWithEllipsis(screen.textRenderer(),
-                screen.fallback(screen.publishPresetSession.getDisplayName(), screen.fallback(screen.publishPresetSession.getEmail(), Text.translatable("pathmind.marketplace.signedIn").getString())), 110);
+                screen.fallback(screen.publishPresetSession.getDisplayName(), screen.fallback(screen.publishPresetSession.getEmail(), Component.translatable("pathmind.marketplace.signedIn").getString())), 110);
         screen.drawPopupTextWithEllipsis(context, screen.publishPresetPublic
-                ? Text.translatable("pathmind.marketplace.visiblePublic").getString()
-                : Text.translatable("pathmind.marketplace.visiblePrivate").getString(),
+                ? Component.translatable("pathmind.marketplace.visiblePublic").getString()
+                : Component.translatable("pathmind.marketplace.visiblePrivate").getString(),
             fieldX, visibilityY + fieldHeight + 8, fieldWidth, screen.getPopupAnimatedColor(screen.publishPresetPopupAnimation, UITheme.TEXT_TERTIARY));
 
         if (!screen.publishPresetStatus.isEmpty()) {
@@ -301,8 +301,8 @@ final class PathmindPresetPopupController {
         PathmindPopupLayout.Rect cancelButton = layout.cancelButton();
         PathmindPopupLayout.Rect publishButton = layout.publishButton();
         PathmindPopupLayout.Rect signInButton = layout.signInButton();
-        int accountTextX = popupX + scaledWidth / 2 - screen.textRenderer().getWidth(accountLabel) / 2;
-        int accountTextY = cancelButton.y() + (cancelButton.height() - screen.textRenderer().fontHeight) / 2 + 1;
+        int accountTextX = popupX + scaledWidth / 2 - screen.textRenderer().width(accountLabel) / 2;
+        int accountTextY = cancelButton.y() + (cancelButton.height() - screen.textRenderer().lineHeight) / 2 + 1;
 
         PathmindPopupRenderer.drawButton(
             context,
@@ -310,7 +310,7 @@ final class PathmindPresetPopupController {
             cancelButton,
             mouseX,
             mouseY,
-            Text.translatable("pathmind.button.cancel"),
+            Component.translatable("pathmind.button.cancel"),
             PathmindPopupRenderer.ButtonStyle.DEFAULT,
             screen.getAccentColor(),
             screen.publishPresetPopupAnimation
@@ -322,13 +322,13 @@ final class PathmindPresetPopupController {
                 signInButton,
                 mouseX,
                 mouseY,
-                Text.literal(accountLabel),
+                Component.literal(accountLabel),
                 PathmindPopupRenderer.ButtonStyle.DEFAULT,
                 screen.getAccentColor(),
                 screen.publishPresetPopupAnimation
             );
         } else {
-            context.drawTextWithShadow(screen.textRenderer(), Text.literal(accountLabel), accountTextX, accountTextY,
+            context.drawString(screen.textRenderer(), Component.literal(accountLabel), accountTextX, accountTextY,
                 screen.getPopupAnimatedColor(screen.publishPresetPopupAnimation, UITheme.TEXT_SECONDARY));
         }
         PathmindPopupRenderer.drawButton(
@@ -337,7 +337,7 @@ final class PathmindPresetPopupController {
             publishButton,
             mouseX,
             mouseY,
-            Text.literal(screen.publishPresetBusy ? Text.translatable("pathmind.status.working").getString() : (screen.publishPresetEditingPreset == null ? Text.translatable("pathmind.marketplace.publish").getString() : Text.translatable("pathmind.button.update").getString())),
+            Component.literal(screen.publishPresetBusy ? Component.translatable("pathmind.status.working").getString() : (screen.publishPresetEditingPreset == null ? Component.translatable("pathmind.marketplace.publish").getString() : Component.translatable("pathmind.button.update").getString())),
             PathmindPopupRenderer.ButtonStyle.PRIMARY,
             screen.getAccentColor(),
             screen.publishPresetPopupAnimation
@@ -346,7 +346,7 @@ final class PathmindPresetPopupController {
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
 
-    void renderRenamePresetPopup(DrawContext context, int mouseX, int mouseY, float delta) {
+    void renderRenamePresetPopup(GuiGraphics context, int mouseX, int mouseY, float delta) {
         RenderStateBridge.setShaderColor(1f, 1f, 1f, screen.renamePresetPopupAnimation.getPopupAlpha());
 
         int[] bounds = screen.getBoundedScaledPopupBounds(screen.renamePresetPopupAnimation, CREATE_PRESET_POPUP_WIDTH, CREATE_PRESET_POPUP_HEIGHT);
@@ -362,7 +362,7 @@ final class PathmindPresetPopupController {
         PathmindPopupRenderer.drawTitle(
             context,
             screen.textRenderer(),
-            Text.translatable("pathmind.popup.renamePreset.title"),
+            Component.translatable("pathmind.popup.renamePreset.title"),
             popupX,
             contentY,
             scaledWidth,
@@ -370,9 +370,9 @@ final class PathmindPresetPopupController {
         );
 
         String presetLabel = screen.pendingPresetRenameName == null || screen.pendingPresetRenameName.isEmpty()
-            ? Text.translatable("pathmind.popup.preset.fallbackSelected").getString()
-            : Text.translatable("pathmind.popup.preset.label", screen.pendingPresetRenameName).getString();
-        screen.drawPopupTextWithEllipsis(context, Text.translatable("pathmind.popup.renamePreset.message").getString(), popupX + 20, contentY + 44, scaledWidth - 40,
+            ? Component.translatable("pathmind.popup.preset.fallbackSelected").getString()
+            : Component.translatable("pathmind.popup.preset.label", screen.pendingPresetRenameName).getString();
+        screen.drawPopupTextWithEllipsis(context, Component.translatable("pathmind.popup.renamePreset.message").getString(), popupX + 20, contentY + 44, scaledWidth - 40,
             screen.getPopupAnimatedColor(screen.renamePresetPopupAnimation, UITheme.TEXT_SECONDARY));
         screen.drawPopupTextWithEllipsis(context, presetLabel, popupX + 20, contentY + 58, scaledWidth - 40,
             screen.getPopupAnimatedColor(screen.renamePresetPopupAnimation, UITheme.TEXT_SECONDARY));
@@ -390,14 +390,14 @@ final class PathmindPresetPopupController {
 
         PathmindPopupLayout.ButtonRow buttonRow = PathmindPopupLayout.twoButtonRow(popupX, scaledWidth, contentY, CREATE_PRESET_POPUP_HEIGHT, 90, 20, 16);
         renderButtonRow(context, mouseX, mouseY, buttonRow,
-            Text.translatable("pathmind.button.cancel"),
-            Text.translatable("pathmind.button.rename"),
+            Component.translatable("pathmind.button.cancel"),
+            Component.translatable("pathmind.button.rename"),
             screen.renamePresetPopupAnimation);
         PathmindPopupRenderer.disableScissor(context, popupScissor);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
 
-    void renderPresetDeletePopup(DrawContext context, int mouseX, int mouseY) {
+    void renderPresetDeletePopup(GuiGraphics context, int mouseX, int mouseY) {
         RenderStateBridge.setShaderColor(1f, 1f, 1f, screen.presetDeletePopupAnimation.getPopupAlpha());
 
         int[] bounds = screen.getBoundedScaledPopupBounds(screen.presetDeletePopupAnimation, PRESET_DELETE_POPUP_WIDTH, PRESET_DELETE_POPUP_HEIGHT);
@@ -413,7 +413,7 @@ final class PathmindPresetPopupController {
         PathmindPopupRenderer.drawTitle(
             context,
             screen.textRenderer(),
-            Text.translatable("pathmind.popup.deletePreset.title"),
+            Component.translatable("pathmind.popup.deletePreset.title"),
             popupX,
             contentY,
             scaledWidth,
@@ -422,10 +422,10 @@ final class PathmindPresetPopupController {
 
         String presetLabel = screen.pendingPresetDeletionName != null && !screen.pendingPresetDeletionName.isEmpty()
             ? screen.pendingPresetDeletionName
-            : Text.translatable("pathmind.popup.preset.fallbackCurrent").getString();
-        screen.drawPopupTextWithEllipsis(context, Text.translatable("pathmind.popup.deletePreset.message").getString(), popupX + 20, contentY + 48, scaledWidth - 40,
+            : Component.translatable("pathmind.popup.preset.fallbackCurrent").getString();
+        screen.drawPopupTextWithEllipsis(context, Component.translatable("pathmind.popup.deletePreset.message").getString(), popupX + 20, contentY + 48, scaledWidth - 40,
             screen.getPopupAnimatedColor(screen.presetDeletePopupAnimation, UITheme.TEXT_SECONDARY));
-        screen.drawPopupTextWithEllipsis(context, Text.translatable("pathmind.popup.preset.label", presetLabel).getString(), popupX + 20, contentY + 64, scaledWidth - 40,
+        screen.drawPopupTextWithEllipsis(context, Component.translatable("pathmind.popup.preset.label", presetLabel).getString(), popupX + 20, contentY + 64, scaledWidth - 40,
             screen.getPopupAnimatedColor(screen.presetDeletePopupAnimation, UITheme.TEXT_SECONDARY));
 
         int checkboxX = popupX + 20;
@@ -444,19 +444,19 @@ final class PathmindPresetPopupController {
             context.fill(checkboxX + 6, checkboxY + 4, checkboxX + 7, checkboxY + 5, checkColor);
             context.fill(checkboxX + 7, checkboxY + 3, checkboxX + 8, checkboxY + 4, checkColor);
         }
-        screen.drawPopupTextWithEllipsis(context, Text.translatable("pathmind.presetDelete.dontShowAgain").getString(), checkboxX + PRESET_DELETE_SKIP_CHECKBOX_SIZE + 8, checkboxY + 1, scaledWidth - 68,
+        screen.drawPopupTextWithEllipsis(context, Component.translatable("pathmind.presetDelete.dontShowAgain").getString(), checkboxX + PRESET_DELETE_SKIP_CHECKBOX_SIZE + 8, checkboxY + 1, scaledWidth - 68,
             screen.getPopupAnimatedColor(screen.presetDeletePopupAnimation, UITheme.TEXT_SECONDARY));
 
         PathmindPopupLayout.ButtonRow buttonRow = PathmindPopupLayout.twoButtonRow(popupX, scaledWidth, contentY, PRESET_DELETE_POPUP_HEIGHT, 90, 20, 16);
         renderButtonRow(context, mouseX, mouseY, buttonRow,
-            Text.translatable("pathmind.button.cancel"),
-            Text.translatable("pathmind.button.delete"),
+            Component.translatable("pathmind.button.cancel"),
+            Component.translatable("pathmind.button.delete"),
             screen.presetDeletePopupAnimation);
         PathmindPopupRenderer.disableScissor(context, popupScissor);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
 
-    void focusPublishPresetField(TextFieldWidget target) {
+    void focusPublishPresetField(EditBox target) {
         if (screen.publishPresetNameField != null) {
             screen.publishPresetNameField.setFocused(screen.publishPresetNameField == target);
         }
@@ -468,7 +468,7 @@ final class PathmindPresetPopupController {
         }
     }
 
-    private void renderPresetTextField(DrawContext context, int mouseX, int mouseY, float delta, TextFieldWidget field,
+    private void renderPresetTextField(GuiGraphics context, int mouseX, int mouseY, float delta, EditBox field,
                                        int fieldX, int fieldY, int fieldWidth, int fieldHeight, com.pathmind.ui.animation.PopupAnimationHandler animation) {
         boolean fieldHovered = screen.isPointInRect(mouseX, mouseY, fieldX, fieldY, fieldWidth, fieldHeight);
         boolean focused = field != null && field.isFocused();
@@ -491,16 +491,16 @@ final class PathmindPresetPopupController {
         );
     }
 
-    private void renderPublishPresetField(DrawContext context, int mouseX, int mouseY, float delta, TextFieldWidget field,
+    private void renderPublishPresetField(GuiGraphics context, int mouseX, int mouseY, float delta, EditBox field,
                                           PathmindPopupLayout.Rect bounds) {
         renderPresetTextField(context, mouseX, mouseY, delta, field, bounds.x(), bounds.y(), bounds.width(), bounds.height(), screen.publishPresetPopupAnimation);
     }
 
-    private void renderPublishVisibilityToggle(DrawContext context, int mouseX, int mouseY, PathmindPopupLayout.Rect row, PathmindPopupLayout.Rect toggle) {
+    private void renderPublishVisibilityToggle(GuiGraphics context, int mouseX, int mouseY, PathmindPopupLayout.Rect row, PathmindPopupLayout.Rect toggle) {
         screen.publishPresetVisibilityToggle.setValue(screen.publishPresetPublic);
         screen.publishPresetVisibilityToggle.setPosition(toggle.x(), toggle.y());
         screen.publishPresetVisibilityToggle.render(context, mouseX, mouseY, screen.publishPresetPopupAnimation.getPopupAlpha());
-        String label = screen.publishPresetPublic ? Text.translatable("pathmind.option.public").getString() : Text.translatable("pathmind.option.private").getString();
+        String label = screen.publishPresetPublic ? Component.translatable("pathmind.option.public").getString() : Component.translatable("pathmind.option.private").getString();
         int labelColor = screen.publishPresetPublic ? screen.getAccentColor() : UITheme.STATE_WARNING;
         screen.drawPopupTextWithEllipsis(context, label, row.x(), row.y() + 4, row.width() - toggle.width() - 8,
             screen.getPopupAnimatedColor(screen.publishPresetPopupAnimation, labelColor));
@@ -510,8 +510,8 @@ final class PathmindPresetPopupController {
         screen.publishPresetVisibilityToggle.setIndicatorColors(UITheme.MARKETPLACE_PRIVATE_VISIBILITY, screen.getAccentColor());
     }
 
-    private void renderButtonRow(DrawContext context, int mouseX, int mouseY, PathmindPopupLayout.ButtonRow buttonRow,
-                                 Text leftLabel, Text rightLabel, com.pathmind.ui.animation.PopupAnimationHandler animation) {
+    private void renderButtonRow(GuiGraphics context, int mouseX, int mouseY, PathmindPopupLayout.ButtonRow buttonRow,
+                                 Component leftLabel, Component rightLabel, com.pathmind.ui.animation.PopupAnimationHandler animation) {
         PathmindPopupLayout.Rect leftButton = buttonRow.left();
         PathmindPopupLayout.Rect rightButton = buttonRow.right();
         PathmindPopupRenderer.drawButton(

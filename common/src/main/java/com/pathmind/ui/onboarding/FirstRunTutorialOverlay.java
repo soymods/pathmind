@@ -7,13 +7,12 @@ import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.DrawContextBridge;
 import com.pathmind.util.TextRenderUtil;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.text.Text;
-import net.minecraft.util.math.MathHelper;
-
 import java.util.ArrayList;
 import java.util.List;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.network.chat.Component;
+import net.minecraft.util.Mth;
 
 /**
  * First-run guided overlay for the visual editor.
@@ -110,7 +109,7 @@ public final class FirstRunTutorialOverlay {
         return visible;
     }
 
-    public void render(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY,
+    public void render(GuiGraphics context, Font textRenderer, int mouseX, int mouseY,
                        int screenWidth, int screenHeight, int accentColor,
                        TargetBoundsProvider boundsProvider) {
         if (!visible) {
@@ -120,10 +119,10 @@ public final class FirstRunTutorialOverlay {
         entranceAnimation.tick();
         stepAnimation.tick();
         activeSteps = getAvailableSteps(boundsProvider);
-        stepIndex = MathHelper.clamp(stepIndex, 0, activeSteps.size() - 1);
+        stepIndex = Mth.clamp(stepIndex, 0, activeSteps.size() - 1);
         float entrance = entranceAnimation.getValue();
         float stepProgress = stepAnimation.getValue();
-        float contentAlpha = entrance * MathHelper.clamp(0.55f + stepProgress * 0.45f, 0f, 1f);
+        float contentAlpha = entrance * Mth.clamp(0.55f + stepProgress * 0.45f, 0f, 1f);
         Step step = activeSteps.get(stepIndex);
         boolean hasSpotlight = step.target() != Target.NONE;
         int[] spotlight = getSpotlightBounds(step.target(), boundsProvider, screenWidth, screenHeight);
@@ -136,16 +135,16 @@ public final class FirstRunTutorialOverlay {
         int textWidth = Math.max(1, panelWidth - PANEL_PADDING * 2);
         List<String> bodyLines = TextRenderUtil.wrapWords(
             textRenderer,
-            Text.translatable(step.bodyKey()).getString(),
+            Component.translatable(step.bodyKey()).getString(),
             textWidth
         );
-        int bodyHeight = bodyLines.size() * (textRenderer.fontHeight + 3);
-        panelHeight = Math.max(PANEL_MIN_HEIGHT, PANEL_PADDING * 2 + 12 + textRenderer.fontHeight + bodyHeight + BUTTON_HEIGHT + 16);
+        int bodyHeight = bodyLines.size() * (textRenderer.lineHeight + 3);
+        panelHeight = Math.max(PANEL_MIN_HEIGHT, PANEL_PADDING * 2 + 12 + textRenderer.lineHeight + bodyHeight + BUTTON_HEIGHT + 16);
         int[] panelPos = hasSpotlight
             ? choosePanelPosition(screenWidth, screenHeight, spotlight, panelWidth, panelHeight)
             : new int[]{
-                MathHelper.clamp(screenWidth / 2 - panelWidth / 2, 12, Math.max(12, screenWidth - panelWidth - 12)),
-                MathHelper.clamp(screenHeight / 2 - panelHeight / 2, 28, Math.max(28, screenHeight - panelHeight - 12))
+                Mth.clamp(screenWidth / 2 - panelWidth / 2, 12, Math.max(12, screenWidth - panelWidth - 12)),
+                Mth.clamp(screenHeight / 2 - panelHeight / 2, 28, Math.max(28, screenHeight - panelHeight - 12))
             };
         panelX = panelPos[0];
         panelY = Math.round(panelPos[1] + (1f - entrance) * 8f + (1f - stepProgress) * 5f);
@@ -161,22 +160,22 @@ public final class FirstRunTutorialOverlay {
         int titleColor = AnimationHelper.withAlpha(UITheme.TEXT_HEADER, contentAlpha);
         int bodyColor = AnimationHelper.withAlpha(UITheme.TEXT_SECONDARY, contentAlpha);
         String count = (stepIndex + 1) + "/" + activeSteps.size();
-        int titleWidth = Math.max(1, textWidth - textRenderer.getWidth(count) - 8);
+        int titleWidth = Math.max(1, textWidth - textRenderer.width(count) - 8);
         String title = TextRenderUtil.trimWithEllipsis(
             textRenderer,
-            Text.translatable(step.titleKey()).getString(),
+            Component.translatable(step.titleKey()).getString(),
             titleWidth
         );
-        context.drawTextWithShadow(textRenderer, Text.literal(title), panelX + PANEL_PADDING, panelY + PANEL_PADDING, titleColor);
-        context.drawTextWithShadow(textRenderer, Text.literal(count),
-            panelX + panelWidth - PANEL_PADDING - textRenderer.getWidth(count),
+        context.drawString(textRenderer, Component.literal(title), panelX + PANEL_PADDING, panelY + PANEL_PADDING, titleColor);
+        context.drawString(textRenderer, Component.literal(count),
+            panelX + panelWidth - PANEL_PADDING - textRenderer.width(count),
             panelY + PANEL_PADDING,
             AnimationHelper.withAlpha(accentColor, contentAlpha));
 
-        int textY = panelY + PANEL_PADDING + textRenderer.fontHeight + 10;
+        int textY = panelY + PANEL_PADDING + textRenderer.lineHeight + 10;
         for (String line : bodyLines) {
-            context.drawTextWithShadow(textRenderer, Text.literal(line), panelX + PANEL_PADDING, textY, bodyColor);
-            textY += textRenderer.fontHeight + 3;
+            context.drawString(textRenderer, Component.literal(line), panelX + PANEL_PADDING, textY, bodyColor);
+            textY += textRenderer.lineHeight + 3;
         }
 
         renderProgressDots(context, panelX + PANEL_PADDING, panelY + panelHeight - PANEL_PADDING - 5, accentColor, contentAlpha);
@@ -240,7 +239,7 @@ public final class FirstRunTutorialOverlay {
     }
 
     private void setStep(int index) {
-        stepIndex = MathHelper.clamp(index, 0, activeSteps.size() - 1);
+        stepIndex = Mth.clamp(index, 0, activeSteps.size() - 1);
         stepAnimation.setValue(0f);
         stepAnimation.animateTo(1f, 180, AnimationHelper::easeOutCubic);
         notifyStepChanged();
@@ -282,14 +281,14 @@ public final class FirstRunTutorialOverlay {
         if (bounds == null || bounds.length < 4 || bounds[2] <= 0 || bounds[3] <= 0) {
             return new int[]{screenWidth / 2 - 1, screenHeight / 2 - 1, 2, 2};
         }
-        int x = MathHelper.clamp(bounds[0] - SPOTLIGHT_PADDING, 0, screenWidth);
-        int y = MathHelper.clamp(bounds[1] - SPOTLIGHT_PADDING, 0, screenHeight);
-        int right = MathHelper.clamp(bounds[0] + Math.max(bounds[2], SPOTLIGHT_MIN_SIZE) + SPOTLIGHT_PADDING, 0, screenWidth);
-        int bottom = MathHelper.clamp(bounds[1] + Math.max(bounds[3], SPOTLIGHT_MIN_SIZE) + SPOTLIGHT_PADDING, 0, screenHeight);
+        int x = Mth.clamp(bounds[0] - SPOTLIGHT_PADDING, 0, screenWidth);
+        int y = Mth.clamp(bounds[1] - SPOTLIGHT_PADDING, 0, screenHeight);
+        int right = Mth.clamp(bounds[0] + Math.max(bounds[2], SPOTLIGHT_MIN_SIZE) + SPOTLIGHT_PADDING, 0, screenWidth);
+        int bottom = Mth.clamp(bounds[1] + Math.max(bounds[3], SPOTLIGHT_MIN_SIZE) + SPOTLIGHT_PADDING, 0, screenHeight);
         return new int[]{x, y, Math.max(SPOTLIGHT_MIN_SIZE, right - x), Math.max(SPOTLIGHT_MIN_SIZE, bottom - y)};
     }
 
-    private void renderScrim(DrawContext context, int screenWidth, int screenHeight, int[] spotlight, float alpha, boolean hasSpotlight) {
+    private void renderScrim(GuiGraphics context, int screenWidth, int screenHeight, int[] spotlight, float alpha, boolean hasSpotlight) {
         int color = AnimationHelper.withAlpha(OVERLAY_COLOR, ((OVERLAY_COLOR >>> 24) & 0xFF) / 255f * alpha);
         if (!hasSpotlight) {
             DrawContextBridge.fillOverlay(context, 0, 0, screenWidth, screenHeight, color);
@@ -305,7 +304,7 @@ public final class FirstRunTutorialOverlay {
         DrawContextBridge.fillOverlay(context, 0, bottom, screenWidth, screenHeight, color);
     }
 
-    private void renderSpotlight(DrawContext context, int[] spotlight, int accentColor, float alpha) {
+    private void renderSpotlight(GuiGraphics context, int[] spotlight, int accentColor, float alpha) {
         float pulse = (float) ((Math.sin(System.currentTimeMillis() / 260.0) + 1.0) * 0.5);
         int color = AnimationHelper.withAlpha(AnimationHelper.lerpColor(accentColor, UITheme.TEXT_HEADER, pulse * 0.18f), alpha);
         int x = spotlight[0];
@@ -323,16 +322,16 @@ public final class FirstRunTutorialOverlay {
         int preferredY = targetCenterY - height / 2;
 
         if (preferredX < 12 || preferredX + width > screenWidth - 12) {
-            preferredX = MathHelper.clamp(screenWidth / 2 - width / 2, 12, Math.max(12, screenWidth - width - 12));
+            preferredX = Mth.clamp(screenWidth / 2 - width / 2, 12, Math.max(12, screenWidth - width - 12));
             preferredY = spotlight[1] > screenHeight / 2 ? spotlight[1] - height - PANEL_GAP : spotlight[1] + spotlight[3] + PANEL_GAP;
         }
 
-        int x = MathHelper.clamp(preferredX, 12, Math.max(12, screenWidth - width - 12));
-        int y = MathHelper.clamp(preferredY, 28, Math.max(28, screenHeight - height - 12));
+        int x = Mth.clamp(preferredX, 12, Math.max(12, screenWidth - width - 12));
+        int y = Mth.clamp(preferredY, 28, Math.max(28, screenHeight - height - 12));
         return new int[]{x, y};
     }
 
-    private void renderConnector(DrawContext context, int x, int y, int width, int height, int[] spotlight, int accentColor, float alpha) {
+    private void renderConnector(GuiGraphics context, int x, int y, int width, int height, int[] spotlight, int accentColor, float alpha) {
         int sourceX = x + width / 2;
         int sourceY = y + height / 2;
         int targetCenterX = spotlight[0] + spotlight[2] / 2;
@@ -344,15 +343,15 @@ public final class FirstRunTutorialOverlay {
         if (Math.abs(sourceX - targetCenterX) > Math.abs(sourceY - targetCenterY)) {
             int sourceEdgeX = sourceX < targetCenterX ? x + width : x;
             int midX = (sourceEdgeX + targetX) / 2;
-            context.drawHorizontalLine(sourceEdgeX, midX, sourceY, color);
-            context.drawVerticalLine(midX, Math.min(sourceY, targetY), Math.max(sourceY, targetY), color);
-            context.drawHorizontalLine(Math.min(midX, targetX), Math.max(midX, targetX), targetY, color);
+            context.hLine(sourceEdgeX, midX, sourceY, color);
+            context.vLine(midX, Math.min(sourceY, targetY), Math.max(sourceY, targetY), color);
+            context.hLine(Math.min(midX, targetX), Math.max(midX, targetX), targetY, color);
         } else {
             int sourceEdgeY = sourceY < targetCenterY ? y + height : y;
             int midY = (sourceEdgeY + targetY) / 2;
-            context.drawVerticalLine(sourceX, Math.min(sourceEdgeY, midY), Math.max(sourceEdgeY, midY), color);
-            context.drawHorizontalLine(Math.min(sourceX, targetX), Math.max(sourceX, targetX), midY, color);
-            context.drawVerticalLine(targetX, Math.min(midY, targetY), Math.max(midY, targetY), color);
+            context.vLine(sourceX, Math.min(sourceEdgeY, midY), Math.max(sourceEdgeY, midY), color);
+            context.hLine(Math.min(sourceX, targetX), Math.max(sourceX, targetX), midY, color);
+            context.vLine(targetX, Math.min(midY, targetY), Math.max(midY, targetY), color);
         }
     }
 
@@ -367,16 +366,16 @@ public final class FirstRunTutorialOverlay {
         int minHorizontal = Math.min(leftDistance, rightDistance);
         int minVertical = Math.min(topDistance, bottomDistance);
         if (minHorizontal <= minVertical) {
-            return new int[]{fromX < centerX ? x : x + width, MathHelper.clamp(fromY, y, y + height)};
+            return new int[]{fromX < centerX ? x : x + width, Mth.clamp(fromY, y, y + height)};
         }
-        return new int[]{MathHelper.clamp(fromX, x, x + width), fromY < centerY ? y : y + height};
+        return new int[]{Mth.clamp(fromX, x, x + width), fromY < centerY ? y : y + height};
     }
 
     private boolean rectanglesIntersect(int ax, int ay, int aw, int ah, int bx, int by, int bw, int bh) {
         return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
     }
 
-    private void renderProgressDots(DrawContext context, int x, int y, int accentColor, float alpha) {
+    private void renderProgressDots(GuiGraphics context, int x, int y, int accentColor, float alpha) {
         for (int i = 0; i < activeSteps.size(); i++) {
             int dotX = x + i * 8;
             int color = i == stepIndex ? accentColor : UITheme.BORDER_DEFAULT;
@@ -384,7 +383,7 @@ public final class FirstRunTutorialOverlay {
         }
     }
 
-    private void renderButtons(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY, int accentColor, float alpha) {
+    private void renderButtons(GuiGraphics context, Font textRenderer, int mouseX, int mouseY, int accentColor, float alpha) {
         skipX = panelX + PANEL_PADDING;
         skipY = panelY + panelHeight - PANEL_PADDING - BUTTON_HEIGHT;
         nextX = panelX + panelWidth - PANEL_PADDING - NEXT_WIDTH;
@@ -393,19 +392,19 @@ public final class FirstRunTutorialOverlay {
         backY = skipY;
 
         renderButton(context, textRenderer, skipX, skipY, SKIP_WIDTH, BUTTON_HEIGHT, mouseX, mouseY,
-            Text.translatable("pathmind.tutorial.skip").getString(), accentColor, false, alpha);
+            Component.translatable("pathmind.tutorial.skip").getString(), accentColor, false, alpha);
         if (stepIndex > 0) {
             renderButton(context, textRenderer, backX, backY, BACK_WIDTH, BUTTON_HEIGHT, mouseX, mouseY,
-                Text.translatable("pathmind.tutorial.back").getString(), accentColor, false, alpha);
+                Component.translatable("pathmind.tutorial.back").getString(), accentColor, false, alpha);
         }
         String nextLabel = stepIndex >= activeSteps.size() - 1
-            ? Text.translatable("pathmind.tutorial.done").getString()
-            : Text.translatable("pathmind.tutorial.next").getString();
+            ? Component.translatable("pathmind.tutorial.done").getString()
+            : Component.translatable("pathmind.tutorial.next").getString();
         renderButton(context, textRenderer, nextX, nextY, NEXT_WIDTH, BUTTON_HEIGHT, mouseX, mouseY,
             nextLabel, accentColor, true, alpha);
     }
 
-    private void renderButton(DrawContext context, TextRenderer textRenderer, int x, int y, int width, int height,
+    private void renderButton(GuiGraphics context, Font textRenderer, int x, int y, int width, int height,
                               int mouseX, int mouseY, String label, int accentColor, boolean primary, float alpha) {
         boolean hovered = PathmindWorkspaceChrome.contains(mouseX, mouseY, x, y, width, height);
         UIStyleHelper.TextButtonPalette palette = UIStyleHelper.getTextButtonPalette(
@@ -421,9 +420,9 @@ public final class FirstRunTutorialOverlay {
             AnimationHelper.withAlpha(palette.textColor(), alpha)
         ));
         String trimmed = TextRenderUtil.trimWithEllipsis(textRenderer, label, width - 8);
-        int textX = x + (width - textRenderer.getWidth(trimmed)) / 2;
-        int textY = y + (height - textRenderer.fontHeight) / 2 + 1;
-        context.drawTextWithShadow(textRenderer, Text.literal(trimmed), textX, textY, AnimationHelper.withAlpha(palette.textColor(), alpha));
+        int textX = x + (width - textRenderer.width(trimmed)) / 2;
+        int textY = y + (height - textRenderer.lineHeight) / 2 + 1;
+        context.drawString(textRenderer, Component.literal(trimmed), textX, textY, AnimationHelper.withAlpha(palette.textColor(), alpha));
     }
 
     private record Step(Target target, String titleKey, String bodyKey) {

@@ -2,16 +2,15 @@ package com.pathmind.nodes;
 
 import static com.pathmind.util.PathmindI18n.tr;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.screen.ingame.AbstractSignEditScreen;
-import net.minecraft.client.gui.screen.ingame.InventoryScreen;
-import net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket;
-import net.minecraft.screen.slot.SlotActionType;
-import net.minecraft.text.Text;
-
 import java.util.EnumSet;
 import java.util.concurrent.CompletableFuture;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.inventory.AbstractSignEditScreen;
+import net.minecraft.client.gui.screens.inventory.InventoryScreen;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket;
+import net.minecraft.world.inventory.ClickType;
 
 final class NodeGuiCommandExecutor {
     private final Node owner;
@@ -27,7 +26,7 @@ final class NodeGuiCommandExecutor {
             return;
         }
         NodeMode uiMode = mode != null ? mode : NodeMode.UI_UTILS_CLOSE_WITHOUT_PACKET;
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
 
         if (client == null) {
             future.completeExceptionally(new RuntimeException("Minecraft client not available"));
@@ -63,12 +62,12 @@ final class NodeGuiCommandExecutor {
                             executeUiUtilsCommandOrThrow("desync");
                             break;
                         }
-                        if (client.getNetworkHandler() == null || client.player == null) {
+                        if (client.getConnection() == null || client.player == null) {
                             throw new RuntimeException("Cannot de-sync without a connected player.");
                         }
-                        client.getNetworkHandler().sendPacket(
-                            new net.minecraft.network.packet.c2s.play.CloseHandledScreenC2SPacket(
-                                client.player.currentScreenHandler.syncId
+                        client.getConnection().send(
+                            new net.minecraft.network.protocol.game.ServerboundContainerClosePacket(
+                                client.player.containerMenu.containerId
                             )
                         );
                         break;
@@ -101,7 +100,7 @@ final class NodeGuiCommandExecutor {
                         if (client.player == null) {
                             throw new RuntimeException("Cannot save GUI without an active player.");
                         }
-                        if (!com.pathmind.util.UiUtilsProxy.setStoredScreen(client.currentScreen, client.player.currentScreenHandler)) {
+                        if (!com.pathmind.util.UiUtilsProxy.setStoredScreen(client.screen, client.player.containerMenu)) {
                             throw new RuntimeException("Failed to save GUI.");
                         }
                         break;
@@ -113,13 +112,13 @@ final class NodeGuiCommandExecutor {
                         if (client.player == null) {
                             throw new RuntimeException("Cannot restore GUI without an active player.");
                         }
-                        net.minecraft.client.gui.screen.Screen storedScreen = com.pathmind.util.UiUtilsProxy.getStoredScreen();
-                        net.minecraft.screen.ScreenHandler storedHandler = com.pathmind.util.UiUtilsProxy.getStoredScreenHandler();
+                        net.minecraft.client.gui.screens.Screen storedScreen = com.pathmind.util.UiUtilsProxy.getStoredScreen();
+                        net.minecraft.world.inventory.AbstractContainerMenu storedHandler = com.pathmind.util.UiUtilsProxy.getStoredScreenHandler();
                         if (storedScreen == null || storedHandler == null) {
                             throw new RuntimeException("No saved GUI is available.");
                         }
                         client.setScreen(storedScreen);
-                        client.player.currentScreenHandler = storedHandler;
+                        client.player.containerMenu = storedHandler;
                         break;
                     }
                     case UI_UTILS_DISCONNECT:
@@ -127,10 +126,10 @@ final class NodeGuiCommandExecutor {
                             executeUiUtilsCommandOrThrow("disconnect");
                             break;
                         }
-                        if (client.getNetworkHandler() == null) {
+                        if (client.getConnection() == null) {
                             throw new RuntimeException("Cannot disconnect without a network handler.");
                         }
-                        client.getNetworkHandler().getConnection().disconnect(Text.of("Disconnecting (UI-UTILS)"));
+                        client.getConnection().getConnection().disconnect(Component.nullToEmpty("Disconnecting (UI-UTILS)"));
                         break;
                     case UI_UTILS_DISCONNECT_AND_SEND:
                         if (modernBackend) {
@@ -139,15 +138,15 @@ final class NodeGuiCommandExecutor {
                             }
                             break;
                         }
-                        if (client.getNetworkHandler() == null) {
+                        if (client.getConnection() == null) {
                             throw new RuntimeException("Cannot disconnect without a network handler.");
                         }
                         com.pathmind.util.UiUtilsProxy.setDelayPackets(false);
                         flushUiUtilsDelayedPackets(client, false);
-                        client.getNetworkHandler().getConnection().disconnect(Text.of("Disconnecting (UI-UTILS)"));
+                        client.getConnection().getConnection().disconnect(Component.nullToEmpty("Disconnecting (UI-UTILS)"));
                         break;
                     case UI_UTILS_COPY_TITLE_JSON:
-                        if (client.currentScreen == null) {
+                        if (client.screen == null) {
                             throw new RuntimeException("No GUI is open to copy.");
                         }
                         copyGuiTitleJson(client);
@@ -219,7 +218,7 @@ final class NodeGuiCommandExecutor {
         }
     }
 
-    private void updateUiUtilsDelayPackets(net.minecraft.client.MinecraftClient client, boolean modernBackend, boolean enabled) {
+    private void updateUiUtilsDelayPackets(net.minecraft.client.Minecraft client, boolean modernBackend, boolean enabled) {
         Boolean wasEnabled = com.pathmind.util.UiUtilsProxy.getDelayPackets();
         if (!com.pathmind.util.UiUtilsProxy.setDelayPackets(enabled)) {
             throw new RuntimeException("Failed to update UI Utils delay packets setting.");
@@ -229,7 +228,7 @@ final class NodeGuiCommandExecutor {
         }
     }
 
-    private void toggleUiUtilsDelayPackets(net.minecraft.client.MinecraftClient client, boolean modernBackend) {
+    private void toggleUiUtilsDelayPackets(net.minecraft.client.Minecraft client, boolean modernBackend) {
         Boolean currentlyEnabled = com.pathmind.util.UiUtilsProxy.getDelayPackets();
         updateUiUtilsDelayPackets(client, modernBackend, !Boolean.TRUE.equals(currentlyEnabled));
     }
@@ -242,7 +241,7 @@ final class NodeGuiCommandExecutor {
         String actionLabel = getParameterString(owner, "Action");
         int timesToSend = Math.max(1, parseNodeInt(owner, "TimesToSend", 1));
 
-        SlotActionType action = parseSlotActionType(actionLabel);
+        ClickType action = parseSlotActionType(actionLabel);
         if (action == null) {
             throw new RuntimeException("Invalid slot action type.");
         }
@@ -283,8 +282,8 @@ final class NodeGuiCommandExecutor {
         return command.toString();
     }
 
-    private void flushUiUtilsDelayedPackets(net.minecraft.client.MinecraftClient client, boolean notifyPlayer) {
-        if (client == null || client.getNetworkHandler() == null) {
+    private void flushUiUtilsDelayedPackets(net.minecraft.client.Minecraft client, boolean notifyPlayer) {
+        if (client == null || client.getConnection() == null) {
             throw new RuntimeException("Minecraft network handler not available.");
         }
         java.util.List<?> packets = com.pathmind.util.UiUtilsProxy.getDelayedPackets();
@@ -293,19 +292,19 @@ final class NodeGuiCommandExecutor {
             throw new RuntimeException("Failed to send delayed packets.");
         }
         if (notifyPlayer && count > 0 && client.player != null) {
-            client.player.sendMessage(Text.of("Sent " + count + " packets."), false);
+            client.player.displayClientMessage(Component.nullToEmpty("Sent " + count + " packets."), false);
         }
     }
 
-    private void copyGuiTitleJson(net.minecraft.client.MinecraftClient client) {
+    private void copyGuiTitleJson(net.minecraft.client.Minecraft client) {
         String json = new com.google.gson.Gson().toJson(
-            net.minecraft.text.TextCodecs.CODEC.encodeStart(com.mojang.serialization.JsonOps.INSTANCE, client.currentScreen.getTitle()).getOrThrow()
+            net.minecraft.network.chat.ComponentSerialization.CODEC.encodeStart(com.mojang.serialization.JsonOps.INSTANCE, client.screen.getTitle()).getOrThrow()
         );
-        client.keyboard.setClipboard(json);
+        client.keyboardHandler.setClipboard(json);
     }
 
-    private void fabricateClickSlotPacket(net.minecraft.client.MinecraftClient client) {
-        if (client == null || client.getNetworkHandler() == null) {
+    private void fabricateClickSlotPacket(net.minecraft.client.Minecraft client) {
+        if (client == null || client.getConnection() == null) {
             throw new RuntimeException("Cannot send packets without a network handler.");
         }
         int syncId = parseNodeInt(owner, "SyncId", -1);
@@ -316,29 +315,29 @@ final class NodeGuiCommandExecutor {
         int timesToSend = Math.max(1, parseNodeInt(owner, "TimesToSend", 1));
         boolean delay = parseNodeBoolean(owner, "Delay", false);
 
-        if (client.player == null || client.player.currentScreenHandler == null) {
+        if (client.player == null || client.player.containerMenu == null) {
             throw new RuntimeException("No active screen handler for fabricated packet.");
         }
         if (syncId < 0) {
-            syncId = client.player.currentScreenHandler.syncId;
+            syncId = client.player.containerMenu.containerId;
         }
         if (revision < 0) {
-            revision = client.player.currentScreenHandler.getRevision();
+            revision = client.player.containerMenu.getStateId();
         }
 
-        SlotActionType action = parseSlotActionType(actionLabel);
+        ClickType action = parseSlotActionType(actionLabel);
         if (action == null) {
             throw new RuntimeException("Invalid slot action type.");
         }
 
-        net.minecraft.network.packet.c2s.play.ClickSlotC2SPacket packet =
+        net.minecraft.network.protocol.game.ServerboundContainerClickPacket packet =
             createClickSlotPacket(syncId, revision, slot, button, action);
 
         sendFabricatedPacket(client, packet, delay, timesToSend);
     }
 
-    private void fabricateButtonClickPacket(net.minecraft.client.MinecraftClient client) {
-        if (client == null || client.getNetworkHandler() == null) {
+    private void fabricateButtonClickPacket(net.minecraft.client.Minecraft client) {
+        if (client == null || client.getConnection() == null) {
             throw new RuntimeException("Cannot send packets without a network handler.");
         }
         int syncId = parseNodeInt(owner, "SyncId", -1);
@@ -346,32 +345,32 @@ final class NodeGuiCommandExecutor {
         int timesToSend = Math.max(1, parseNodeInt(owner, "TimesToSend", 1));
         boolean delay = parseNodeBoolean(owner, "Delay", false);
 
-        if (client.player == null || client.player.currentScreenHandler == null) {
+        if (client.player == null || client.player.containerMenu == null) {
             throw new RuntimeException("No active screen handler for fabricated packet.");
         }
         if (syncId < 0) {
-            syncId = client.player.currentScreenHandler.syncId;
+            syncId = client.player.containerMenu.containerId;
         }
 
-        net.minecraft.network.packet.c2s.play.ButtonClickC2SPacket packet =
-            new net.minecraft.network.packet.c2s.play.ButtonClickC2SPacket(syncId, buttonId);
+        net.minecraft.network.protocol.game.ServerboundContainerButtonClickPacket packet =
+            new net.minecraft.network.protocol.game.ServerboundContainerButtonClickPacket(syncId, buttonId);
 
         sendFabricatedPacket(client, packet, delay, timesToSend);
     }
 
-    private net.minecraft.network.packet.c2s.play.ClickSlotC2SPacket createClickSlotPacket(
+    private net.minecraft.network.protocol.game.ServerboundContainerClickPacket createClickSlotPacket(
         int syncId,
         int revision,
         int slot,
         int button,
-        net.minecraft.screen.slot.SlotActionType action
+        net.minecraft.world.inventory.ClickType action
     ) {
-        net.minecraft.item.ItemStack stack = net.minecraft.item.ItemStack.EMPTY;
-        it.unimi.dsi.fastutil.ints.Int2ObjectMap<net.minecraft.item.ItemStack> changed =
+        net.minecraft.world.item.ItemStack stack = net.minecraft.world.item.ItemStack.EMPTY;
+        it.unimi.dsi.fastutil.ints.Int2ObjectMap<net.minecraft.world.item.ItemStack> changed =
             new it.unimi.dsi.fastutil.ints.Int2ObjectArrayMap<>();
 
         java.lang.reflect.Constructor<?>[] constructors =
-            net.minecraft.network.packet.c2s.play.ClickSlotC2SPacket.class.getConstructors();
+            net.minecraft.network.protocol.game.ServerboundContainerClickPacket.class.getConstructors();
 
         int[] numbers = new int[] {syncId, revision, slot, button};
         for (java.lang.reflect.Constructor<?> constructor : constructors) {
@@ -402,9 +401,9 @@ final class NodeGuiCommandExecutor {
                         break;
                     }
                     args[i] = (byte) numbers[numberIndex++];
-                } else if (param.isAssignableFrom(net.minecraft.screen.slot.SlotActionType.class)) {
+                } else if (param.isAssignableFrom(net.minecraft.world.inventory.ClickType.class)) {
                     args[i] = action;
-                } else if (param.isAssignableFrom(net.minecraft.item.ItemStack.class)) {
+                } else if (param.isAssignableFrom(net.minecraft.world.item.ItemStack.class)) {
                     args[i] = stack;
                 } else if (param.isAssignableFrom(it.unimi.dsi.fastutil.ints.Int2ObjectMap.class)) {
                     args[i] = changed;
@@ -417,7 +416,7 @@ final class NodeGuiCommandExecutor {
                 continue;
             }
             try {
-                return (net.minecraft.network.packet.c2s.play.ClickSlotC2SPacket) constructor.newInstance(args);
+                return (net.minecraft.network.protocol.game.ServerboundContainerClickPacket) constructor.newInstance(args);
             } catch (ReflectiveOperationException ignored) {
                 // Try next constructor
             }
@@ -426,37 +425,37 @@ final class NodeGuiCommandExecutor {
         throw new RuntimeException("Unsupported ClickSlotC2SPacket constructor.");
     }
 
-    private void sendFabricatedPacket(net.minecraft.client.MinecraftClient client, net.minecraft.network.packet.Packet<?> packet, boolean delay, int timesToSend) {
-        if (client == null || client.getNetworkHandler() == null) {
+    private void sendFabricatedPacket(net.minecraft.client.Minecraft client, net.minecraft.network.protocol.Packet<?> packet, boolean delay, int timesToSend) {
+        if (client == null || client.getConnection() == null) {
             throw new RuntimeException("Cannot send packets without a network handler.");
         }
         for (int i = 0; i < timesToSend; i++) {
-            client.getNetworkHandler().sendPacket(packet);
+            client.getConnection().send(packet);
             if (!delay) {
-                com.pathmind.util.UiUtilsProxy.tryWriteAndFlush(client.getNetworkHandler().getConnection(), packet);
+                com.pathmind.util.UiUtilsProxy.tryWriteAndFlush(client.getConnection().getConnection(), packet);
             }
         }
     }
 
-    private SlotActionType parseSlotActionType(String value) {
+    private ClickType parseSlotActionType(String value) {
         if (value == null || value.isBlank()) {
-            return SlotActionType.PICKUP;
+            return ClickType.PICKUP;
         }
         switch (value.trim().toUpperCase(java.util.Locale.ROOT)) {
             case "PICKUP":
-                return SlotActionType.PICKUP;
+                return ClickType.PICKUP;
             case "QUICK_MOVE":
-                return SlotActionType.QUICK_MOVE;
+                return ClickType.QUICK_MOVE;
             case "SWAP":
-                return SlotActionType.SWAP;
+                return ClickType.SWAP;
             case "CLONE":
-                return SlotActionType.CLONE;
+                return ClickType.CLONE;
             case "THROW":
-                return SlotActionType.THROW;
+                return ClickType.THROW;
             case "QUICK_CRAFT":
-                return SlotActionType.QUICK_CRAFT;
+                return ClickType.QUICK_CRAFT;
             case "PICKUP_ALL":
-                return SlotActionType.PICKUP_ALL;
+                return ClickType.PICKUP_ALL;
             default:
                 return null;
         }
@@ -467,7 +466,7 @@ final class NodeGuiCommandExecutor {
             return;
         }
         NodeMode playerGuiMode = desiredMode != null ? desiredMode : (mode != null ? mode : NodeMode.PLAYER_GUI_OPEN);
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
 
         if (client == null) {
             future.completeExceptionally(new RuntimeException("Minecraft client not available"));
@@ -478,16 +477,16 @@ final class NodeGuiCommandExecutor {
             runOnClientThread(client, () -> {
                 switch (playerGuiMode) {
                     case PLAYER_GUI_OPEN:
-                        if (client.player == null || client.player.networkHandler == null) {
+                        if (client.player == null || client.player.connection == null) {
                             throw new RuntimeException("Cannot open the player GUI without an active player.");
                         }
 
-                        client.player.networkHandler.sendPacket(new ClientCommandC2SPacket(
+                        client.player.connection.send(new ServerboundPlayerCommandPacket(
                                 client.player,
-                                ClientCommandC2SPacket.Mode.OPEN_INVENTORY
+                                ServerboundPlayerCommandPacket.Action.OPEN_INVENTORY
                         ));
 
-                        if (!(client.currentScreen instanceof InventoryScreen)) {
+                        if (!(client.screen instanceof InventoryScreen)) {
                             client.setScreen(new InventoryScreen(client.player));
                         }
                         break;
@@ -496,13 +495,13 @@ final class NodeGuiCommandExecutor {
                         throw new RuntimeException("Cannot close the player GUI without an active player.");
                     }
 
-                    Screen currentScreen = client.currentScreen;
+                    Screen currentScreen = client.screen;
                     if (currentScreen instanceof AbstractSignEditScreen) {
-                        currentScreen.close();
+                        currentScreen.onClose();
                     } else if (currentScreen != null) {
-                        client.player.closeHandledScreen();
-                        if (client.currentScreen != null) {
-                            currentScreen.close();
+                        client.player.closeContainer();
+                        if (client.screen != null) {
+                            currentScreen.onClose();
                         }
                     }
                     break;
@@ -524,11 +523,11 @@ final class NodeGuiCommandExecutor {
         return owner.preprocessAttachedParameter(usages, future);
     }
 
-    private void runOnClientThread(MinecraftClient client, Runnable task) throws InterruptedException {
+    private void runOnClientThread(Minecraft client, Runnable task) throws InterruptedException {
         owner.runOnClientThread(client, task);
     }
 
-    private void sendNodeErrorMessage(MinecraftClient client, String message) {
+    private void sendNodeErrorMessage(Minecraft client, String message) {
         owner.sendNodeErrorMessage(client, message);
     }
 

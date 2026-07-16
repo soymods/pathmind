@@ -4,14 +4,13 @@ import com.pathmind.ui.animation.AnimatedValue;
 import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.DrawContextBridge;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.text.OrderedText;
-import net.minecraft.text.Text;
-
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.network.chat.Component;
+import net.minecraft.util.FormattedCharSequence;
 
 /**
  * Bottom-right HUD notification stack for node failures.
@@ -86,7 +85,7 @@ public final class NodeErrorNotificationOverlay {
         notifications.clear();
     }
 
-    public synchronized void render(DrawContext context, TextRenderer textRenderer, int screenWidth, int screenHeight) {
+    public synchronized void render(GuiGraphics context, Font textRenderer, int screenWidth, int screenHeight) {
         if (textRenderer == null || notifications.isEmpty()) {
             return;
         }
@@ -104,12 +103,12 @@ public final class NodeErrorNotificationOverlay {
 
             int textStartX = PADDING_X + ACCENT_STRIP_WIDTH + 7;
             int textWidthLimit = CARD_WIDTH - textStartX - PADDING_X;
-            List<OrderedText> wrappedLines = textRenderer.wrapLines(Text.literal(entry.message), textWidthLimit);
+            List<FormattedCharSequence> wrappedLines = textRenderer.split(Component.literal(entry.message), textWidthLimit);
             if (wrappedLines.isEmpty()) {
-                wrappedLines = List.of(Text.literal(entry.message).asOrderedText());
+                wrappedLines = List.of(Component.literal(entry.message).getVisualOrderText());
             }
 
-            int textHeight = wrappedLines.size() * textRenderer.fontHeight
+            int textHeight = wrappedLines.size() * textRenderer.lineHeight
                 + Math.max(0, wrappedLines.size() - 1) * LINE_SPACING;
             boolean showProgress = entry.hasProgress();
             int progressHeight = showProgress ? PROGRESS_BAR_TOP_MARGIN + PROGRESS_BAR_HEIGHT : 0;
@@ -130,9 +129,9 @@ public final class NodeErrorNotificationOverlay {
             DrawContextBridge.drawBorder(context, x, y, CARD_WIDTH, cardHeight, borderColor);
 
             int textY = y + PADDING_Y;
-            for (OrderedText line : wrappedLines) {
-                context.drawTextWithShadow(textRenderer, line, x + textStartX, textY, borderColor);
-                textY += textRenderer.fontHeight + LINE_SPACING;
+            for (FormattedCharSequence line : wrappedLines) {
+                context.drawString(textRenderer, line, x + textStartX, textY, borderColor);
+                textY += textRenderer.lineHeight + LINE_SPACING;
             }
 
             if (showProgress) {

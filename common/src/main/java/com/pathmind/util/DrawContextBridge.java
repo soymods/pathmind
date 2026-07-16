@@ -1,6 +1,6 @@
 package com.pathmind.util;
 
-import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.gui.GuiGraphics;
 
 /**
  * Compatibility helpers for DrawContext border rendering across 1.21.x.
@@ -14,27 +14,27 @@ public final class DrawContextBridge {
     private DrawContextBridge() {
     }
 
-    public static void drawBorder(DrawContext context, int x, int y, int width, int height, int color) {
+    public static void drawBorder(GuiGraphics context, int x, int y, int width, int height, int color) {
         if (context == null || width <= 0 || height <= 0) {
             return;
         }
         drawBorderInLayer(context, x, y, width, height, color);
     }
 
-    public static void drawBorderInLayer(DrawContext context, int x, int y, int width, int height, int color) {
+    public static void drawBorderInLayer(GuiGraphics context, int x, int y, int width, int height, int color) {
         if (context == null || width <= 0 || height <= 0) {
             return;
         }
 
         int right = x + width - 1;
         int bottom = y + height - 1;
-        context.drawHorizontalLine(x, right, y, color);
-        context.drawHorizontalLine(x, right, bottom, color);
-        context.drawVerticalLine(x, y, bottom, color);
-        context.drawVerticalLine(right, y, bottom, color);
+        context.hLine(x, right, y, color);
+        context.hLine(x, right, bottom, color);
+        context.vLine(x, y, bottom, color);
+        context.vLine(right, y, bottom, color);
     }
 
-    public static void fillOverlay(DrawContext context, int x1, int y1, int x2, int y2, int color) {
+    public static void fillOverlay(GuiGraphics context, int x1, int y1, int x2, int y2, int color) {
         if (context == null) {
             return;
         }
@@ -49,7 +49,7 @@ public final class DrawContextBridge {
         context.fill(x1, y1, x2, y2, color);
     }
 
-    public static void startNewRootLayer(DrawContext context) {
+    public static void startNewRootLayer(GuiGraphics context) {
         if (context == null) {
             return;
         }
@@ -63,7 +63,7 @@ public final class DrawContextBridge {
         flush(context);
     }
 
-    public static void flush(DrawContext context) {
+    public static void flush(GuiGraphics context) {
         if (context == null || FLUSH_DRAW == null) {
             return;
         }
@@ -75,7 +75,7 @@ public final class DrawContextBridge {
 
     private static java.lang.reflect.Method resolveNoArgMethod(String name) {
         try {
-            java.lang.reflect.Method method = DrawContext.class.getMethod(name);
+            java.lang.reflect.Method method = GuiGraphics.class.getMethod(name);
             method.setAccessible(true);
             return method;
         } catch (NoSuchMethodException ignored) {
@@ -88,7 +88,7 @@ public final class DrawContextBridge {
         if (renderLayerClass == null) {
             return null;
         }
-        for (java.lang.reflect.Method method : DrawContext.class.getMethods()) {
+        for (java.lang.reflect.Method method : GuiGraphics.class.getMethods()) {
             if (!"fill".equals(method.getName())) {
                 continue;
             }

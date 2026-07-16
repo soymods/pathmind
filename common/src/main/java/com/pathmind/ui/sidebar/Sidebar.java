@@ -20,15 +20,14 @@ import com.pathmind.util.UiUtilsDependencyChecker;
 import com.pathmind.util.DrawContextBridge;
 import com.pathmind.util.ScrollbarHelper;
 import com.pathmind.util.TextRenderUtil;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.text.Text;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.network.chat.Component;
 
 /**
  * Manages the sidebar with categorized draggable nodes.
@@ -211,7 +210,7 @@ public class Sidebar {
         maxScroll = Math.max(0, totalHeight - sidebarHeight + 100); // Extra 100px for better scrolling
     }
     
-    public void render(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY,
+    public void render(GuiGraphics context, Font textRenderer, int mouseX, int mouseY,
                        int sidebarStartY, int sidebarHeight, boolean interactionsEnabled, boolean showTooltips) {
         int effectiveMouseX = interactionsEnabled ? mouseX : Integer.MIN_VALUE;
         int effectiveMouseY = interactionsEnabled ? mouseY : Integer.MIN_VALUE;
@@ -267,9 +266,9 @@ public class Sidebar {
 
         List<String> headerLines = null;
         int headerHeight = 0;
-        final int headerLineHeight = textRenderer.fontHeight + CATEGORY_HEADER_LINE_SPACING;
-        final int groupLineHeight = textRenderer.fontHeight + GROUP_HEADER_LINE_SPACING;
-        final int nodeLineHeight = textRenderer.fontHeight + NODE_LINE_SPACING;
+        final int headerLineHeight = textRenderer.lineHeight + CATEGORY_HEADER_LINE_SPACING;
+        final int groupLineHeight = textRenderer.lineHeight + GROUP_HEADER_LINE_SPACING;
+        final int nodeLineHeight = textRenderer.lineHeight + NODE_LINE_SPACING;
         if (selectedCategory != null) {
             headerLines = wrapText(selectedCategory.getDisplayName(), textRenderer, maxContentWidth);
             headerHeight = Math.max(CATEGORY_HEADER_HEIGHT, headerLines.size() * headerLineHeight);
@@ -296,7 +295,7 @@ public class Sidebar {
 
         // Inner sidebar background (for tabs)
         context.fill(0, sidebarStartY, currentInnerSidebarWidth, sidebarStartY + sidebarHeight, UITheme.BACKGROUND_SIDEBAR);
-        context.drawVerticalLine(currentInnerSidebarWidth, sidebarStartY, sidebarStartY + sidebarHeight, UITheme.BORDER_SUBTLE);
+        context.vLine(currentInnerSidebarWidth, sidebarStartY, sidebarStartY + sidebarHeight, UITheme.BORDER_SUBTLE);
 
         // Tabs stay static (don't scroll with content)
         int currentY = sidebarStartY + TOP_PADDING;
@@ -355,10 +354,10 @@ public class Sidebar {
 
             // Render centered icon
             String icon = category.getIcon();
-            int iconX = tabX + (tabSize - textRenderer.getWidth(icon)) / 2;
-            int iconY = tabY + (tabSize - textRenderer.fontHeight) / 2 + 1;
+            int iconX = tabX + (tabSize - textRenderer.width(icon)) / 2;
+            int iconY = tabY + (tabSize - textRenderer.lineHeight) / 2 + 1;
 
-            context.drawTextWithShadow(textRenderer, icon, iconX, iconY, UITheme.TEXT_HEADER);
+            context.drawString(textRenderer, icon, iconX, iconY, UITheme.TEXT_HEADER);
 
             // Update hover state
             if (tabHovered) {
@@ -389,9 +388,9 @@ public class Sidebar {
             int headerTextY = contentY + 4;
             if (headerLines != null && !headerLines.isEmpty()) {
                 for (String line : headerLines) {
-                    context.drawTextWithShadow(
+                    context.drawString(
                         textRenderer,
-                        Text.literal(line),
+                        Component.literal(line),
                         headerTextX,
                         headerTextY,
                         selectedCategory.getColor()
@@ -413,8 +412,8 @@ public class Sidebar {
                     nodeBackgroundRight, NODE_HEIGHT, "routine-sidebar:create", hoveredCreateRoutine);
                 int createColor = PathmindSidebarEntryUi.animatedTextColor("routine-sidebar:create-text", hoveredCreateRoutine,
                     NodeCategory.ROUTINES.getColor(), UITheme.TEXT_HEADER);
-                context.drawTextWithShadow(textRenderer, Text.literal("+"), indicatorX + 3, contentY + 5, createColor);
-                context.drawTextWithShadow(textRenderer, Text.translatable("pathmind.routine.create"), labelX, contentY + 5,
+                context.drawString(textRenderer, Component.literal("+"), indicatorX + 3, contentY + 5, createColor);
+                context.drawString(textRenderer, Component.translatable("pathmind.routine.create"), labelX, contentY + 5,
                     PathmindSidebarEntryUi.animatedTextColor("routine-sidebar:create-label", hoveredCreateRoutine,
                         UITheme.TEXT_PRIMARY, UITheme.TEXT_HEADER));
                 contentY += NODE_HEIGHT;
@@ -446,7 +445,7 @@ public class Sidebar {
                     int routineLabelX = indicatorX + routineSquareSize + 5;
                     routineLabel = TextRenderUtil.trimWithEllipsis(textRenderer, routineLabel,
                         Math.max(20, renameButtonX - routineLabelX - 3));
-                    context.drawTextWithShadow(textRenderer, Text.literal(routineLabel), routineLabelX, contentY + 5,
+                    context.drawString(textRenderer, Component.literal(routineLabel), routineLabelX, contentY + 5,
                         activeRoutine ? NodeCategory.ROUTINES.getColor()
                             : PathmindSidebarEntryUi.animatedTextColor("routine-sidebar:label:" + routine.getId(), hovered,
                                 UITheme.TEXT_PRIMARY, UITheme.TEXT_HEADER));
@@ -467,7 +466,7 @@ public class Sidebar {
                             indicatorX, labelX, nodeBackgroundLeft, nodeBackgroundRight, contentY);
                     }
                 }
-                context.drawTextWithShadow(textRenderer, Text.translatable("pathmind.routine.library"), indicatorX,
+                context.drawString(textRenderer, Component.translatable("pathmind.routine.library"), indicatorX,
                     contentY + 5, NodeCategory.ROUTINES.getColor());
                 contentY += NODE_HEIGHT;
                 if (routineDragActive && !routineDragFromLibrary) {
@@ -478,7 +477,7 @@ public class Sidebar {
                     routineLibraryDropBottom = contentY - 2;
                 }
                 if (libraryRoutines.isEmpty()) {
-                    context.drawTextWithShadow(textRenderer, Text.translatable("pathmind.routine.library.empty"), labelX,
+                    context.drawString(textRenderer, Component.translatable("pathmind.routine.library.empty"), labelX,
                         contentY + 5, UITheme.TEXT_TERTIARY);
                     contentY += NODE_HEIGHT;
                 } else {
@@ -505,7 +504,7 @@ public class Sidebar {
                         int actionButtonY = contentY + (NODE_HEIGHT - actionButtonSize) / 2;
                         String libraryLabel = TextRenderUtil.trimWithEllipsis(textRenderer, displayedRoutine.getName(),
                             Math.max(20, renameButtonX - labelX - 3));
-                        context.drawTextWithShadow(textRenderer, Text.literal(libraryLabel), labelX, contentY + 5,
+                        context.drawString(textRenderer, Component.literal(libraryLabel), labelX, contentY + 5,
                             activeLibraryRoutine ? NodeCategory.ROUTINES.getColor()
                                 : PathmindSidebarEntryUi.animatedTextColor(
                                     "routine-sidebar:library-label:" + libraryRoutine.getId(), hovered,
@@ -544,9 +543,9 @@ public class Sidebar {
 
                         int groupTextY = contentY + 2;
                         for (String line : groupInfo.getLines()) {
-                            context.drawTextWithShadow(
+                            context.drawString(
                                 textRenderer,
-                                Text.literal(line),
+                                Component.literal(line),
                                 contentTextX,
                                 groupTextY,
                                 getSidebarGroupHeaderColor(group.getDisplayCategory())
@@ -643,12 +642,12 @@ public class Sidebar {
 
         if (interactionsEnabled && showTooltips && hoveredRoutine != null) {
             TooltipRenderer.render(context, textRenderer, routineTooltip(hoveredRoutine), mouseX, mouseY,
-                MinecraftClient.getInstance().getWindow().getScaledWidth(),
-                MinecraftClient.getInstance().getWindow().getScaledHeight());
+                Minecraft.getInstance().getWindow().getGuiScaledWidth(),
+                Minecraft.getInstance().getWindow().getGuiScaledHeight());
         } else if (interactionsEnabled && showTooltips && hoveredLibraryRoutine != null) {
             TooltipRenderer.render(context, textRenderer, routineTooltip(hoveredLibraryRoutine),
-                mouseX, mouseY, MinecraftClient.getInstance().getWindow().getScaledWidth(),
-                MinecraftClient.getInstance().getWindow().getScaledHeight());
+                mouseX, mouseY, Minecraft.getInstance().getWindow().getGuiScaledWidth(),
+                Minecraft.getInstance().getWindow().getGuiScaledHeight());
         } else if (interactionsEnabled && showTooltips && hoveredNodeType != null) {
             TooltipRenderer.render(
                 context,
@@ -656,8 +655,8 @@ public class Sidebar {
                 hoveredNodeType.getDescription(),
                 mouseX,
                 mouseY,
-                MinecraftClient.getInstance().getWindow().getScaledWidth(),
-                MinecraftClient.getInstance().getWindow().getScaledHeight()
+                Minecraft.getInstance().getWindow().getGuiScaledWidth(),
+                Minecraft.getInstance().getWindow().getGuiScaledHeight()
             );
         }
         
@@ -921,7 +920,7 @@ public class Sidebar {
         return null;
     }
 
-    private int renderActiveRoutineInputs(DrawContext context, TextRenderer textRenderer,
+    private int renderActiveRoutineInputs(GuiGraphics context, Font textRenderer,
                                           NodeGraphData.RoutineDefinitionData routine,
                                           int mouseX, int mouseY, int indicatorX, int labelX,
                                           int rowLeft, int rowRight, int contentY) {
@@ -929,7 +928,7 @@ public class Sidebar {
             && mouseY >= contentY && mouseY < contentY + NODE_HEIGHT;
         PathmindSidebarEntryUi.renderRowBackground(context, rowLeft, contentY, rowRight, NODE_HEIGHT,
             "routine-sidebar:add-input:" + routine.getId(), hoveredAddRoutineInput);
-        context.drawTextWithShadow(textRenderer, Text.literal("    + Add input"), indicatorX, contentY + 5,
+        context.drawString(textRenderer, Component.literal("    + Add input"), indicatorX, contentY + 5,
             PathmindSidebarEntryUi.animatedTextColor("routine-sidebar:add-input-text:" + routine.getId(),
                 hoveredAddRoutineInput, UITheme.TEXT_SECONDARY, UITheme.TEXT_HEADER));
         contentY += NODE_HEIGHT;
@@ -939,7 +938,7 @@ public class Sidebar {
             if (inputHovered) hoveredRoutineInput = input;
             PathmindSidebarEntryUi.renderRowBackground(context, rowLeft, contentY, rowRight, NODE_HEIGHT,
                 "routine-sidebar:input-row:" + input.getId(), inputHovered);
-            context.drawTextWithShadow(textRenderer, Text.literal("    [" + input.getLabel() + "]"), indicatorX,
+            context.drawString(textRenderer, Component.literal("    [" + input.getLabel() + "]"), indicatorX,
                 contentY + 5, PathmindSidebarEntryUi.animatedTextColor(
                     "routine-sidebar:input-label:" + input.getId(), inputHovered,
                     UITheme.TEXT_SECONDARY, UITheme.TEXT_HEADER));
@@ -976,7 +975,7 @@ public class Sidebar {
     private String routineTooltip(NodeGraphData.RoutineDefinitionData routine) {
         String name = routine == null || routine.getName() == null ? "Routine" : routine.getName();
         int inputs = routine == null ? 0 : routine.getInputs().size();
-        return Text.translatable("pathmind.routine.tooltip", name, inputs).getString();
+        return Component.translatable("pathmind.routine.tooltip", name, inputs).getString();
     }
 
     public boolean isRoutineLibraryDropTarget(double mouseX, double mouseY) {
@@ -997,13 +996,13 @@ public class Sidebar {
             && mouseY < routineListDropBottom;
     }
 
-    private void renderRoutineDropTarget(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY,
+    private void renderRoutineDropTarget(GuiGraphics context, Font textRenderer, int mouseX, int mouseY,
                                          int left, int right, int top) {
         int x = left;
         int y = top + 2;
         int width = Math.max(1, right - left - 2);
         int height = ROUTINE_DROP_TARGET_HEIGHT - 4;
-        String label = Text.translatable("pathmind.routine.dropHere").getString();
+        String label = Component.translatable("pathmind.routine.dropHere").getString();
         String target = routineDragFromLibrary ? "routine-list" : "routine-library";
         PathmindRoutineUi.renderDropTarget(context, textRenderer, x, y, width, height, mouseX, mouseY,
             "routine-sidebar:drop:" + target, label, NodeCategory.ROUTINES.getColor());
@@ -1050,7 +1049,7 @@ public class Sidebar {
         return AnimationHelper.lerpColor(UITheme.TEXT_PRIMARY, getSidebarCategoryAccent(category), 0.14f);
     }
 
-    private List<String> wrapText(String text, TextRenderer textRenderer, int maxWidth) {
+    private List<String> wrapText(String text, Font textRenderer, int maxWidth) {
         List<String> lines = new ArrayList<>();
         if (text == null || text.isEmpty()) {
             lines.add("");
@@ -1071,13 +1070,13 @@ public class Sidebar {
 
             if (currentLine.length() > 0) {
                 String candidate = currentLine + " " + word;
-                if (textRenderer.getWidth(candidate) <= maxWidth) {
+                if (textRenderer.width(candidate) <= maxWidth) {
                     currentLine.append(" ").append(word);
                     continue;
                 }
             }
 
-            if (textRenderer.getWidth(word) <= maxWidth) {
+            if (textRenderer.width(word) <= maxWidth) {
                 if (currentLine.length() > 0) {
                     lines.add(currentLine.toString());
                 }
@@ -1109,14 +1108,14 @@ public class Sidebar {
         return lines;
     }
 
-    private int findBreakIndex(String text, TextRenderer textRenderer, int maxWidth) {
+    private int findBreakIndex(String text, Font textRenderer, int maxWidth) {
         if (text.isEmpty() || maxWidth <= 0) {
             return Math.max(1, text.length());
         }
 
         int breakIndex = 1;
         while (breakIndex <= text.length() &&
-            textRenderer.getWidth(text.substring(0, breakIndex)) <= maxWidth) {
+            textRenderer.width(text.substring(0, breakIndex)) <= maxWidth) {
             breakIndex++;
         }
 
@@ -1127,7 +1126,7 @@ public class Sidebar {
         return Math.max(1, breakIndex - 1);
     }
 
-    private List<NodeRowInfo> buildNodeRowsForCategory(NodeCategory category, TextRenderer textRenderer, int maxWidth, int lineHeight) {
+    private List<NodeRowInfo> buildNodeRowsForCategory(NodeCategory category, Font textRenderer, int maxWidth, int lineHeight) {
         List<NodeType> nodes = categoryNodes.get(category);
         if (nodes == null || textRenderer == null) {
             return java.util.Collections.emptyList();
@@ -1135,7 +1134,7 @@ public class Sidebar {
         return buildNodeRows(nodes, textRenderer, maxWidth, lineHeight);
     }
 
-    private List<NodeRowInfo> buildNodeRows(List<NodeType> nodes, TextRenderer textRenderer, int maxWidth, int lineHeight) {
+    private List<NodeRowInfo> buildNodeRows(List<NodeType> nodes, Font textRenderer, int maxWidth, int lineHeight) {
         List<NodeRowInfo> rows = new ArrayList<>();
         for (NodeType nodeType : nodes) {
             List<String> lines = wrapText(nodeType.getDisplayName(), textRenderer, maxWidth);
@@ -1148,7 +1147,7 @@ public class Sidebar {
         return Math.max(NODE_HEIGHT, Math.max(1, lineCount) * lineHeight + 7);
     }
 
-    private void renderCategoryScrollbar(DrawContext context, int totalWidth, int contentTop, int contentBottom) {
+    private void renderCategoryScrollbar(GuiGraphics context, int totalWidth, int contentTop, int contentBottom) {
         if (maxScroll <= 0 || contentBottom <= contentTop) {
             return;
         }
@@ -1224,7 +1223,7 @@ public class Sidebar {
         }
 
         public String getTitle() {
-            return Text.translatable(titleKey).getString();
+            return Component.translatable(titleKey).getString();
         }
 
         public List<NodeType> getNodes() {

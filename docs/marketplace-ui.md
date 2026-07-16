@@ -117,14 +117,14 @@ Prefer structured result enums over boolean flags for workflows. They make call 
 Marketplace screen helpers currently exist under each compat source set:
 
 - `common/src/compat/...`
-- `src/compat/...`
 - `fabric/src/compat/...`
 
-When changing shared helper classes such as `PathmindMarketplaceAsyncController`, `PathmindMarketplaceFlowController`, `PathmindMarketplaceActions`, or the media loaders, keep the compat copies synchronized unless a version-specific API difference requires a fork.
+The root `src` tree is inactive and must not receive compatibility copies. When changing shared helper classes such as `PathmindMarketplaceAsyncController`, `PathmindMarketplaceFlowController`, `PathmindMarketplaceActions`, or the media loaders, keep the active common/Fabric copies synchronized unless a documented API or loader difference requires a fork.
+
+The main marketplace/editor files already contain documented product-level drift between common and Fabric. Do not blindly overwrite one with the other. See [`minecraft-compatibility-baseline.md`](minecraft-compatibility-baseline.md) for the inventory and [`minecraft-multiversion-roadmap.md`](minecraft-multiversion-roadmap.md) for the plan to replace these copies with compatibility contracts.
 
 Useful checks:
 
 - `./gradlew compileJava -q`
 - `git diff --check`
 - `shasum` across copied helper files when the helper should be identical in every source set
-

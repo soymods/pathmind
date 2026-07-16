@@ -7,12 +7,11 @@ import com.pathmind.util.DrawContextBridge;
 import com.pathmind.validation.GraphValidationIssue;
 import com.pathmind.validation.GraphValidationResult;
 import com.pathmind.validation.GraphValidationSeverity;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.text.OrderedText;
-import net.minecraft.text.Text;
-
 import java.util.List;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.network.chat.Component;
+import net.minecraft.util.FormattedCharSequence;
 
 /**
  * Shared renderer and layout helpers for graph validation panels.
@@ -29,8 +28,8 @@ public final class PathmindValidationPanelRenderer {
         return validationResult.getIssues().subList(0, limit);
     }
 
-    public static boolean renderValidationButton(DrawContext context,
-                                                 TextRenderer textRenderer,
+    public static boolean renderValidationButton(GuiGraphics context,
+                                                 Font textRenderer,
                                                  int buttonX, int buttonY, int buttonSize,
                                                  int mouseX, int mouseY,
                                                  boolean active, boolean disabled,
@@ -55,7 +54,7 @@ public final class PathmindValidationPanelRenderer {
         return hovered;
     }
 
-    public static int[] getPanelBounds(GraphValidationResult validationResult, TextRenderer textRenderer,
+    public static int[] getPanelBounds(GraphValidationResult validationResult, Font textRenderer,
                                        int progressAnchorX, int panelY, float progress,
                                        int panelWidth, int maxVisibleRows,
                                        int headerHeight, int presetInputHeight,
@@ -73,7 +72,7 @@ public final class PathmindValidationPanelRenderer {
         return new int[]{x, panelY, width, height};
     }
 
-    public static int renderPanelAndIssues(DrawContext context, TextRenderer textRenderer,
+    public static int renderPanelAndIssues(GuiGraphics context, Font textRenderer,
                                            int mouseX, int mouseY,
                                            GraphValidationResult validationResult,
                                            int panelX, int panelY, int panelWidth, int panelHeight,
@@ -97,16 +96,16 @@ public final class PathmindValidationPanelRenderer {
         int textColor = validationResult.hasErrors() ? UITheme.STATE_ERROR
             : validationResult.hasWarnings() ? UITheme.ACCENT_AMBER
             : UITheme.TEXT_PRIMARY;
-        context.drawTextWithShadow(
+        context.drawString(
             textRenderer,
-            Text.translatable("pathmind.validation.checks"),
+            Component.translatable("pathmind.validation.checks"),
             panelX + padding,
             panelY + 8,
             textColor
         );
-        context.drawTextWithShadow(
+        context.drawString(
             textRenderer,
-            Text.translatable(
+            Component.translatable(
                 "pathmind.validation.summary",
                 validationResult.getErrorCount(),
                 validationResult.getErrorCount() == 1 ? "" : "s",
@@ -122,7 +121,7 @@ public final class PathmindValidationPanelRenderer {
         int issueTop = panelY + headerHeight;
         for (int index = 0; index < visibleIssues.size(); index++) {
             GraphValidationIssue issue = visibleIssues.get(index);
-            List<OrderedText> wrappedLines = getIssueLines(issue, textRenderer, panelWidth);
+            List<FormattedCharSequence> wrappedLines = getIssueLines(issue, textRenderer, panelWidth);
             int rowHeight = getIssueRowHeight(wrappedLines, textRenderer, rowMinHeight);
             int rowY = issueTop;
             boolean clickable = issue != null && issue.hasNodeTarget();
@@ -134,7 +133,7 @@ public final class PathmindValidationPanelRenderer {
         return issueTop;
     }
 
-    public static void renderFooter(DrawContext context, TextRenderer textRenderer,
+    public static void renderFooter(GuiGraphics context, Font textRenderer,
                                     GraphValidationResult validationResult,
                                     int panelX, int panelY, int panelWidth, int panelHeight,
                                     int padding, int footerHeight, int maxVisibleRows) {
@@ -144,17 +143,17 @@ public final class PathmindValidationPanelRenderer {
             return;
         }
         int footerY = panelY + panelHeight - footerHeight;
-        context.drawHorizontalLine(panelX + 1, panelX + panelWidth - 2, footerY, UITheme.BORDER_SUBTLE);
-        context.drawTextWithShadow(
+        context.hLine(panelX + 1, panelX + panelWidth - 2, footerY, UITheme.BORDER_SUBTLE);
+        context.drawString(
             textRenderer,
-            Text.translatable("pathmind.validation.moreIssues", hiddenCount, hiddenCount == 1 ? "" : "s"),
+            Component.translatable("pathmind.validation.moreIssues", hiddenCount, hiddenCount == 1 ? "" : "s"),
             panelX + padding,
             footerY + 5,
             UITheme.TEXT_SECONDARY
         );
     }
 
-    public static ClickedIssue findClickedIssue(GraphValidationResult validationResult, TextRenderer textRenderer,
+    public static ClickedIssue findClickedIssue(GraphValidationResult validationResult, Font textRenderer,
                                                 int mouseX, int mouseY,
                                                 int panelX, int panelY, int panelWidth,
                                                 int headerHeight, int maxVisibleRows, int rowMinHeight) {
@@ -172,7 +171,7 @@ public final class PathmindValidationPanelRenderer {
         return new ClickedIssue(null, issueTop, false);
     }
 
-    public static int getIssuesHeight(List<GraphValidationIssue> visibleIssues, TextRenderer textRenderer,
+    public static int getIssuesHeight(List<GraphValidationIssue> visibleIssues, Font textRenderer,
                                       int panelWidth, int rowMinHeight) {
         int totalHeight = 0;
         for (GraphValidationIssue issue : visibleIssues) {
@@ -181,18 +180,18 @@ public final class PathmindValidationPanelRenderer {
         return totalHeight;
     }
 
-    public static int getIssueRowHeight(GraphValidationIssue issue, TextRenderer textRenderer,
+    public static int getIssueRowHeight(GraphValidationIssue issue, Font textRenderer,
                                         int panelWidth, int rowMinHeight) {
         return getIssueRowHeight(getIssueLines(issue, textRenderer, panelWidth), textRenderer, rowMinHeight);
     }
 
-    private static void renderIssueRow(DrawContext context, TextRenderer textRenderer,
-                                       GraphValidationIssue issue, List<OrderedText> wrappedLines,
+    private static void renderIssueRow(GuiGraphics context, Font textRenderer,
+                                       GraphValidationIssue issue, List<FormattedCharSequence> wrappedLines,
                                        int panelX, int panelWidth, int rowY, int rowHeight,
                                        float hoverProgress) {
         int rowBg = AnimationHelper.lerpColor(UITheme.BACKGROUND_SECONDARY, UITheme.TOOLBAR_BG_HOVER, hoverProgress);
         context.fill(panelX + 1, rowY, panelX + panelWidth - 1, rowY + rowHeight, rowBg);
-        context.drawHorizontalLine(panelX + 1, panelX + panelWidth - 2, rowY, UITheme.BORDER_SUBTLE);
+        context.hLine(panelX + 1, panelX + panelWidth - 2, rowY, UITheme.BORDER_SUBTLE);
 
         int severityColor = issue.getSeverity() == GraphValidationSeverity.ERROR ? UITheme.STATE_ERROR : UITheme.ACCENT_AMBER;
         int dotTop = rowY + Math.max(7, (rowHeight - 4) / 2);
@@ -200,31 +199,31 @@ public final class PathmindValidationPanelRenderer {
 
         int rowTextColor = AnimationHelper.lerpColor(UITheme.TEXT_HEADER, UITheme.TEXT_PRIMARY, hoverProgress);
         int textY = rowY + Math.max(6, (rowHeight - getIssueTextHeight(wrappedLines, textRenderer)) / 2);
-        for (OrderedText line : wrappedLines) {
-            context.drawTextWithShadow(textRenderer, line, panelX + 18, textY, rowTextColor);
-            textY += textRenderer.fontHeight + 2;
+        for (FormattedCharSequence line : wrappedLines) {
+            context.drawString(textRenderer, line, panelX + 18, textY, rowTextColor);
+            textY += textRenderer.lineHeight + 2;
         }
     }
 
-    private static List<OrderedText> getIssueLines(GraphValidationIssue issue, TextRenderer textRenderer, int panelWidth) {
+    private static List<FormattedCharSequence> getIssueLines(GraphValidationIssue issue, Font textRenderer, int panelWidth) {
         if (issue == null) {
-            return List.of(Text.literal("").asOrderedText());
+            return List.of(Component.literal("").getVisualOrderText());
         }
         String prefixKey = issue.getSeverity() == GraphValidationSeverity.ERROR
             ? "pathmind.validation.issue.error"
             : "pathmind.validation.issue.warning";
-        String fullMessage = Text.translatable(prefixKey, issue.getMessage()).getString();
+        String fullMessage = Component.translatable(prefixKey, issue.getMessage()).getString();
         int textWidth = Math.max(40, panelWidth - 34);
-        List<OrderedText> wrappedLines = textRenderer.wrapLines(Text.literal(fullMessage), textWidth);
-        return wrappedLines.isEmpty() ? List.of(Text.literal(fullMessage).asOrderedText()) : wrappedLines;
+        List<FormattedCharSequence> wrappedLines = textRenderer.split(Component.literal(fullMessage), textWidth);
+        return wrappedLines.isEmpty() ? List.of(Component.literal(fullMessage).getVisualOrderText()) : wrappedLines;
     }
 
-    private static int getIssueRowHeight(List<OrderedText> wrappedLines, TextRenderer textRenderer, int rowMinHeight) {
+    private static int getIssueRowHeight(List<FormattedCharSequence> wrappedLines, Font textRenderer, int rowMinHeight) {
         return Math.max(rowMinHeight, getIssueTextHeight(wrappedLines, textRenderer) + 12);
     }
 
-    private static int getIssueTextHeight(List<OrderedText> wrappedLines, TextRenderer textRenderer) {
-        return wrappedLines.size() * textRenderer.fontHeight + Math.max(0, wrappedLines.size() - 1) * 2;
+    private static int getIssueTextHeight(List<FormattedCharSequence> wrappedLines, Font textRenderer) {
+        return wrappedLines.size() * textRenderer.lineHeight + Math.max(0, wrappedLines.size() - 1) * 2;
     }
 
     private static int getValidationStatusColor(GraphValidationResult validationResult,
@@ -247,7 +246,7 @@ public final class PathmindValidationPanelRenderer {
         return statusColor;
     }
 
-    private static void drawConsoleIcon(DrawContext context, int buttonX, int buttonY, int color) {
+    private static void drawConsoleIcon(GuiGraphics context, int buttonX, int buttonY, int color) {
         int left = buttonX + 4;
         int top = buttonY + 4;
         context.fill(left, top, left + 10, top + 1, color);
@@ -259,14 +258,14 @@ public final class PathmindValidationPanelRenderer {
         context.fill(left + 2, top + 6, left + 6, top + 7, color);
     }
 
-    private static void drawAlertIcon(DrawContext context, int buttonX, int buttonY, int buttonSize, int color) {
+    private static void drawAlertIcon(GuiGraphics context, int buttonX, int buttonY, int buttonSize, int color) {
         int stemX = buttonX + buttonSize / 2 - 1;
         int top = buttonY + 4;
         context.fill(stemX, top, stemX + 2, top + 6, color);
         context.fill(stemX, top + 8, stemX + 2, top + 10, color);
     }
 
-    private static void drawCountBadge(DrawContext context, TextRenderer textRenderer,
+    private static void drawCountBadge(GuiGraphics context, Font textRenderer,
                                        GraphValidationResult validationResult, int buttonX, int buttonY,
                                        int buttonSize, boolean disabled) {
         int count = validationResult.getErrorCount() > 0 ? validationResult.getErrorCount() : validationResult.getWarningCount();
@@ -275,13 +274,13 @@ public final class PathmindValidationPanelRenderer {
             badgeColor = UITheme.DROPDOWN_ACTION_DISABLED;
         }
         String text = count > 9 ? "9+" : String.valueOf(count);
-        int textWidth = textRenderer.getWidth(text);
+        int textWidth = textRenderer.width(text);
         int badgeSize = Math.max(9, textWidth + 4);
         int badgeX = buttonX + buttonSize - badgeSize + 1;
         int badgeY = buttonY - 2;
         context.fill(badgeX, badgeY, badgeX + badgeSize, badgeY + badgeSize, badgeColor);
         DrawContextBridge.drawBorder(context, badgeX, badgeY, badgeSize, badgeSize, UITheme.BORDER_HIGHLIGHT);
-        context.drawTextWithShadow(textRenderer, Text.literal(text), badgeX + (badgeSize - textWidth) / 2, badgeY + 1,
+        context.drawString(textRenderer, Component.literal(text), badgeX + (badgeSize - textWidth) / 2, badgeY + 1,
             UITheme.TEXT_PRIMARY);
     }
 

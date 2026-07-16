@@ -6,7 +6,7 @@ import com.pathmind.util.ChatMessageTracker;
 import com.pathmind.util.FabricEventTracker;
 import com.pathmind.util.GameProfileCompatibilityBridge;
 import com.pathmind.util.ServerJoinTracker;
-import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.Minecraft;
 
 final class NodeEventSensorEvaluator {
     private final Node owner;
@@ -16,7 +16,7 @@ final class NodeEventSensorEvaluator {
     }
 
     boolean evaluateChatMessage() {
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         Node playerNode = owner.resolveSensorParameterNode(owner.getAttachedParameter(0), 0);
         Node messageNode = owner.resolveSensorParameterNode(owner.getAttachedParameter(1), 1);
         if (playerNode == null || messageNode == null) {
@@ -51,7 +51,7 @@ final class NodeEventSensorEvaluator {
     }
 
     boolean evaluateJoinedServer() {
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         Node playerNode = owner.resolveSensorParameterNode(owner.getAttachedParameter(0), 0);
         if (playerNode == null) {
             if (client != null) {

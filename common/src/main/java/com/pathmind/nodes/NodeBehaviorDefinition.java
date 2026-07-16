@@ -3,10 +3,9 @@ package com.pathmind.nodes;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
 
 final class NodeBehaviorDefinition {
     private final NodeType type;
@@ -61,18 +60,18 @@ final class NodeBehaviorDefinition {
         return parameterBehavior != null ? parameterBehavior.exportValues(node, baseValues) : baseValues;
     }
 
-    Optional<Vec3d> resolvePositionTarget(Node owner, Node parameterNode, RuntimeParameterData data,
+    Optional<Vec3> resolvePositionTarget(Node owner, Node parameterNode, RuntimeParameterData data,
                                           CompletableFuture<Void> future) {
         return runtimeBehavior != null
             ? runtimeBehavior.resolvePositionTarget(owner, parameterNode, data, future)
             : Optional.empty();
     }
 
-    Node.ListValueEntry resolveListValueEntry(Node owner, Node parameterNode, MinecraftClient client) {
+    Node.ListValueEntry resolveListValueEntry(Node owner, Node parameterNode, Minecraft client) {
         return listEntryBehavior != null ? listEntryBehavior.resolveListValueEntry(owner, parameterNode, client) : null;
     }
 
-    BlockPos resolveGotoFallbackTarget(Node owner, Node parameterNode, MinecraftClient client,
+    BlockPos resolveGotoFallbackTarget(Node owner, Node parameterNode, Minecraft client,
                                        CompletableFuture<Void> future) {
         return gotoFallbackTargetBehavior != null
             ? gotoFallbackTargetBehavior.resolveFallbackTarget(owner, parameterNode, client, future)

@@ -1,10 +1,9 @@
 package com.pathmind.util;
 
 import com.pathmind.PathmindCommon;
-import net.minecraft.client.MinecraftClient;
-
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import net.minecraft.client.Minecraft;
 
 public final class ClientMessageSender {
     private static final String FABRIC_SEND_EVENTS_CLASS = "net.fabricmc.fabric.api.client.message.v1.ClientSendMessageEvents";
@@ -13,8 +12,8 @@ public final class ClientMessageSender {
     private ClientMessageSender() {
     }
 
-    public static void send(MinecraftClient client, String message) {
-        if (client == null || client.player == null || client.player.networkHandler == null || message == null) {
+    public static void send(Minecraft client, String message) {
+        if (client == null || client.player == null || client.player.connection == null || message == null) {
             return;
         }
         String trimmed = message.trim();
@@ -27,7 +26,7 @@ public final class ClientMessageSender {
         sendDirect(client, trimmed);
     }
 
-    private static boolean tryDispatchViaFabricEvents(MinecraftClient client, String message) {
+    private static boolean tryDispatchViaFabricEvents(Minecraft client, String message) {
         try {
             Class<?> eventsClass = Class.forName(FABRIC_SEND_EVENTS_CLASS, false, ClientMessageSender.class.getClassLoader());
             if (message.startsWith("/")) {
@@ -41,7 +40,7 @@ public final class ClientMessageSender {
                 }
                 String modified = invokeStringEvent(eventsClass, "MODIFY_COMMAND", "modifySendCommandMessage", rawCommand);
                 invokeVoidEvent(eventsClass, "COMMAND", "onSendCommandMessage", modified);
-                client.player.networkHandler.sendChatCommand(modified);
+                client.player.connection.sendCommand(modified);
                 return true;
             }
 
@@ -51,7 +50,7 @@ public final class ClientMessageSender {
             }
             String modified = invokeStringEvent(eventsClass, "MODIFY_CHAT", "modifySendChatMessage", message);
             invokeVoidEvent(eventsClass, "CHAT", "onSendChatMessage", modified);
-            client.player.networkHandler.sendChatMessage(modified);
+            client.player.connection.sendChat(modified);
             return true;
         } catch (ClassNotFoundException e) {
             return false;
@@ -64,18 +63,18 @@ public final class ClientMessageSender {
         }
     }
 
-    private static void sendDirect(MinecraftClient client, String message) {
+    private static void sendDirect(Minecraft client, String message) {
         if (message.startsWith("/")) {
             String rawCommand = message.substring(1).trim();
             if (rawCommand.isEmpty()) {
                 return;
             }
             FabricEventTracker.record("neoforge.client.message.send_command", "fabric.client.message.send_command");
-            client.player.networkHandler.sendChatCommand(rawCommand);
+            client.player.connection.sendCommand(rawCommand);
             return;
         }
         FabricEventTracker.record("neoforge.client.message.send_chat", "fabric.client.message.send_chat");
-        client.player.networkHandler.sendChatMessage(message);
+        client.player.connection.sendChat(message);
     }
 
     private static boolean invokeBooleanEvent(Class<?> eventsClass, String fieldName, String methodName, String value)

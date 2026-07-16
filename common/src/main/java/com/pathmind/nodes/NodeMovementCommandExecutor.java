@@ -2,18 +2,16 @@ package com.pathmind.nodes;
 
 import static com.pathmind.util.PathmindI18n.tr;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import com.pathmind.util.EntityCompatibilityBridge;
 import com.pathmind.util.InputCompatibilityBridge;
-import net.minecraft.client.option.KeyBinding;
-import net.minecraft.client.util.InputUtil;
-import net.minecraft.entity.EntityPose;
-import net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
-
 import java.util.EnumSet;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import net.minecraft.client.KeyMapping;
+import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket;
+import net.minecraft.util.Mth;
+import net.minecraft.world.entity.Pose;
 
 final class NodeMovementCommandExecutor {
     private final Node owner;
@@ -26,17 +24,17 @@ final class NodeMovementCommandExecutor {
         if (owner.preprocessAttachedParameter(EnumSet.of(Node.ParameterUsage.LOOK_ORIENTATION, Node.ParameterUsage.POSITION), future) == Node.ParameterHandlingResult.COMPLETE) {
             return;
         }
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
         if (client == null || client.player == null) {
             future.completeExceptionally(new RuntimeException("Minecraft client not available"));
             return;
         }
         
-        float yaw = (float) owner.getDoubleParameter("Yaw", client.player.getYaw());
-        float pitch = MathHelper.clamp((float) owner.getDoubleParameter("Pitch", client.player.getPitch()), -90.0F, 90.0F);
-        client.player.setYaw(yaw);
-        client.player.setPitch(pitch);
-        client.player.setHeadYaw(yaw);
+        float yaw = (float) owner.getDoubleParameter("Yaw", client.player.getYRot());
+        float pitch = Mth.clamp((float) owner.getDoubleParameter("Pitch", client.player.getXRot()), -90.0F, 90.0F);
+        client.player.setYRot(yaw);
+        client.player.setXRot(pitch);
+        client.player.setYHeadRot(yaw);
         future.complete(null);
     }
 
@@ -44,7 +42,7 @@ final class NodeMovementCommandExecutor {
         if (owner.preprocessAttachedParameter(EnumSet.of(Node.ParameterUsage.LOOK_ORIENTATION), future) == Node.ParameterHandlingResult.COMPLETE) {
             return;
         }
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
         if (client == null || client.player == null) {
             future.completeExceptionally(new RuntimeException("Minecraft client not available"));
             return;
@@ -76,18 +74,18 @@ final class NodeMovementCommandExecutor {
             try {
                 owner.runOnClientThread(client, () -> {
                     owner.orientPlayerTowardsRuntimeTarget(client, owner.runtimeState().runtimeParameterData);
-                    if (client.options != null && client.options.forwardKey != null) {
-                        client.options.forwardKey.setPressed(true);
+                    if (client.options != null && client.options.keyUp != null) {
+                        client.options.keyUp.setDown(true);
                     }
                 });
 
                 if (useDistance) {
-                    net.minecraft.util.math.BlockPos startBlockPos = owner.supplyFromClient(client,
+                    net.minecraft.core.BlockPos startBlockPos = owner.supplyFromClient(client,
                         () -> {
                             if (client.player == null) {
                                 return null;
                             }
-                            return client.player.getBlockPos();
+                            return client.player.blockPosition();
                         });
                     if (startBlockPos != null) {
                         double targetDistanceSquared = distance * distance;
@@ -109,12 +107,12 @@ final class NodeMovementCommandExecutor {
                                 stopReason = "timeout";
                                 break;
                             }
-                            net.minecraft.util.math.BlockPos currentBlockPos = owner.supplyFromClient(client,
+                            net.minecraft.core.BlockPos currentBlockPos = owner.supplyFromClient(client,
                                 () -> {
                                     if (client.player == null) {
                                         return null;
                                     }
-                                    return client.player.getBlockPos();
+                                    return client.player.blockPosition();
                                 });
                             if (currentBlockPos == null) {
                                 stopReason = "currentPosNull";
@@ -146,8 +144,8 @@ final class NodeMovementCommandExecutor {
             } finally {
                 try {
                     owner.runOnClientThread(client, () -> {
-                        if (client.options != null && client.options.forwardKey != null) {
-                            client.options.forwardKey.setPressed(false);
+                        if (client.options != null && client.options.keyUp != null) {
+                            client.options.keyUp.setDown(false);
                         }
                     });
                 } catch (InterruptedException e) {
@@ -167,7 +165,7 @@ final class NodeMovementCommandExecutor {
         if (owner.preprocessAttachedParameter(EnumSet.noneOf(Node.ParameterUsage.class), future) == Node.ParameterHandlingResult.COMPLETE) {
             return;
         }
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
         if (client == null || client.player == null) {
             future.completeExceptionally(new RuntimeException("Minecraft client not available"));
             return;
@@ -175,7 +173,7 @@ final class NodeMovementCommandExecutor {
 
         client.execute(() -> {
             if (client.player != null) {
-                client.player.jump();
+                client.player.jumpFromGround();
             }
             future.complete(null);
         });
@@ -185,7 +183,7 @@ final class NodeMovementCommandExecutor {
         if (owner.preprocessAttachedParameter(EnumSet.noneOf(Node.ParameterUsage.class), future) == Node.ParameterHandlingResult.COMPLETE) {
             return;
         }
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
         if (client == null || client.getWindow() == null) {
             future.completeExceptionally(new RuntimeException("Minecraft client not available"));
             return;
@@ -208,22 +206,22 @@ final class NodeMovementCommandExecutor {
                 future.complete(null);
                 return;
             }
-            InputUtil.Key inputKey = InputUtil.Type.MOUSE.createFromCode(mouseButton);
-            KeyBinding.onKeyPressed(inputKey);
+            InputConstants.Key inputKey = InputConstants.Type.MOUSE.getOrCreate(mouseButton);
+            KeyMapping.click(inputKey);
             boolean buttonAlreadyDown = InputCompatibilityBridge.isMouseButtonPressed(client, mouseButton);
             if (buttonAlreadyDown) {
                 future.complete(null);
                 return;
             }
-            KeyBinding.setKeyPressed(inputKey, true);
+            KeyMapping.set(inputKey, true);
             Node.MESSAGE_SCHEDULER.schedule(() -> {
-                net.minecraft.client.MinecraftClient releaseClient = net.minecraft.client.MinecraftClient.getInstance();
+                net.minecraft.client.Minecraft releaseClient = net.minecraft.client.Minecraft.getInstance();
                 if (releaseClient == null) {
                     future.complete(null);
                     return;
                 }
                 releaseClient.execute(() -> {
-                    KeyBinding.setKeyPressed(inputKey, false);
+                    KeyMapping.set(inputKey, false);
                     future.complete(null);
                 });
             }, holdDurationMs, TimeUnit.MILLISECONDS);
@@ -237,14 +235,14 @@ final class NodeMovementCommandExecutor {
             return;
         }
 
-        InputUtil.Key inputKey = InputUtil.Type.KEYSYM.createFromCode(keyCode);
+        InputConstants.Key inputKey = InputConstants.Type.KEYSYM.getOrCreate(keyCode);
         boolean[] handledByScreen = {false};
         try {
             owner.runOnClientThread(client, () -> {
-                if (client.currentScreen != null) {
-                    handledByScreen[0] = InputCompatibilityBridge.dispatchScreenKeyPressed(client.currentScreen, keyCode, 0, 0);
+                if (client.screen != null) {
+                    handledByScreen[0] = InputCompatibilityBridge.dispatchScreenKeyPressed(client.screen, keyCode, 0, 0);
                 }
-                KeyBinding.onKeyPressed(inputKey);
+                KeyMapping.click(inputKey);
             });
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -263,15 +261,15 @@ final class NodeMovementCommandExecutor {
             return;
         }
 
-        KeyBinding.setKeyPressed(inputKey, true);
+        KeyMapping.set(inputKey, true);
         Node.MESSAGE_SCHEDULER.schedule(() -> {
-            net.minecraft.client.MinecraftClient releaseClient = net.minecraft.client.MinecraftClient.getInstance();
+            net.minecraft.client.Minecraft releaseClient = net.minecraft.client.Minecraft.getInstance();
             if (releaseClient == null) {
                 future.complete(null);
                 return;
             }
             releaseClient.execute(() -> {
-                KeyBinding.setKeyPressed(inputKey, false);
+                KeyMapping.set(inputKey, false);
                 future.complete(null);
             });
         }, holdDurationMs, TimeUnit.MILLISECONDS);
@@ -281,13 +279,13 @@ final class NodeMovementCommandExecutor {
         if (owner.preprocessAttachedParameter(EnumSet.noneOf(Node.ParameterUsage.class), future) == Node.ParameterHandlingResult.COMPLETE) {
             return;
         }
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
         if (client == null || client.player == null) {
             future.completeExceptionally(new RuntimeException("Minecraft client not available"));
             return;
         }
 
-        boolean target = !client.player.isSneaking();
+        boolean target = !client.player.isShiftKeyDown();
         applyCrouchState(client, target);
         future.complete(null);
     }
@@ -296,29 +294,29 @@ final class NodeMovementCommandExecutor {
         if (owner.preprocessAttachedParameter(EnumSet.noneOf(Node.ParameterUsage.class), future) == Node.ParameterHandlingResult.COMPLETE) {
             return;
         }
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
         if (client == null || client.player == null) {
             future.completeExceptionally(new RuntimeException("Minecraft client not available"));
             return;
         }
 
-        boolean active = client.player.getPose() != EntityPose.SWIMMING || !client.player.isSwimming();
+        boolean active = client.player.getPose() != Pose.SWIMMING || !client.player.isSwimming();
         client.player.setSwimming(active);
-        client.player.setPose(active ? EntityPose.SWIMMING : EntityPose.STANDING);
-        if (client.options != null && client.options.sneakKey != null) {
-            client.options.sneakKey.setPressed(false);
+        client.player.setPose(active ? Pose.SWIMMING : Pose.STANDING);
+        if (client.options != null && client.options.keyShift != null) {
+            client.options.keyShift.setDown(false);
         }
         future.complete(null);
     }
 
-    private void applyCrouchState(net.minecraft.client.MinecraftClient client, boolean active) {
+    private void applyCrouchState(net.minecraft.client.Minecraft client, boolean active) {
         owner.applySneakState(client, active);
     }
     void executeSprintCommand(CompletableFuture<Void> future) {
         if (owner.preprocessAttachedParameter(EnumSet.noneOf(Node.ParameterUsage.class), future) == Node.ParameterHandlingResult.COMPLETE) {
             return;
         }
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
         if (client == null || client.player == null) {
             future.completeExceptionally(new RuntimeException("Minecraft client not available"));
             return;
@@ -328,9 +326,9 @@ final class NodeMovementCommandExecutor {
 
         boolean previous = client.player.isSprinting();
         client.player.setSprinting(active);
-        if (client.player.networkHandler != null && previous != active) {
-            ClientCommandC2SPacket.Mode mode = active ? ClientCommandC2SPacket.Mode.START_SPRINTING : ClientCommandC2SPacket.Mode.STOP_SPRINTING;
-            client.player.networkHandler.sendPacket(new ClientCommandC2SPacket(client.player, mode));
+        if (client.player.connection != null && previous != active) {
+            ServerboundPlayerCommandPacket.Action mode = active ? ServerboundPlayerCommandPacket.Action.START_SPRINTING : ServerboundPlayerCommandPacket.Action.STOP_SPRINTING;
+            client.player.connection.send(new ServerboundPlayerCommandPacket(client.player, mode));
         }
         future.complete(null);
     }
@@ -339,7 +337,7 @@ final class NodeMovementCommandExecutor {
         if (owner.preprocessAttachedParameter(EnumSet.noneOf(Node.ParameterUsage.class), future) == Node.ParameterHandlingResult.COMPLETE) {
             return;
         }
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
         if (client == null || client.player == null) {
             future.completeExceptionally(new RuntimeException("Minecraft client not available"));
             return;
@@ -351,18 +349,18 @@ final class NodeMovementCommandExecutor {
         }
 
         boolean active = !client.player.getAbilities().flying;
-        if (active && !client.player.getAbilities().allowFlying) {
+        if (active && !client.player.getAbilities().mayfly) {
             future.complete(null);
             return;
         }
 
         // Lift off first so enabling flight works reliably even when starting grounded.
-        if (active && client.player.isOnGround()) {
-            client.player.jump();
+        if (active && client.player.onGround()) {
+            client.player.jumpFromGround();
         }
 
         client.player.getAbilities().flying = active;
-        client.player.sendAbilitiesUpdate();
+        client.player.onUpdateAbilities();
         future.complete(null);
     }
 }

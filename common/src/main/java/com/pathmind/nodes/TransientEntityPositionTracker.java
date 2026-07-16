@@ -1,18 +1,17 @@
 package com.pathmind.nodes;
 
 import com.pathmind.util.EntityCompatibilityBridge;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.EntityType;
-import net.minecraft.registry.Registries;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.Vec3d;
-
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
 final class TransientEntityPositionTracker {
     static final String EYE_OF_ENDER_ID = "minecraft:eye_of_ender";
@@ -28,40 +27,40 @@ final class TransientEntityPositionTracker {
         if (entity == null) {
             return;
         }
-        Identifier id = Registries.ENTITY_TYPE.getId(entity.getType());
+        Identifier id = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType());
         if (id == null || !isFallbackEnabled(id.toString())) {
             return;
         }
-        Vec3d pos = EntityCompatibilityBridge.getPos(entity);
+        Vec3 pos = EntityCompatibilityBridge.getPos(entity);
         if (pos == null) {
-            pos = Vec3d.ofCenter(entity.getBlockPos());
+            pos = Vec3.atCenterOf(entity.blockPosition());
         }
-        RECENT_POSITIONS.put(id.toString(), new TrackedPosition(id.toString(), pos, entity.getBlockPos(), System.currentTimeMillis()));
+        RECENT_POSITIONS.put(id.toString(), new TrackedPosition(id.toString(), pos, entity.blockPosition(), System.currentTimeMillis()));
     }
 
-    static void rememberNearby(MinecraftClient client, String entityId, double range) {
-        if (client == null || client.player == null || client.world == null || entityId == null || !isFallbackEnabled(entityId)) {
+    static void rememberNearby(Minecraft client, String entityId, double range) {
+        if (client == null || client.player == null || client.level == null || entityId == null || !isFallbackEnabled(entityId)) {
             return;
         }
         Identifier id = Identifier.tryParse(entityId);
-        if (id == null || !Registries.ENTITY_TYPE.containsId(id)) {
+        if (id == null || !BuiltInRegistries.ENTITY_TYPE.containsKey(id)) {
             return;
         }
-        EntityType<?> type = Registries.ENTITY_TYPE.get(id);
+        EntityType<?> type = BuiltInRegistries.ENTITY_TYPE.getValue(id);
         double searchRadius = Math.max(1.0D, range);
-        Box searchBox = client.player.getBoundingBox().expand(searchRadius);
-        for (Entity entity : client.world.getOtherEntities(client.player, searchBox)) {
+        AABB searchBox = client.player.getBoundingBox().inflate(searchRadius);
+        for (Entity entity : client.level.getEntities(client.player, searchBox)) {
             if (entity != null && entity.getType() == type) {
                 remember(entity);
             }
         }
     }
 
-    static Optional<TrackedPosition> findRecent(MinecraftClient client, EntityType<?> type, double range) {
+    static Optional<TrackedPosition> findRecent(Minecraft client, EntityType<?> type, double range) {
         if (client == null || client.player == null || type == null) {
             return Optional.empty();
         }
-        Identifier id = Registries.ENTITY_TYPE.getId(type);
+        Identifier id = BuiltInRegistries.ENTITY_TYPE.getKey(type);
         if (id == null || !isFallbackEnabled(id.toString())) {
             return Optional.empty();
         }
@@ -75,11 +74,11 @@ final class TransientEntityPositionTracker {
             return Optional.empty();
         }
         double allowedRange = Math.max(1.0D, range) + RANGE_GRACE_BLOCKS;
-        Vec3d playerPos = EntityCompatibilityBridge.getPos(client.player);
+        Vec3 playerPos = EntityCompatibilityBridge.getPos(client.player);
         if (playerPos == null) {
-            playerPos = new Vec3d(client.player.getX(), client.player.getY(), client.player.getZ());
+            playerPos = new Vec3(client.player.getX(), client.player.getY(), client.player.getZ());
         }
-        if (recent.position().squaredDistanceTo(playerPos) > allowedRange * allowedRange) {
+        if (recent.position().distanceToSqr(playerPos) > allowedRange * allowedRange) {
             return Optional.empty();
         }
         return Optional.of(recent);
@@ -89,6 +88,6 @@ final class TransientEntityPositionTracker {
         return EYE_OF_ENDER_ID.equals(entityId);
     }
 
-    record TrackedPosition(String entityId, Vec3d position, BlockPos blockPos, long timestampMillis) {
+    record TrackedPosition(String entityId, Vec3 position, BlockPos blockPos, long timestampMillis) {
     }
 }

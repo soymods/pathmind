@@ -3,9 +3,9 @@ package com.pathmind.mixin;
 import com.pathmind.PathmindHud;
 import com.pathmind.screen.PathmindScreens;
 import com.pathmind.util.OverlayProtection;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.screens.Screen;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -21,50 +21,50 @@ public class ScreenRenderSealMixin {
         ThreadLocal.withInitial(() -> false);
 
     @Inject(
-        method = "renderWithTooltip(Lnet/minecraft/client/gui/DrawContext;IIF)V",
+        method = "renderWithTooltipAndSubtitles(Lnet/minecraft/client/gui/GuiGraphics;IIF)V",
         at = @At("HEAD"),
         cancellable = false,
         require = 0
     )
-    private void pathmind$markRenderStart(DrawContext context, int mouseX, int mouseY, float delta, CallbackInfo ci) {
+    private void pathmind$markRenderStart(GuiGraphics context, int mouseX, int mouseY, float delta, CallbackInfo ci) {
         Screen self = (Screen) (Object) this;
         if (PathmindScreens.isVisualEditorScreen(self)
-            && net.minecraft.client.MinecraftClient.getInstance().player != null
-            && net.minecraft.client.MinecraftClient.getInstance().world != null) {
+            && net.minecraft.client.Minecraft.getInstance().player != null
+            && net.minecraft.client.Minecraft.getInstance().level != null) {
             OverlayProtection.setPathmindRendering(true);
         }
     }
 
     @Inject(
-        method = "renderWithTooltip(Lnet/minecraft/client/gui/DrawContext;IIF)V",
+        method = "renderWithTooltipAndSubtitles(Lnet/minecraft/client/gui/GuiGraphics;IIF)V",
         at = @At("RETURN"),
         cancellable = false,
         require = 0
     )
-    private void pathmind$markRenderEnd(DrawContext context, int mouseX, int mouseY, float delta, CallbackInfo ci) {
+    private void pathmind$markRenderEnd(GuiGraphics context, int mouseX, int mouseY, float delta, CallbackInfo ci) {
         Screen self = (Screen) (Object) this;
         if (PathmindScreens.isVisualEditorScreen(self)
-            && net.minecraft.client.MinecraftClient.getInstance().player != null
-            && net.minecraft.client.MinecraftClient.getInstance().world != null) {
+            && net.minecraft.client.Minecraft.getInstance().player != null
+            && net.minecraft.client.Minecraft.getInstance().level != null) {
             OverlayProtection.setPathmindRendering(false);
         }
     }
 
     @Inject(
-        method = "renderWithTooltip(Lnet/minecraft/client/gui/DrawContext;IIF)V",
+        method = "renderWithTooltipAndSubtitles(Lnet/minecraft/client/gui/GuiGraphics;IIF)V",
         at = @At("TAIL"),
         cancellable = false,
         require = 0
     )
-    private void pathmind$finalRenderPass(DrawContext context, int mouseX, int mouseY, float delta, CallbackInfo ci) {
+    private void pathmind$finalRenderPass(GuiGraphics context, int mouseX, int mouseY, float delta, CallbackInfo ci) {
         if (pathmind$finalRenderPass.get()) {
             return;
         }
 
         Screen self = (Screen) (Object) this;
         if (!PathmindScreens.isVisualEditorScreen(self)) {
-            PathmindHud.renderHudNotifications(context, MinecraftClient.getInstance());
-            PathmindHud.renderScreenActiveNodeOverlay(context, MinecraftClient.getInstance());
+            PathmindHud.renderHudNotifications(context, Minecraft.getInstance());
+            PathmindHud.renderScreenActiveNodeOverlay(context, Minecraft.getInstance());
             return;
         }
 
@@ -76,6 +76,6 @@ public class ScreenRenderSealMixin {
             OverlayProtection.setPathmindRendering(false);
             pathmind$finalRenderPass.set(false);
         }
-        PathmindHud.renderScreenActiveNodeOverlay(context, MinecraftClient.getInstance());
+        PathmindHud.renderScreenActiveNodeOverlay(context, Minecraft.getInstance());
     }
 }

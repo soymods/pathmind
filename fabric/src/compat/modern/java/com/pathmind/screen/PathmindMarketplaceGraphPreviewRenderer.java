@@ -10,12 +10,11 @@ import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.DrawContextBridge;
 import com.pathmind.util.MatrixStackBridge;
 import com.pathmind.util.TextRenderUtil;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.text.Text;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.network.chat.Component;
 
 final class PathmindMarketplaceGraphPreviewRenderer {
     private final PathmindMarketplaceScreen screen;
@@ -24,17 +23,17 @@ final class PathmindMarketplaceGraphPreviewRenderer {
         this.screen = screen;
     }
 
-    private void drawGraphPreview(DrawContext context, int x, int y, int width, int height, boolean popup) {
+    private void drawGraphPreview(GuiGraphics context, int x, int y, int width, int height, boolean popup) {
         int gridColor = popup ? screen.presetPopupAnimation.getAnimatedPopupColor(UITheme.MARKETPLACE_PREVIEW_GRID) : UITheme.MARKETPLACE_PREVIEW_GRID;
         for (int lineX = x + 12; lineX < x + width - 8; lineX += 18) {
-            context.drawVerticalLine(lineX, y + 6, y + height - 7, gridColor);
+            context.vLine(lineX, y + 6, y + height - 7, gridColor);
         }
         for (int lineY = y + 10; lineY < y + height - 8; lineY += 14) {
-            context.drawHorizontalLine(x + 6, x + width - 7, lineY, gridColor);
+            context.hLine(x + 6, x + width - 7, lineY, gridColor);
         }
     }
 
-    void renderSurface(DrawContext context, int x, int y, int width, int height,
+    void renderSurface(GuiGraphics context, int x, int y, int width, int height,
                                            MarketplacePreset preset, boolean interactive, boolean usePopupViewportState, float panX, float panY) {
         boolean popupInteractive = interactive && usePopupViewportState;
         PathmindMarketplaceScreen.PreviewGraphModel previewModel = screen.getCachedPreviewGraph(preset);
@@ -59,7 +58,7 @@ final class PathmindMarketplaceGraphPreviewRenderer {
             float visibleRight = (x + width - offsetX) / viewScale;
             float visibleBottom = (y + height - offsetY) / viewScale;
             context.enableScissor(x, y, x + width, y + height);
-            Object matrices = context.getMatrices();
+            Object matrices = context.pose();
             MatrixStackBridge.push(matrices);
             MatrixStackBridge.translate(matrices, offsetX, offsetY);
             MatrixStackBridge.scale(matrices, viewScale, viewScale);
@@ -114,7 +113,7 @@ final class PathmindMarketplaceGraphPreviewRenderer {
         float visibleBottom = (y + height - 1 - offsetY) / viewScale;
 
         context.enableScissor(x + 1, y + 1, x + width - 1, y + height - 1);
-        Object matrices = context.getMatrices();
+        Object matrices = context.pose();
         MatrixStackBridge.push(matrices);
         MatrixStackBridge.translate(matrices, offsetX, offsetY);
         MatrixStackBridge.scale(matrices, viewScale, viewScale);
@@ -183,7 +182,7 @@ final class PathmindMarketplaceGraphPreviewRenderer {
             && minY <= visibleBottom;
     }
 
-    private void drawPreviewConnection(DrawContext context, int startX, int startY, int endX, int endY, int color, boolean popup) {
+    private void drawPreviewConnection(GuiGraphics context, int startX, int startY, int endX, int endY, int color, boolean popup) {
         int resolvedColor = popup ? screen.presetPopupAnimation.getAnimatedPopupColor(color) : color;
         int distance = Math.max(Math.abs(endX - startX), Math.abs(endY - startY));
         int steps = popup ? Math.max(8, distance / 8) : Math.min(14, Math.max(4, distance / 28));
@@ -211,7 +210,7 @@ final class PathmindMarketplaceGraphPreviewRenderer {
         }
     }
 
-    private void renderPreviewNode(DrawContext context, Node node, float offsetX, float offsetY, float scale, boolean interactive, boolean popup) {
+    private void renderPreviewNode(GuiGraphics context, Node node, float offsetX, float offsetY, float scale, boolean interactive, boolean popup) {
         if (node == null) {
             return;
         }
@@ -247,19 +246,19 @@ final class PathmindMarketplaceGraphPreviewRenderer {
 
         if (scale > 0.12f) {
             String label = TextRenderUtil.trimWithEllipsis(screen.textRenderer(), node.getDisplayName().getString(), Math.max(20, nodeWidth - 8));
-            context.drawTextWithShadow(screen.textRenderer(), Text.literal(label), nodeX + 4, nodeY + 3,
+            context.drawString(screen.textRenderer(), Component.literal(label), nodeX + 4, nodeY + 3,
                 popup ? screen.presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_HEADER) : UITheme.TEXT_HEADER);
         }
 
         if (interactive && scale > 0.12f) {
             int textY = nodeY + headerHeight + 3;
-            int lineHeight = Math.max(9, screen.textRenderer().fontHeight + 1);
+            int lineHeight = Math.max(9, screen.textRenderer().lineHeight + 1);
             for (String line : buildNodeBodyLines(node)) {
                 if (textY > nodeY + nodeHeight - lineHeight) {
                     break;
                 }
-                context.drawTextWithShadow(screen.textRenderer(),
-                    Text.literal(TextRenderUtil.trimWithEllipsis(screen.textRenderer(), line, Math.max(22, nodeWidth - 8))),
+                context.drawString(screen.textRenderer(),
+                    Component.literal(TextRenderUtil.trimWithEllipsis(screen.textRenderer(), line, Math.max(22, nodeWidth - 8))),
                     nodeX + 4,
                     textY,
                     popup ? screen.presetPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_SECONDARY) : UITheme.TEXT_SECONDARY);
@@ -269,7 +268,7 @@ final class PathmindMarketplaceGraphPreviewRenderer {
         renderNodeSockets(context, node, offsetX, offsetY, scale, popup);
     }
 
-    private void renderPreviewStickyNote(DrawContext context, Node node, float offsetX, float offsetY, float scale,
+    private void renderPreviewStickyNote(GuiGraphics context, Node node, float offsetX, float offsetY, float scale,
                                          boolean interactive, boolean popup) {
         int nodeX = Math.round(offsetX + node.getX() * scale);
         int nodeY = Math.round(offsetY + node.getY() * scale);
@@ -297,13 +296,13 @@ final class PathmindMarketplaceGraphPreviewRenderer {
         int bodyY = nodeY + headerHeight + margin;
         int bodyWidth = Math.max(8, nodeWidth - margin * 2);
         int bottom = nodeY + nodeHeight - margin;
-        int lineHeight = Math.max(9, screen.textRenderer().fontHeight + 1);
+        int lineHeight = Math.max(9, screen.textRenderer().lineHeight + 1);
         int textY = bodyY;
         for (String line : wrapStickyNotePreviewText(screen.fallback(node.getStickyNoteText(), ""), bodyWidth)) {
-            if (textY + screen.textRenderer().fontHeight > bottom) {
+            if (textY + screen.textRenderer().lineHeight > bottom) {
                 break;
             }
-            context.drawText(screen.textRenderer(), Text.literal(line), bodyX, textY, resolvedText, false);
+            context.drawString(screen.textRenderer(), Component.literal(line), bodyX, textY, resolvedText, false);
             textY += lineHeight;
         }
     }
@@ -328,13 +327,13 @@ final class PathmindMarketplaceGraphPreviewRenderer {
         StringBuilder current = new StringBuilder();
         for (String word : rawLine.split(" ", -1)) {
             if (word.isEmpty()) {
-                if (current.length() == 0 || screen.textRenderer().getWidth(current + " ") <= maxWidth) {
+                if (current.length() == 0 || screen.textRenderer().width(current + " ") <= maxWidth) {
                     current.append(' ');
                 }
                 continue;
             }
             String candidate = current.length() == 0 ? word : current + " " + word;
-            if (screen.textRenderer().getWidth(candidate) <= maxWidth) {
+            if (screen.textRenderer().width(candidate) <= maxWidth) {
                 current.setLength(0);
                 current.append(candidate);
                 continue;
@@ -351,7 +350,7 @@ final class PathmindMarketplaceGraphPreviewRenderer {
     private void appendWrappedStickyNoteWord(List<String> lines, StringBuilder current, String word, int maxWidth) {
         for (int index = 0; index < word.length(); index++) {
             String candidate = current.toString() + word.charAt(index);
-            if (current.length() > 0 && screen.textRenderer().getWidth(candidate) > maxWidth) {
+            if (current.length() > 0 && screen.textRenderer().width(candidate) > maxWidth) {
                 lines.add(current.toString());
                 current.setLength(0);
             }
@@ -359,7 +358,7 @@ final class PathmindMarketplaceGraphPreviewRenderer {
         }
     }
 
-    private void renderNodeSockets(DrawContext context, Node node, float offsetX, float offsetY, float scale, boolean popup) {
+    private void renderNodeSockets(GuiGraphics context, Node node, float offsetX, float offsetY, float scale, boolean popup) {
         int socketSize = Math.max(2, Math.round(4f * scale));
         int halfSocket = Math.max(1, socketSize / 2);
         for (int socketIndex = 0; socketIndex < node.getInputSocketCount(); socketIndex++) {
@@ -383,13 +382,13 @@ final class PathmindMarketplaceGraphPreviewRenderer {
             return bodyLines;
         }
         if (node.getMode() != null) {
-            bodyLines.add(Text.translatable("pathmind.marketplace.graphMode", node.getMode().getDisplayName()).getString());
+            bodyLines.add(Component.translatable("pathmind.marketplace.graphMode", node.getMode().getDisplayName()).getString());
         }
         if (node.getType() == com.pathmind.nodes.NodeType.MESSAGE) {
             for (String line : node.getMessageLines()) {
                 String value = screen.fallback(line, "").trim();
                 if (!value.isEmpty()) {
-                    bodyLines.add(Text.translatable("pathmind.marketplace.graphMessage", value).getString());
+                    bodyLines.add(Component.translatable("pathmind.marketplace.graphMessage", value).getString());
                 }
             }
         }
@@ -401,7 +400,7 @@ final class PathmindMarketplaceGraphPreviewRenderer {
                 String slotLabel = node.getParameterSlotLabel(entry.getKey());
                 String childLabel = entry.getValue().getDisplayName().getString();
                 if (slotLabel == null || slotLabel.isBlank()) {
-                    slotLabel = Text.translatable("pathmind.marketplace.graphParam", entry.getKey() + 1).getString();
+                    slotLabel = Component.translatable("pathmind.marketplace.graphParam", entry.getKey() + 1).getString();
                 }
                 bodyLines.add(slotLabel + ": " + childLabel);
                 if (bodyLines.size() >= 6) {
@@ -432,7 +431,7 @@ final class PathmindMarketplaceGraphPreviewRenderer {
     }
 
 
-    void drawMinimalPreviewButton(DrawContext context, int x, int y, int width, int height, boolean hovered) {
+    void drawMinimalPreviewButton(GuiGraphics context, int x, int y, int width, int height, boolean hovered) {
         int background = screen.presetPopupAnimation.getAnimatedPopupColor(hovered ? UITheme.BACKGROUND_SECTION : UITheme.BACKGROUND_PRIMARY);
         int border = screen.presetPopupAnimation.getAnimatedPopupColor(hovered ? screen.getAccentColor() : UITheme.BORDER_SUBTLE);
         UIStyleHelper.drawBeveledPanel(
@@ -447,11 +446,11 @@ final class PathmindMarketplaceGraphPreviewRenderer {
         );
     }
 
-    void drawPreviewMinusIcon(DrawContext context, int x, int y, int color) {
+    void drawPreviewMinusIcon(GuiGraphics context, int x, int y, int color) {
         context.fill(x + 4, y + 6, x + 10, y + 8, color);
     }
 
-    void drawPreviewPlusIcon(DrawContext context, int x, int y, int color) {
+    void drawPreviewPlusIcon(GuiGraphics context, int x, int y, int color) {
         context.fill(x + 4, y + 6, x + 10, y + 8, color);
         context.fill(x + 6, y + 4, x + 8, y + 10, color);
     }

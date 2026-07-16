@@ -1,17 +1,16 @@
 package com.pathmind.nodes;
 
 import com.pathmind.util.PlayerInventoryBridge;
-import net.minecraft.block.BlockState;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.entity.Entity;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.hit.EntityHitResult;
-import net.minecraft.util.hit.HitResult;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.Vec3d;
-
 import java.util.Optional;
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.EntityHitResult;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.Vec3;
 
 final class NodeTargetSensorEvaluator {
     private final Node owner;
@@ -21,8 +20,8 @@ final class NodeTargetSensorEvaluator {
     }
 
     Optional<BlockState> getTargetedBlockState() {
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client == null || client.world == null) {
+        Minecraft client = Minecraft.getInstance();
+        if (client == null || client.level == null) {
             return Optional.empty();
         }
         Optional<BlockHitResult> hit = getCurrentBlockHitResult();
@@ -33,11 +32,11 @@ final class NodeTargetSensorEvaluator {
         if (pos == null) {
             return Optional.empty();
         }
-        return Optional.ofNullable(client.world.getBlockState(pos));
+        return Optional.ofNullable(client.level.getBlockState(pos));
     }
 
     Optional<BlockPos> getTargetedBlockPos() {
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         if (client == null) {
             return Optional.empty();
         }
@@ -45,11 +44,11 @@ final class NodeTargetSensorEvaluator {
     }
 
     Optional<Entity> getTargetedEntity() {
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         if (client == null) {
             return Optional.empty();
         }
-        HitResult hit = client.crosshairTarget;
+        HitResult hit = client.hitResult;
         if (!(hit instanceof EntityHitResult entityHit) || hit.getType() != HitResult.Type.ENTITY) {
             return Optional.empty();
         }
@@ -61,16 +60,16 @@ final class NodeTargetSensorEvaluator {
     }
 
     Optional<Direction> getLookDirection() {
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         if (client == null || client.player == null) {
             return Optional.empty();
         }
-        Vec3d look = client.player.getRotationVec(1.0F);
-        return Optional.of(Direction.getFacing(look.x, look.y, look.z));
+        Vec3 look = client.player.getViewVector(1.0F);
+        return Optional.of(Direction.getApproximateNearest(look.x, look.y, look.z));
     }
 
     Optional<Integer> getCurrentHotbarSlot() {
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         if (client == null || client.player == null) {
             return Optional.empty();
         }
@@ -82,7 +81,7 @@ final class NodeTargetSensorEvaluator {
     }
 
     Optional<Direction> getTargetedBlockFace() {
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         if (client == null) {
             return Optional.empty();
         }
@@ -90,27 +89,27 @@ final class NodeTargetSensorEvaluator {
         if (hit.isEmpty()) {
             return Optional.empty();
         }
-        Direction face = hit.get().getSide();
+        Direction face = hit.get().getDirection();
         return face == null ? Optional.empty() : Optional.of(face);
     }
 
     Optional<BlockHitResult> getCurrentBlockHitResult() {
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client == null || client.player == null || client.world == null) {
+        Minecraft client = Minecraft.getInstance();
+        if (client == null || client.player == null || client.level == null) {
             return Optional.empty();
         }
 
         BlockHitResult freshHit = owner.raycastBlockFromOrientation(
             client,
-            client.player.getYaw(),
-            client.player.getPitch(),
+            client.player.getYRot(),
+            client.player.getXRot(),
             Node.getBlockInteractionReach(client)
         );
         if (freshHit != null) {
             return Optional.of(freshHit);
         }
 
-        HitResult cachedHit = client.crosshairTarget;
+        HitResult cachedHit = client.hitResult;
         if (cachedHit instanceof BlockHitResult blockHit && cachedHit.getType() == HitResult.Type.BLOCK) {
             return Optional.of(blockHit);
         }

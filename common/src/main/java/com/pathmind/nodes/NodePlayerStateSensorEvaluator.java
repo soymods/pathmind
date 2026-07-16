@@ -1,17 +1,16 @@
 package com.pathmind.nodes;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.hit.HitResult;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.RaycastContext;
-
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.Vec3;
 
 final class NodePlayerStateSensorEvaluator {
     private static final long FALLING_SENSOR_RETENTION_MS = 1000L;
@@ -31,18 +30,18 @@ final class NodePlayerStateSensorEvaluator {
     }
 
     boolean isSwimming() {
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         return client != null && client.player != null && client.player.isSwimming();
     }
 
     boolean isInLava() {
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         return client != null && client.player != null && client.player.isInLava();
     }
 
     boolean isUnderwater() {
-        MinecraftClient client = MinecraftClient.getInstance();
-        return client != null && client.player != null && client.player.isSubmergedInWater();
+        Minecraft client = Minecraft.getInstance();
+        return client != null && client.player != null && client.player.isUnderWater();
     }
 
     Optional<Double> getDistanceFromGround() {
@@ -50,39 +49,39 @@ final class NodePlayerStateSensorEvaluator {
     }
 
     private Optional<Double> computeDistanceFromGround(boolean treatOnGroundAsZero) {
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client == null || client.player == null || client.world == null) {
+        Minecraft client = Minecraft.getInstance();
+        if (client == null || client.player == null || client.level == null) {
             return Optional.empty();
         }
-        if (treatOnGroundAsZero && client.player.isOnGround()) {
+        if (treatOnGroundAsZero && client.player.onGround()) {
             return Optional.of(0.0);
         }
 
-        Box box = client.player.getBoundingBox();
+        AABB box = client.player.getBoundingBox();
         double bottomY = box.minY;
-        double bottomLimit = client.world.getBottomY() - 1.0;
+        double bottomLimit = client.level.getMinY() - 1.0;
         double inset = 1.0E-3;
-        Vec3d[] samplePoints = new Vec3d[] {
-            new Vec3d((box.minX + box.maxX) * 0.5, bottomY + 0.01, (box.minZ + box.maxZ) * 0.5),
-            new Vec3d(box.minX + inset, bottomY + 0.01, box.minZ + inset),
-            new Vec3d(box.minX + inset, bottomY + 0.01, box.maxZ - inset),
-            new Vec3d(box.maxX - inset, bottomY + 0.01, box.minZ + inset),
-            new Vec3d(box.maxX - inset, bottomY + 0.01, box.maxZ - inset)
+        Vec3[] samplePoints = new Vec3[] {
+            new Vec3((box.minX + box.maxX) * 0.5, bottomY + 0.01, (box.minZ + box.maxZ) * 0.5),
+            new Vec3(box.minX + inset, bottomY + 0.01, box.minZ + inset),
+            new Vec3(box.minX + inset, bottomY + 0.01, box.maxZ - inset),
+            new Vec3(box.maxX - inset, bottomY + 0.01, box.minZ + inset),
+            new Vec3(box.maxX - inset, bottomY + 0.01, box.maxZ - inset)
         };
 
         Double nearestDistance = null;
-        for (Vec3d start : samplePoints) {
-            HitResult hit = client.world.raycast(new RaycastContext(
+        for (Vec3 start : samplePoints) {
+            HitResult hit = client.level.clip(new ClipContext(
                 start,
-                new Vec3d(start.x, bottomLimit, start.z),
-                RaycastContext.ShapeType.COLLIDER,
-                RaycastContext.FluidHandling.NONE,
+                new Vec3(start.x, bottomLimit, start.z),
+                ClipContext.Block.COLLIDER,
+                ClipContext.Fluid.NONE,
                 client.player
             ));
             if (!(hit instanceof BlockHitResult blockHit) || hit.getType() != HitResult.Type.BLOCK) {
                 continue;
             }
-            double distance = Math.max(0.0, bottomY - blockHit.getPos().y);
+            double distance = Math.max(0.0, bottomY - blockHit.getLocation().y);
             if (nearestDistance == null || distance < nearestDistance) {
                 nearestDistance = distance;
             }
@@ -132,26 +131,26 @@ final class NodePlayerStateSensorEvaluator {
     }
 
     boolean isFalling(double distance) {
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         if (client == null || client.player == null) {
             return false;
         }
-        ClientPlayerEntity player = client.player;
-        FallingTracker tracker = FALLING_TRACKERS.computeIfAbsent(player.getUuid(), ignored -> new FallingTracker());
+        LocalPlayer player = client.player;
+        FallingTracker tracker = FALLING_TRACKERS.computeIfAbsent(player.getUUID(), ignored -> new FallingTracker());
         long now = System.currentTimeMillis();
         double currentY = player.getY();
         double groundClearance = computeDistanceFromGround(false).orElse(Double.POSITIVE_INFINITY);
-        double downwardVelocity = player.getVelocity().y;
+        double downwardVelocity = player.getDeltaMovement().y;
         boolean descending = downwardVelocity < -1.0E-3;
-        boolean groundedByFlag = player.isOnGround();
+        boolean groundedByFlag = player.onGround();
         boolean groundedByClearance = groundClearance <= GROUNDED_CLEARANCE_EPSILON;
         if (groundedByFlag || groundedByClearance) {
             tracker.reset(currentY);
             return false;
         }
         if (player.isSwimming()
-            || player.isSubmergedInWater()
-            || player.isClimbing()
+            || player.isUnderWater()
+            || player.onClimbable()
             || player.getAbilities().flying) {
             tracker.clear(currentY);
             return false;

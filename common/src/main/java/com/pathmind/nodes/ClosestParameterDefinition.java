@@ -2,10 +2,9 @@ package com.pathmind.nodes;
 
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
 
 final class ClosestParameterDefinition {
     static NodeBehaviorDefinition create() {
@@ -15,10 +14,10 @@ final class ClosestParameterDefinition {
             .build();
     }
 
-    private static Optional<Vec3d> resolvePositionTarget(Node owner, Node parameterNode, RuntimeParameterData data,
+    private static Optional<Vec3> resolvePositionTarget(Node owner, Node parameterNode, RuntimeParameterData data,
                                                          CompletableFuture<Void> future) {
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client == null || client.player == null || client.world == null) {
+        Minecraft client = Minecraft.getInstance();
+        if (client == null || client.player == null || client.level == null) {
             return Optional.empty();
         }
         int range = Math.max(1, Node.parseNodeInt(parameterNode, "Range", 5));
@@ -30,7 +29,7 @@ final class ClosestParameterDefinition {
         if (data != null) {
             data.targetBlockPos = open.get();
         }
-        return Optional.of(Vec3d.ofCenter(open.get()));
+        return Optional.of(Vec3.atCenterOf(open.get()));
     }
 
     private ClosestParameterDefinition() {

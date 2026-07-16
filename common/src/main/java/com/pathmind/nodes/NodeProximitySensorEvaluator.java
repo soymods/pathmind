@@ -3,22 +3,21 @@ package com.pathmind.nodes;
 import com.pathmind.util.BlockSelection;
 import com.pathmind.util.EntityCompatibilityBridge;
 import com.pathmind.util.EntityStateOptions;
-import net.minecraft.block.BlockState;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.EntityType;
-import net.minecraft.registry.Registries;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
+import net.minecraft.util.Mth;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
 final class NodeProximitySensorEvaluator {
     private final Node owner;
@@ -71,12 +70,12 @@ final class NodeProximitySensorEvaluator {
                 owner.sendIncompatibleParameterMessage(parameterNode);
                 return false;
             }
-            Optional<Vec3d> resolved = owner.resolvePositionTarget(parameterNode, null, null);
+            Optional<Vec3> resolved = owner.resolvePositionTarget(parameterNode, null, null);
             if (resolved.isPresent()) {
-                Vec3d vec = resolved.get();
-                x = MathHelper.floor(vec.x);
-                y = MathHelper.floor(vec.y);
-                z = MathHelper.floor(vec.z);
+                Vec3 vec = resolved.get();
+                x = Mth.floor(vec.x);
+                y = Mth.floor(vec.y);
+                z = Mth.floor(vec.z);
             } else {
                 x = Node.parseNodeInt(parameterNode, "X", x);
                 y = Node.parseNodeInt(parameterNode, "Y", y);
@@ -106,22 +105,22 @@ final class NodeProximitySensorEvaluator {
         if (selections == null || selections.isEmpty()) {
             return false;
         }
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         if (client == null || client.player == null) {
             return false;
         }
-        net.minecraft.world.World world = EntityCompatibilityBridge.getWorld(client.player);
+        net.minecraft.world.level.Level world = EntityCompatibilityBridge.getWorld(client.player);
         if (world == null) {
             return false;
         }
-        Box box = client.player.getBoundingBox().expand(0.05);
-        int minX = MathHelper.floor(box.minX);
-        int maxX = MathHelper.floor(box.maxX);
-        int minY = MathHelper.floor(box.minY);
-        int maxY = MathHelper.floor(box.maxY);
-        int minZ = MathHelper.floor(box.minZ);
-        int maxZ = MathHelper.floor(box.maxZ);
-        BlockPos.Mutable mutable = new BlockPos.Mutable();
+        AABB box = client.player.getBoundingBox().inflate(0.05);
+        int minX = Mth.floor(box.minX);
+        int maxX = Mth.floor(box.maxX);
+        int minY = Mth.floor(box.minY);
+        int maxY = Mth.floor(box.maxY);
+        int minZ = Mth.floor(box.minZ);
+        int maxZ = Mth.floor(box.maxZ);
+        BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
         for (int bx = minX; bx <= maxX; bx++) {
             for (int by = minY; by <= maxY; by++) {
                 for (int bz = minZ; bz <= maxZ; bz++) {
@@ -141,11 +140,11 @@ final class NodeProximitySensorEvaluator {
     }
 
     boolean isTouchingEntity(String entityId, String state) {
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         if (client == null || client.player == null || entityId == null || entityId.isEmpty()) {
             return false;
         }
-        net.minecraft.world.World world = EntityCompatibilityBridge.getWorld(client.player);
+        net.minecraft.world.level.Level world = EntityCompatibilityBridge.getWorld(client.player);
         if (world == null) {
             return false;
         }
@@ -155,13 +154,13 @@ final class NodeProximitySensorEvaluator {
                 ? owner.normalizeResourceId(sanitized, "minecraft")
                 : candidateId;
             Identifier identifier = Identifier.tryParse(normalized);
-            if (identifier == null || !Registries.ENTITY_TYPE.containsId(identifier)) {
+            if (identifier == null || !BuiltInRegistries.ENTITY_TYPE.containsKey(identifier)) {
                 continue;
             }
-            EntityType<?> entityType = Registries.ENTITY_TYPE.get(identifier);
-            List<Entity> entities = world.getOtherEntities(
+            EntityType<?> entityType = BuiltInRegistries.ENTITY_TYPE.getValue(identifier);
+            List<Entity> entities = world.getEntities(
                 client.player,
-                client.player.getBoundingBox().expand(0.15),
+                client.player.getBoundingBox().inflate(0.15),
                 entity -> entity.getType() == entityType && EntityStateOptions.matchesState(entity, state)
             );
             if (!entities.isEmpty()) {
@@ -172,11 +171,11 @@ final class NodeProximitySensorEvaluator {
     }
 
     boolean isAtCoordinates(int x, int y, int z) {
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         if (client == null || client.player == null) {
             return false;
         }
-        BlockPos playerPos = client.player.getBlockPos();
+        BlockPos playerPos = client.player.blockPosition();
         return playerPos.getX() == x && playerPos.getY() == y && playerPos.getZ() == z;
     }
 
@@ -188,16 +187,16 @@ final class NodeProximitySensorEvaluator {
         if (selections == null || selections.isEmpty()) {
             return false;
         }
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         if (client == null || client.player == null) {
             return false;
         }
-        net.minecraft.world.World world = EntityCompatibilityBridge.getWorld(client.player);
+        net.minecraft.world.level.Level world = EntityCompatibilityBridge.getWorld(client.player);
         if (world == null) {
             return false;
         }
-        Direction facing = client.player.getHorizontalFacing();
-        BlockPos targetPos = client.player.getBlockPos().offset(facing);
+        Direction facing = client.player.getDirection();
+        BlockPos targetPos = client.player.blockPosition().relative(facing);
         BlockState state = world.getBlockState(targetPos);
         return matchesAnyBlock(selections, state);
     }
@@ -210,15 +209,15 @@ final class NodeProximitySensorEvaluator {
         if (selections == null || selections.isEmpty()) {
             return false;
         }
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         if (client == null || client.player == null) {
             return false;
         }
-        net.minecraft.world.World world = EntityCompatibilityBridge.getWorld(client.player);
+        net.minecraft.world.level.Level world = EntityCompatibilityBridge.getWorld(client.player);
         if (world == null) {
             return false;
         }
-        BlockPos below = client.player.getBlockPos().down();
+        BlockPos below = client.player.blockPosition().below();
         BlockState state = world.getBlockState(below);
         return matchesAnyBlock(selections, state);
     }

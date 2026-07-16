@@ -5,11 +5,10 @@ import com.pathmind.util.EntityCompatibilityBridge;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
+import net.minecraft.util.Mth;
+import net.minecraft.world.phys.Vec3;
 
 final class OrientationParameterDefinition {
     static Optional<NodeBehaviorDefinition> definition(NodeType type) {
@@ -83,13 +82,13 @@ final class OrientationParameterDefinition {
         return values;
     }
 
-    private static Optional<Vec3d> resolvePositionTarget(Node owner, Node parameterNode, RuntimeParameterData data,
+    private static Optional<Vec3> resolvePositionTarget(Node owner, Node parameterNode, RuntimeParameterData data,
                                                          CompletableFuture<Void> future) {
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         if (client == null || client.player == null) {
             return Optional.empty();
         }
-        Vec3d origin = EntityCompatibilityBridge.getPos(client.player);
+        Vec3 origin = EntityCompatibilityBridge.getPos(client.player);
         if (origin == null) {
             return Optional.empty();
         }
@@ -97,8 +96,8 @@ final class OrientationParameterDefinition {
         NodeType parameterType = parameterNode.getType();
         Float yawParam = Node.parseNodeFloat(parameterNode, "Yaw");
         Float pitchParam = Node.parseNodeFloat(parameterNode, "Pitch");
-        float yaw = yawParam != null ? yawParam : client.player.getYaw();
-        float pitch = pitchParam != null ? pitchParam : client.player.getPitch();
+        float yaw = yawParam != null ? yawParam : client.player.getYRot();
+        float pitch = pitchParam != null ? pitchParam : client.player.getXRot();
 
         NodeBehaviorDefinitionSupport.Orientation orientation = resolveNamedOrientation(parameterType, parameterNode, yaw, pitch);
         yaw = orientation.yaw;
@@ -120,10 +119,10 @@ final class OrientationParameterDefinition {
         }
 
         double distance = Math.max(0.0, Node.parseNodeDouble(parameterNode, "Distance", defaultDirectionDistance(parameterType, parameterNode)));
-        Vec3d target = projectTarget(origin, yaw, pitch, distance);
+        Vec3 target = projectTarget(origin, yaw, pitch, distance);
         if (data != null) {
             data.targetVector = target;
-            data.targetBlockPos = new BlockPos(MathHelper.floor(target.x), MathHelper.floor(target.y), MathHelper.floor(target.z));
+            data.targetBlockPos = new BlockPos(Mth.floor(target.x), Mth.floor(target.y), Mth.floor(target.z));
             data.resolvedYaw = yaw;
             data.resolvedPitch = pitch;
         }
@@ -193,7 +192,7 @@ final class OrientationParameterDefinition {
         return Node.DEFAULT_DIRECTION_DISTANCE;
     }
 
-    private static Vec3d projectTarget(Vec3d origin, float yaw, float pitch, double distance) {
+    private static Vec3 projectTarget(Vec3 origin, float yaw, float pitch, double distance) {
         double yawRad = Math.toRadians(yaw);
         double pitchRad = Math.toRadians(pitch);
         double xDir = -Math.sin(yawRad) * Math.cos(pitchRad);

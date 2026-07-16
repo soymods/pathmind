@@ -1,11 +1,10 @@
 package com.pathmind.util;
 
-import net.minecraft.client.gui.widget.ButtonWidget;
-
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import net.minecraft.client.gui.components.Button;
 
 /**
  * Bridges ButtonWidget press helpers across 1.21.x.
@@ -20,7 +19,7 @@ public final class ButtonWidgetCompatibilityBridge {
     private ButtonWidgetCompatibilityBridge() {
     }
 
-    public static void press(ButtonWidget button) {
+    public static void press(Button button) {
         if (button == null) {
             return;
         }
@@ -51,7 +50,7 @@ public final class ButtonWidgetCompatibilityBridge {
 
     private static Method resolveMethod() {
         try {
-            Method method = ButtonWidget.class.getMethod("onPress");
+            Method method = Button.class.getMethod("onPress");
             method.setAccessible(true);
             return method;
         } catch (NoSuchMethodException ignored) {
@@ -64,7 +63,7 @@ public final class ButtonWidgetCompatibilityBridge {
             return null;
         }
         try {
-            Method method = ButtonWidget.class.getMethod("onPress", inputClass);
+            Method method = Button.class.getMethod("onPress", inputClass);
             method.setAccessible(true);
             return method;
         } catch (NoSuchMethodException ignored) {
@@ -74,7 +73,7 @@ public final class ButtonWidgetCompatibilityBridge {
 
     private static Method resolveLegacyPressMethod() {
         try {
-            Method method = ButtonWidget.class.getMethod("method_25306");
+            Method method = Button.class.getMethod("method_25306");
             method.setAccessible(true);
             return method;
         } catch (NoSuchMethodException ignored) {

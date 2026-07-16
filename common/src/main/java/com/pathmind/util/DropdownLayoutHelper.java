@@ -3,7 +3,7 @@ package com.pathmind.util;
 import com.pathmind.ui.animation.AnimatedValue;
 import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.util.DrawContextBridge;
-import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.gui.GuiGraphics;
 
 /**
  * Shared dropdown sizing helper that clamps dropdown height to the visible screen.
@@ -50,11 +50,11 @@ public final class DropdownLayoutHelper {
         return top + revealHeight + Math.max(0, bottomPadding);
     }
 
-    public static void enableRevealScissor(DrawContext context, int x, int y, int width, int fullHeight, float progress) {
+    public static void enableRevealScissor(GuiGraphics context, int x, int y, int width, int fullHeight, float progress) {
         enableRevealScissor(context, x, y, width, fullHeight, progress, 0);
     }
 
-    public static void enableRevealScissor(DrawContext context, int x, int y, int width, int fullHeight, float progress, int bottomPadding) {
+    public static void enableRevealScissor(GuiGraphics context, int x, int y, int width, int fullHeight, float progress, int bottomPadding) {
         if (context == null) {
             return;
         }
@@ -162,7 +162,7 @@ public final class DropdownLayoutHelper {
         }
     }
 
-    public static void drawOutline(net.minecraft.client.gui.DrawContext context,
+    public static void drawOutline(net.minecraft.client.gui.GuiGraphics context,
                                    int x,
                                    int y,
                                    int width,
@@ -171,7 +171,7 @@ public final class DropdownLayoutHelper {
         DrawContextBridge.drawBorder(context, x, y, width, height, color);
     }
 
-    public static void drawScrollBar(net.minecraft.client.gui.DrawContext context,
+    public static void drawScrollBar(net.minecraft.client.gui.GuiGraphics context,
                                      int x,
                                      int y,
                                      int width,

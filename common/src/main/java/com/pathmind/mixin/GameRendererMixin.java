@@ -1,9 +1,9 @@
 package com.pathmind.mixin;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.render.GameRenderer;
-import net.minecraft.client.render.RenderTickCounter;
+import net.minecraft.client.DeltaTracker;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.renderer.GameRenderer;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -21,11 +21,11 @@ public class GameRendererMixin {
 
     @Shadow
     @Final
-    private MinecraftClient client;
+    private Minecraft minecraft;
 
     private static final ThreadLocal<Boolean> pathmind$finalRenderPass =
         ThreadLocal.withInitial(() -> false);
-    private static final ThreadLocal<DrawContext> pathmind$lastDrawContext = new ThreadLocal<>();
+    private static final ThreadLocal<GuiGraphics> pathmind$lastDrawContext = new ThreadLocal<>();
     private static final ThreadLocal<Integer> pathmind$lastMouseX = new ThreadLocal<>();
     private static final ThreadLocal<Integer> pathmind$lastMouseY = new ThreadLocal<>();
     private static final ThreadLocal<Float> pathmind$lastDelta = new ThreadLocal<>();
@@ -42,13 +42,13 @@ public class GameRendererMixin {
         method = "render",
         at = @At(
             value = "INVOKE",
-            target = "Lnet/minecraft/client/gui/screen/Screen;renderWithTooltip(Lnet/minecraft/client/gui/DrawContext;IIF)V",
+            target = "Lnet/minecraft/client/gui/screens/Screen;renderWithTooltipAndSubtitles(Lnet/minecraft/client/gui/GuiGraphics;IIF)V",
             shift = At.Shift.AFTER
         ),
         cancellable = false,
         require = 0
     )
-    private void pathmind$afterScreenRender(RenderTickCounter tickCounter, boolean tick, CallbackInfo ci) {
+    private void pathmind$afterScreenRender(DeltaTracker tickCounter, boolean tick, CallbackInfo ci) {
         // This injection point allows us to track when the screen finishes rendering
         // The actual overlay blocking is handled by rendering a final overlay layer
         // in the PathmindVisualEditorScreen itself
@@ -58,12 +58,12 @@ public class GameRendererMixin {
         method = "render",
         at = @At(
             value = "INVOKE",
-            target = "Lnet/minecraft/client/gui/screen/Screen;renderWithTooltip(Lnet/minecraft/client/gui/DrawContext;IIF)V"
+            target = "Lnet/minecraft/client/gui/screens/Screen;renderWithTooltipAndSubtitles(Lnet/minecraft/client/gui/GuiGraphics;IIF)V"
         ),
         require = 0,
         index = 0
     )
-    private DrawContext pathmind$captureDrawContext(DrawContext context) {
+    private GuiGraphics pathmind$captureDrawContext(GuiGraphics context) {
         if (!pathmind$finalRenderPass.get()) {
             pathmind$lastDrawContext.set(context);
         }
@@ -74,7 +74,7 @@ public class GameRendererMixin {
         method = "render",
         at = @At(
             value = "INVOKE",
-            target = "Lnet/minecraft/client/gui/screen/Screen;renderWithTooltip(Lnet/minecraft/client/gui/DrawContext;IIF)V"
+            target = "Lnet/minecraft/client/gui/screens/Screen;renderWithTooltipAndSubtitles(Lnet/minecraft/client/gui/GuiGraphics;IIF)V"
         ),
         require = 0,
         index = 1
@@ -90,7 +90,7 @@ public class GameRendererMixin {
         method = "render",
         at = @At(
             value = "INVOKE",
-            target = "Lnet/minecraft/client/gui/screen/Screen;renderWithTooltip(Lnet/minecraft/client/gui/DrawContext;IIF)V"
+            target = "Lnet/minecraft/client/gui/screens/Screen;renderWithTooltipAndSubtitles(Lnet/minecraft/client/gui/GuiGraphics;IIF)V"
         ),
         require = 0,
         index = 2
@@ -106,7 +106,7 @@ public class GameRendererMixin {
         method = "render",
         at = @At(
             value = "INVOKE",
-            target = "Lnet/minecraft/client/gui/screen/Screen;renderWithTooltip(Lnet/minecraft/client/gui/DrawContext;IIF)V"
+            target = "Lnet/minecraft/client/gui/screens/Screen;renderWithTooltipAndSubtitles(Lnet/minecraft/client/gui/GuiGraphics;IIF)V"
         ),
         require = 0,
         index = 3
@@ -127,23 +127,23 @@ public class GameRendererMixin {
         cancellable = false,
         require = 0
     )
-    private void pathmind$finalScreenRender(RenderTickCounter tickCounter, boolean tick, CallbackInfo ci) {
+    private void pathmind$finalScreenRender(DeltaTracker tickCounter, boolean tick, CallbackInfo ci) {
         if (pathmind$finalRenderPass.get()) {
             return;
         }
 
-        if (client == null || client.currentScreen == null) {
+        if (minecraft == null || minecraft.screen == null) {
             return;
         }
 
-        if (!com.pathmind.screen.PathmindScreens.isVisualEditorScreen(client.currentScreen)) {
+        if (!com.pathmind.screen.PathmindScreens.isVisualEditorScreen(minecraft.screen)) {
             return;
         }
-        if (client.player == null || client.world == null) {
+        if (minecraft.player == null || minecraft.level == null) {
             return;
         }
 
-        DrawContext context = pathmind$lastDrawContext.get();
+        GuiGraphics context = pathmind$lastDrawContext.get();
         Integer mouseX = pathmind$lastMouseX.get();
         Integer mouseY = pathmind$lastMouseY.get();
         Float delta = pathmind$lastDelta.get();
@@ -154,7 +154,7 @@ public class GameRendererMixin {
         pathmind$finalRenderPass.set(true);
         com.pathmind.util.OverlayProtection.setPathmindRendering(true);
         try {
-            client.currentScreen.renderWithTooltip(context, mouseX, mouseY, delta);
+            minecraft.screen.renderWithTooltipAndSubtitles(context, mouseX, mouseY, delta);
         } catch (Throwable ignored) {
             // Avoid crashing render if another mod misbehaves.
         } finally {

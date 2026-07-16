@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
-import net.minecraft.text.Text;
+import net.minecraft.network.chat.Component;
 
 public enum GuiSelectionMode {
     PLAYER_INVENTORY("player_inventory", "pathmind.gui.mode.playerInventory"),
@@ -40,16 +40,16 @@ public enum GuiSelectionMode {
     }
 
     public String getDisplayName() {
-        return Text.translatable(translationKey).getString();
+        return Component.translatable(translationKey).getString();
     }
 
     public static String getDisplayNameOrFallback(String id) {
         if (id == null) {
-            return Text.translatable("pathmind.option.any").getString();
+            return Component.translatable("pathmind.option.any").getString();
         }
         String trimmed = id.trim();
         if (trimmed.isEmpty() || "any".equalsIgnoreCase(trimmed)) {
-            return Text.translatable("pathmind.option.any").getString();
+            return Component.translatable("pathmind.option.any").getString();
         }
         GuiSelectionMode mode = fromId(trimmed);
         return mode != null ? mode.getDisplayName() : trimmed;

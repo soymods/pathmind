@@ -5,9 +5,9 @@ import com.pathmind.util.DropdownLayoutHelper;
 import com.pathmind.util.MatrixStackBridge;
 import com.pathmind.util.TextRenderUtil;
 import java.util.function.IntFunction;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.text.Text;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.network.chat.Component;
 
 /**
  * Shared renderer for Pathmind dropdown lists.
@@ -17,7 +17,7 @@ public final class PathmindDropdownRenderer {
     private PathmindDropdownRenderer() {
     }
 
-    public static int renderTextList(DrawContext context, TextRenderer textRenderer, TextListSpec spec) {
+    public static int renderTextList(GuiGraphics context, Font textRenderer, TextListSpec spec) {
         if (context == null || textRenderer == null || spec == null || spec.width <= 0 || spec.visibleCount <= 0) {
             return -1;
         }
@@ -40,7 +40,7 @@ public final class PathmindDropdownRenderer {
             }
         }
 
-        Object matrices = context.getMatrices();
+        Object matrices = context.pose();
         MatrixStackBridge.push(matrices);
         MatrixStackBridge.translateZ(matrices, 400.0f);
         context.enableScissor(spec.x, spec.y, spec.x + Math.max(1, spec.width), spec.y + animatedHeight);
@@ -70,11 +70,11 @@ public final class PathmindDropdownRenderer {
                 int maxTextWidth = Math.max(0, spec.width - (spec.textPadding * 2) - spec.scrollbarAllowance);
                 String rowText = TextRenderUtil.trimWithEllipsis(textRenderer, optionLabel, maxTextWidth);
                 int textX = spec.centerText
-                    ? spec.x + Math.max(spec.textPadding, (spec.width - textRenderer.getWidth(rowText)) / 2)
+                    ? spec.x + Math.max(spec.textPadding, (spec.width - textRenderer.width(rowText)) / 2)
                     : spec.x + spec.textPadding;
                 int baseTextColor = spec.textColorProvider == null ? spec.textColor : spec.textColorProvider.apply(optionIndex);
                 int textColor = hovered ? rowPalette.textColor() : baseTextColor;
-                context.drawText(textRenderer, Text.literal(rowText), textX, rowTop + spec.textOffsetY, textColor, false);
+                context.drawString(textRenderer, Component.literal(rowText), textX, rowTop + spec.textOffsetY, textColor, false);
             }
         }
 

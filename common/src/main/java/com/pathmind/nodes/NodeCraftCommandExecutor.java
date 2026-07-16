@@ -5,32 +5,32 @@ import com.google.gson.GsonBuilder;
 import com.pathmind.util.EntityCompatibilityBridge;
 import com.pathmind.util.RecipeCompatibilityBridge;
 import dev.architectury.platform.Platform;
-import net.minecraft.client.gui.screen.ingame.CraftingScreen;
-import net.minecraft.client.gui.screen.ingame.InventoryScreen;
-import net.minecraft.client.gui.screen.recipebook.RecipeResultCollection;
-import net.minecraft.client.recipebook.ClientRecipeBook;
+import net.minecraft.client.ClientRecipeBook;
+import net.minecraft.client.gui.screens.inventory.CraftingScreen;
+import net.minecraft.client.gui.screens.inventory.InventoryScreen;
+import net.minecraft.client.gui.screens.recipebook.RecipeCollection;
+import net.minecraft.client.multiplayer.MultiPlayerGameMode;
+import net.minecraft.core.Holder;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.recipe.CraftingRecipe;
-import net.minecraft.recipe.Ingredient;
-import net.minecraft.recipe.RecipeEntry;
-import net.minecraft.recipe.RecipeManager;
-import net.minecraft.recipe.RecipeType;
-import net.minecraft.recipe.ShapedRecipe;
-import net.minecraft.recipe.input.CraftingRecipeInput;
-import net.minecraft.registry.Registries;
-import net.minecraft.registry.RegistryWrapper;
-import net.minecraft.registry.entry.RegistryEntry;
-import net.minecraft.screen.slot.Slot;
-import net.minecraft.screen.slot.SlotActionType;
-import net.minecraft.client.network.ClientPlayerInteractionManager;
-import net.minecraft.entity.player.PlayerInventory;
-import net.minecraft.screen.CraftingScreenHandler;
-import net.minecraft.screen.PlayerScreenHandler;
-import net.minecraft.screen.ScreenHandler;
-import net.minecraft.util.Identifier;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.ClickType;
+import net.minecraft.world.inventory.CraftingMenu;
+import net.minecraft.world.inventory.InventoryMenu;
+import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.crafting.CraftingInput;
+import net.minecraft.world.item.crafting.CraftingRecipe;
+import net.minecraft.world.item.crafting.Ingredient;
+import net.minecraft.world.item.crafting.RecipeAccess;
+import net.minecraft.world.item.crafting.RecipeHolder;
+import net.minecraft.world.item.crafting.RecipeType;
+import net.minecraft.world.item.crafting.ShapedRecipe;
 import it.unimi.dsi.fastutil.ints.IntList;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -100,18 +100,18 @@ final class NodeCraftCommandExecutor {
 
         NodeMode craftMode = owner.getMode() != null ? owner.getMode() : NodeMode.CRAFT_PLAYER_GUI;
 
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
 
         Identifier identifier = Identifier.tryParse(itemId);
-        if (identifier == null || !Registries.ITEM.containsId(identifier)) {
+        if (identifier == null || !BuiltInRegistries.ITEM.containsKey(identifier)) {
             String errorLabel = (requestedItemLabel != null && !requestedItemLabel.isEmpty()) ? requestedItemLabel : itemId;
             NodeExecutionCompletion.fail(owner, client, future,
                 "Cannot craft \"" + errorLabel + "\": unknown item identifier.");
             return;
         }
 
-        Item targetItem = Registries.ITEM.get(identifier);
-        if (client == null || client.player == null || client.world == null) {
+        Item targetItem = BuiltInRegistries.ITEM.getValue(identifier);
+        if (client == null || client.player == null || client.level == null) {
             NodeExecutionCompletion.completeExceptionally(future, new RuntimeException("Minecraft client not available"));
             return;
         }
@@ -126,7 +126,7 @@ final class NodeCraftCommandExecutor {
 
         String itemDisplayName = targetItem.getName().getString();
 
-        ScreenHandler handler = client.player.currentScreenHandler;
+        AbstractContainerMenu handler = client.player.containerMenu;
         if (!isCompatibleCraftingHandler(handler, craftMode)) {
             NodeExecutionCompletion.fail(owner, client, future,
                 "Cannot craft " + itemDisplayName + ": the crafting screen closed.");
@@ -134,21 +134,21 @@ final class NodeCraftCommandExecutor {
         }
 
         final NodeMode effectiveCraftMode;
-        if (craftMode == NodeMode.CRAFT_PLAYER_GUI && handler instanceof CraftingScreenHandler) {
+        if (craftMode == NodeMode.CRAFT_PLAYER_GUI && handler instanceof CraftingMenu) {
             effectiveCraftMode = NodeMode.CRAFT_CRAFTING_TABLE;
         } else {
             effectiveCraftMode = craftMode;
         }
 
-        Object serverRegistryManager = client.getServer() != null
-            ? client.getServer().getRegistryManager()
+        Object serverRegistryManager = client.getSingleplayerServer() != null
+            ? client.getSingleplayerServer().registryAccess()
             : null;
-        net.minecraft.world.World clientWorld;
+        net.minecraft.world.level.Level clientWorld;
         try {
             clientWorld = owner.supplyFromClient(client, () -> {
-                net.minecraft.world.World world = EntityCompatibilityBridge.getWorld(client.player);
+                net.minecraft.world.level.Level world = EntityCompatibilityBridge.getWorld(client.player);
                 if (world == null) {
-                    world = client.world;
+                    world = client.level;
                 }
                 return world;
             });
@@ -157,10 +157,10 @@ final class NodeCraftCommandExecutor {
             NodeExecutionCompletion.complete(future);
             return;
         }
-        Object clientRegistryManager = clientWorld != null ? clientWorld.getRegistryManager() : null;
+        Object clientRegistryManager = clientWorld != null ? clientWorld.registryAccess() : null;
 
         java.util.concurrent.atomic.AtomicBoolean requiresCraftingTable = new java.util.concurrent.atomic.AtomicBoolean(false);
-        RecipeEntry<CraftingRecipe> recipeEntry;
+        RecipeHolder<CraftingRecipe> recipeEntry;
         Object displayEntry = null;
         try {
             recipeEntry = owner.supplyFromClient(client, () -> findCraftingRecipe(client, targetItem, effectiveCraftMode, requiresCraftingTable));
@@ -229,7 +229,7 @@ final class NodeCraftCommandExecutor {
             return;
         }
 
-        if (recipeEntry != null && client.getServer() != null) {
+        if (recipeEntry != null && client.getSingleplayerServer() != null) {
             cacheCraftingRecipe(client, targetItem, recipeEntry.value(), outputTemplate.getCount(), clientWorld);
         }
 
@@ -264,17 +264,17 @@ final class NodeCraftCommandExecutor {
                 NodeExecutionCompletion.complete(future);
             });
     }
-    boolean isCraftingScreenAvailable(net.minecraft.client.MinecraftClient client, NodeMode craftMode) {
+    boolean isCraftingScreenAvailable(net.minecraft.client.Minecraft client, NodeMode craftMode) {
         if (client == null) {
             return false;
         }
 
         if (craftMode == NodeMode.CRAFT_CRAFTING_TABLE) {
-            return client.currentScreen instanceof CraftingScreen;
+            return client.screen instanceof CraftingScreen;
         }
 
         if (craftMode == NodeMode.CRAFT_PLAYER_GUI) {
-            return client.currentScreen instanceof InventoryScreen || client.currentScreen instanceof CraftingScreen;
+            return client.screen instanceof InventoryScreen || client.screen instanceof CraftingScreen;
         }
 
         return false;
@@ -284,23 +284,23 @@ final class NodeCraftCommandExecutor {
         return Math.max(1, Node.parseNodeInt(owner, "Amount", 1));
     }
 
-    boolean isCompatibleCraftingHandler(ScreenHandler handler, NodeMode craftMode) {
+    boolean isCompatibleCraftingHandler(AbstractContainerMenu handler, NodeMode craftMode) {
         if (handler == null) {
             return false;
         }
 
         if (craftMode == NodeMode.CRAFT_CRAFTING_TABLE) {
-            return handler instanceof CraftingScreenHandler;
+            return handler instanceof CraftingMenu;
         }
 
         if (craftMode == NodeMode.CRAFT_PLAYER_GUI) {
-            return handler instanceof PlayerScreenHandler || handler instanceof CraftingScreenHandler;
+            return handler instanceof InventoryMenu || handler instanceof CraftingMenu;
         }
 
         return false;
     }
 
-    RecipeEntry<CraftingRecipe> findCraftingRecipe(net.minecraft.client.MinecraftClient client,
+    RecipeHolder<CraftingRecipe> findCraftingRecipe(net.minecraft.client.Minecraft client,
                                                            Item targetItem,
                                                            NodeMode craftMode,
                                                            java.util.concurrent.atomic.AtomicBoolean requiresCraftingTable) {
@@ -311,19 +311,19 @@ final class NodeCraftCommandExecutor {
         int matchingOutputs = 0;
         List<String> sampleOutputs = new ArrayList<>();
         boolean debugLogged = false;
-        Object serverRegistryManager = client.getServer() != null ? client.getServer().getRegistryManager() : null;
-        net.minecraft.world.World clientWorld = EntityCompatibilityBridge.getWorld(client.player);
-        Object clientRegistryManager = clientWorld != null ? clientWorld.getRegistryManager() : null;
+        Object serverRegistryManager = client.getSingleplayerServer() != null ? client.getSingleplayerServer().registryAccess() : null;
+        net.minecraft.world.level.Level clientWorld = EntityCompatibilityBridge.getWorld(client.player);
+        Object clientRegistryManager = clientWorld != null ? clientWorld.registryAccess() : null;
         Object ingredientRegistryManager = clientWorld != null ? clientWorld : clientRegistryManager;
-        ScreenHandler handler = client.player != null ? client.player.currentScreenHandler : null;
+        AbstractContainerMenu handler = client.player != null ? client.player.containerMenu : null;
         List<String> managerTypes = new ArrayList<>();
-        RecipeEntry<CraftingRecipe> fallbackMatch = null;
+        RecipeHolder<CraftingRecipe> fallbackMatch = null;
         for (Object manager : managers) {
             if (manager == null) {
                 continue;
             }
             managerTypes.add(manager.getClass().getName());
-            for (RecipeEntry<?> entry : getCraftingRecipeEntries(manager)) {
+            for (RecipeHolder<?> entry : getCraftingRecipeEntries(manager)) {
                 totalEntries++;
                 if (!(entry.value() instanceof CraftingRecipe craftingRecipe)) {
                     continue;
@@ -341,12 +341,12 @@ final class NodeCraftCommandExecutor {
                         debugLogged = true;
                     }
                 } else if (sampleOutputs.size() < 5) {
-                    Identifier itemId = Registries.ITEM.getId(result.getItem());
+                    Identifier itemId = BuiltInRegistries.ITEM.getKey(result.getItem());
                     if (itemId != null) {
                         sampleOutputs.add(itemId.toString());
                     }
                 }
-                if (!result.isOf(targetItem)) {
+                if (!result.is(targetItem)) {
                     continue;
                 }
                 matchingOutputs++;
@@ -359,7 +359,7 @@ final class NodeCraftCommandExecutor {
                 }
 
                 @SuppressWarnings("unchecked")
-                RecipeEntry<CraftingRecipe> castEntry = (RecipeEntry<CraftingRecipe>) entry;
+                RecipeHolder<CraftingRecipe> castEntry = (RecipeHolder<CraftingRecipe>) entry;
                 if (fallbackMatch == null) {
                     fallbackMatch = castEntry;
                 }
@@ -371,7 +371,7 @@ final class NodeCraftCommandExecutor {
             }
         }
 
-        RecipeEntry<CraftingRecipe> recipeBookMatch = findCraftingRecipeInRecipeBookCollections(
+        RecipeHolder<CraftingRecipe> recipeBookMatch = findCraftingRecipeInRecipeBookCollections(
             client,
             targetItem,
             craftMode,
@@ -389,11 +389,11 @@ final class NodeCraftCommandExecutor {
         return fallbackMatch;
     }
 
-    private RecipeEntry<CraftingRecipe> findCraftingRecipeInRecipeBookCollections(net.minecraft.client.MinecraftClient client,
+    private RecipeHolder<CraftingRecipe> findCraftingRecipeInRecipeBookCollections(net.minecraft.client.Minecraft client,
                                                                                    Item targetItem,
                                                                                    NodeMode craftMode,
                                                                                    java.util.concurrent.atomic.AtomicBoolean requiresCraftingTable,
-                                                                                   ScreenHandler handler,
+                                                                                   AbstractContainerMenu handler,
                                                                                    Object ingredientRegistryManager,
                                                                                    Object serverRegistryManager,
                                                                                    Object clientRegistryManager) {
@@ -403,13 +403,13 @@ final class NodeCraftCommandExecutor {
         if (!(client.player.getRecipeBook() instanceof ClientRecipeBook clientRecipeBook)) {
             return null;
         }
-        List<RecipeResultCollection> collections = clientRecipeBook.getOrderedResults();
+        List<RecipeCollection> collections = clientRecipeBook.getCollections();
         if (collections == null || collections.isEmpty()) {
             return null;
         }
 
-        RecipeEntry<CraftingRecipe> fallbackMatch = null;
-        for (RecipeResultCollection collection : collections) {
+        RecipeHolder<CraftingRecipe> fallbackMatch = null;
+        for (RecipeCollection collection : collections) {
             if (collection == null) {
                 continue;
             }
@@ -418,7 +418,7 @@ final class NodeCraftCommandExecutor {
                 continue;
             }
             for (Object entry : entries) {
-                if (!(entry instanceof RecipeEntry<?> recipeEntry) || !(recipeEntry.value() instanceof CraftingRecipe craftingRecipe)) {
+                if (!(entry instanceof RecipeHolder<?> recipeEntry) || !(recipeEntry.value() instanceof CraftingRecipe craftingRecipe)) {
                     continue;
                 }
 
@@ -426,7 +426,7 @@ final class NodeCraftCommandExecutor {
                 if (result.isEmpty() && clientRegistryManager != serverRegistryManager) {
                     result = getRecipeOutput(craftingRecipe, clientRegistryManager);
                 }
-                if (result.isEmpty() || !result.isOf(targetItem)) {
+                if (result.isEmpty() || !result.is(targetItem)) {
                     continue;
                 }
 
@@ -438,7 +438,7 @@ final class NodeCraftCommandExecutor {
                 }
 
                 @SuppressWarnings("unchecked")
-                RecipeEntry<CraftingRecipe> castEntry = (RecipeEntry<CraftingRecipe>) recipeEntry;
+                RecipeHolder<CraftingRecipe> castEntry = (RecipeHolder<CraftingRecipe>) recipeEntry;
                 if (fallbackMatch == null) {
                     fallbackMatch = castEntry;
                 }
@@ -452,7 +452,7 @@ final class NodeCraftCommandExecutor {
         return fallbackMatch;
     }
 
-    Object findCraftingDisplayEntry(net.minecraft.client.MinecraftClient client,
+    Object findCraftingDisplayEntry(net.minecraft.client.Minecraft client,
                                             Item targetItem,
                                             NodeMode craftMode,
                                             java.util.concurrent.atomic.AtomicBoolean requiresCraftingTable,
@@ -463,13 +463,13 @@ final class NodeCraftCommandExecutor {
         if (!(client.player.getRecipeBook() instanceof ClientRecipeBook clientRecipeBook)) {
             return null;
         }
-        List<RecipeResultCollection> collections = clientRecipeBook.getOrderedResults();
+        List<RecipeCollection> collections = clientRecipeBook.getCollections();
         if (collections == null || collections.isEmpty()) {
             return null;
         }
-        ScreenHandler handler = client.player != null ? client.player.currentScreenHandler : null;
+        AbstractContainerMenu handler = client.player != null ? client.player.containerMenu : null;
         Object fallbackMatch = null;
-        for (RecipeResultCollection collection : collections) {
+        for (RecipeCollection collection : collections) {
             if (collection == null) {
                 continue;
             }
@@ -486,7 +486,7 @@ final class NodeCraftCommandExecutor {
                     continue;
                 }
                 ItemStack output = getDisplayOutput(display, registryManager);
-                if (output == null || output.isEmpty() || !output.isOf(targetItem)) {
+                if (output == null || output.isEmpty() || !output.is(targetItem)) {
                     continue;
                 }
                 if (craftMode == NodeMode.CRAFT_PLAYER_GUI && !displayFitsPlayerGrid(display, registryManager)) {
@@ -615,7 +615,7 @@ final class NodeCraftCommandExecutor {
         if (!LOGGER.isDebugEnabled()) {
             return;
         }
-        String targetId = targetItem != null ? Registries.ITEM.getId(targetItem).toString() : "unknown";
+        String targetId = targetItem != null ? BuiltInRegistries.ITEM.getKey(targetItem).toString() : "unknown";
         LOGGER.debug(
             "Pathmind craft debug: target={} mode={} managers={} managerTypes={} entries={} craftingEntries={} emptyOutputs={} matchingOutputs={} sampleOutputs={}",
             targetId,
@@ -630,12 +630,12 @@ final class NodeCraftCommandExecutor {
         );
     }
 
-    List<RecipeEntry<?>> getCraftingRecipeEntries(Object manager) {
+    List<RecipeHolder<?>> getCraftingRecipeEntries(Object manager) {
         if (manager == null) {
             return List.of();
         }
 
-        List<RecipeEntry<?>> entries = new ArrayList<>();
+        List<RecipeHolder<?>> entries = new ArrayList<>();
         if (tryCollectClientRecipeManagerEntries(manager, entries)) {
             return entries;
         }
@@ -680,7 +680,7 @@ final class NodeCraftCommandExecutor {
         return entries;
     }
 
-    private boolean tryCollectClientRecipeManagerEntries(Object manager, List<RecipeEntry<?>> entries) {
+    private boolean tryCollectClientRecipeManagerEntries(Object manager, List<RecipeHolder<?>> entries) {
         if (manager == null || entries == null) {
             return false;
         }
@@ -726,7 +726,7 @@ final class NodeCraftCommandExecutor {
         return null;
     }
 
-    CachedRecipe findCachedRecipe(net.minecraft.client.MinecraftClient client, Item targetItem, NodeMode craftMode) {
+    CachedRecipe findCachedRecipe(net.minecraft.client.Minecraft client, Item targetItem, NodeMode craftMode) {
         if (client == null || targetItem == null || craftMode == null) {
             return null;
         }
@@ -734,7 +734,7 @@ final class NodeCraftCommandExecutor {
         if (book == null || book.recipesByOutput == null) {
             return null;
         }
-        Identifier id = Registries.ITEM.getId(targetItem);
+        Identifier id = BuiltInRegistries.ITEM.getKey(targetItem);
         if (id == null) {
             return null;
         }
@@ -742,7 +742,7 @@ final class NodeCraftCommandExecutor {
         if (recipes == null || recipes.isEmpty()) {
             return null;
         }
-        ScreenHandler handler = client.player != null ? client.player.currentScreenHandler : null;
+        AbstractContainerMenu handler = client.player != null ? client.player.containerMenu : null;
         CachedRecipe fallbackMatch = null;
         for (CachedRecipe recipe : recipes) {
             if (recipe == null || !craftMode.name().equals(recipe.mode)) {
@@ -752,14 +752,14 @@ final class NodeCraftCommandExecutor {
                 fallbackMatch = recipe;
             }
             List<GridIngredient> gridIngredients = buildGridIngredientsFromCache(recipe);
-            if (canSatisfyGridIngredients(handler, gridIngredients, client.world)) {
+            if (canSatisfyGridIngredients(handler, gridIngredients, client.level)) {
                 return recipe;
             }
         }
         return fallbackMatch;
     }
 
-    void cacheCraftingRecipe(net.minecraft.client.MinecraftClient client,
+    void cacheCraftingRecipe(net.minecraft.client.Minecraft client,
                                      Item targetItem,
                                      CraftingRecipe recipe,
                                      int outputCount,
@@ -767,7 +767,7 @@ final class NodeCraftCommandExecutor {
         if (client == null || targetItem == null || recipe == null) {
             return;
         }
-        if (client.getServer() == null) {
+        if (client.getSingleplayerServer() == null) {
             return;
         }
         CachedRecipeBook book = loadRecipeCache(client);
@@ -787,17 +787,17 @@ final class NodeCraftCommandExecutor {
     }
 
     private void cacheAllCraftingRecipes(CachedRecipeBook book,
-                                         net.minecraft.client.MinecraftClient client,
+                                         net.minecraft.client.Minecraft client,
                                          Object registryManager) {
-        if (book == null || client == null || client.getServer() == null) {
+        if (book == null || client == null || client.getSingleplayerServer() == null) {
             return;
         }
-        RecipeManager manager = client.getServer().getRecipeManager();
+        RecipeAccess manager = client.getSingleplayerServer().getRecipeManager();
         if (manager == null) {
             return;
         }
-        Object serverRegistryManager = client.getServer().getRegistryManager();
-        for (RecipeEntry<?> entry : getCraftingRecipeEntries(manager)) {
+        Object serverRegistryManager = client.getSingleplayerServer().registryAccess();
+        for (RecipeHolder<?> entry : getCraftingRecipeEntries(manager)) {
             if (!(entry.value() instanceof CraftingRecipe craftingRecipe)) {
                 continue;
             }
@@ -818,7 +818,7 @@ final class NodeCraftCommandExecutor {
     }
 
     private void cacheAllCraftingDisplays(CachedRecipeBook book,
-                                          net.minecraft.client.MinecraftClient client,
+                                          net.minecraft.client.Minecraft client,
                                           Object registryManager) {
         if (book == null || client == null || client.player == null) {
             return;
@@ -826,11 +826,11 @@ final class NodeCraftCommandExecutor {
         if (!(client.player.getRecipeBook() instanceof ClientRecipeBook clientRecipeBook)) {
             return;
         }
-        List<RecipeResultCollection> collections = clientRecipeBook.getOrderedResults();
+        List<RecipeCollection> collections = clientRecipeBook.getCollections();
         if (collections == null || collections.isEmpty()) {
             return;
         }
-        for (RecipeResultCollection collection : collections) {
+        for (RecipeCollection collection : collections) {
             if (collection == null) {
                 continue;
             }
@@ -888,7 +888,7 @@ final class NodeCraftCommandExecutor {
                 if (stack == null || stack.isEmpty()) {
                     continue;
                 }
-                Identifier id = Registries.ITEM.getId(stack.getItem());
+                Identifier id = BuiltInRegistries.ITEM.getKey(stack.getItem());
                 if (id != null) {
                     itemIds.add(id.toString());
                 }
@@ -910,7 +910,7 @@ final class NodeCraftCommandExecutor {
         cachedRecipe.outputCount = Math.max(1, outputCount);
         cachedRecipe.grid = cachedGrid;
 
-        Identifier outputId = Registries.ITEM.getId(targetItem);
+        Identifier outputId = BuiltInRegistries.ITEM.getKey(targetItem);
         if (outputId == null) {
             return;
         }
@@ -948,7 +948,7 @@ final class NodeCraftCommandExecutor {
                 if (stack == null || stack.isEmpty()) {
                     continue;
                 }
-                Identifier id = Registries.ITEM.getId(stack.getItem());
+                Identifier id = BuiltInRegistries.ITEM.getKey(stack.getItem());
                 if (id != null) {
                     itemIds.add(id.toString());
                 }
@@ -970,7 +970,7 @@ final class NodeCraftCommandExecutor {
         cachedRecipe.outputCount = Math.max(1, outputCount);
         cachedRecipe.grid = cachedGrid;
 
-        Identifier outputId = Registries.ITEM.getId(targetItem);
+        Identifier outputId = BuiltInRegistries.ITEM.getKey(targetItem);
         if (outputId == null) {
             return;
         }
@@ -1024,9 +1024,9 @@ final class NodeCraftCommandExecutor {
         if (recipe == null) {
             return ItemStack.EMPTY;
         }
-        RegistryWrapper.WrapperLookup lookup = resolveWrapperLookup(registryManager);
+        HolderLookup.Provider lookup = resolveWrapperLookup(registryManager);
         Object registryArg = registryManager;
-        CraftingRecipeInput input = buildRecipeOutputInput(recipe, registryManager);
+        CraftingInput input = buildRecipeOutputInput(recipe, registryManager);
         for (java.lang.reflect.Method method : getAllMethods(recipe.getClass())) {
             if (!ItemStack.class.isAssignableFrom(method.getReturnType())) {
                 continue;
@@ -1103,10 +1103,10 @@ final class NodeCraftCommandExecutor {
         return ItemStack.EMPTY;
     }
 
-    private CraftingRecipeInput buildRecipeOutputInput(CraftingRecipe recipe, Object registryManager) {
+    private CraftingInput buildRecipeOutputInput(CraftingRecipe recipe, Object registryManager) {
         List<ItemStack> grid = new ArrayList<>(Collections.nCopies(9, ItemStack.EMPTY));
         if (recipe == null) {
-            return CraftingRecipeInput.create(3, 3, grid);
+            return CraftingInput.of(3, 3, grid);
         }
 
         List<GridIngredient> resolvedGrid = resolveGridIngredients(recipe, NodeMode.CRAFT_CRAFTING_TABLE, registryManager);
@@ -1124,7 +1124,7 @@ final class NodeCraftCommandExecutor {
                     grid.set(slot, stack);
                 }
             }
-            return CraftingRecipeInput.create(3, 3, grid);
+            return CraftingInput.of(3, 3, grid);
         }
 
         if (recipe instanceof ShapedRecipe shapedRecipe) {
@@ -1148,7 +1148,7 @@ final class NodeCraftCommandExecutor {
                     grid.set(slot, stack);
                 }
             }
-            return CraftingRecipeInput.create(3, 3, grid);
+            return CraftingInput.of(3, 3, grid);
         }
 
         List<?> ingredients = RecipeCompatibilityBridge.getRecipeIngredients(recipe);
@@ -1170,7 +1170,7 @@ final class NodeCraftCommandExecutor {
                 placed++;
             }
         }
-        return CraftingRecipeInput.create(3, 3, grid);
+        return CraftingInput.of(3, 3, grid);
     }
 
     private ItemStack getRepresentativeIngredientStack(Ingredient ingredient, Object registryManager) {
@@ -1278,11 +1278,11 @@ final class NodeCraftCommandExecutor {
     }
 
 
-    RegistryWrapper.WrapperLookup resolveWrapperLookup(Object registryManager) {
+    HolderLookup.Provider resolveWrapperLookup(Object registryManager) {
         if (registryManager == null) {
             return null;
         }
-        if (registryManager instanceof RegistryWrapper.WrapperLookup wrapper) {
+        if (registryManager instanceof HolderLookup.Provider wrapper) {
             return wrapper;
         }
         for (String methodName : new String[]{"getWrapperLookup", "getRegistryLookup", "getLookup"}) {
@@ -1290,7 +1290,7 @@ final class NodeCraftCommandExecutor {
                 java.lang.reflect.Method method = registryManager.getClass().getMethod(methodName);
                 method.setAccessible(true);
                 Object result = method.invoke(registryManager);
-                if (result instanceof RegistryWrapper.WrapperLookup wrapper) {
+                if (result instanceof HolderLookup.Provider wrapper) {
                     return wrapper;
                 }
             } catch (ReflectiveOperationException ignored) {
@@ -1301,13 +1301,13 @@ final class NodeCraftCommandExecutor {
             if (method.getParameterCount() != 0) {
                 continue;
             }
-            if (!RegistryWrapper.WrapperLookup.class.isAssignableFrom(method.getReturnType())) {
+            if (!HolderLookup.Provider.class.isAssignableFrom(method.getReturnType())) {
                 continue;
             }
             try {
                 method.setAccessible(true);
                 Object result = method.invoke(registryManager);
-                if (result instanceof RegistryWrapper.WrapperLookup wrapper) {
+                if (result instanceof HolderLookup.Provider wrapper) {
                     return wrapper;
                 }
             } catch (ReflectiveOperationException ignored) {
@@ -1381,9 +1381,9 @@ final class NodeCraftCommandExecutor {
         return width <= 2 && height <= 2;
     }
 
-    CraftingSummary craftRecipeUsingScreen(net.minecraft.client.MinecraftClient client,
+    CraftingSummary craftRecipeUsingScreen(net.minecraft.client.Minecraft client,
                                                    NodeMode craftMode,
-                                                   RecipeEntry<CraftingRecipe> recipeEntry,
+                                                   RecipeHolder<CraftingRecipe> recipeEntry,
                                                    Item targetItem,
                                                    int craftsRequested,
                                                    int desiredCount,
@@ -1406,7 +1406,7 @@ final class NodeCraftCommandExecutor {
                 break;
             }
 
-            ScreenHandler handler = client.player != null ? client.player.currentScreenHandler : null;
+            AbstractContainerMenu handler = client.player != null ? client.player.containerMenu : null;
             if (!isCompatibleCraftingHandler(handler, craftMode)) {
                 failureMessage = "Cannot craft " + itemDisplayName + ": the crafting screen closed.";
                 break;
@@ -1448,7 +1448,7 @@ final class NodeCraftCommandExecutor {
         return new CraftingSummary(totalProduced, failureMessage);
     }
 
-    private CraftingAttemptResult performCraftingAttempt(net.minecraft.client.MinecraftClient client,
+    private CraftingAttemptResult performCraftingAttempt(net.minecraft.client.Minecraft client,
                                                          Item targetItem,
                                                          String itemDisplayName,
                                                          List<GridIngredient> gridIngredients,
@@ -1461,13 +1461,13 @@ final class NodeCraftCommandExecutor {
         java.util.concurrent.atomic.AtomicReference<List<Integer>> plannedSourceSlotsRef = new java.util.concurrent.atomic.AtomicReference<>();
 
         owner.runOnClientThread(client, () -> {
-            ClientPlayerInteractionManager interactionManager = client.interactionManager;
+            MultiPlayerGameMode interactionManager = client.gameMode;
             if (interactionManager == null) {
                 errorRef.set("Cannot craft " + itemDisplayName + ": interaction manager unavailable.");
                 return;
             }
 
-            ScreenHandler handler = client.player != null ? client.player.currentScreenHandler : null;
+            AbstractContainerMenu handler = client.player != null ? client.player.containerMenu : null;
             if (handler == null) {
                 errorRef.set("Cannot craft " + itemDisplayName + ": the crafting screen closed.");
                 return;
@@ -1508,13 +1508,13 @@ final class NodeCraftCommandExecutor {
             final int plannedSourceSlot = plannedSourceSlots.get(ingredientIndex);
 
             owner.runOnClientThread(client, () -> {
-                ClientPlayerInteractionManager interactionManager = client.interactionManager;
+                MultiPlayerGameMode interactionManager = client.gameMode;
                 if (interactionManager == null) {
                     errorRef.set("Cannot craft " + itemDisplayName + ": interaction manager unavailable.");
                     return;
                 }
 
-                ScreenHandler handler = client.player != null ? client.player.currentScreenHandler : null;
+                AbstractContainerMenu handler = client.player != null ? client.player.containerMenu : null;
                 if (handler == null) {
                     errorRef.set("Cannot craft " + itemDisplayName + ": the crafting screen closed.");
                     return;
@@ -1538,7 +1538,7 @@ final class NodeCraftCommandExecutor {
 
                 ItemStack sourceAfter = safeCopySlotStack(handler, sourceSlot);
                 ItemStack targetAfter = safeCopySlotStack(handler, targetSlot);
-                ItemStack cursorAfter = handler.getCursorStack() == null ? ItemStack.EMPTY : handler.getCursorStack().copy();
+                ItemStack cursorAfter = handler.getCarried() == null ? ItemStack.EMPTY : handler.getCarried().copy();
                 if (stackMatchesIngredient(targetAfter, ingredient.ingredient(), registryManager)
                     && targetAfter.getCount() >= craftsThisAttempt) {
                     placed.set(true);
@@ -1578,13 +1578,13 @@ final class NodeCraftCommandExecutor {
 
         for (int poll = 0; poll < CRAFTING_OUTPUT_POLL_LIMIT && producedRef.get() <= 0 && errorRef.get() == null; poll++) {
             owner.runOnClientThread(client, () -> {
-                ClientPlayerInteractionManager interactionManager = client.interactionManager;
+                MultiPlayerGameMode interactionManager = client.gameMode;
                 if (interactionManager == null) {
                     errorRef.set("Cannot craft " + itemDisplayName + ": interaction manager unavailable.");
                     return;
                 }
 
-                ScreenHandler handler = client.player != null ? client.player.currentScreenHandler : null;
+                AbstractContainerMenu handler = client.player != null ? client.player.containerMenu : null;
                 if (handler == null) {
                     errorRef.set("Cannot craft " + itemDisplayName + ": the crafting screen closed.");
                     return;
@@ -1598,13 +1598,13 @@ final class NodeCraftCommandExecutor {
                     return;
                 }
 
-                ItemStack resultStack = outputSlot.getStack();
-                if (resultStack.isEmpty() || !resultStack.isOf(targetItem)) {
+                ItemStack resultStack = outputSlot.getItem();
+                if (resultStack.isEmpty() || !resultStack.is(targetItem)) {
                     return;
                 }
 
                 producedRef.set(Math.max(1, resultStack.getCount()) * Math.max(1, craftsThisAttempt));
-                interactionManager.clickSlot(handler.syncId, 0, 0, SlotActionType.QUICK_MOVE, client.player);
+                interactionManager.handleInventoryMouseClick(handler.containerId, 0, 0, ClickType.QUICK_MOVE, client.player);
             });
 
             if (producedRef.get() > 0 || errorRef.get() != null) {
@@ -1616,13 +1616,13 @@ final class NodeCraftCommandExecutor {
 
         if (producedRef.get() > 0) {
             owner.runOnClientThread(client, () -> {
-                ClientPlayerInteractionManager interactionManager = client.interactionManager;
+                MultiPlayerGameMode interactionManager = client.gameMode;
                 if (interactionManager == null) {
                     errorRef.set("Cannot craft " + itemDisplayName + ": interaction manager unavailable.");
                     return;
                 }
 
-                ScreenHandler handler = client.player != null ? client.player.currentScreenHandler : null;
+                AbstractContainerMenu handler = client.player != null ? client.player.containerMenu : null;
                 if (handler == null) {
                     errorRef.set("Cannot craft " + itemDisplayName + ": the crafting screen closed.");
                     return;
@@ -1647,7 +1647,7 @@ final class NodeCraftCommandExecutor {
         return new CraftingAttemptResult(0, outputFailureMessage);
     }
 
-    private String logCraftingOutputFailure(net.minecraft.client.MinecraftClient client,
+    private String logCraftingOutputFailure(net.minecraft.client.Minecraft client,
                                             String itemDisplayName,
                                             NodeMode craftMode,
                                             List<GridIngredient> gridIngredients,
@@ -1656,7 +1656,7 @@ final class NodeCraftCommandExecutor {
             return "Cannot craft " + itemDisplayName + ": crafting failed before the result could be inspected.";
         }
 
-        ScreenHandler handler = client.player.currentScreenHandler;
+        AbstractContainerMenu handler = client.player.containerMenu;
         if (handler == null) {
             LOGGER.warn("Crafting '{}' failed before output appeared: handler missing after placement.", itemDisplayName);
             return "Cannot craft " + itemDisplayName + ": crafting screen closed before the result appeared.";
@@ -1665,9 +1665,9 @@ final class NodeCraftCommandExecutor {
         String outputDescription = "missing";
         try {
             Slot outputSlot = handler.getSlot(0);
-            ItemStack outputStack = outputSlot.getStack();
+            ItemStack outputStack = outputSlot.getItem();
             if (!outputStack.isEmpty()) {
-                Identifier outputId = Registries.ITEM.getId(outputStack.getItem());
+                Identifier outputId = BuiltInRegistries.ITEM.getKey(outputStack.getItem());
                 outputDescription = outputId + " x" + outputStack.getCount();
             } else {
                 outputDescription = "empty";
@@ -1675,7 +1675,7 @@ final class NodeCraftCommandExecutor {
         } catch (RuntimeException ignored) {
             outputDescription = "unavailable";
         }
-        String cursorDescription = describeItemStack(handler.getCursorStack());
+        String cursorDescription = describeItemStack(handler.getCarried());
 
         LOGGER.warn(
             "Crafting '{}' produced no output after ingredient placement. mode={}, handler={}, outputSlot={}, cursor={}, sources={}, grid={}",
@@ -1691,15 +1691,15 @@ final class NodeCraftCommandExecutor {
             + outputDescription + " (cursor " + cursorDescription + ").";
     }
 
-    private ItemStack safeCopySlotStack(ScreenHandler handler, int slotIndex) {
+    private ItemStack safeCopySlotStack(AbstractContainerMenu handler, int slotIndex) {
         if (handler == null || slotIndex < 0 || slotIndex >= handler.slots.size()) {
             return ItemStack.EMPTY;
         }
         Slot slot = handler.getSlot(slotIndex);
-        if (slot == null || slot.getStack() == null) {
+        if (slot == null || slot.getItem() == null) {
             return ItemStack.EMPTY;
         }
-        return slot.getStack().copy();
+        return slot.getItem().copy();
     }
 
     private boolean stackMatchesIngredient(ItemStack stack, Ingredient ingredient, Object registryManager) {
@@ -1716,12 +1716,12 @@ final class NodeCraftCommandExecutor {
         if (stack == null || stack.isEmpty()) {
             return "empty";
         }
-        Identifier itemId = Registries.ITEM.getId(stack.getItem());
+        Identifier itemId = BuiltInRegistries.ITEM.getKey(stack.getItem());
         String id = itemId != null ? itemId.toString() : stack.getItem().toString();
         return id + " x" + stack.getCount();
     }
 
-    private int getCraftBatchSize(net.minecraft.client.MinecraftClient client,
+    private int getCraftBatchSize(net.minecraft.client.Minecraft client,
                                   List<GridIngredient> gridIngredients,
                                   Object registryManager,
                                   int requestedCrafts) throws InterruptedException {
@@ -1731,13 +1731,13 @@ final class NodeCraftCommandExecutor {
 
         java.util.concurrent.atomic.AtomicInteger batchSizeRef = new java.util.concurrent.atomic.AtomicInteger();
         owner.runOnClientThread(client, () -> {
-            ScreenHandler handler = client.player != null ? client.player.currentScreenHandler : null;
+            AbstractContainerMenu handler = client.player != null ? client.player.containerMenu : null;
             batchSizeRef.set(calculateCraftBatchSize(handler, gridIngredients, registryManager, requestedCrafts));
         });
         return batchSizeRef.get();
     }
 
-    private int calculateCraftBatchSize(ScreenHandler handler,
+    private int calculateCraftBatchSize(AbstractContainerMenu handler,
                                         List<GridIngredient> gridIngredients,
                                         Object registryManager,
                                         int requestedCrafts) {
@@ -1751,7 +1751,7 @@ final class NodeCraftCommandExecutor {
                 continue;
             }
             ItemStack representative = getRepresentativeIngredientStack(ingredient.ingredient(), registryManager);
-            int maxStackCount = representative.isEmpty() ? 64 : Math.max(1, representative.getMaxCount());
+            int maxStackCount = representative.isEmpty() ? 64 : Math.max(1, representative.getMaxStackSize());
             upperBound = Math.min(upperBound, maxStackCount);
         }
 
@@ -1763,9 +1763,9 @@ final class NodeCraftCommandExecutor {
         return 0;
     }
 
-    private void placeIngredientStackCount(ClientPlayerInteractionManager interactionManager,
-                                           ScreenHandler handler,
-                                           net.minecraft.entity.player.PlayerEntity player,
+    private void placeIngredientStackCount(MultiPlayerGameMode interactionManager,
+                                           AbstractContainerMenu handler,
+                                           net.minecraft.world.entity.player.Player player,
                                            int sourceSlot,
                                            int targetSlot,
                                            int count) {
@@ -1773,28 +1773,28 @@ final class NodeCraftCommandExecutor {
             return;
         }
 
-        interactionManager.clickSlot(handler.syncId, sourceSlot, 0, SlotActionType.PICKUP, player);
-        int cursorCount = handler.getCursorStack() == null ? 0 : handler.getCursorStack().getCount();
+        interactionManager.handleInventoryMouseClick(handler.containerId, sourceSlot, 0, ClickType.PICKUP, player);
+        int cursorCount = handler.getCarried() == null ? 0 : handler.getCarried().getCount();
         if (cursorCount <= count) {
-            interactionManager.clickSlot(handler.syncId, targetSlot, 0, SlotActionType.PICKUP, player);
+            interactionManager.handleInventoryMouseClick(handler.containerId, targetSlot, 0, ClickType.PICKUP, player);
             return;
         }
 
         for (int placed = 0; placed < count; placed++) {
-            interactionManager.clickSlot(handler.syncId, targetSlot, 1, SlotActionType.PICKUP, player);
+            interactionManager.handleInventoryMouseClick(handler.containerId, targetSlot, 1, ClickType.PICKUP, player);
         }
-        if (handler.getCursorStack() != null && !handler.getCursorStack().isEmpty()) {
-            interactionManager.clickSlot(handler.syncId, sourceSlot, 0, SlotActionType.PICKUP, player);
+        if (handler.getCarried() != null && !handler.getCarried().isEmpty()) {
+            interactionManager.handleInventoryMouseClick(handler.containerId, sourceSlot, 0, ClickType.PICKUP, player);
         }
     }
 
-    private List<Integer> planIngredientSourceSlots(ScreenHandler handler,
+    private List<Integer> planIngredientSourceSlots(AbstractContainerMenu handler,
                                                     List<GridIngredient> gridIngredients,
                                                     Object registryManager) {
         return planIngredientSourceSlots(handler, gridIngredients, registryManager, 1);
     }
 
-    private List<Integer> planIngredientSourceSlots(ScreenHandler handler,
+    private List<Integer> planIngredientSourceSlots(AbstractContainerMenu handler,
                                                     List<GridIngredient> gridIngredients,
                                                     Object registryManager,
                                                     int countPerIngredient) {
@@ -1808,17 +1808,17 @@ final class NodeCraftCommandExecutor {
         List<Slot> slots = handler.slots;
         for (int slotIdx = 0; slotIdx < slots.size(); slotIdx++) {
             Slot slot = slots.get(slotIdx);
-            if (!(slot.inventory instanceof PlayerInventory)) {
+            if (!(slot.container instanceof Inventory)) {
                 continue;
             }
 
-            int inventoryIndex = slot.getIndex();
-            if (inventoryIndex < 0 || inventoryIndex >= PlayerInventory.MAIN_SIZE) {
+            int inventoryIndex = slot.getContainerSlot();
+            if (inventoryIndex < 0 || inventoryIndex >= Inventory.INVENTORY_SIZE) {
                 continue;
             }
 
             handlerSlots.add(slotIdx);
-            inventoryStacks.add(slot.getStack().copy());
+            inventoryStacks.add(slot.getItem().copy());
         }
 
         for (GridIngredient ingredient : gridIngredients) {
@@ -1841,7 +1841,7 @@ final class NodeCraftCommandExecutor {
                 return null;
             }
 
-            reservedStack.decrement(countPerIngredient);
+            reservedStack.shrink(countPerIngredient);
             reservations.add(new IngredientReservation(handlerSlots.get(inventorySlotIndex)));
         }
 
@@ -1852,9 +1852,9 @@ final class NodeCraftCommandExecutor {
         return plannedSlots;
     }
 
-    private void clearCraftingGrid(net.minecraft.client.MinecraftClient client,
-                                   ClientPlayerInteractionManager interactionManager,
-                                   ScreenHandler handler,
+    private void clearCraftingGrid(net.minecraft.client.Minecraft client,
+                                   MultiPlayerGameMode interactionManager,
+                                   AbstractContainerMenu handler,
                                    int[] gridSlots,
                                    NodeMode craftMode) {
         if (client.player == null || interactionManager == null || handler == null || gridSlots == null) {
@@ -1866,8 +1866,8 @@ final class NodeCraftCommandExecutor {
         for (int slotIndex : actualSlots) {
             try {
                 Slot slot = handler.getSlot(slotIndex);
-                if (slot != null && slot.hasStack()) {
-                    interactionManager.clickSlot(handler.syncId, slotIndex, 0, SlotActionType.QUICK_MOVE, client.player);
+                if (slot != null && slot.hasItem()) {
+                    interactionManager.handleInventoryMouseClick(handler.containerId, slotIndex, 0, ClickType.QUICK_MOVE, client.player);
                 }
             } catch (IndexOutOfBoundsException ignored) {
                 // Ignore missing grid slots for the current handler.
@@ -1894,7 +1894,7 @@ final class NodeCraftCommandExecutor {
                 return null;
             }
 
-            simulatedInventory.get(inventorySlot).decrement(1);
+            simulatedInventory.get(inventorySlot).shrink(1);
             plannedSlots.add(inventorySlot);
         }
         return plannedSlots;
@@ -1933,7 +1933,7 @@ final class NodeCraftCommandExecutor {
         return plannedSlots;
     }
 
-    private int findIngredientSourceSlot(ScreenHandler handler,
+    private int findIngredientSourceSlot(AbstractContainerMenu handler,
                                          Ingredient ingredient,
                                          Object registryManager,
                                          boolean allowEmpty) {
@@ -1948,16 +1948,16 @@ final class NodeCraftCommandExecutor {
         List<Slot> slots = handler.slots;
         for (int slotIdx = 0; slotIdx < slots.size(); slotIdx++) {
             Slot slot = slots.get(slotIdx);
-            if (!(slot.inventory instanceof PlayerInventory)) {
+            if (!(slot.container instanceof Inventory)) {
                 continue;
             }
 
-            int inventoryIndex = slot.getIndex();
-            if (inventoryIndex < 0 || inventoryIndex >= PlayerInventory.MAIN_SIZE) {
+            int inventoryIndex = slot.getContainerSlot();
+            if (inventoryIndex < 0 || inventoryIndex >= Inventory.INVENTORY_SIZE) {
                 continue;
             }
 
-            ItemStack stack = slot.getStack();
+            ItemStack stack = slot.getItem();
             if (stack.isEmpty()) {
                 continue;
             }
@@ -2008,7 +2008,7 @@ final class NodeCraftCommandExecutor {
         return false;
     }
 
-    boolean canSatisfyGridIngredients(ScreenHandler handler,
+    boolean canSatisfyGridIngredients(AbstractContainerMenu handler,
                                               List<GridIngredient> gridIngredients,
                                               Object registryManager) {
         if (handler == null || gridIngredients == null || gridIngredients.isEmpty()) {
@@ -2038,7 +2038,7 @@ final class NodeCraftCommandExecutor {
                     if (candidate == null || candidate.isEmpty()) {
                         continue;
                     }
-                    ids.add(String.valueOf(Registries.ITEM.getId(candidate.getItem())));
+                    ids.add(String.valueOf(BuiltInRegistries.ITEM.getKey(candidate.getItem())));
                 }
                 if (!ids.isEmpty()) {
                     candidateDescription = String.join("|", ids);
@@ -2050,7 +2050,7 @@ final class NodeCraftCommandExecutor {
         return parts.toString();
     }
 
-    private int[] mapGridSlotsForHandler(ScreenHandler handler, NodeMode craftMode, int[] logicalSlots) {
+    private int[] mapGridSlotsForHandler(AbstractContainerMenu handler, NodeMode craftMode, int[] logicalSlots) {
         if (handler == null || logicalSlots == null) {
             return new int[0];
         }
@@ -2078,12 +2078,12 @@ final class NodeCraftCommandExecutor {
     private record IngredientReservation(int handlerSlot) {
     }
 
-    private int mapLogicalSlotToHandlerSlot(ScreenHandler handler, NodeMode craftMode, int logicalSlot) {
+    private int mapLogicalSlotToHandlerSlot(AbstractContainerMenu handler, NodeMode craftMode, int logicalSlot) {
         if (handler == null) {
             return -1;
         }
 
-        if (craftMode == NodeMode.CRAFT_PLAYER_GUI && handler instanceof CraftingScreenHandler) {
+        if (craftMode == NodeMode.CRAFT_PLAYER_GUI && handler instanceof CraftingMenu) {
             return switch (logicalSlot) {
                 case 1 -> 1;
                 case 2 -> 2;
@@ -2096,14 +2096,14 @@ final class NodeCraftCommandExecutor {
         return logicalSlot;
     }
 
-    int mapPlayerInventorySlot(ScreenHandler handler, int inventorySlot) {
+    int mapPlayerInventorySlot(AbstractContainerMenu handler, int inventorySlot) {
         if (handler == null) {
             return -1;
         }
         List<Slot> slots = handler.slots;
         for (int slotIdx = 0; slotIdx < slots.size(); slotIdx++) {
             Slot slot = slots.get(slotIdx);
-            if (slot.inventory instanceof PlayerInventory && slot.getIndex() == inventorySlot) {
+            if (slot.container instanceof Inventory && slot.getContainerSlot() == inventorySlot) {
                 return slotIdx;
             }
         }
@@ -2563,18 +2563,18 @@ final class NodeCraftCommandExecutor {
             return ingredientValue;
         }
         if (entry instanceof Item item) {
-            return Ingredient.ofItems(item);
+            return Ingredient.of(item);
         }
         if (entry instanceof ItemStack stack && !stack.isEmpty()) {
-            return Ingredient.ofItems(stack.getItem());
+            return Ingredient.of(stack.getItem());
         }
-        if (entry instanceof RegistryEntry<?> registryEntry) {
+        if (entry instanceof Holder<?> registryEntry) {
             Object value = registryEntry.value();
             if (value instanceof Ingredient registryIngredient) {
                 return registryIngredient;
             }
             if (value instanceof Item item) {
-                return Ingredient.ofItems(item);
+                return Ingredient.of(item);
             }
         }
         Ingredient candidate = RecipeCompatibilityBridge.tryCreateIngredientFromEntry(entry);
@@ -2701,7 +2701,7 @@ final class NodeCraftCommandExecutor {
         if (ingredient == null) {
             return stacks;
         }
-        for (Item item : Registries.ITEM) {
+        for (Item item : BuiltInRegistries.ITEM) {
             if (item == null || item == Items.AIR) {
                 continue;
             }
@@ -2724,18 +2724,18 @@ final class NodeCraftCommandExecutor {
         List<Item> items = new ArrayList<>();
         for (String idString : itemIds) {
             Identifier id = Identifier.tryParse(idString);
-            if (id == null || !Registries.ITEM.containsId(id)) {
+            if (id == null || !BuiltInRegistries.ITEM.containsKey(id)) {
                 continue;
             }
-            items.add(Registries.ITEM.get(id));
+            items.add(BuiltInRegistries.ITEM.getValue(id));
         }
         if (items.isEmpty()) {
             return null;
         }
-        return Ingredient.ofItems(items.toArray(new Item[0]));
+        return Ingredient.of(items.toArray(new Item[0]));
     }
 
-    CachedRecipeBook loadRecipeCache(net.minecraft.client.MinecraftClient client) {
+    CachedRecipeBook loadRecipeCache(net.minecraft.client.Minecraft client) {
         synchronized (RECIPE_CACHE_LOCK) {
             if (cachedRecipeBook != null) {
                 return cachedRecipeBook;
@@ -2764,7 +2764,7 @@ final class NodeCraftCommandExecutor {
         }
     }
 
-    void saveRecipeCache(net.minecraft.client.MinecraftClient client, CachedRecipeBook book) {
+    void saveRecipeCache(net.minecraft.client.Minecraft client, CachedRecipeBook book) {
         if (client == null || book == null) {
             return;
         }
@@ -2781,7 +2781,7 @@ final class NodeCraftCommandExecutor {
                 }
                 book.schemaVersion = RECIPE_CACHE_VERSION;
                 try {
-                    book.gameVersion = client.getGameVersion();
+                    book.gameVersion = client.getLaunchedVersion();
                 } catch (RuntimeException ignored) {
                     book.gameVersion = null;
                 }
@@ -2795,7 +2795,7 @@ final class NodeCraftCommandExecutor {
         }
     }
 
-    private static Path getRecipeCachePath(net.minecraft.client.MinecraftClient client) {
+    private static Path getRecipeCachePath(net.minecraft.client.Minecraft client) {
         Path base = getPathmindDirectory(client);
         if (base == null) {
             return null;
@@ -2803,10 +2803,10 @@ final class NodeCraftCommandExecutor {
         return base.resolve(RECIPE_CACHE_FILE_NAME);
     }
 
-    private static Path getPathmindDirectory(net.minecraft.client.MinecraftClient client) {
+    private static Path getPathmindDirectory(net.minecraft.client.Minecraft client) {
         Path minecraftDirectory = null;
-        if (client != null && client.runDirectory != null) {
-            minecraftDirectory = client.runDirectory.toPath();
+        if (client != null && client.gameDirectory != null) {
+            minecraftDirectory = client.gameDirectory.toPath();
         } else {
             try {
                 minecraftDirectory = Platform.getGameFolder();
@@ -2820,8 +2820,8 @@ final class NodeCraftCommandExecutor {
         return minecraftDirectory.resolve("pathmind");
     }
 
-    List<RecipeEntry<?>> getRecipeEntries(Object manager) {
-        List<RecipeEntry<?>> entries = new ArrayList<>();
+    List<RecipeHolder<?>> getRecipeEntries(Object manager) {
+        List<RecipeHolder<?>> entries = new ArrayList<>();
         if (manager == null) {
             return entries;
         }
@@ -2865,18 +2865,18 @@ final class NodeCraftCommandExecutor {
         return entries;
     }
 
-    boolean collectRecipeEntries(Object result, List<RecipeEntry<?>> entries) {
+    boolean collectRecipeEntries(Object result, List<RecipeHolder<?>> entries) {
         if (result == null || entries == null) {
             return false;
         }
-        if (result instanceof RecipeEntry<?> entry) {
+        if (result instanceof RecipeHolder<?> entry) {
             entries.add(entry);
             return true;
         }
         if (result instanceof Iterable<?> iterable) {
             boolean added = false;
             for (Object item : iterable) {
-                if (item instanceof RecipeEntry<?> recipeEntry) {
+                if (item instanceof RecipeHolder<?> recipeEntry) {
                     entries.add(recipeEntry);
                     added = true;
                 } else if (item instanceof java.util.Map<?, ?> map) {
@@ -2895,7 +2895,7 @@ final class NodeCraftCommandExecutor {
             boolean added = false;
             while (iterator.hasNext()) {
                 Object item = iterator.next();
-                if (item instanceof RecipeEntry<?> recipeEntry) {
+                if (item instanceof RecipeHolder<?> recipeEntry) {
                     entries.add(recipeEntry);
                     added = true;
                 } else if (item instanceof java.util.Map<?, ?> map) {
@@ -2942,7 +2942,7 @@ final class NodeCraftCommandExecutor {
     }
 
     void collectRecipeEntriesFromFields(Object manager,
-                                                List<RecipeEntry<?>> entries,
+                                                List<RecipeHolder<?>> entries,
                                                 int depth,
                                                 java.util.IdentityHashMap<Object, Boolean> seen) {
         if (manager == null || entries == null) {
@@ -3027,23 +3027,23 @@ final class NodeCraftCommandExecutor {
             || name.startsWith("com.sun.");
     }
 
-    List<Object> getRecipeManagers(net.minecraft.client.MinecraftClient client) {
+    List<Object> getRecipeManagers(net.minecraft.client.Minecraft client) {
         List<Object> managers = new ArrayList<>();
         if (client == null) {
             return managers;
         }
-        MinecraftServer server = client.getServer();
+        MinecraftServer server = client.getSingleplayerServer();
         if (server != null) {
-            RecipeManager manager = server.getRecipeManager();
+            RecipeAccess manager = server.getRecipeManager();
             if (manager != null && !managers.contains(manager)) {
                 managers.add(manager);
             }
         }
-        if (client.getNetworkHandler() != null) {
+        if (client.getConnection() != null) {
             try {
-                java.lang.reflect.Method method = client.getNetworkHandler().getClass().getMethod("getRecipeManager");
+                java.lang.reflect.Method method = client.getConnection().getClass().getMethod("getRecipeManager");
                 method.setAccessible(true);
-                Object result = method.invoke(client.getNetworkHandler());
+                Object result = method.invoke(client.getConnection());
                 if (result != null && !managers.contains(result)) {
                     managers.add(result);
                 }
@@ -3051,9 +3051,9 @@ final class NodeCraftCommandExecutor {
                 // Ignore network handlers without recipe managers.
             }
         }
-        if (client.world != null) {
+        if (client.level != null) {
             try {
-                RecipeManager manager = client.world.getRecipeManager();
+                RecipeAccess manager = client.level.recipeAccess();
                 if (manager != null && !managers.contains(manager)) {
                     managers.add(manager);
                 }
@@ -3096,8 +3096,8 @@ final class NodeCraftCommandExecutor {
         private final CachedRecipeBook book;
         private final Object registryManager;
         private final Object serverRegistryManager;
-        private final List<RecipeEntry<?>> craftingEntries;
-        private final List<RecipeResultCollection> recipeCollections;
+        private final List<RecipeHolder<?>> craftingEntries;
+        private final List<RecipeCollection> recipeCollections;
         private final int totalDisplayEntries;
         private int recipeIndex;
         private int collectionIndex;
@@ -3109,8 +3109,8 @@ final class NodeCraftCommandExecutor {
                                CachedRecipeBook book,
                                Object registryManager,
                                Object serverRegistryManager,
-                               List<RecipeEntry<?>> craftingEntries,
-                               List<RecipeResultCollection> recipeCollections,
+                               List<RecipeHolder<?>> craftingEntries,
+                               List<RecipeCollection> recipeCollections,
                                int totalDisplayEntries) {
             this.cachePath = cachePath;
             this.book = book;
@@ -3121,7 +3121,7 @@ final class NodeCraftCommandExecutor {
             this.totalDisplayEntries = Math.max(0, totalDisplayEntries);
         }
 
-        boolean matches(net.minecraft.client.MinecraftClient client) {
+        boolean matches(net.minecraft.client.Minecraft client) {
             return Objects.equals(cachePath, getRecipeCachePath(client));
         }
 
@@ -3136,7 +3136,7 @@ final class NodeCraftCommandExecutor {
         private int getCompletedDisplayEntries() {
             int completed = 0;
             for (int i = 0; i < collectionIndex && i < recipeCollections.size(); i++) {
-                RecipeResultCollection collection = recipeCollections.get(i);
+                RecipeCollection collection = recipeCollections.get(i);
                 List<?> entries = collection != null ? RecipeCompatibilityBridge.getAllRecipesFromCollection(collection) : null;
                 completed += entries != null ? entries.size() : 0;
             }
@@ -3154,14 +3154,14 @@ final class NodeCraftCommandExecutor {
         }
     }
 
-    public static boolean warmRecipeCache(net.minecraft.client.MinecraftClient client) {
-        if (client == null || client.getServer() == null) {
+    public static boolean warmRecipeCache(net.minecraft.client.Minecraft client) {
+        if (client == null || client.getSingleplayerServer() == null) {
             return false;
         }
         return new NodeCraftCommandExecutor(new Node(NodeType.CRAFT, 0, 0)).warmRecipeCacheInternal(client);
     }
 
-    public static boolean hasUsableRecipeCache(net.minecraft.client.MinecraftClient client) {
+    public static boolean hasUsableRecipeCache(net.minecraft.client.Minecraft client) {
         if (client == null) {
             return false;
         }
@@ -3175,7 +3175,7 @@ final class NodeCraftCommandExecutor {
         }
     }
 
-    public static boolean clearRecipeCache(net.minecraft.client.MinecraftClient client) {
+    public static boolean clearRecipeCache(net.minecraft.client.Minecraft client) {
         synchronized (RECIPE_CACHE_LOCK) {
             cachedRecipeBook = null;
             recipeCacheWarmupState = null;
@@ -3194,12 +3194,12 @@ final class NodeCraftCommandExecutor {
         }
     }
 
-    public static boolean isRecipeCacheWarmupInProgress(net.minecraft.client.MinecraftClient client) {
+    public static boolean isRecipeCacheWarmupInProgress(net.minecraft.client.Minecraft client) {
         RecipeCacheWarmupState state = recipeCacheWarmupState;
         return state != null && state.matches(client);
     }
 
-    public static RecipeCacheWarmupProgress getRecipeCacheWarmupProgress(net.minecraft.client.MinecraftClient client) {
+    public static RecipeCacheWarmupProgress getRecipeCacheWarmupProgress(net.minecraft.client.Minecraft client) {
         RecipeCacheWarmupState state = recipeCacheWarmupState;
         if (state == null || !state.matches(client)) {
             return null;
@@ -3211,8 +3211,8 @@ final class NodeCraftCommandExecutor {
         return new RecipeCacheWarmupProgress(state.getCompletedUnits(), total);
     }
 
-    private boolean warmRecipeCacheInternal(net.minecraft.client.MinecraftClient client) {
-        if (client == null || client.getServer() == null) {
+    private boolean warmRecipeCacheInternal(net.minecraft.client.Minecraft client) {
+        if (client == null || client.getSingleplayerServer() == null) {
             return false;
         }
         RecipeCacheWarmupState state = recipeCacheWarmupState;
@@ -3226,14 +3226,14 @@ final class NodeCraftCommandExecutor {
 
         int recipesProcessed = 0;
         while (recipesProcessed < RECIPE_WARMUP_RECIPE_BATCH_SIZE && state.recipeIndex < state.craftingEntries.size()) {
-            RecipeEntry<?> entry = state.craftingEntries.get(state.recipeIndex++);
+            RecipeHolder<?> entry = state.craftingEntries.get(state.recipeIndex++);
             processWarmupRecipeEntry(state, entry);
             recipesProcessed++;
         }
 
         int displaysProcessed = 0;
         while (displaysProcessed < RECIPE_WARMUP_DISPLAY_BATCH_SIZE && state.collectionIndex < state.recipeCollections.size()) {
-            RecipeResultCollection collection = state.recipeCollections.get(state.collectionIndex);
+            RecipeCollection collection = state.recipeCollections.get(state.collectionIndex);
             List<?> entries = collection != null ? RecipeCompatibilityBridge.getAllRecipesFromCollection(collection) : null;
             if (entries == null || entries.isEmpty() || state.displayIndex >= entries.size()) {
                 state.collectionIndex++;
@@ -3264,7 +3264,7 @@ final class NodeCraftCommandExecutor {
         return state.book.recipesByOutput != null && !state.book.recipesByOutput.isEmpty();
     }
 
-    private boolean hasUsableRecipeCacheInternal(net.minecraft.client.MinecraftClient client) {
+    private boolean hasUsableRecipeCacheInternal(net.minecraft.client.Minecraft client) {
         Path path = getRecipeCachePath(client);
         if (path == null || !Files.exists(path)) {
             return false;
@@ -3368,14 +3368,14 @@ final class NodeCraftCommandExecutor {
         return false;
     }
 
-    private RecipeCacheWarmupState createRecipeCacheWarmupState(net.minecraft.client.MinecraftClient client) {
-        if (client == null || client.getServer() == null) {
+    private RecipeCacheWarmupState createRecipeCacheWarmupState(net.minecraft.client.Minecraft client) {
+        if (client == null || client.getSingleplayerServer() == null) {
             return null;
         }
         if (hasUsableRecipeCacheInternal(client)) {
             return null;
         }
-        RecipeManager manager = client.getServer().getRecipeManager();
+        RecipeAccess manager = client.getSingleplayerServer().getRecipeManager();
         if (manager == null) {
             return null;
         }
@@ -3383,14 +3383,14 @@ final class NodeCraftCommandExecutor {
         if (book == null) {
             return null;
         }
-        List<RecipeEntry<?>> craftingEntries = getCraftingRecipeEntries(manager);
-        Object registryManager = client.world;
+        List<RecipeHolder<?>> craftingEntries = getCraftingRecipeEntries(manager);
+        Object registryManager = client.level;
         if (registryManager == null) {
-            registryManager = client.getServer().getRegistryManager();
+            registryManager = client.getSingleplayerServer().registryAccess();
         }
-        List<RecipeResultCollection> collections = List.of();
+        List<RecipeCollection> collections = List.of();
         if (client.player != null && client.player.getRecipeBook() instanceof ClientRecipeBook clientRecipeBook) {
-            List<RecipeResultCollection> orderedResults = clientRecipeBook.getOrderedResults();
+            List<RecipeCollection> orderedResults = clientRecipeBook.getCollections();
             if (orderedResults != null && !orderedResults.isEmpty()) {
                 collections = new ArrayList<>(orderedResults);
             }
@@ -3404,19 +3404,19 @@ final class NodeCraftCommandExecutor {
             getRecipeCachePath(client),
             book,
             registryManager,
-            client.getServer().getRegistryManager(),
+            client.getSingleplayerServer().registryAccess(),
             new ArrayList<>(craftingEntries),
             collections,
             totalDisplayEntries
         );
     }
 
-    private int countRecipeDisplayEntries(List<RecipeResultCollection> collections) {
+    private int countRecipeDisplayEntries(List<RecipeCollection> collections) {
         if (collections == null || collections.isEmpty()) {
             return 0;
         }
         int total = 0;
-        for (RecipeResultCollection collection : collections) {
+        for (RecipeCollection collection : collections) {
             List<?> entries = collection != null ? RecipeCompatibilityBridge.getAllRecipesFromCollection(collection) : null;
             if (entries != null) {
                 total += entries.size();
@@ -3425,7 +3425,7 @@ final class NodeCraftCommandExecutor {
         return total;
     }
 
-    private void processWarmupRecipeEntry(RecipeCacheWarmupState state, RecipeEntry<?> entry) {
+    private void processWarmupRecipeEntry(RecipeCacheWarmupState state, RecipeHolder<?> entry) {
         if (state == null || entry == null || !(entry.value() instanceof CraftingRecipe craftingRecipe)) {
             return;
         }

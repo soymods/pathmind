@@ -19,9 +19,6 @@ import com.pathmind.util.BaritoneDependencyChecker;
 import com.pathmind.util.UiUtilsDependencyChecker;
 import com.pathmind.validation.GraphValidationResult;
 import com.pathmind.validation.GraphValidator;
-
-import net.minecraft.client.MinecraftClient;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -44,6 +41,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import net.minecraft.client.Minecraft;
 
 /**
  * Manages the execution state of the node graph.
@@ -2604,7 +2602,7 @@ public class ExecutionManager {
             return;
         }
         try {
-            MinecraftClient client = MinecraftClient.getInstance();
+            Minecraft client = Minecraft.getInstance();
             if (client == null) {
                 return;
             }
@@ -2786,8 +2784,8 @@ public class ExecutionManager {
             return false;
         }
 
-        MinecraftClient client = MinecraftClient.getInstance();
-        boolean editorOpen = client != null && PathmindScreens.isVisualEditorScreen(client.currentScreen);
+        Minecraft client = Minecraft.getInstance();
+        boolean editorOpen = client != null && PathmindScreens.isVisualEditorScreen(client.screen);
         if (editorOpen && workspaceNodes != null && !workspaceNodes.isEmpty() && workspaceConnections != null) {
             Node workspaceStart = findStartNodeByNumber(workspaceNodes, lastStartNodeNumber);
             if (workspaceStart != null && workspaceStart.getType() == NodeType.START) {

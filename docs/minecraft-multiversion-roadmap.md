@@ -81,6 +81,8 @@ Version-family directories should contain only files that genuinely differ. Shar
 
 ## Pass 1: Freeze the compatibility contract and establish a trustworthy baseline
 
+**Status:** Implemented July 16, 2026. The manifest, drift checks, source/artifact inventory, 24-jar verification, Java-toolchain enforcement, and focused loader launch checks are in place. Interactive editor/world checks remain part of release validation rather than routine migration work.
+
 ### Goal
 
 Create a repeatable baseline for all current targets before changing mappings or build infrastructure. At the end of this pass, later failures can be identified as real migration regressions rather than pre-existing uncertainty.
@@ -115,7 +117,7 @@ Create a repeatable baseline for all current targets before changing mappings or
 
 - `1.21` through `1.21.11` build from the declared matrix on every loader currently claimed as supported.
 - Unit tests pass on the default target.
-- Representative boundary targets have completed the smoke-test checklist.
+- The smoke-test contract is documented and focused loader launch checks cover the oldest, late-legacy, and newest baseline boundaries; full interactive checks are required before a compatibility release.
 - CI and release discovery use or validate the same machine-readable target list.
 - A contributor can identify the selected compatibility family and toolchain for any target from one manifest.
 

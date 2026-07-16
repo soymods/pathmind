@@ -1,15 +1,14 @@
 package com.pathmind.util;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.Mouse;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.util.InputUtil;
-import net.minecraft.client.util.Window;
 import org.lwjgl.glfw.GLFW;
-
+import com.mojang.blaze3d.platform.InputConstants;
+import com.mojang.blaze3d.platform.Window;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.MouseHandler;
+import net.minecraft.client.gui.screens.Screen;
 
 /**
  * Bridges input helpers that shifted across 1.21.x.
@@ -37,9 +36,9 @@ public final class InputCompatibilityBridge {
         if (screenValue != null) {
             return screenValue;
         }
-        MinecraftClient client = MinecraftClient.getInstance();
-        return isKeyPressed(client, InputUtil.GLFW_KEY_LEFT_CONTROL)
-            || isKeyPressed(client, InputUtil.GLFW_KEY_RIGHT_CONTROL);
+        Minecraft client = Minecraft.getInstance();
+        return isKeyPressed(client, InputConstants.KEY_LCONTROL)
+            || isKeyPressed(client, InputConstants.KEY_RCONTROL);
     }
 
     public static boolean hasShiftDown() {
@@ -47,12 +46,12 @@ public final class InputCompatibilityBridge {
         if (screenValue != null) {
             return screenValue;
         }
-        MinecraftClient client = MinecraftClient.getInstance();
-        return isKeyPressed(client, InputUtil.GLFW_KEY_LEFT_SHIFT)
-            || isKeyPressed(client, InputUtil.GLFW_KEY_RIGHT_SHIFT);
+        Minecraft client = Minecraft.getInstance();
+        return isKeyPressed(client, InputConstants.KEY_LSHIFT)
+            || isKeyPressed(client, InputConstants.KEY_RSHIFT);
     }
 
-    public static boolean isKeyPressed(MinecraftClient client, int keyCode) {
+    public static boolean isKeyPressed(Minecraft client, int keyCode) {
         if (client == null) {
             return false;
         }
@@ -70,16 +69,16 @@ public final class InputCompatibilityBridge {
         }
         if (IS_KEY_PRESSED_HANDLE != null) {
             try {
-                Object result = IS_KEY_PRESSED_HANDLE.invoke(null, window.getHandle(), keyCode);
+                Object result = IS_KEY_PRESSED_HANDLE.invoke(null, window.handle(), keyCode);
                 return result instanceof Boolean value && value;
             } catch (IllegalAccessException | InvocationTargetException ignored) {
                 return false;
             }
         }
-        return GLFW.glfwGetKey(window.getHandle(), keyCode) == GLFW.GLFW_PRESS;
+        return GLFW.glfwGetKey(window.handle(), keyCode) == GLFW.GLFW_PRESS;
     }
 
-    public static boolean isMouseButtonPressed(MinecraftClient client, int buttonCode) {
+    public static boolean isMouseButtonPressed(Minecraft client, int buttonCode) {
         if (client == null) {
             return false;
         }
@@ -87,10 +86,10 @@ public final class InputCompatibilityBridge {
         if (window == null) {
             return false;
         }
-        return GLFW.glfwGetMouseButton(window.getHandle(), buttonCode) == GLFW.GLFW_PRESS;
+        return GLFW.glfwGetMouseButton(window.handle(), buttonCode) == GLFW.GLFW_PRESS;
     }
 
-    public static boolean dispatchMouseButton(MinecraftClient client, int buttonCode, int action, int mods) {
+    public static boolean dispatchMouseButton(Minecraft client, int buttonCode, int action, int mods) {
         if (client == null) {
             return false;
         }
@@ -98,14 +97,14 @@ public final class InputCompatibilityBridge {
         if (window == null) {
             return false;
         }
-        Mouse mouse = client.mouse;
+        MouseHandler mouse = client.mouseHandler;
         if (mouse == null || MOUSE_BUTTON_CALLBACK == null) {
             return false;
         }
         try {
             Class<?>[] parameterTypes = MOUSE_BUTTON_CALLBACK.getParameterTypes();
             if (parameterTypes.length == 4 && parameterTypes[1] == int.class) {
-                MOUSE_BUTTON_CALLBACK.invoke(mouse, window.getHandle(), buttonCode, action, mods);
+                MOUSE_BUTTON_CALLBACK.invoke(mouse, window.handle(), buttonCode, action, mods);
                 return true;
             }
             if (parameterTypes.length == 3
@@ -113,7 +112,7 @@ public final class InputCompatibilityBridge {
                 && parameterTypes[2] == int.class
                 && MOUSE_INPUT_CONSTRUCTOR != null) {
                 Object mouseInput = MOUSE_INPUT_CONSTRUCTOR.newInstance(buttonCode, action);
-                MOUSE_BUTTON_CALLBACK.invoke(mouse, window.getHandle(), mouseInput, mods);
+                MOUSE_BUTTON_CALLBACK.invoke(mouse, window.handle(), mouseInput, mods);
                 return true;
             }
         } catch (InstantiationException | IllegalAccessException | InvocationTargetException ignored) {
@@ -122,7 +121,7 @@ public final class InputCompatibilityBridge {
         return false;
     }
 
-    public static boolean dispatchCursorPos(MinecraftClient client, double x, double y) {
+    public static boolean dispatchCursorPos(Minecraft client, double x, double y) {
         if (client == null) {
             return false;
         }
@@ -130,13 +129,13 @@ public final class InputCompatibilityBridge {
         if (window == null) {
             return false;
         }
-        Mouse mouse = client.mouse;
+        MouseHandler mouse = client.mouseHandler;
         if (mouse == null || MOUSE_CURSOR_POS_CALLBACK == null) {
             return false;
         }
-        GLFW.glfwSetCursorPos(window.getHandle(), x, y);
+        GLFW.glfwSetCursorPos(window.handle(), x, y);
         try {
-            MOUSE_CURSOR_POS_CALLBACK.invoke(mouse, window.getHandle(), x, y);
+            MOUSE_CURSOR_POS_CALLBACK.invoke(mouse, window.handle(), x, y);
             return true;
         } catch (IllegalAccessException | InvocationTargetException ignored) {
             return false;
@@ -199,7 +198,7 @@ public final class InputCompatibilityBridge {
 
     private static Method resolveIsKeyPressed(Class<?> firstParam) {
         try {
-            Method method = InputUtil.class.getMethod("isKeyPressed", firstParam, int.class);
+            Method method = InputConstants.class.getMethod("isKeyPressed", firstParam, int.class);
             method.setAccessible(true);
             return method;
         } catch (NoSuchMethodException ignored) {
@@ -359,7 +358,7 @@ public final class InputCompatibilityBridge {
     }
 
     private static Method resolveMouseButtonCallback() {
-        for (Method method : Mouse.class.getDeclaredMethods()) {
+        for (Method method : MouseHandler.class.getDeclaredMethods()) {
             Class<?>[] parameterTypes = method.getParameterTypes();
             if (method.getReturnType() != void.class) {
                 continue;
@@ -386,7 +385,7 @@ public final class InputCompatibilityBridge {
     }
 
     private static Method resolveMouseCursorPosCallback() {
-        for (Method method : Mouse.class.getDeclaredMethods()) {
+        for (Method method : MouseHandler.class.getDeclaredMethods()) {
             Class<?>[] parameterTypes = method.getParameterTypes();
             if (method.getReturnType() != void.class) {
                 continue;

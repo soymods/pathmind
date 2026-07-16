@@ -5,7 +5,7 @@ import java.util.Collections;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
-import net.minecraft.text.Text;
+import net.minecraft.network.chat.Component;
 
 public final class AttributeDetectionConfig {
     public enum TargetKind {
@@ -67,7 +67,7 @@ public final class AttributeDetectionConfig {
         }
 
         public String label() {
-            return Text.translatable(labelKey()).getString();
+            return Component.translatable(labelKey()).getString();
         }
 
         public String labelKey() {

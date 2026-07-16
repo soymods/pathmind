@@ -1,10 +1,9 @@
 package com.pathmind.util;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.entity.player.PlayerInventory;
-import net.minecraft.network.packet.c2s.play.UpdateSelectedSlotC2SPacket;
-
 import java.lang.reflect.Method;
+import net.minecraft.client.Minecraft;
+import net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket;
+import net.minecraft.world.entity.player.Inventory;
 
 /**
  * Keeps client hotbar selection and the server-held slot in sync without
@@ -17,12 +16,12 @@ public final class HotbarSlotSynchronizer {
     private HotbarSlotSynchronizer() {
     }
 
-    public static boolean selectHotbarSlot(MinecraftClient client, int slot) {
+    public static boolean selectHotbarSlot(Minecraft client, int slot) {
         if (client == null || client.player == null) {
             return false;
         }
-        PlayerInventory inventory = client.player.getInventory();
-        int hotbarSize = PlayerInventory.getHotbarSize();
+        Inventory inventory = client.player.getInventory();
+        int hotbarSize = Inventory.getSelectionSize();
         if (slot < 0 || slot >= hotbarSize) {
             return false;
         }
@@ -44,26 +43,26 @@ public final class HotbarSlotSynchronizer {
         return true;
     }
 
-    public static void syncSelectedHotbarSlot(MinecraftClient client) {
+    public static void syncSelectedHotbarSlot(Minecraft client) {
         if (client == null) {
             return;
         }
-        if (client.interactionManager != null && SYNC_SELECTED_SLOT_METHOD != null) {
+        if (client.gameMode != null && SYNC_SELECTED_SLOT_METHOD != null) {
             try {
-                SYNC_SELECTED_SLOT_METHOD.invoke(client.interactionManager);
+                SYNC_SELECTED_SLOT_METHOD.invoke(client.gameMode);
                 return;
             } catch (ReflectiveOperationException ignored) {
                 // Fall back to a single manual packet below.
             }
         }
-        if (client.player == null || client.player.networkHandler == null) {
+        if (client.player == null || client.player.connection == null) {
             lastManuallySyncedSlot = -1;
             return;
         }
         try {
             int selectedSlot = PlayerInventoryBridge.getSelectedSlot(client.player.getInventory());
             if (selectedSlot >= 0 && selectedSlot != lastManuallySyncedSlot) {
-                client.player.networkHandler.sendPacket(new UpdateSelectedSlotC2SPacket(selectedSlot));
+                client.player.connection.send(new ServerboundSetCarriedItemPacket(selectedSlot));
                 lastManuallySyncedSlot = selectedSlot;
             }
         } catch (IllegalStateException ignored) {
@@ -73,7 +72,7 @@ public final class HotbarSlotSynchronizer {
 
     private static Method resolveSyncSelectedSlotMethod() {
         try {
-            return net.minecraft.client.network.ClientPlayerInteractionManager.class.getMethod("syncSelectedSlot");
+            return net.minecraft.client.multiplayer.MultiPlayerGameMode.class.getMethod("syncSelectedSlot");
         } catch (ReflectiveOperationException ignored) {
             return null;
         }

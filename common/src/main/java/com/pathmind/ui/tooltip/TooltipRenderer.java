@@ -2,12 +2,11 @@ package com.pathmind.ui.tooltip;
 
 import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.text.Text;
-
 import java.util.ArrayList;
 import java.util.List;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.network.chat.Component;
 
 public final class TooltipRenderer {
     private static final int PADDING = 6;
@@ -18,7 +17,7 @@ public final class TooltipRenderer {
     private TooltipRenderer() {
     }
 
-    public static void render(DrawContext context, TextRenderer textRenderer, String text, int mouseX, int mouseY,
+    public static void render(GuiGraphics context, Font textRenderer, String text, int mouseX, int mouseY,
                               int screenWidth, int screenHeight) {
         if (text == null || text.isEmpty() || textRenderer == null) {
             return;
@@ -32,9 +31,9 @@ public final class TooltipRenderer {
 
         int textWidth = 0;
         for (String line : lines) {
-            textWidth = Math.max(textWidth, textRenderer.getWidth(line));
+            textWidth = Math.max(textWidth, textRenderer.width(line));
         }
-        int textHeight = lines.size() * textRenderer.fontHeight + Math.max(0, (lines.size() - 1) * LINE_SPACING);
+        int textHeight = lines.size() * textRenderer.lineHeight + Math.max(0, (lines.size() - 1) * LINE_SPACING);
         int tooltipWidth = textWidth + PADDING * 2;
         int tooltipHeight = textHeight + PADDING * 2;
 
@@ -58,12 +57,12 @@ public final class TooltipRenderer {
         int textX = x + PADDING;
         int textY = y + PADDING;
         for (String line : lines) {
-            context.drawTextWithShadow(textRenderer, Text.literal(line), textX, textY, UITheme.TEXT_PRIMARY);
-            textY += textRenderer.fontHeight + LINE_SPACING;
+            context.drawString(textRenderer, Component.literal(line), textX, textY, UITheme.TEXT_PRIMARY);
+            textY += textRenderer.lineHeight + LINE_SPACING;
         }
     }
 
-    private static List<String> wrapText(String text, TextRenderer textRenderer, int maxWidth) {
+    private static List<String> wrapText(String text, Font textRenderer, int maxWidth) {
         List<String> lines = new ArrayList<>();
         if (text == null || text.isEmpty()) {
             lines.add("");
@@ -84,13 +83,13 @@ public final class TooltipRenderer {
 
             if (currentLine.length() > 0) {
                 String candidate = currentLine + " " + word;
-                if (textRenderer.getWidth(candidate) <= maxWidth) {
+                if (textRenderer.width(candidate) <= maxWidth) {
                     currentLine.append(" ").append(word);
                     continue;
                 }
             }
 
-            if (textRenderer.getWidth(word) <= maxWidth) {
+            if (textRenderer.width(word) <= maxWidth) {
                 if (currentLine.length() > 0) {
                     lines.add(currentLine.toString());
                 }
@@ -121,14 +120,14 @@ public final class TooltipRenderer {
         return lines;
     }
 
-    private static int findBreakIndex(String text, TextRenderer textRenderer, int maxWidth) {
+    private static int findBreakIndex(String text, Font textRenderer, int maxWidth) {
         if (text.isEmpty() || maxWidth <= 0) {
             return Math.max(1, text.length());
         }
 
         int breakIndex = 1;
         while (breakIndex <= text.length()
-            && textRenderer.getWidth(text.substring(0, breakIndex)) <= maxWidth) {
+            && textRenderer.width(text.substring(0, breakIndex)) <= maxWidth) {
             breakIndex++;
         }
 

@@ -1,8 +1,6 @@
 package com.pathmind.nodes;
 
 import com.pathmind.data.SettingsManager;
-import net.minecraft.text.Text;
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumMap;
@@ -10,6 +8,7 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import net.minecraft.network.chat.Component;
 
 import static com.pathmind.nodes.NodeParameterDefinition.dynamic;
 import static com.pathmind.nodes.NodeParameterDefinition.of;
@@ -1235,12 +1234,12 @@ public final class NodeCatalog {
 
     public static String displayName(NodeType type) {
         NodeDefinition definition = definition(type);
-        return Text.translatable(definition != null ? definition.nameKey() : nameKey(type)).getString();
+        return Component.translatable(definition != null ? definition.nameKey() : nameKey(type)).getString();
     }
 
     public static String description(NodeType type) {
         NodeDefinition definition = definition(type);
-        return Text.translatable(definition != null ? definition.descriptionKey() : descriptionKey(type)).getString();
+        return Component.translatable(definition != null ? definition.descriptionKey() : descriptionKey(type)).getString();
     }
 
     public static int graphColor(NodeType type) {

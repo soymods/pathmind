@@ -1,16 +1,15 @@
 package com.pathmind.ui.overlay;
 
 import com.pathmind.execution.PathmindNavigator;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.client.render.DrawStyle;
-import net.minecraft.client.render.WorldRenderer;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.debug.gizmo.GizmoDrawing;
-
 import java.util.List;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.renderer.LevelRenderer;
+import net.minecraft.core.BlockPos;
+import net.minecraft.gizmos.GizmoStyle;
+import net.minecraft.gizmos.Gizmos;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * Draws the local navigator's active route directly in the world using Minecraft's debug gizmo system.
@@ -34,7 +33,7 @@ public final class NavigatorWorldOverlay {
     private NavigatorWorldOverlay() {
     }
 
-    public static void render(WorldRenderer worldRenderer) {
+    public static void render(LevelRenderer worldRenderer) {
         if (worldRenderer == null) {
             return;
         }
@@ -49,7 +48,7 @@ public final class NavigatorWorldOverlay {
             return;
         }
 
-        try (GizmoDrawing.CollectorScope ignored = worldRenderer.startDrawingGizmos()) {
+        try (Gizmos.TemporaryCollection ignored = worldRenderer.collectPerFrameGizmos()) {
             renderCandidatePaths(snapshot.candidatePaths());
             renderStepMarkers(snapshot.path(), snapshot.visitedPathIndex());
             renderBreakTargets(snapshot.breakTargets());
@@ -62,8 +61,8 @@ public final class NavigatorWorldOverlay {
     }
 
     private static void renderCandidatePaths(List<List<BlockPos>> candidatePaths) {
-        MinecraftClient client = MinecraftClient.getInstance();
-        ClientPlayerEntity player = client != null ? client.player : null;
+        Minecraft client = Minecraft.getInstance();
+        LocalPlayer player = client != null ? client.player : null;
         if (candidatePaths == null || candidatePaths.isEmpty() || player == null) {
             return;
         }
@@ -74,8 +73,8 @@ public final class NavigatorWorldOverlay {
             if (candidate == null || candidate.isEmpty()) {
                 continue;
             }
-            List<Vec3d> renderPoints = new java.util.ArrayList<>(candidate.size() + 1);
-            renderPoints.add(new Vec3d(player.getX(), player.getY() + 0.18D, player.getZ()));
+            List<Vec3> renderPoints = new java.util.ArrayList<>(candidate.size() + 1);
+            renderPoints.add(new Vec3(player.getX(), player.getY() + 0.18D, player.getZ()));
             for (BlockPos node : candidate) {
                 renderPoints.add(pathPoint(node));
             }
@@ -86,14 +85,14 @@ public final class NavigatorWorldOverlay {
     }
 
     private static void renderPath(List<BlockPos> path, BlockPos goalPos, int pathIndex) {
-        MinecraftClient client = MinecraftClient.getInstance();
-        ClientPlayerEntity player = client != null ? client.player : null;
+        Minecraft client = Minecraft.getInstance();
+        LocalPlayer player = client != null ? client.player : null;
         if (player == null || goalPos == null) {
             return;
         }
 
-        List<Vec3d> renderPoints = new java.util.ArrayList<>((path == null ? 0 : path.size()) + 2);
-        renderPoints.add(new Vec3d(player.getX(), player.getY() + 0.18D, player.getZ()));
+        List<Vec3> renderPoints = new java.util.ArrayList<>((path == null ? 0 : path.size()) + 2);
+        renderPoints.add(new Vec3(player.getX(), player.getY() + 0.18D, player.getZ()));
         if (path != null) {
             int startIndex = Math.max(0, Math.min(pathIndex, path.size()));
             for (int i = startIndex; i < path.size(); i++) {
@@ -101,7 +100,7 @@ public final class NavigatorWorldOverlay {
                 renderPoints.add(pathPoint(node));
             }
         }
-        Vec3d goalPoint = pathPoint(goalPos);
+        Vec3 goalPoint = pathPoint(goalPos);
         if (renderPoints.isEmpty() || !sameRenderPoint(renderPoints.get(renderPoints.size() - 1), goalPoint)) {
             renderPoints.add(goalPoint);
         }
@@ -128,8 +127,8 @@ public final class NavigatorWorldOverlay {
             if (i < Math.max(0, pathIndex)) {
                 continue;
             }
-            Vec3d center = Vec3d.ofCenter(step);
-            Box marker = Box.of(center.add(0.0D, 0.15D, 0.0D), 0.34D, 0.34D, 0.34D);
+            Vec3 center = Vec3.atCenterOf(step);
+            AABB marker = AABB.ofSize(center.add(0.0D, 0.15D, 0.0D), 0.34D, 0.34D, 0.34D);
             renderBoxOutline(marker, STEP_COLOR, STEP_STROKE_WIDTH);
         }
     }
@@ -142,7 +141,7 @@ public final class NavigatorWorldOverlay {
             if (breakTarget == null) {
                 continue;
             }
-            Box marker = new Box(
+            AABB marker = new AABB(
                 breakTarget.getX() + 0.02D,
                 breakTarget.getY() + 0.02D,
                 breakTarget.getZ() + 0.02D,
@@ -162,7 +161,7 @@ public final class NavigatorWorldOverlay {
             if (placeTarget == null) {
                 continue;
             }
-            Box marker = new Box(
+            AABB marker = new AABB(
                 placeTarget.getX() + 0.02D,
                 placeTarget.getY() + 0.02D,
                 placeTarget.getZ() + 0.02D,
@@ -179,7 +178,7 @@ public final class NavigatorWorldOverlay {
             return;
         }
 
-        Box goalMarker = new Box(
+        AABB goalMarker = new AABB(
             goalPos.getX() + GOAL_INSET,
             goalPos.getY(),
             goalPos.getZ() + GOAL_INSET,
@@ -187,36 +186,36 @@ public final class NavigatorWorldOverlay {
             goalPos.getY() + 2.0D,
             goalPos.getZ() + 1.0D - GOAL_INSET
         );
-        GizmoDrawing.box(goalMarker, DrawStyle.filledAndStroked(GOAL_COLOR, 2.0F, 0x24FFC857))
-            .ignoreOcclusion()
-            .withLifespan(1);
+        Gizmos.cuboid(goalMarker, GizmoStyle.strokeAndFill(GOAL_COLOR, 2.0F, 0x24FFC857))
+            .setAlwaysOnTop()
+            .persistForMillis(1);
     }
 
-    private static void renderAnimatedSegment(Vec3d start, Vec3d end, double phase, int color, float width) {
+    private static void renderAnimatedSegment(Vec3 start, Vec3 end, double phase, int color, float width) {
         double segmentLength = start.distanceTo(end);
         if (segmentLength <= 0.0001D) {
             return;
         }
 
-        Vec3d direction = end.subtract(start).normalize();
+        Vec3 direction = end.subtract(start).normalize();
         double offset = -phase;
         while (offset < segmentLength) {
             double dashStartDistance = Math.max(0.0D, offset);
             double dashEndDistance = Math.min(segmentLength, offset + DASH_LENGTH);
             if (dashEndDistance > 0.0D && dashEndDistance > dashStartDistance) {
-                Vec3d dashStart = start.add(direction.multiply(dashStartDistance));
-                Vec3d dashEnd = start.add(direction.multiply(dashEndDistance));
-                GizmoDrawing.line(dashStart, dashEnd, color, width)
-                    .ignoreOcclusion()
-                    .withLifespan(1);
+                Vec3 dashStart = start.add(direction.scale(dashStartDistance));
+                Vec3 dashEnd = start.add(direction.scale(dashEndDistance));
+                Gizmos.line(dashStart, dashEnd, color, width)
+                    .setAlwaysOnTop()
+                    .persistForMillis(1);
             }
             offset += DASH_CYCLE;
         }
     }
 
-    private static void renderBoxOutline(Box box, int color, float width) {
-        Vec3d min = new Vec3d(box.minX, box.minY, box.minZ);
-        Vec3d max = new Vec3d(box.maxX, box.maxY, box.maxZ);
+    private static void renderBoxOutline(AABB box, int color, float width) {
+        Vec3 min = new Vec3(box.minX, box.minY, box.minZ);
+        Vec3 max = new Vec3(box.maxX, box.maxY, box.maxZ);
 
         renderOutlineEdge(min.x, min.y, min.z, max.x, min.y, min.z, color, width);
         renderOutlineEdge(min.x, min.y, max.z, max.x, min.y, max.z, color, width);
@@ -244,16 +243,16 @@ public final class NavigatorWorldOverlay {
         int color,
         float width
     ) {
-        GizmoDrawing.line(new Vec3d(startX, startY, startZ), new Vec3d(endX, endY, endZ), color, width)
-            .ignoreOcclusion()
-            .withLifespan(1);
+        Gizmos.line(new Vec3(startX, startY, startZ), new Vec3(endX, endY, endZ), color, width)
+            .setAlwaysOnTop()
+            .persistForMillis(1);
     }
 
-    private static Vec3d pathPoint(BlockPos pos) {
-        return new Vec3d(pos.getX() + 0.5D, pos.getY() + 0.18D, pos.getZ() + 0.5D);
+    private static Vec3 pathPoint(BlockPos pos) {
+        return new Vec3(pos.getX() + 0.5D, pos.getY() + 0.18D, pos.getZ() + 0.5D);
     }
 
-    private static boolean sameRenderPoint(Vec3d a, Vec3d b) {
-        return a != null && b != null && a.squaredDistanceTo(b) <= 0.0001D;
+    private static boolean sameRenderPoint(Vec3 a, Vec3 b) {
+        return a != null && b != null && a.distanceToSqr(b) <= 0.0001D;
     }
 }

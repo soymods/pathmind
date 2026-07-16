@@ -4,9 +4,9 @@ import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.DrawContextBridge;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.text.Text;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.network.chat.Component;
 
 /**
  * Shared rendering and layout primitives for workspace toolbar chrome.
@@ -14,7 +14,7 @@ import net.minecraft.text.Text;
 public final class PathmindWorkspaceChrome {
     @FunctionalInterface
     public interface IconPainter {
-        void draw(DrawContext context, int x, int y, int size, int color);
+        void draw(GuiGraphics context, int x, int y, int size, int color);
     }
 
     private PathmindWorkspaceChrome() {
@@ -72,7 +72,7 @@ public final class PathmindWorkspaceChrome {
         return UiHitTest.primaryClick(mouseX, mouseY, button, x, y, width, height);
     }
 
-    public static boolean renderButtonFrame(DrawContext context, int x, int y, int width, int height,
+    public static boolean renderButtonFrame(GuiGraphics context, int x, int y, int width, int height,
                                             int mouseX, int mouseY, boolean active, boolean disabled,
                                             float hoverProgress, int accentColor) {
         boolean hovered = !disabled && contains(mouseX, mouseY, x, y, width, height);
@@ -80,7 +80,7 @@ public final class PathmindWorkspaceChrome {
         return hovered;
     }
 
-    public static boolean renderIconButton(DrawContext context, int x, int y, int size,
+    public static boolean renderIconButton(GuiGraphics context, int x, int y, int size,
                                            int mouseX, int mouseY, boolean active, boolean disabled,
                                            float hoverProgress, int accentColor, IconPainter iconPainter) {
         boolean hovered = !disabled && contains(mouseX, mouseY, x, y, size, size);
@@ -99,27 +99,27 @@ public final class PathmindWorkspaceChrome {
         return hovered || active ? accentColor : UITheme.TEXT_PRIMARY;
     }
 
-    public static void drawToolbarButtonFrame(DrawContext context, int x, int y, int width, int height,
+    public static void drawToolbarButtonFrame(GuiGraphics context, int x, int y, int width, int height,
                                               boolean hovered, boolean active, boolean disabled,
                                               float hoverProgress, int accentColor) {
         UIStyleHelper.ToolbarButtonPalette palette = UIStyleHelper.getToolbarButtonPalette(accentColor, hoverProgress, active || hovered, disabled);
         UIStyleHelper.drawToolbarButtonFrame(context, x, y, width, height, palette);
     }
 
-    public static boolean renderMarketplaceButton(DrawContext context, TextRenderer textRenderer,
+    public static boolean renderMarketplaceButton(GuiGraphics context, Font textRenderer,
                                                   int x, int y, int width, int height,
                                                   int mouseX, int mouseY, float hoverProgress,
                                                   int accentColor, String label) {
         boolean hovered = contains(mouseX, mouseY, x, y, width, height);
         drawToolbarButtonFrame(context, x, y, width, height, hovered, false, false, hoverProgress, accentColor);
         int textColor = hovered ? accentColor : UITheme.TEXT_PRIMARY;
-        int textX = x + (width - textRenderer.getWidth(label)) / 2;
-        int textY = y + (height - textRenderer.fontHeight) / 2;
-        context.drawTextWithShadow(textRenderer, Text.literal(label), textX, textY, textColor);
+        int textX = x + (width - textRenderer.width(label)) / 2;
+        int textY = y + (height - textRenderer.lineHeight) / 2;
+        context.drawString(textRenderer, Component.literal(label), textX, textY, textColor);
         return hovered;
     }
 
-    public static boolean renderPublishButton(DrawContext context, int x, int y, int size,
+    public static boolean renderPublishButton(GuiGraphics context, int x, int y, int size,
                                               int mouseX, int mouseY, float hoverProgress,
                                               int accentColor, boolean synced) {
         boolean hovered = contains(mouseX, mouseY, x, y, size, size);
@@ -145,7 +145,7 @@ public final class PathmindWorkspaceChrome {
         return hovered;
     }
 
-    public static boolean renderPlayButton(DrawContext context, int x, int y, int size,
+    public static boolean renderPlayButton(GuiGraphics context, int x, int y, int size,
                                            int mouseX, int mouseY, boolean disabled,
                                            boolean executing, float hoverProgress,
                                            int accentColor) {
@@ -173,7 +173,7 @@ public final class PathmindWorkspaceChrome {
         return hovered;
     }
 
-    public static boolean renderStopButton(DrawContext context, int x, int y, int size,
+    public static boolean renderStopButton(GuiGraphics context, int x, int y, int size,
                                            int mouseX, int mouseY, boolean disabled,
                                            boolean executing, float hoverProgress,
                                            int accentColor) {
@@ -202,43 +202,43 @@ public final class PathmindWorkspaceChrome {
         return hovered;
     }
 
-    public static void drawHomeIcon(DrawContext context, int buttonX, int buttonY, int buttonSize, int color) {
+    public static void drawHomeIcon(GuiGraphics context, int buttonX, int buttonY, int buttonSize, int color) {
         int centerX = buttonX + buttonSize / 2;
         int centerY = buttonY + buttonSize / 2;
-        context.drawHorizontalLine(centerX - 4, centerX + 2, centerY, color);
-        context.drawVerticalLine(centerX - 4, centerY - 4, centerY + 2, color);
-        context.drawHorizontalLine(centerX - 2, centerX, centerY - 2, color);
-        context.drawHorizontalLine(centerX - 3, centerX - 1, centerY - 1, color);
-        context.drawVerticalLine(centerX - 2, centerY - 2, centerY, color);
-        context.drawVerticalLine(centerX - 3, centerY - 3, centerY - 1, color);
+        context.hLine(centerX - 4, centerX + 2, centerY, color);
+        context.vLine(centerX - 4, centerY - 4, centerY + 2, color);
+        context.hLine(centerX - 2, centerX, centerY - 2, color);
+        context.hLine(centerX - 3, centerX - 1, centerY - 1, color);
+        context.vLine(centerX - 2, centerY - 2, centerY, color);
+        context.vLine(centerX - 3, centerY - 3, centerY - 1, color);
     }
 
-    public static void drawClearIcon(DrawContext context, int buttonX, int buttonY, int buttonSize, int color) {
+    public static void drawClearIcon(GuiGraphics context, int buttonX, int buttonY, int buttonSize, int color) {
         int centerX = buttonX + buttonSize / 2;
         int top = buttonY + 4;
         int bottom = buttonY + buttonSize - 4;
-        context.drawHorizontalLine(centerX - 5, centerX + 4, top, color);
-        context.drawVerticalLine(centerX - 5, top, top + 2, color);
-        context.drawVerticalLine(centerX + 4, top, top + 2, color);
-        context.drawHorizontalLine(centerX - 4, centerX + 3, top + 2, color);
-        context.drawVerticalLine(centerX - 3, top + 2, bottom, color);
-        context.drawVerticalLine(centerX + 2, top + 2, bottom, color);
-        context.drawHorizontalLine(centerX - 3, centerX + 2, bottom, color);
+        context.hLine(centerX - 5, centerX + 4, top, color);
+        context.vLine(centerX - 5, top, top + 2, color);
+        context.vLine(centerX + 4, top, top + 2, color);
+        context.hLine(centerX - 4, centerX + 3, top + 2, color);
+        context.vLine(centerX - 3, top + 2, bottom, color);
+        context.vLine(centerX + 2, top + 2, bottom, color);
+        context.hLine(centerX - 3, centerX + 2, bottom, color);
     }
 
-    public static void drawImportExportIcon(DrawContext context, int buttonX, int buttonY, int buttonSize, int color) {
+    public static void drawImportExportIcon(GuiGraphics context, int buttonX, int buttonY, int buttonSize, int color) {
         int centerX = buttonX + buttonSize / 2;
         int centerY = buttonY + buttonSize / 2;
-        context.drawVerticalLine(centerX - 4, centerY - 5, centerY, color);
-        context.drawHorizontalLine(centerX - 6, centerX - 2, centerY - 5, color);
-        context.drawHorizontalLine(centerX - 5, centerX - 3, centerY - 4, color);
-        context.drawVerticalLine(centerX + 3, centerY, centerY + 5, color);
-        context.drawHorizontalLine(centerX + 1, centerX + 5, centerY + 5, color);
-        context.drawHorizontalLine(centerX + 2, centerX + 4, centerY + 4, color);
-        context.drawHorizontalLine(centerX - 4, centerX + 3, centerY, color);
+        context.vLine(centerX - 4, centerY - 5, centerY, color);
+        context.hLine(centerX - 6, centerX - 2, centerY - 5, color);
+        context.hLine(centerX - 5, centerX - 3, centerY - 4, color);
+        context.vLine(centerX + 3, centerY, centerY + 5, color);
+        context.hLine(centerX + 1, centerX + 5, centerY + 5, color);
+        context.hLine(centerX + 2, centerX + 4, centerY + 4, color);
+        context.hLine(centerX - 4, centerX + 3, centerY, color);
     }
 
-    public static void drawSettingsIcon(DrawContext context, int buttonX, int buttonY, int buttonSize, int color) {
+    public static void drawSettingsIcon(GuiGraphics context, int buttonX, int buttonY, int buttonSize, int color) {
         PathmindIconRenderer.drawSettings(context, buttonX, buttonY, buttonSize, color, UITheme.GRID_ORIGIN);
     }
 

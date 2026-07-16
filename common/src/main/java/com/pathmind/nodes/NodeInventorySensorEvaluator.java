@@ -2,15 +2,14 @@ package com.pathmind.nodes;
 
 import static com.pathmind.util.PathmindI18n.tr;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.entity.player.PlayerInventory;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.registry.Registries;
-import net.minecraft.screen.ScreenHandler;
-import net.minecraft.util.Identifier;
-
 import java.util.List;
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 
 final class NodeInventorySensorEvaluator {
     private final Node owner;
@@ -57,7 +56,7 @@ final class NodeInventorySensorEvaluator {
         Node itemNode = owner.resolveSensorParameterNode(owner.getAttachedParameter(0), 0);
         Node slotNode = owner.resolveSensorParameterNode(owner.getAttachedParameter(1), 1);
         if (itemNode == null || slotNode == null) {
-            MinecraftClient client = MinecraftClient.getInstance();
+            Minecraft client = Minecraft.getInstance();
             if (client != null) {
                 owner.sendNodeErrorMessage(client, tr("pathmind.error.requiresItemAndSlotParameter", owner.getType().getDisplayName()));
             }
@@ -73,18 +72,18 @@ final class NodeInventorySensorEvaluator {
         }
         List<String> itemIds = owner.resolveItemIdsFromParameter(itemNode);
         if (itemIds.isEmpty()) {
-            MinecraftClient client = MinecraftClient.getInstance();
+            Minecraft client = Minecraft.getInstance();
             if (client != null) {
                 owner.sendNodeErrorMessage(client, tr("pathmind.error.noItemSpecifiedForNode", owner.getType().getDisplayName()));
             }
             return false;
         }
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         if (client == null || client.player == null) {
             return false;
         }
-        PlayerInventory inventory = client.player.getInventory();
-        ScreenHandler handler = client.player.currentScreenHandler;
+        Inventory inventory = client.player.getInventory();
+        AbstractContainerMenu handler = client.player.containerMenu;
         int slotValue = Node.parseNodeInt(slotNode, "Slot", 0);
         SlotSelectionType selectionType = owner.resolveInventorySlotSelectionType(slotNode);
         SlotResolution resolved = owner.resolveInventorySlot(handler, inventory, slotValue, selectionType);
@@ -92,7 +91,7 @@ final class NodeInventorySensorEvaluator {
             owner.sendNodeErrorMessage(client, tr("pathmind.error.requiresValidSlotSelection", owner.getType().getDisplayName()));
             return false;
         }
-        ItemStack stack = resolved.slot.getStack();
+        ItemStack stack = resolved.slot.getItem();
         if (stack == null || stack.isEmpty()) {
             return false;
         }
@@ -105,7 +104,7 @@ final class NodeInventorySensorEvaluator {
     boolean evaluateSlotItemCount() {
         Node slotNode = owner.resolveSensorParameterNode(owner.getAttachedParameter(0), 0);
         if (slotNode == null || !owner.providesTrait(slotNode, NodeValueTrait.INVENTORY_SLOT)) {
-            MinecraftClient client = MinecraftClient.getInstance();
+            Minecraft client = Minecraft.getInstance();
             if (client != null) {
                 owner.sendNodeErrorMessage(client, tr("pathmind.error.requiresInventorySlotParameter", owner.getType().getDisplayName()));
             }
@@ -115,7 +114,7 @@ final class NodeInventorySensorEvaluator {
     }
 
     boolean hasItemInInventory(String itemId) {
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         if (client == null || client.player == null || itemId == null || itemId.isEmpty()) {
             return false;
         }
@@ -125,11 +124,11 @@ final class NodeInventorySensorEvaluator {
                 ? owner.normalizeResourceId(sanitized, "minecraft")
                 : candidateId;
             Identifier identifier = Identifier.tryParse(normalized);
-            if (identifier == null || !Registries.ITEM.containsId(identifier)) {
+            if (identifier == null || !BuiltInRegistries.ITEM.containsKey(identifier)) {
                 continue;
             }
-            Item item = Registries.ITEM.get(identifier);
-            if (client.player.getInventory().count(item) > 0) {
+            Item item = BuiltInRegistries.ITEM.getValue(identifier);
+            if (client.player.getInventory().countItem(item) > 0) {
                 return true;
             }
         }
@@ -137,7 +136,7 @@ final class NodeInventorySensorEvaluator {
     }
 
     boolean hasItemAmountInInventory(String itemId, int requiredAmount) {
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         if (client == null || client.player == null || itemId == null || itemId.isEmpty()) {
             return false;
         }
@@ -148,11 +147,11 @@ final class NodeInventorySensorEvaluator {
                 ? owner.normalizeResourceId(sanitized, "minecraft")
                 : candidateId;
             Identifier identifier = Identifier.tryParse(normalized);
-            if (identifier == null || !Registries.ITEM.containsId(identifier)) {
+            if (identifier == null || !BuiltInRegistries.ITEM.containsKey(identifier)) {
                 continue;
             }
-            Item item = Registries.ITEM.get(identifier);
-            if (client.player.getInventory().count(item) >= needed) {
+            Item item = BuiltInRegistries.ITEM.getValue(identifier);
+            if (client.player.getInventory().countItem(item) >= needed) {
                 return true;
             }
         }
@@ -169,11 +168,11 @@ final class NodeInventorySensorEvaluator {
                 ? owner.normalizeResourceId(sanitized, "minecraft")
                 : candidateId;
             Identifier identifier = Identifier.tryParse(normalized);
-            if (identifier == null || !Registries.ITEM.containsId(identifier)) {
+            if (identifier == null || !BuiltInRegistries.ITEM.containsKey(identifier)) {
                 continue;
             }
-            Item item = Registries.ITEM.get(identifier);
-            if (stack.isOf(item)) {
+            Item item = BuiltInRegistries.ITEM.getValue(identifier);
+            if (stack.is(item)) {
                 return true;
             }
         }

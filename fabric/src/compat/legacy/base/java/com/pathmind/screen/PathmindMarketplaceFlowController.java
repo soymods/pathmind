@@ -4,10 +4,9 @@ import com.pathmind.marketplace.MarketplaceAuthManager;
 import com.pathmind.marketplace.MarketplacePreset;
 import com.pathmind.marketplace.MarketplaceRateLimitManager;
 import com.pathmind.marketplace.MarketplaceService;
-import net.minecraft.client.MinecraftClient;
-
 import java.util.Optional;
 import java.util.function.Consumer;
+import net.minecraft.client.Minecraft;
 
 /**
  * Shared marketplace workflows return structured results; screens still own UI state and navigation.
@@ -16,7 +15,7 @@ final class PathmindMarketplaceFlowController {
     private PathmindMarketplaceFlowController() {
     }
 
-    static void resolveLinkedPreset(MinecraftClient client,
+    static void resolveLinkedPreset(Minecraft client,
                                     MarketplaceAuthManager.AuthSession cachedSession,
                                     Optional<String> linkedPresetId,
                                     Consumer<LinkedPresetResult> callback) {
@@ -41,7 +40,7 @@ final class PathmindMarketplaceFlowController {
         });
     }
 
-    static void submitPublish(MinecraftClient client,
+    static void submitPublish(Minecraft client,
                               MarketplacePreset editingPreset,
                               MarketplaceService.PublishRequest request,
                               Consumer<PublishResult> callback) {
@@ -71,7 +70,7 @@ final class PathmindMarketplaceFlowController {
         });
     }
 
-    static void submitPresetUpdate(MinecraftClient client,
+    static void submitPresetUpdate(Minecraft client,
                                    MarketplacePreset preset,
                                    MarketplaceService.PublishRequest request,
                                    Consumer<PublishResult> callback) {

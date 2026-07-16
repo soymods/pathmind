@@ -5,12 +5,11 @@ import com.pathmind.util.GameProfileCompatibilityBridge;
 
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.AbstractClientPlayerEntity;
-import net.minecraft.entity.Entity;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.AbstractClientPlayer;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.phys.Vec3;
 
 final class PlayerParameterDefinition {
     static NodeBehaviorDefinition create() {
@@ -28,14 +27,14 @@ final class PlayerParameterDefinition {
             .build();
     }
 
-    private static Optional<Vec3d> resolvePositionTarget(Node owner, Node parameterNode, RuntimeParameterData data,
+    private static Optional<Vec3> resolvePositionTarget(Node owner, Node parameterNode, RuntimeParameterData data,
                                                          CompletableFuture<Void> future) {
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client == null || client.player == null || client.world == null) {
+        Minecraft client = Minecraft.getInstance();
+        if (client == null || client.player == null || client.level == null) {
             return Optional.empty();
         }
         String playerName = Node.getParameterString(parameterNode, "Player");
-        Optional<AbstractClientPlayerEntity> player = findPlayer(client, playerName);
+        Optional<AbstractClientPlayer> player = findPlayer(client, playerName);
         if (player.isEmpty()) {
             owner.sendParameterSearchFailure(NodeBehaviorDefinitionSupport.playerSearchFailureMessage(owner, playerName), future);
             return Optional.empty();
@@ -44,27 +43,27 @@ final class PlayerParameterDefinition {
         if (data != null) {
             data.targetPlayerName = resolvedName != null ? resolvedName : playerName;
             data.targetEntity = player.get();
-            data.targetBlockPos = player.get().getBlockPos();
+            data.targetBlockPos = player.get().blockPosition();
         }
-        Vec3d playerPos = EntityCompatibilityBridge.getPos(player.get());
+        Vec3 playerPos = EntityCompatibilityBridge.getPos(player.get());
         if (playerPos == null) {
-            playerPos = Vec3d.ofCenter(player.get().getBlockPos());
+            playerPos = Vec3.atCenterOf(player.get().blockPosition());
         }
         return Optional.of(playerPos);
     }
 
-    private static Node.ListValueEntry resolveListEntry(Node owner, Node parameterNode, MinecraftClient client) {
+    private static Node.ListValueEntry resolveListEntry(Node owner, Node parameterNode, Minecraft client) {
         String playerName = Node.getParameterString(parameterNode, "Player");
         if (Node.isSelfPlayerValue(playerName)) {
-            return new Node.ListValueEntry(NodeType.PARAM_PLAYER, client.player.getUuidAsString());
+            return new Node.ListValueEntry(NodeType.PARAM_PLAYER, client.player.getStringUUID());
         }
-        Optional<AbstractClientPlayerEntity> player = findPlayer(client, playerName);
-        return player.map(match -> new Node.ListValueEntry(NodeType.PARAM_PLAYER, match.getUuidAsString())).orElse(null);
+        Optional<AbstractClientPlayer> player = findPlayer(client, playerName);
+        return player.map(match -> new Node.ListValueEntry(NodeType.PARAM_PLAYER, match.getStringUUID())).orElse(null);
     }
 
-    private static BlockPos resolveGotoFallbackTarget(Node owner, Node parameterNode, MinecraftClient client,
+    private static BlockPos resolveGotoFallbackTarget(Node owner, Node parameterNode, Minecraft client,
                                                       CompletableFuture<Void> future) {
-        if (client == null || client.player == null || client.world == null) {
+        if (client == null || client.player == null || client.level == null) {
             return null;
         }
         String playerName = Node.getParameterString(parameterNode, "Player");
@@ -72,7 +71,7 @@ final class PlayerParameterDefinition {
             future.complete(null);
             return null;
         }
-        Optional<AbstractClientPlayerEntity> match = findPlayer(client, playerName);
+        Optional<AbstractClientPlayer> match = findPlayer(client, playerName);
         if (match.isEmpty()) {
             owner.sendNodeErrorMessage(client, NodeBehaviorDefinitionSupport.playerSearchFailureMessage(owner, playerName));
             future.complete(null);
@@ -81,13 +80,13 @@ final class PlayerParameterDefinition {
 
         RuntimeParameterData data = owner.getRuntimeState().runtimeParameterData;
         if (data != null) {
-            data.targetBlockPos = match.get().getBlockPos();
+            data.targetBlockPos = match.get().blockPosition();
             data.targetEntity = match.get();
         }
-        return match.get().getBlockPos();
+        return match.get().blockPosition();
     }
 
-    private static BlockPos resolveListItemGotoFallbackTarget(Node owner, Node parameterNode, MinecraftClient client,
+    private static BlockPos resolveListItemGotoFallbackTarget(Node owner, Node parameterNode, Minecraft client,
                                                               CompletableFuture<Void> future) {
         RuntimeParameterData data = owner.getRuntimeState().runtimeParameterData;
         Entity target = owner.resolveListItemEntity(parameterNode, data, future);
@@ -95,20 +94,20 @@ final class PlayerParameterDefinition {
             return null;
         }
         if (data != null) {
-            data.targetBlockPos = target.getBlockPos();
+            data.targetBlockPos = target.blockPosition();
             data.targetEntity = target;
         }
-        return target.getBlockPos();
+        return target.blockPosition();
     }
 
-    private static Optional<AbstractClientPlayerEntity> findPlayer(MinecraftClient client, String playerName) {
+    private static Optional<AbstractClientPlayer> findPlayer(Minecraft client, String playerName) {
         if (Node.isAnyPlayerValue(playerName)) {
             return Node.findNearestPlayer(client, client.player);
         }
         if (Node.isSelfPlayerValue(playerName)) {
             return Optional.of(client.player);
         }
-        return client.world.getPlayers().stream()
+        return client.level.players().stream()
             .filter(player -> playerName.equalsIgnoreCase(GameProfileCompatibilityBridge.getName(player.getGameProfile())))
             .findFirst();
     }

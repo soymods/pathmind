@@ -4,7 +4,7 @@ import com.pathmind.ui.animation.AnimatedValue;
 import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
-import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.gui.GuiGraphics;
 
 /**
  * Toggle switch component with red/green rectangular indicator style.
@@ -57,14 +57,14 @@ public class ToggleSwitch {
     /**
      * Renders the toggle switch as two adjacent red/green rectangular indicators.
      */
-    public void render(DrawContext context, int mouseX, int mouseY) {
+    public void render(GuiGraphics context, int mouseX, int mouseY) {
         render(context, mouseX, mouseY, 1f);
     }
 
     /**
      * Renders the toggle switch with an overall alpha multiplier, useful for popup fade animations.
      */
-    public void render(DrawContext context, int mouseX, int mouseY, float alpha) {
+    public void render(GuiGraphics context, int mouseX, int mouseY, float alpha) {
         // Update animation states
         colorProgress.tick();
         hoverProgress.tick();

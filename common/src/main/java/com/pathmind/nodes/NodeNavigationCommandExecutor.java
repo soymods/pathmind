@@ -11,15 +11,6 @@ import com.pathmind.data.PresetManager;
 import com.pathmind.util.GameProfileCompatibilityBridge;
 import com.pathmind.util.BaritoneApiProxy;
 import com.pathmind.util.BlockSelection;
-import net.minecraft.block.Block;
-import net.minecraft.client.network.AbstractClientPlayerEntity;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.EntityType;
-import net.minecraft.item.Item;
-import net.minecraft.registry.Registries;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.math.BlockPos;
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumSet;
@@ -29,6 +20,14 @@ import java.util.HashMap;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
+import net.minecraft.client.player.AbstractClientPlayer;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.level.block.Block;
 
 final class NodeNavigationCommandExecutor {
     private static final Object GOTO_BREAK_LOCK = new Object();
@@ -133,7 +132,7 @@ final class NodeNavigationCommandExecutor {
                 if (yParam3 != null) y3 = yParam3.getIntValue();
                 
                 startGotoTaskWithBreakGuard(future);
-                net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+                net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
                 if (client != null && client.player != null) {
                     if (isPlayerAtCoordinates(null, y3, null)) {
                         NodeExecutionCompletion.complete(future);
@@ -196,8 +195,8 @@ final class NodeNavigationCommandExecutor {
         }
         BlockPos targetPos = travelTarget.pos();
 
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
-        if (client == null || client.player == null || client.world == null) {
+        net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
+        if (client == null || client.player == null || client.level == null) {
             failTravelNode(future, "Pathmind Nav unavailable");
             return;
         }
@@ -256,7 +255,7 @@ final class NodeNavigationCommandExecutor {
             return new TravelTarget(attachedTarget, false);
         }
 
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
         switch (mode) {
             case GOTO_XYZ: {
                 return new TravelTarget(resolveClosestCoordinateTarget("X", "Y", "Z", 0, 64, 0), false);
@@ -273,7 +272,7 @@ final class NodeNavigationCommandExecutor {
                     failTravelNode(future, "Player unavailable for TRAVEL Y target");
                     return null;
                 }
-                BlockPos playerPos = client.player.getBlockPos();
+                BlockPos playerPos = client.player.blockPosition();
                 return new TravelTarget(resolveClosestCoordinateTarget(null, "Y", null, playerPos.getX(), 64, playerPos.getZ()), false);
             }
             case GOTO_BLOCK: {
@@ -667,7 +666,7 @@ final class NodeNavigationCommandExecutor {
             handled[0] = false;
         }
 
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
         RuntimeParameterData parameterData = runtimeState.runtimeParameterData;
         if (parameterData != null && parameterData.targetEntity != null) {
             if (handled != null && handled.length > 0) {
@@ -677,7 +676,7 @@ final class NodeNavigationCommandExecutor {
                 NodeExecutionCompletion.complete(future);
                 return null;
             }
-            return parameterData.targetEntity.getBlockPos();
+            return parameterData.targetEntity.blockPosition();
         }
         if (parameterData != null && parameterData.targetBlockPos != null) {
             if (handled != null && handled.length > 0) {
@@ -720,8 +719,8 @@ final class NodeNavigationCommandExecutor {
             return null;
         }
 
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
-        if (client == null || client.world == null) {
+        net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
+        if (client == null || client.level == null) {
             return null;
         }
 
@@ -744,14 +743,14 @@ final class NodeNavigationCommandExecutor {
         setParameterValueAndPropagate("Block", resolved.normalizedId());
 
         if (client.player != null) {
-            BlockPos playerBlockPos = client.player.getBlockPos();
+            BlockPos playerBlockPos = client.player.blockPosition();
             BlockPos targetPos = resolved.pos();
             if (playerBlockPos.equals(targetPos)) {
                 NodeExecutionCompletion.complete(future);
                 return null;
             }
-            if (resolved.targetBlock() != null && client.world.getBlockState(targetPos).isOf(resolved.targetBlock())) {
-                double distanceSq = client.player.squaredDistanceTo(targetPos.getX() + 0.5, targetPos.getY() + 0.5, targetPos.getZ() + 0.5);
+            if (resolved.targetBlock() != null && client.level.getBlockState(targetPos).is(resolved.targetBlock())) {
+                double distanceSq = client.player.distanceToSqr(targetPos.getX() + 0.5, targetPos.getY() + 0.5, targetPos.getZ() + 0.5);
                 if (distanceSq <= 2.25D) {
                     NodeExecutionCompletion.complete(future);
                     return null;
@@ -763,8 +762,8 @@ final class NodeNavigationCommandExecutor {
     }
 
     private boolean gotoSpecificEntity(Entity targetEntity, Object customGoalProcess, CompletableFuture<Void> future) {
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
-        if (client == null || client.player == null || client.world == null) {
+        net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
+        if (client == null || client.player == null || client.level == null) {
             return false;
         }
         if (targetEntity == null || targetEntity.isRemoved()) {
@@ -779,7 +778,7 @@ final class NodeNavigationCommandExecutor {
             return true;
         }
 
-        BlockPos pos = targetEntity.getBlockPos();
+        BlockPos pos = targetEntity.blockPosition();
         startGotoTaskWithBreakGuard(future);
         Object goal = BaritoneApiProxy.createGoalBlock(pos.getX(), pos.getY(), pos.getZ());
         BaritoneApiProxy.setGoalAndPath(customGoalProcess, goal);
@@ -787,8 +786,8 @@ final class NodeNavigationCommandExecutor {
     }
 
     private boolean gotoNearestDroppedItem(Node parameterNode, Object customGoalProcess, CompletableFuture<Void> future) {
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
-        if (client == null || client.player == null || client.world == null) {
+        net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
+        if (client == null || client.player == null || client.level == null) {
             return false;
         }
 
@@ -804,10 +803,10 @@ final class NodeNavigationCommandExecutor {
 
         for (String candidateId : itemIds) {
             Identifier identifier = Identifier.tryParse(candidateId);
-            if (identifier == null || !Registries.ITEM.containsId(identifier)) {
+            if (identifier == null || !BuiltInRegistries.ITEM.containsKey(identifier)) {
                 continue;
             }
-            Item candidateItem = Registries.ITEM.get(identifier);
+            Item candidateItem = BuiltInRegistries.ITEM.getValue(identifier);
             Optional<BlockPos> target = findNearestDroppedItem(client, candidateItem, searchRange);
             if (target.isPresent()) {
                 matchedPosition = target;
@@ -843,8 +842,8 @@ final class NodeNavigationCommandExecutor {
     }
 
     private boolean gotoNearestEntity(Node parameterNode, Object customGoalProcess, CompletableFuture<Void> future) {
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
-        if (client == null || client.player == null || client.world == null) {
+        net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
+        if (client == null || client.player == null || client.level == null) {
             return false;
         }
 
@@ -858,15 +857,15 @@ final class NodeNavigationCommandExecutor {
         double nearestDistance = Double.MAX_VALUE;
         for (String candidateId : entityIds) {
             Identifier identifier = Identifier.tryParse(candidateId);
-            if (identifier == null || !Registries.ENTITY_TYPE.containsId(identifier)) {
+            if (identifier == null || !BuiltInRegistries.ENTITY_TYPE.containsKey(identifier)) {
                 continue;
             }
-            EntityType<?> entityType = Registries.ENTITY_TYPE.get(identifier);
+            EntityType<?> entityType = BuiltInRegistries.ENTITY_TYPE.getValue(identifier);
             Optional<Entity> target = findNearestEntity(client, entityType, range, state);
             if (target.isEmpty()) {
                 continue;
             }
-            double distance = target.get().squaredDistanceTo(client.player);
+            double distance = target.get().distanceToSqr(client.player);
             if (distance < nearestDistance) {
                 nearest = target.get();
                 nearestDistance = distance;
@@ -883,7 +882,7 @@ final class NodeNavigationCommandExecutor {
             return true;
         }
 
-        BlockPos pos = nearest.getBlockPos();
+        BlockPos pos = nearest.blockPosition();
         startGotoTaskWithBreakGuard(future);
         Object goal = BaritoneApiProxy.createGoalBlock(pos.getX(), pos.getY(), pos.getZ());
         BaritoneApiProxy.setGoalAndPath(customGoalProcess, goal);
@@ -891,8 +890,8 @@ final class NodeNavigationCommandExecutor {
     }
 
     private boolean gotoNamedPlayer(Node parameterNode, Object customGoalProcess, CompletableFuture<Void> future) {
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
-        if (client == null || client.player == null || client.world == null) {
+        net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
+        if (client == null || client.player == null || client.level == null) {
             return false;
         }
 
@@ -901,13 +900,13 @@ final class NodeNavigationCommandExecutor {
             NodeExecutionCompletion.complete(future);
             return true;
         }
-        Optional<AbstractClientPlayerEntity> match;
+        Optional<AbstractClientPlayer> match;
         if (isAnyPlayerValue(playerName)) {
             match = findNearestPlayer(client, client.player);
         } else if (isSelfPlayerValue(playerName)) {
             match = Optional.of(client.player);
         } else {
-            match = client.world.getPlayers().stream()
+            match = client.level.players().stream()
                 .filter(p -> playerName.equalsIgnoreCase(
                     GameProfileCompatibilityBridge.getName(p.getGameProfile())))
                 .findFirst();
@@ -931,7 +930,7 @@ final class NodeNavigationCommandExecutor {
             return true;
         }
 
-        BlockPos pos = match.get().getBlockPos();
+        BlockPos pos = match.get().blockPosition();
         startGotoTaskWithBreakGuard(future);
         Object goal = BaritoneApiProxy.createGoalBlock(pos.getX(), pos.getY(), pos.getZ());
         BaritoneApiProxy.setGoalAndPath(customGoalProcess, goal);
@@ -944,13 +943,13 @@ final class NodeNavigationCommandExecutor {
             return false;
         }
 
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
         RuntimeParameterData parameterData = runtimeState.runtimeParameterData;
         BlockPos targetPos = parameterData != null ? parameterData.targetBlockPos : null;
         String normalized = null;
         Block targetBlock = null;
 
-        if (client != null && client.world != null) {
+        if (client != null && client.level != null) {
             ResolvedBlockTarget resolved = resolveNearestBlockTarget(blockId, client);
             if (resolved == null) {
                 NodeExecutionCompletion.fail(owner, client, future, tr("pathmind.error.navigateBlockNoSelection"));
@@ -975,13 +974,13 @@ final class NodeNavigationCommandExecutor {
             setParameterValueAndPropagate("Block", normalized);
 
             if (client.player != null && targetPos != null && targetBlock != null
-                && client.world.getBlockState(targetPos).isOf(targetBlock)) {
-                BlockPos playerBlockPos = client.player.getBlockPos();
+                && client.level.getBlockState(targetPos).is(targetBlock)) {
+                BlockPos playerBlockPos = client.player.blockPosition();
                 if (playerBlockPos.equals(targetPos)) {
                     NodeExecutionCompletion.complete(future);
                     return true;
                 }
-                double distanceSq = client.player.squaredDistanceTo(targetPos.getX() + 0.5, targetPos.getY() + 0.5, targetPos.getZ() + 0.5);
+                double distanceSq = client.player.distanceToSqr(targetPos.getX() + 0.5, targetPos.getY() + 0.5, targetPos.getZ() + 0.5);
                 if (distanceSq <= 2.25D) { // already within ~1.5 blocks, treat as complete
                     NodeExecutionCompletion.complete(future);
                     return true;
@@ -1071,7 +1070,7 @@ final class NodeNavigationCommandExecutor {
                     return;
                 }
                 case GOAL_CURRENT: {
-                    net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+                    net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
                     if (client != null && client.player != null) {
                         int currentX = (int) client.player.getX();
                         int currentY = (int) client.player.getY();
@@ -1133,7 +1132,7 @@ final class NodeNavigationCommandExecutor {
                 NodeParameter yParam3 = getParameter("Y");
                 if (yParam3 != null) y3 = yParam3.getIntValue();
 
-                net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+                net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
                 if (client != null && client.player != null) {
                     Object goal3 = BaritoneApiProxy.createGoalYLevel(y3);
                     BaritoneApiProxy.setGoal(customGoalProcess, goal3);
@@ -1141,7 +1140,7 @@ final class NodeNavigationCommandExecutor {
                 break;
                 
             case GOAL_CURRENT:
-                net.minecraft.client.MinecraftClient client2 = net.minecraft.client.MinecraftClient.getInstance();
+                net.minecraft.client.Minecraft client2 = net.minecraft.client.Minecraft.getInstance();
                 if (client2 != null && client2.player != null) {
                     int currentX = (int) client2.player.getX();
                     int currentY = (int) client2.player.getY();
@@ -1469,7 +1468,7 @@ final class NodeNavigationCommandExecutor {
     private record ResolvedBlockTarget(BlockPos pos, String normalizedId, Block targetBlock, String invalidValue) {
     }
 
-    private ResolvedBlockTarget resolveNearestBlockTarget(String rawBlockId, net.minecraft.client.MinecraftClient client) {
+    private ResolvedBlockTarget resolveNearestBlockTarget(String rawBlockId, net.minecraft.client.Minecraft client) {
         List<BlockSelection> selections = new ArrayList<>();
         String firstNormalized = null;
         for (String blockId : splitMultiValueList(rawBlockId)) {
@@ -1501,7 +1500,7 @@ final class NodeNavigationCommandExecutor {
         }
 
         BlockPos nearestPos = nearest.get();
-        net.minecraft.block.BlockState state = client.world.getBlockState(nearestPos);
+        net.minecraft.world.level.block.state.BlockState state = client.level.getBlockState(nearestPos);
         for (BlockSelection selection : selections) {
             if (selection.matches(state)) {
                 return new ResolvedBlockTarget(nearestPos, selection.asString(), selection.getBlock(), null);
@@ -1522,17 +1521,17 @@ final class NodeNavigationCommandExecutor {
             return new BlockPos(xs.get(0), ys.get(0), zs.get(0));
         }
 
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
         if (client == null || client.player == null) {
             return new BlockPos(xs.get(0), ys.get(0), zs.get(0));
         }
 
-        BlockPos playerPos = client.player.getBlockPos();
+        BlockPos playerPos = client.player.blockPosition();
         BlockPos bestPos = null;
         double bestDistanceSq = Double.MAX_VALUE;
         for (int i = 0; i < candidateCount; i++) {
             BlockPos candidate = new BlockPos(valueAt(xs, i), valueAt(ys, i), valueAt(zs, i));
-            double distanceSq = playerPos.getSquaredDistance(candidate);
+            double distanceSq = playerPos.distSqr(candidate);
             if (distanceSq < bestDistanceSq) {
                 bestDistanceSq = distanceSq;
                 bestPos = candidate;
@@ -1583,10 +1582,10 @@ final class NodeNavigationCommandExecutor {
     }
 
     private void failTravelNode(CompletableFuture<Void> future, String message) {
-        NodeExecutionCompletion.fail(owner, net.minecraft.client.MinecraftClient.getInstance(), future, message);
+        NodeExecutionCompletion.fail(owner, net.minecraft.client.Minecraft.getInstance(), future, message);
     }
 
-    private Optional<BlockPos> findNearestBlock(net.minecraft.client.MinecraftClient client, List<BlockSelection> selections, double range) {
+    private Optional<BlockPos> findNearestBlock(net.minecraft.client.Minecraft client, List<BlockSelection> selections, double range) {
         return owner.findNearestBlock(client, selections, range);
     }
 
@@ -1606,7 +1605,7 @@ final class NodeNavigationCommandExecutor {
         return Node.parseDoubleOrDefault(value, defaultValue);
     }
 
-    private Optional<BlockPos> findNearestDroppedItem(net.minecraft.client.MinecraftClient client, Item item, double range) {
+    private Optional<BlockPos> findNearestDroppedItem(net.minecraft.client.Minecraft client, Item item, double range) {
         return owner.findNearestDroppedItem(client, item, range);
     }
 
@@ -1618,7 +1617,7 @@ final class NodeNavigationCommandExecutor {
         return owner.getEntityParameterState(node);
     }
 
-    private Optional<Entity> findNearestEntity(net.minecraft.client.MinecraftClient client, EntityType<?> entityType, double range, String state) {
+    private Optional<Entity> findNearestEntity(net.minecraft.client.Minecraft client, EntityType<?> entityType, double range, String state) {
         return owner.findNearestEntity(client, entityType, range, state);
     }
 
@@ -1630,7 +1629,7 @@ final class NodeNavigationCommandExecutor {
         return Node.isAnyPlayerValue(value);
     }
 
-    private Optional<AbstractClientPlayerEntity> findNearestPlayer(net.minecraft.client.MinecraftClient client, AbstractClientPlayerEntity reference) {
+    private Optional<AbstractClientPlayer> findNearestPlayer(net.minecraft.client.Minecraft client, AbstractClientPlayer reference) {
         return Node.findNearestPlayer(client, reference);
     }
 

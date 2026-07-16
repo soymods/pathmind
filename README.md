@@ -148,7 +148,11 @@ Imported marketplace presets and exported graphs also flow through this preset s
 
 ## Development
 
-For a contributor-oriented map of the node system, execution routing, UI helpers, localization rules, and compat source-set expectations, see [`docs/node-architecture.md`](docs/node-architecture.md).
+Contributor documentation:
+
+- [`docs/node-architecture.md`](docs/node-architecture.md) maps the node system, execution routing, UI helpers, localization rules, and current compat source sets.
+- [`docs/minecraft-compatibility-baseline.md`](docs/minecraft-compatibility-baseline.md) records the protected `1.21.x` matrix, artifact contract, source inventory, and smoke-test procedure.
+- [`docs/minecraft-multiversion-roadmap.md`](docs/minecraft-multiversion-roadmap.md) defines the staged transition to clean `1.21.x` and `26.x` support.
 
 ### Build From Source
 
@@ -196,6 +200,13 @@ Convenience tasks:
 
 - `./gradlew buildMc1_21_11` - builds both platforms for 1.21.11
 - `./gradlew buildAllTargets` - builds all 12 MC versions
+
+Compatibility tasks:
+
+- `./gradlew compatibilityReport` - prints dependency, Java, loader, and source-family selection for every target
+- `./gradlew verifyCompatibilityManifest` - checks the manifest against runtime support, metadata, docs, and CI
+
+The machine-readable version source of truth is [`gradle/minecraft-versions.properties`](gradle/minecraft-versions.properties).
 
 ### Check Architectury API Versions
 

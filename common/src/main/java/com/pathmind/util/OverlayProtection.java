@@ -1,7 +1,7 @@
 package com.pathmind.util;
 
 import com.pathmind.screen.PathmindScreens;
-import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.Minecraft;
 
 /**
  * Utility class to prevent other mods' overlays from rendering when Pathmind GUI is open.
@@ -70,9 +70,9 @@ public class OverlayProtection {
      * @return true if the Pathmind GUI is currently open
      */
     public static boolean isProtectionActive() {
-        MinecraftClient client = MinecraftClient.getInstance();
-        return client.currentScreen != null
-            && PathmindScreens.isVisualEditorScreen(client.currentScreen);
+        Minecraft client = Minecraft.getInstance();
+        return client.screen != null
+            && PathmindScreens.isVisualEditorScreen(client.screen);
     }
 
     /**

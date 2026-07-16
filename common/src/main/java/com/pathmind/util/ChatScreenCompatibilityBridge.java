@@ -1,9 +1,8 @@
 package com.pathmind.util;
 
-import net.minecraft.client.gui.screen.ChatScreen;
-import net.minecraft.client.gui.screen.Screen;
-
 import java.lang.reflect.Constructor;
+import net.minecraft.client.gui.screens.ChatScreen;
+import net.minecraft.client.gui.screens.Screen;
 
 /**
  * Bridges ChatScreen constructors across 1.21.x.

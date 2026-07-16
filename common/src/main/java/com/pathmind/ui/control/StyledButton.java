@@ -4,9 +4,9 @@ import com.pathmind.ui.animation.AnimatedValue;
 import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.text.Text;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.network.chat.Component;
 
 /**
  * Reusable animated button component with multiple style variants.
@@ -114,7 +114,7 @@ public class StyledButton {
     /**
      * Renders the button.
      */
-    public void render(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY) {
+    public void render(GuiGraphics context, Font textRenderer, int mouseX, int mouseY) {
         // Update animation
         hoverProgress.tick();
 
@@ -131,8 +131,8 @@ public class StyledButton {
 
         int textColor = palette.textColor();
         int textX = x + width / 2;
-        int textY = y + (height - textRenderer.fontHeight) / 2 + 1;
-        context.drawCenteredTextWithShadow(textRenderer, Text.literal(label), textX, textY, textColor);
+        int textY = y + (height - textRenderer.lineHeight) / 2 + 1;
+        context.drawCenteredString(textRenderer, Component.literal(label), textX, textY, textColor);
     }
 
     /**
@@ -230,15 +230,15 @@ public class StyledButton {
      * Static helper to render a button without creating an instance.
      * Useful for simple one-off buttons where state tracking isn't needed.
      */
-    public static void renderSimple(DrawContext context, TextRenderer textRenderer,
+    public static void renderSimple(GuiGraphics context, Font textRenderer,
                                     int x, int y, int width, int height,
                                     String label, Style style, boolean hovered, int accentColor) {
         UIStyleHelper.TextButtonPalette palette = UIStyleHelper.getTextButtonPalette(mapStyle(style), accentColor, hovered, false);
         UIStyleHelper.drawTextButtonFrame(context, x, y, width, height, palette);
 
         int textX = x + width / 2;
-        int textY = y + (height - textRenderer.fontHeight) / 2 + 1;
-        context.drawCenteredTextWithShadow(textRenderer, Text.literal(label), textX, textY, palette.textColor());
+        int textY = y + (height - textRenderer.lineHeight) / 2 + 1;
+        context.drawCenteredString(textRenderer, Component.literal(label), textX, textY, palette.textColor());
     }
 
     private static UIStyleHelper.TextButtonStyle mapStyle(Style style) {

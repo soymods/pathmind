@@ -5,9 +5,9 @@ import com.pathmind.ui.animation.HoverAnimator;
 import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.DrawContextBridge;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.text.Text;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.network.chat.Component;
 
 /** Shared animated controls and surfaces used by the routine editor and sidebar. */
 public final class PathmindRoutineUi {
@@ -23,7 +23,7 @@ public final class PathmindRoutineUi {
         return AnimationHelper.lerpColor(UITheme.BORDER_HIGHLIGHT, routineColor, 0.58f);
     }
 
-    public static boolean renderReturnButton(DrawContext context, int x, int y, int size,
+    public static boolean renderReturnButton(GuiGraphics context, int x, int y, int size,
                                              int mouseX, int mouseY, float hoverProgress,
                                              int routineColor) {
         boolean hovered = PathmindWorkspaceChrome.contains(mouseX, mouseY, x, y, size, size);
@@ -37,7 +37,7 @@ public final class PathmindRoutineUi {
         return hovered;
     }
 
-    public static void renderRoutineMarker(DrawContext context, int x, int y, int size,
+    public static void renderRoutineMarker(GuiGraphics context, int x, int y, int size,
                                            Object animationKey, boolean active, int routineColor) {
         float progress = HoverAnimator.getProgress(animationKey, active, UITheme.TRANSITION_ANIM_MS);
         int fill = AnimationHelper.lerpColor(
@@ -46,7 +46,7 @@ public final class PathmindRoutineUi {
         UIStyleHelper.drawBeveledPanel(context, x, y, size, size, fill, border, UITheme.PANEL_INNER_BORDER);
     }
 
-    public static void renderSidebarActionButton(DrawContext context, int x, int y, int size,
+    public static void renderSidebarActionButton(GuiGraphics context, int x, int y, int size,
                                                  Object animationKey, boolean hovered, boolean danger,
                                                  int routineColor, PathmindWorkspaceChrome.IconPainter iconPainter) {
         float progress = HoverAnimator.getProgress(animationKey, hovered, UITheme.HOVER_ANIM_MS);
@@ -64,13 +64,13 @@ public final class PathmindRoutineUi {
         return AnimationHelper.lerpColor(idleColor, hoverColor, progress);
     }
 
-    public static void renderInputAction(DrawContext context, TextRenderer textRenderer, String symbol,
+    public static void renderInputAction(GuiGraphics context, Font textRenderer, String symbol,
                                          int x, int y, Object animationKey, boolean hovered, int routineColor) {
         int color = animatedTextColor(animationKey, hovered, UITheme.TEXT_TERTIARY, routineColor);
-        context.drawTextWithShadow(textRenderer, Text.literal(symbol), x, y, color);
+        context.drawString(textRenderer, Component.literal(symbol), x, y, color);
     }
 
-    public static void renderDropTarget(DrawContext context, TextRenderer textRenderer, int x, int y,
+    public static void renderDropTarget(GuiGraphics context, Font textRenderer, int x, int y,
                                         int width, int height, int mouseX, int mouseY,
                                         Object animationKey, String label, int routineColor) {
         boolean hovered = UiHitTest.containsHalfOpen(mouseX, mouseY, x, y, width, height);
@@ -80,8 +80,8 @@ public final class PathmindRoutineUi {
         int textColor = AnimationHelper.lerpColor(UITheme.TEXT_TERTIARY, UITheme.TEXT_PRIMARY, progress);
         context.fill(x, y, x + width, y + height, background);
         DrawContextBridge.drawBorder(context, x, y, width, height, border);
-        int labelX = x + Math.max(2, (width - textRenderer.getWidth(label)) / 2);
-        context.drawTextWithShadow(textRenderer, Text.literal(label), labelX,
-            y + (height - textRenderer.fontHeight) / 2 + 1, textColor);
+        int labelX = x + Math.max(2, (width - textRenderer.width(label)) / 2);
+        context.drawString(textRenderer, Component.literal(label), labelX,
+            y + (height - textRenderer.lineHeight) / 2 + 1, textColor);
     }
 }

@@ -7,10 +7,10 @@ import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.DrawContextBridge;
 import com.pathmind.util.ScrollbarHelper;
 import com.pathmind.util.TextRenderUtil;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.widget.TextFieldWidget;
-import net.minecraft.text.Text;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.network.chat.Component;
 
 /**
  * Shared popup chrome renderer for Pathmind screens.
@@ -25,27 +25,27 @@ public final class PathmindPopupRenderer {
     private PathmindPopupRenderer() {
     }
 
-    public static void drawTextWithEllipsis(DrawContext context, TextRenderer textRenderer,
+    public static void drawTextWithEllipsis(GuiGraphics context, Font textRenderer,
                                             String text, int x, int y, int maxWidth, int color) {
         if (context == null || textRenderer == null) {
             return;
         }
         String display = TextRenderUtil.trimWithEllipsis(textRenderer, text, maxWidth);
-        context.drawTextWithShadow(textRenderer, Text.literal(display), x, y, color);
+        context.drawString(textRenderer, Component.literal(display), x, y, color);
     }
 
-    public static void drawCenteredTextWithEllipsis(DrawContext context, TextRenderer textRenderer,
+    public static void drawCenteredTextWithEllipsis(GuiGraphics context, Font textRenderer,
                                                     String text, int centerX, int y, int maxWidth, int color) {
         if (context == null || textRenderer == null) {
             return;
         }
         String display = TextRenderUtil.trimWithEllipsis(textRenderer, text, maxWidth);
-        context.drawCenteredTextWithShadow(textRenderer, Text.literal(display), centerX, y, color);
+        context.drawCenteredString(textRenderer, Component.literal(display), centerX, y, color);
     }
 
-    public static void drawButton(DrawContext context, TextRenderer textRenderer,
+    public static void drawButton(GuiGraphics context, Font textRenderer,
                                   int x, int y, int width, int height,
-                                  Text label, ButtonStyle style, float hoverProgress,
+                                  Component label, ButtonStyle style, float hoverProgress,
                                   int accentColor, PopupAnimationHandler animation) {
         if (context == null || textRenderer == null || label == null) {
             return;
@@ -66,18 +66,18 @@ public final class PathmindPopupRenderer {
             animatedColor(animation, palette.borderColor()),
             animatedColor(animation, palette.innerBorderColor())
         );
-        context.drawCenteredTextWithShadow(
+        context.drawCenteredString(
             textRenderer,
             label,
             x + width / 2,
-            y + (height - textRenderer.fontHeight) / 2 + 1,
+            y + (height - textRenderer.lineHeight) / 2 + 1,
             animatedColor(animation, palette.textColor())
         );
     }
 
-    public static boolean drawButton(DrawContext context, TextRenderer textRenderer,
+    public static boolean drawButton(GuiGraphics context, Font textRenderer,
                                      PathmindPopupLayout.Rect bounds, int mouseX, int mouseY,
-                                     Text label, ButtonStyle style, int accentColor,
+                                     Component label, ButtonStyle style, int accentColor,
                                      PopupAnimationHandler animation) {
         boolean hovered = bounds != null && bounds.contains(mouseX, mouseY);
         if (bounds != null) {
@@ -98,7 +98,7 @@ public final class PathmindPopupRenderer {
         return hovered;
     }
 
-    public static void drawAnimatedActionButton(DrawContext context, TextRenderer textRenderer,
+    public static void drawAnimatedActionButton(GuiGraphics context, Font textRenderer,
                                                 int x, int y, int width, int height,
                                                 String label, boolean disabled, float hoverProgress,
                                                 int accentColor, PopupAnimationHandler animation) {
@@ -127,18 +127,18 @@ public final class PathmindPopupRenderer {
             animatedColor(animation, palette.borderColor()),
             animatedColor(animation, palette.innerBorderColor())
         );
-        int textX = x + (width - textRenderer.getWidth(label)) / 2;
-        int textY = y + (height - textRenderer.fontHeight) / 2;
-        context.drawTextWithShadow(textRenderer, Text.literal(label), textX, textY,
+        int textX = x + (width - textRenderer.width(label)) / 2;
+        int textY = y + (height - textRenderer.lineHeight) / 2;
+        context.drawString(textRenderer, Component.literal(label), textX, textY,
             animatedColor(animation, palette.textColor()));
     }
 
-    public static String buttonHoverKey(ButtonStyle style, Text label, int x, int y, int width, int height) {
+    public static String buttonHoverKey(ButtonStyle style, Component label, int x, int y, int width, int height) {
         String labelText = label == null ? "" : label.getString();
         return "popup-button:" + style + ":" + labelText + ":" + x + ":" + y + ":" + width + ":" + height;
     }
 
-    public static void drawContainer(DrawContext context, int x, int y, int width, int height,
+    public static void drawContainer(GuiGraphics context, int x, int y, int width, int height,
                                      PopupAnimationHandler animation) {
         UIStyleHelper.drawBeveledPanel(
             context,
@@ -152,16 +152,16 @@ public final class PathmindPopupRenderer {
         );
     }
 
-    public static boolean beginPopup(DrawContext context, int x, int y, int width, int height,
+    public static boolean beginPopup(GuiGraphics context, int x, int y, int width, int height,
                                      PopupAnimationHandler animation) {
         drawContainer(context, x, y, width, height, animation);
         return enableScissor(context, x, y, width, height);
     }
 
-    public static void drawTitle(DrawContext context, TextRenderer textRenderer,
-                                 Text title, int popupX, int popupY, int popupWidth,
+    public static void drawTitle(GuiGraphics context, Font textRenderer,
+                                 Component title, int popupX, int popupY, int popupWidth,
                                  PopupAnimationHandler animation) {
-        context.drawCenteredTextWithShadow(
+        context.drawCenteredString(
             textRenderer,
             title,
             popupX + popupWidth / 2,
@@ -170,17 +170,17 @@ public final class PathmindPopupRenderer {
         );
     }
 
-    public static void drawHeaderBar(DrawContext context, TextRenderer textRenderer,
-                                     Text title, int popupX, int popupY, int popupWidth,
+    public static void drawHeaderBar(GuiGraphics context, Font textRenderer,
+                                     Component title, int popupX, int popupY, int popupWidth,
                                      PopupAnimationHandler animation) {
-        context.drawTextWithShadow(
+        context.drawString(
             textRenderer,
             title,
             popupX + 12,
             popupY + 10,
             animatedColor(animation, UITheme.TEXT_HEADER)
         );
-        context.drawHorizontalLine(
+        context.hLine(
             popupX,
             popupX + popupWidth - 1,
             popupY + 28,
@@ -188,7 +188,7 @@ public final class PathmindPopupRenderer {
         );
     }
 
-    public static void drawInputFrame(DrawContext context, int x, int y, int width, int height,
+    public static void drawInputFrame(GuiGraphics context, int x, int y, int width, int height,
                                       int borderColor, PopupAnimationHandler animation) {
         UIStyleHelper.drawFieldFrame(context, x, y, width, height, new UIStyleHelper.FieldPalette(
             animatedColor(animation, UITheme.RENAME_INPUT_BG),
@@ -199,7 +199,7 @@ public final class PathmindPopupRenderer {
         ));
     }
 
-    public static void drawPopupFieldFrame(DrawContext context, int x, int y, int width, int height,
+    public static void drawPopupFieldFrame(GuiGraphics context, int x, int y, int width, int height,
                                            boolean hovered, boolean focused, int accentColor,
                                            PopupAnimationHandler animation) {
         UIStyleHelper.drawToolbarButtonFrame(
@@ -214,10 +214,10 @@ public final class PathmindPopupRenderer {
         );
     }
 
-    public static int drawPopupTextFieldRow(DrawContext context, TextRenderer textRenderer, TextFieldWidget field,
+    public static int drawPopupTextFieldRow(GuiGraphics context, Font textRenderer, EditBox field,
                                             int mouseX, int mouseY, int x, int y, int width,
                                             String label, int accentColor, PopupAnimationHandler animation) {
-        context.drawTextWithShadow(textRenderer, Text.literal(label == null ? "" : label), x, y,
+        context.drawString(textRenderer, Component.literal(label == null ? "" : label), x, y,
             animatedColor(animation, UITheme.TEXT_LABEL));
         int fieldY = y + 11;
         boolean hovered = UiHitTest.containsHalfOpen(mouseX, mouseY, x, fieldY, width, 18);
@@ -232,7 +232,7 @@ public final class PathmindPopupRenderer {
         return fieldY + 18;
     }
 
-    public static void drawCheckbox(DrawContext context, int x, int y, boolean checked, boolean hovered,
+    public static void drawCheckbox(GuiGraphics context, int x, int y, boolean checked, boolean hovered,
                                     int accentColor, PopupAnimationHandler animation) {
         context.fill(x, y, x + 10, y + 10, animatedColor(animation, UITheme.RENAME_INPUT_BG));
         DrawContextBridge.drawBorder(context, x, y, 10, 10,
@@ -249,19 +249,19 @@ public final class PathmindPopupRenderer {
         context.fill(x + 7, y + 3, x + 8, y + 4, checkColor);
     }
 
-    public static void drawDropdownChevron(DrawContext context, int x, int y, int color, boolean open) {
+    public static void drawDropdownChevron(GuiGraphics context, int x, int y, int color, boolean open) {
         if (open) {
-            context.drawHorizontalLine(x, x + 4, y + 2, color);
-            context.drawHorizontalLine(x + 1, x + 3, y + 1, color);
-            context.drawHorizontalLine(x + 2, x + 2, y, color);
+            context.hLine(x, x + 4, y + 2, color);
+            context.hLine(x + 1, x + 3, y + 1, color);
+            context.hLine(x + 2, x + 2, y, color);
             return;
         }
-        context.drawHorizontalLine(x, x + 4, y, color);
-        context.drawHorizontalLine(x + 1, x + 3, y + 1, color);
-        context.drawHorizontalLine(x + 2, x + 2, y + 2, color);
+        context.hLine(x, x + 4, y, color);
+        context.hLine(x + 1, x + 3, y + 1, color);
+        context.hLine(x + 2, x + 2, y + 2, color);
     }
 
-    public static void drawCloseIcon(DrawContext context, int x, int y, int color) {
+    public static void drawCloseIcon(GuiGraphics context, int x, int y, int color) {
         context.fill(x + 2, y + 2, x + 4, y + 4, color);
         context.fill(x + 7, y + 2, x + 9, y + 4, color);
         context.fill(x + 4, y + 4, x + 7, y + 7, color);
@@ -269,10 +269,10 @@ public final class PathmindPopupRenderer {
         context.fill(x + 7, y + 7, x + 9, y + 9, color);
     }
 
-    public static int drawStatusBadge(DrawContext context, TextRenderer textRenderer, int x, int y,
+    public static int drawStatusBadge(GuiGraphics context, Font textRenderer, int x, int y,
                                       String label, int accentColor, PopupAnimationHandler animation) {
         String text = label == null ? "" : label;
-        int width = Math.max(26, textRenderer.getWidth(text) + 10);
+        int width = Math.max(26, textRenderer.width(text) + 10);
         int height = 12;
         UIStyleHelper.drawBeveledPanel(
             context,
@@ -284,12 +284,12 @@ public final class PathmindPopupRenderer {
             animatedColor(animation, accentColor),
             animatedColor(animation, UITheme.PANEL_INNER_BORDER)
         );
-        context.drawTextWithShadow(textRenderer, Text.literal(text), x + 5, y + 2,
+        context.drawString(textRenderer, Component.literal(text), x + 5, y + 2,
             animatedColor(animation, UITheme.TEXT_PRIMARY));
         return width;
     }
 
-    public static void drawPopupTextField(DrawContext context, TextFieldWidget field,
+    public static void drawPopupTextField(GuiGraphics context, EditBox field,
                                           int mouseX, int mouseY, float delta,
                                           int x, int y, int width, int height,
                                           int borderColor, PopupAnimationHandler animation,
@@ -300,7 +300,7 @@ public final class PathmindPopupRenderer {
             animatedColor(animation, editableColor), animatedColor(animation, uneditableColor), verticalPadding);
     }
 
-    public static void drawPaletteTextField(DrawContext context, TextFieldWidget field,
+    public static void drawPaletteTextField(GuiGraphics context, EditBox field,
                                             int mouseX, int mouseY, float delta,
                                             int x, int y, int width, int height,
                                             UIStyleHelper.FieldPalette palette,
@@ -311,7 +311,7 @@ public final class PathmindPopupRenderer {
             editableColor, uneditableColor, verticalPadding);
     }
 
-    public static void renderTextField(DrawContext context, TextFieldWidget field,
+    public static void renderTextField(GuiGraphics context, EditBox field,
                                        int mouseX, int mouseY, float delta,
                                        int x, int y, int width, int height,
                                        int editableColor, int uneditableColor,
@@ -321,8 +321,8 @@ public final class PathmindPopupRenderer {
         }
         field.setVisible(true);
         field.setEditable(true);
-        field.setEditableColor(editableColor);
-        field.setUneditableColor(uneditableColor);
+        field.setTextColor(editableColor);
+        field.setTextColorUneditable(uneditableColor);
         int textFieldHeight = Math.max(10, height - verticalPadding * 2);
         field.setPosition(x + 4, y + verticalPadding);
         field.setWidth(width - 8);
@@ -334,18 +334,18 @@ public final class PathmindPopupRenderer {
         return animation == null ? baseColor : animation.getAnimatedPopupColor(baseColor);
     }
 
-    public static boolean enableScissor(DrawContext context, int popupX, int popupY, int scaledWidth, int scaledHeight) {
+    public static boolean enableScissor(GuiGraphics context, int popupX, int popupY, int scaledWidth, int scaledHeight) {
         int width = Math.max(1, scaledWidth);
         int height = Math.max(1, scaledHeight);
         context.enableScissor(popupX, popupY, popupX + width, popupY + height);
         return true;
     }
 
-    public static void enableBodyScissor(DrawContext context, PathmindPopupLayout.Rect bounds) {
+    public static void enableBodyScissor(GuiGraphics context, PathmindPopupLayout.Rect bounds) {
         context.enableScissor(bounds.x(), bounds.y(), bounds.x() + bounds.width(), bounds.y() + bounds.height());
     }
 
-    public static void drawScrollableBodyChrome(DrawContext context, PathmindPopupLayout.Rect bodyBounds,
+    public static void drawScrollableBodyChrome(GuiGraphics context, PathmindPopupLayout.Rect bodyBounds,
                                                 int scrollOffset, int maxScroll, int dividerColor) {
         ScrollbarHelper.renderCutoffDividers(
             context,
@@ -359,7 +359,7 @@ public final class PathmindPopupRenderer {
         );
     }
 
-    public static void disableScissor(DrawContext context, boolean enabled) {
+    public static void disableScissor(GuiGraphics context, boolean enabled) {
         if (enabled) {
             context.disableScissor();
         }

@@ -7,6 +7,7 @@ import com.pathmind.data.SettingsManager;
 import com.pathmind.data.SettingsManager.Settings;
 import com.pathmind.nodes.Node;
 import com.pathmind.nodes.NodeType;
+import com.pathmind.screen.PathmindVisualEditorScreen.AccentOption;
 import com.pathmind.ui.control.PathmindPopupLayout;
 import com.pathmind.ui.control.PathmindPopupRenderer;
 import com.pathmind.ui.control.PathmindSettingsRowRenderer;
@@ -15,14 +16,12 @@ import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.RenderStateBridge;
 import com.pathmind.util.ScrollbarHelper;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.widget.TextFieldWidget;
-import net.minecraft.text.Text;
-import net.minecraft.util.math.MathHelper;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.network.chat.Component;
+import net.minecraft.util.Mth;
 
 final class PathmindSettingsPopupController {
     final PathmindVisualEditorScreen screen;
@@ -31,7 +30,7 @@ final class PathmindSettingsPopupController {
         this.screen = screen;
     }
 
-    void renderSettingsPopup(DrawContext context, int mouseX, int mouseY) {
+    void renderSettingsPopup(GuiGraphics context, int mouseX, int mouseY) {
         float popupAlpha = screen.settingsPopupAnimation.getPopupAlpha();
 
         int popupWidth = screen.getSettingsPopupWidth();
@@ -48,7 +47,7 @@ final class PathmindSettingsPopupController {
         PathmindPopupRenderer.drawTitle(
             context,
             screen.textRenderer(),
-            Text.translatable("pathmind.settings.title"),
+            Component.translatable("pathmind.settings.title"),
             popupX,
             popupY,
             scaledWidth,
@@ -57,14 +56,14 @@ final class PathmindSettingsPopupController {
 
         PathmindPopupLayout.Rect bodyBounds = getSettingsPopupBodyRect(popupX, popupY, scaledWidth, scaledHeight);
         int maxScroll = getSettingsPopupMaxScroll(popupX, popupY, scaledWidth, scaledHeight);
-        screen.settingsPopupScrollOffset = MathHelper.clamp(screen.settingsPopupScrollOffset, 0, maxScroll);
+        screen.settingsPopupScrollOffset = Mth.clamp(screen.settingsPopupScrollOffset, 0, maxScroll);
         int contentPopupY = popupY - screen.settingsPopupScrollOffset;
         PathmindPopupRenderer.enableBodyScissor(context, bodyBounds);
         int contentX = popupX + 20;
 
         // Language section
         int languageLabelY = contentPopupY + 44;
-        screen.drawPopupTextWithEllipsis(context, Text.translatable("pathmind.settings.language").getString(), contentX, languageLabelY, scaledWidth - 40,
+        screen.drawPopupTextWithEllipsis(context, Component.translatable("pathmind.settings.language").getString(), contentX, languageLabelY, scaledWidth - 40,
             screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.TEXT_SECONDARY));
 
         // Language dropdown button
@@ -80,7 +79,7 @@ final class PathmindSettingsPopupController {
         screen.languageDropdownClipWidth = bodyBounds.width();
         screen.languageDropdownClipHeight = bodyBounds.height();
 
-        String currentLang = screen.client().getLanguageManager().getLanguage();
+        String currentLang = screen.client().getLanguageManager().getSelected();
         String langDisplayName = screen.getLanguageDisplayName(currentLang);
         boolean languageHovered = mouseX >= contentX && mouseX <= contentX + languageButtonWidth && mouseY >= languageButtonY && mouseY <= languageButtonY + 20;
         screen.drawLanguageDropdown(context, contentX, languageButtonY, languageButtonWidth, langDisplayName, languageHovered);
@@ -88,7 +87,7 @@ final class PathmindSettingsPopupController {
 
         // Adjust following sections downward by 50 pixels
         int accentLabelY = languageButtonY + 50;
-        screen.drawPopupTextWithEllipsis(context, Text.translatable("pathmind.settings.accent").getString(), contentX, accentLabelY, scaledWidth - 40,
+        screen.drawPopupTextWithEllipsis(context, Component.translatable("pathmind.settings.accent").getString(), contentX, accentLabelY, scaledWidth - 40,
             screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.TEXT_SECONDARY));
 
         int accentOptionsY = accentLabelY + 12;
@@ -103,57 +102,57 @@ final class PathmindSettingsPopupController {
 
         int sectionDividerX = popupX + 16;
         int sectionDividerY = accentOptionsY + SETTINGS_OPTION_HEIGHT + 10;
-        context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, sectionDividerY,
+        context.hLine(sectionDividerX, popupX + scaledWidth - 16, sectionDividerY,
             screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.BORDER_SUBTLE));
 
         int settingDividerY = sectionDividerY + 22;
         int gridRowCenterY = (sectionDividerY + settingDividerY) / 2;
-        renderToggleRow(context, mouseX, mouseY, contentX, gridRowCenterY, Text.translatable("pathmind.settings.showGrid").getString(), screen.showGrid, popupX, scaledWidth);
-        context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, settingDividerY,
+        renderToggleRow(context, mouseX, mouseY, contentX, gridRowCenterY, Component.translatable("pathmind.settings.showGrid").getString(), screen.showGrid, popupX, scaledWidth);
+        context.hLine(sectionDividerX, popupX + scaledWidth - 16, settingDividerY,
             screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.BORDER_SUBTLE));
 
         int lowDetailDividerY = settingDividerY + 22;
         int lowDetailRowCenterY = (settingDividerY + lowDetailDividerY) / 2;
-        renderToggleRow(context, mouseX, mouseY, contentX, lowDetailRowCenterY, Text.translatable("pathmind.settings.lowDetailMode").getString(),
+        renderToggleRow(context, mouseX, mouseY, contentX, lowDetailRowCenterY, Component.translatable("pathmind.settings.lowDetailMode").getString(),
             Boolean.TRUE.equals(screen.currentSettings.lowDetailMode), popupX, scaledWidth);
-        context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, lowDetailDividerY,
+        context.hLine(sectionDividerX, popupX + scaledWidth - 16, lowDetailDividerY,
             screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.BORDER_SUBTLE));
 
         int footerDividerY = lowDetailDividerY + 22;
         int tooltipRowCenterY = (lowDetailDividerY + footerDividerY) / 2;
-        renderToggleRow(context, mouseX, mouseY, contentX, tooltipRowCenterY, Text.translatable("pathmind.settings.renderConnectionsOnTop").getString(), screen.renderConnectionsOnTop, popupX, scaledWidth);
-        context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, footerDividerY,
+        renderToggleRow(context, mouseX, mouseY, contentX, tooltipRowCenterY, Component.translatable("pathmind.settings.renderConnectionsOnTop").getString(), screen.renderConnectionsOnTop, popupX, scaledWidth);
+        context.hLine(sectionDividerX, popupX + scaledWidth - 16, footerDividerY,
             screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.BORDER_SUBTLE));
 
         int chatDividerY = footerDividerY + 22;
         int chatRowCenterY = (footerDividerY + chatDividerY) / 2;
-        renderToggleRow(context, mouseX, mouseY, contentX, chatRowCenterY, Text.translatable("pathmind.settings.showTooltips").getString(), screen.showWorkspaceTooltips, popupX, scaledWidth);
-        context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, chatDividerY,
+        renderToggleRow(context, mouseX, mouseY, contentX, chatRowCenterY, Component.translatable("pathmind.settings.showTooltips").getString(), screen.showWorkspaceTooltips, popupX, scaledWidth);
+        context.hLine(sectionDividerX, popupX + scaledWidth - 16, chatDividerY,
             screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.BORDER_SUBTLE));
 
         int overlayDividerY = chatDividerY + 22;
         int overlayRowCenterY = (chatDividerY + overlayDividerY) / 2;
-        renderToggleRow(context, mouseX, mouseY, contentX, overlayRowCenterY, Text.translatable("pathmind.settings.showChatErrors").getString(), screen.showChatErrors, popupX, scaledWidth);
-        context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, overlayDividerY,
+        renderToggleRow(context, mouseX, mouseY, contentX, overlayRowCenterY, Component.translatable("pathmind.settings.showChatErrors").getString(), screen.showChatErrors, popupX, scaledWidth);
+        context.hLine(sectionDividerX, popupX + scaledWidth - 16, overlayDividerY,
             screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.BORDER_SUBTLE));
 
         int hudDividerY = overlayDividerY + 22;
         int hudRowCenterY = (overlayDividerY + hudDividerY) / 2;
-        renderToggleRow(context, mouseX, mouseY, contentX, hudRowCenterY, Text.translatable("pathmind.settings.showHudOverlays").getString(), screen.showHudOverlays, popupX, scaledWidth);
-        context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, hudDividerY,
+        renderToggleRow(context, mouseX, mouseY, contentX, hudRowCenterY, Component.translatable("pathmind.settings.showHudOverlays").getString(), screen.showHudOverlays, popupX, scaledWidth);
+        context.hLine(sectionDividerX, popupX + scaledWidth - 16, hudDividerY,
             screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.BORDER_SUBTLE));
 
         int profilerDividerY = hudDividerY + 22;
         int profilerRowCenterY = (hudDividerY + profilerDividerY) / 2;
-        renderToggleRow(context, mouseX, mouseY, contentX, profilerRowCenterY, Text.translatable("pathmind.settings.showProfilerOverlay").getString(),
+        renderToggleRow(context, mouseX, mouseY, contentX, profilerRowCenterY, Component.translatable("pathmind.settings.showProfilerOverlay").getString(),
             screen.currentSettings != null && Boolean.TRUE.equals(screen.currentSettings.showProfilerOverlay), popupX, scaledWidth);
-        context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, profilerDividerY,
+        context.hLine(sectionDividerX, popupX + scaledWidth - 16, profilerDividerY,
             screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.BORDER_SUBTLE));
 
         int delayDividerY = profilerDividerY + 26;
         int delayRowCenterY = (profilerDividerY + delayDividerY) / 2;
         renderNodeDelayRow(context, mouseX, mouseY, contentX, delayRowCenterY, screen.nodeDelayMs, NODE_DELAY_MIN_MS, NODE_DELAY_MAX_MS, popupX, scaledWidth);
-        context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, delayDividerY,
+        context.hLine(sectionDividerX, popupX + scaledWidth - 16, delayDividerY,
             screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.BORDER_SUBTLE));
 
         int nodeSettingsLabelY = getSettingsNodeSectionLabelY(contentPopupY);
@@ -161,7 +160,7 @@ final class PathmindSettingsPopupController {
         if (screen.createListRadiusField != null) {
             screen.createListRadiusField.setVisible(false);
         }
-        screen.drawPopupTextWithEllipsis(context, Text.translatable("pathmind.settings.nodeSettings").getString(), contentX, nodeSettingsLabelY, scaledWidth - 40,
+        screen.drawPopupTextWithEllipsis(context, Component.translatable("pathmind.settings.nodeSettings").getString(), contentX, nodeSettingsLabelY, scaledWidth - 40,
             screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.TEXT_SECONDARY));
         int selectorWidth = scaledWidth - 40;
         renderSettingsNodeTypeSelector(context, mouseX, mouseY, contentX, nodeSettingsBodyY, selectorWidth);
@@ -169,47 +168,47 @@ final class PathmindSettingsPopupController {
 
         NodeType targetType = getEffectiveSettingsTargetType();
         if (targetType == null) {
-            screen.drawPopupTextWithEllipsis(context, Text.translatable("pathmind.settings.nodeSettings.none").getString(), contentX, nodeSettingsContentY,
+            screen.drawPopupTextWithEllipsis(context, Component.translatable("pathmind.settings.nodeSettings.none").getString(), contentX, nodeSettingsContentY,
                 scaledWidth - 40, screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.TEXT_TERTIARY));
         } else if (targetType == NodeType.GOTO) {
-            screen.drawPopupTextWithEllipsis(context, Text.translatable("pathmind.settings.nodeSettings.editing", targetType.getDisplayName()).getString(), contentX, nodeSettingsContentY, scaledWidth - 40,
+            screen.drawPopupTextWithEllipsis(context, Component.translatable("pathmind.settings.nodeSettings.editing", targetType.getDisplayName()).getString(), contentX, nodeSettingsContentY, scaledWidth - 40,
                 screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.TEXT_TERTIARY));
 
             int gotoBreakDividerY = nodeSettingsContentY + 28;
             int gotoBreakRowCenterY = (nodeSettingsContentY + 10 + gotoBreakDividerY) / 2;
             renderToggleRow(context, mouseX, mouseY, contentX, gotoBreakRowCenterY,
-                Text.translatable("pathmind.settings.gotoAllowBreak").getString(), screen.currentSettings.gotoAllowBreakWhileExecuting != null && screen.currentSettings.gotoAllowBreakWhileExecuting, popupX, scaledWidth);
-            context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, gotoBreakDividerY,
+                Component.translatable("pathmind.settings.gotoAllowBreak").getString(), screen.currentSettings.gotoAllowBreakWhileExecuting != null && screen.currentSettings.gotoAllowBreakWhileExecuting, popupX, scaledWidth);
+            context.hLine(sectionDividerX, popupX + scaledWidth - 16, gotoBreakDividerY,
                 screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.BORDER_SUBTLE));
 
             int gotoPlaceDividerY = gotoBreakDividerY + 22;
             int gotoPlaceRowCenterY = (gotoBreakDividerY + gotoPlaceDividerY) / 2;
             renderToggleRow(context, mouseX, mouseY, contentX, gotoPlaceRowCenterY,
-                Text.translatable("pathmind.settings.gotoAllowPlace").getString(), screen.currentSettings.gotoAllowPlaceWhileExecuting != null && screen.currentSettings.gotoAllowPlaceWhileExecuting, popupX, scaledWidth);
-            context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, gotoPlaceDividerY,
+                Component.translatable("pathmind.settings.gotoAllowPlace").getString(), screen.currentSettings.gotoAllowPlaceWhileExecuting != null && screen.currentSettings.gotoAllowPlaceWhileExecuting, popupX, scaledWidth);
+            context.hLine(sectionDividerX, popupX + scaledWidth - 16, gotoPlaceDividerY,
                 screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.BORDER_SUBTLE));
         } else if (targetType == NodeType.SENSOR_KEY_PRESSED) {
-            screen.drawPopupTextWithEllipsis(context, Text.translatable("pathmind.settings.nodeSettings.editing", targetType.getDisplayName()).getString(), contentX, nodeSettingsContentY, scaledWidth - 40,
+            screen.drawPopupTextWithEllipsis(context, Component.translatable("pathmind.settings.nodeSettings.editing", targetType.getDisplayName()).getString(), contentX, nodeSettingsContentY, scaledWidth - 40,
                 screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.TEXT_TERTIARY));
 
             int keyPressedDividerY = nodeSettingsContentY + 28;
             int keyPressedRowCenterY = (nodeSettingsContentY + 10 + keyPressedDividerY) / 2;
             renderToggleRow(context, mouseX, mouseY, contentX, keyPressedRowCenterY,
-                Text.translatable("pathmind.settings.keyPressedActivatesInGuis").getString(), screen.currentSettings.keyPressedActivatesInGuis == null || screen.currentSettings.keyPressedActivatesInGuis, popupX, scaledWidth);
-            context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, keyPressedDividerY,
+                Component.translatable("pathmind.settings.keyPressedActivatesInGuis").getString(), screen.currentSettings.keyPressedActivatesInGuis == null || screen.currentSettings.keyPressedActivatesInGuis, popupX, scaledWidth);
+            context.hLine(sectionDividerX, popupX + scaledWidth - 16, keyPressedDividerY,
                 screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.BORDER_SUBTLE));
         } else if (targetType == NodeType.CREATE_LIST) {
             Node targetNode = getEffectiveSettingsTargetNode();
             boolean useRadius = isCreateListCustomRadiusEnabled(targetNode);
             int radius = getCreateListSettingsRadius(targetNode);
-            screen.drawPopupTextWithEllipsis(context, Text.translatable("pathmind.settings.nodeSettings.editing", targetType.getDisplayName()).getString(), contentX, nodeSettingsContentY, scaledWidth - 40,
+            screen.drawPopupTextWithEllipsis(context, Component.translatable("pathmind.settings.nodeSettings.editing", targetType.getDisplayName()).getString(), contentX, nodeSettingsContentY, scaledWidth - 40,
                 screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.TEXT_TERTIARY));
 
             int createListToggleDividerY = nodeSettingsContentY + 28;
             int createListToggleRowCenterY = (nodeSettingsContentY + 10 + createListToggleDividerY) / 2;
             renderToggleRow(context, mouseX, mouseY, contentX, createListToggleRowCenterY,
-                Text.translatable("pathmind.settings.createListUseCustomRadius").getString(), useRadius, popupX, scaledWidth);
-            context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, createListToggleDividerY,
+                Component.translatable("pathmind.settings.createListUseCustomRadius").getString(), useRadius, popupX, scaledWidth);
+            context.hLine(sectionDividerX, popupX + scaledWidth - 16, createListToggleDividerY,
                 screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.BORDER_SUBTLE));
 
             if (useRadius) {
@@ -217,17 +216,17 @@ final class PathmindSettingsPopupController {
                 int createListRadiusRowCenterY = (createListToggleDividerY + createListRadiusDividerY) / 2;
                 renderCreateListRadiusRow(context, mouseX, mouseY, contentX, createListRadiusRowCenterY,
                     radius, CREATE_LIST_RADIUS_MIN, CREATE_LIST_RADIUS_MAX, popupX, scaledWidth);
-                context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16, createListRadiusDividerY,
+                context.hLine(sectionDividerX, popupX + scaledWidth - 16, createListRadiusDividerY,
                     screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.BORDER_SUBTLE));
             }
         }
 
         int[] clearCacheButtonBounds = getSettingsClearCacheButtonBounds(popupX, popupY, scaledWidth, scaledHeight, contentX, nodeSettingsContentY);
         int clearCacheRowCenterY = getSettingsClearCacheRowCenterY(popupX, popupY, scaledWidth, scaledHeight, contentX, nodeSettingsContentY);
-        context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16,
+        context.hLine(sectionDividerX, popupX + scaledWidth - 16,
             getSettingsClearCacheDividerY(popupX, popupY, scaledWidth, scaledHeight, contentX, nodeSettingsContentY),
             screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.BORDER_SUBTLE));
-        screen.drawPopupTextWithEllipsis(context, Text.translatable("pathmind.settings.clearCache").getString(), contentX, clearCacheRowCenterY - screen.textRenderer().fontHeight / 2,
+        screen.drawPopupTextWithEllipsis(context, Component.translatable("pathmind.settings.clearCache").getString(), contentX, clearCacheRowCenterY - screen.textRenderer().lineHeight / 2,
             scaledWidth - 40 - clearCacheButtonBounds[2] - 12, screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.TEXT_PRIMARY));
         PathmindPopupRenderer.drawButton(
             context,
@@ -235,7 +234,7 @@ final class PathmindSettingsPopupController {
             PathmindPopupLayout.rect(clearCacheButtonBounds[0], clearCacheButtonBounds[1], clearCacheButtonBounds[2], clearCacheButtonBounds[3]),
             mouseX,
             mouseY,
-            Text.translatable("pathmind.button.clear"),
+            Component.translatable("pathmind.button.clear"),
             PathmindPopupRenderer.ButtonStyle.DEFAULT,
             screen.getAccentColor(),
             screen.settingsPopupAnimation
@@ -243,11 +242,11 @@ final class PathmindSettingsPopupController {
 
         int[] restoreExamplesButtonBounds = getSettingsRestoreExamplesButtonBounds(popupX, popupY, scaledWidth, scaledHeight, contentX, nodeSettingsContentY);
         int restoreExamplesRowCenterY = getSettingsRestoreExamplesRowCenterY(popupX, popupY, scaledWidth, scaledHeight, contentX, nodeSettingsContentY);
-        context.drawHorizontalLine(sectionDividerX, popupX + scaledWidth - 16,
+        context.hLine(sectionDividerX, popupX + scaledWidth - 16,
             getSettingsRestoreExamplesDividerY(popupX, popupY, scaledWidth, scaledHeight, contentX, nodeSettingsContentY),
             screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.BORDER_SUBTLE));
-        screen.drawPopupTextWithEllipsis(context, Text.translatable("pathmind.settings.examplePresets").getString(), contentX,
-            restoreExamplesRowCenterY - screen.textRenderer().fontHeight / 2,
+        screen.drawPopupTextWithEllipsis(context, Component.translatable("pathmind.settings.examplePresets").getString(), contentX,
+            restoreExamplesRowCenterY - screen.textRenderer().lineHeight / 2,
             scaledWidth - 40 - restoreExamplesButtonBounds[2] - 12, screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.TEXT_PRIMARY));
         PathmindPopupRenderer.drawButton(
             context,
@@ -255,7 +254,7 @@ final class PathmindSettingsPopupController {
             PathmindPopupLayout.rect(restoreExamplesButtonBounds[0], restoreExamplesButtonBounds[1], restoreExamplesButtonBounds[2], restoreExamplesButtonBounds[3]),
             mouseX,
             mouseY,
-            Text.translatable("pathmind.button.restore"),
+            Component.translatable("pathmind.button.restore"),
             PathmindPopupRenderer.ButtonStyle.DEFAULT,
             screen.getAccentColor(),
             screen.settingsPopupAnimation
@@ -277,7 +276,7 @@ final class PathmindSettingsPopupController {
             closeButton,
             mouseX,
             mouseY,
-            Text.translatable("pathmind.button.close"),
+            Component.translatable("pathmind.button.close"),
             PathmindPopupRenderer.ButtonStyle.ACCENT,
             screen.getAccentColor(),
             screen.settingsPopupAnimation
@@ -286,7 +285,7 @@ final class PathmindSettingsPopupController {
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
 
-    void drawAccentOption(DrawContext context, int x, int y, AccentOption option, boolean hovered, boolean selected) {
+    void drawAccentOption(GuiGraphics context, int x, int y, AccentOption option, boolean hovered, boolean selected) {
         float hoverProgress = selected ? 1f : screen.getHoverProgress("settings-accent-option:" + option.name(), hovered);
         PathmindSettingsRowRenderer.renderAccentOption(
             context,
@@ -304,7 +303,7 @@ final class PathmindSettingsPopupController {
         );
     }
 
-    void renderToggleRow(DrawContext context, int mouseX, int mouseY, int labelX, int centerY, String label, boolean active, int popupX, int scaledWidth) {
+    void renderToggleRow(GuiGraphics context, int mouseX, int mouseY, int labelX, int centerY, String label, boolean active, int popupX, int scaledWidth) {
         PathmindSettingsRowRenderer.renderToggleRow(
             context,
             screen.textRenderer(),
@@ -320,12 +319,12 @@ final class PathmindSettingsPopupController {
             SETTINGS_TOGGLE_HEIGHT,
             screen.getAccentColor(),
             screen.settingsPopupAnimation,
-            Text.translatable("pathmind.settings.on").getString(),
-            Text.translatable("pathmind.settings.off").getString()
+            Component.translatable("pathmind.settings.on").getString(),
+            Component.translatable("pathmind.settings.off").getString()
         );
     }
 
-    void renderSliderRow(DrawContext context, int mouseX, int mouseY, int labelX, int centerY, String label,
+    void renderSliderRow(GuiGraphics context, int mouseX, int mouseY, int labelX, int centerY, String label,
                                  int value, int min, int max, int popupX, int scaledWidth) {
         PathmindSettingsRowRenderer.renderSliderRow(
             context,
@@ -351,7 +350,7 @@ final class PathmindSettingsPopupController {
         );
     }
 
-    void renderNodeDelayRow(DrawContext context, int mouseX, int mouseY, int labelX, int centerY,
+    void renderNodeDelayRow(GuiGraphics context, int mouseX, int mouseY, int labelX, int centerY,
                                     int value, int min, int max, int popupX, int scaledWidth) {
         int sliderX = popupX + scaledWidth - SETTINGS_SLIDER_WIDTH - 20;
         int sliderY = centerY - SETTINGS_SLIDER_HEIGHT / 2;
@@ -369,13 +368,13 @@ final class PathmindSettingsPopupController {
             mouseY,
             labelX,
             centerY,
-            Text.translatable("pathmind.settings.nodeDelay").getString(),
+            Component.translatable("pathmind.settings.nodeDelay").getString(),
             valueBox[0],
             valueBox[1],
             valueBox[2],
             valueBox[3],
             valueText,
-            Text.translatable("pathmind.unit.millisecondsShort"),
+            Component.translatable("pathmind.unit.millisecondsShort"),
             screen.getAccentColor(),
             screen.settingsPopupAnimation,
             fieldHoverProgress,
@@ -403,7 +402,7 @@ final class PathmindSettingsPopupController {
         );
     }
 
-    void renderCreateListRadiusRow(DrawContext context, int mouseX, int mouseY, int labelX, int centerY,
+    void renderCreateListRadiusRow(GuiGraphics context, int mouseX, int mouseY, int labelX, int centerY,
                                            int value, int min, int max, int popupX, int scaledWidth) {
         int sliderX = popupX + scaledWidth - SETTINGS_SLIDER_WIDTH - 20;
         int sliderY = centerY - SETTINGS_SLIDER_HEIGHT / 2;
@@ -421,13 +420,13 @@ final class PathmindSettingsPopupController {
             mouseY,
             labelX,
             centerY,
-            Text.translatable("pathmind.field.radius").getString(),
+            Component.translatable("pathmind.field.radius").getString(),
             valueBox[0],
             valueBox[1],
             valueBox[2],
             valueBox[3],
             valueText,
-            Text.translatable("pathmind.unit.blocks"),
+            Component.translatable("pathmind.unit.blocks"),
             screen.getAccentColor(),
             screen.settingsPopupAnimation,
             fieldHoverProgress,
@@ -458,11 +457,11 @@ final class PathmindSettingsPopupController {
     int[] getNodeDelayFieldBounds(int popupX, int scaledWidth, int centerY, String valueText) {
         int sliderX = popupX + scaledWidth - SETTINGS_SLIDER_WIDTH - 20;
         String text = valueText == null ? "" : valueText;
-        int textWidth = screen.textRenderer().getWidth(text);
+        int textWidth = screen.textRenderer().width(text);
         int boxWidth = Math.max(32, textWidth + 8);
         int boxHeight = 16;
         int unitGap = 6;
-        int unitWidth = screen.textRenderer().getWidth(PathmindVisualEditorScreen.tr("pathmind.unit.millisecondsShort"));
+        int unitWidth = screen.textRenderer().width(PathmindVisualEditorScreen.tr("pathmind.unit.millisecondsShort"));
         int boxX = sliderX - boxWidth - unitGap - unitWidth - 4;
         int boxY = centerY - boxHeight / 2;
         return new int[]{boxX, boxY, boxWidth, boxHeight};
@@ -471,11 +470,11 @@ final class PathmindSettingsPopupController {
     int[] getCreateListRadiusFieldBounds(int popupX, int scaledWidth, int centerY, String valueText) {
         int sliderX = popupX + scaledWidth - SETTINGS_SLIDER_WIDTH - 20;
         String text = valueText == null ? "" : valueText;
-        int textWidth = screen.textRenderer().getWidth(text);
+        int textWidth = screen.textRenderer().width(text);
         int boxWidth = Math.max(32, textWidth + 8);
         int boxHeight = 16;
         int unitGap = 6;
-        int unitWidth = screen.textRenderer().getWidth(PathmindVisualEditorScreen.tr("pathmind.unit.blocks"));
+        int unitWidth = screen.textRenderer().width(PathmindVisualEditorScreen.tr("pathmind.unit.blocks"));
         int boxX = sliderX - boxWidth - unitGap - unitWidth - 4;
         int boxY = centerY - boxHeight / 2;
         return new int[]{boxX, boxY, boxWidth, boxHeight};
@@ -483,7 +482,7 @@ final class PathmindSettingsPopupController {
 
     void updateNodeDelayFromMouse(int mouseX, int popupX, int popupWidth) {
         int sliderX = popupX + popupWidth - SETTINGS_SLIDER_WIDTH - 20;
-        int localX = MathHelper.clamp(mouseX - sliderX, 0, SETTINGS_SLIDER_WIDTH);
+        int localX = Mth.clamp(mouseX - sliderX, 0, SETTINGS_SLIDER_WIDTH);
         float t = SETTINGS_SLIDER_WIDTH <= 0 ? 0f : localX / (float) SETTINGS_SLIDER_WIDTH;
         int value = NODE_DELAY_MIN_MS + Math.round(t * (NODE_DELAY_MAX_MS - NODE_DELAY_MIN_MS));
         if (value != screen.nodeDelayMs) {
@@ -498,7 +497,7 @@ final class PathmindSettingsPopupController {
             return;
         }
         int sliderX = popupX + popupWidth - SETTINGS_SLIDER_WIDTH - 20;
-        int localX = MathHelper.clamp(mouseX - sliderX, 0, SETTINGS_SLIDER_WIDTH);
+        int localX = Mth.clamp(mouseX - sliderX, 0, SETTINGS_SLIDER_WIDTH);
         float t = SETTINGS_SLIDER_WIDTH <= 0 ? 0f : localX / (float) SETTINGS_SLIDER_WIDTH;
         int value = CREATE_LIST_RADIUS_MIN + Math.round(t * (CREATE_LIST_RADIUS_MAX - CREATE_LIST_RADIUS_MIN));
         if (value != getCreateListSettingsRadius(node)) {
@@ -520,7 +519,7 @@ final class PathmindSettingsPopupController {
         }
         try {
             int parsed = Integer.parseInt(digits);
-            return MathHelper.clamp(parsed, NODE_DELAY_MIN_MS, NODE_DELAY_MAX_MS);
+            return Mth.clamp(parsed, NODE_DELAY_MIN_MS, NODE_DELAY_MAX_MS);
         } catch (NumberFormatException e) {
             return null;
         }
@@ -540,7 +539,7 @@ final class PathmindSettingsPopupController {
         }
         try {
             int parsed = Integer.parseInt(digits);
-            return MathHelper.clamp(parsed, CREATE_LIST_RADIUS_MIN, CREATE_LIST_RADIUS_MAX);
+            return Mth.clamp(parsed, CREATE_LIST_RADIUS_MIN, CREATE_LIST_RADIUS_MAX);
         } catch (NumberFormatException e) {
             return null;
         }
@@ -601,7 +600,7 @@ final class PathmindSettingsPopupController {
     int getCreateListSettingsRadius(Node node) {
         if (node == null || node.getType() != NodeType.CREATE_LIST) {
             Integer configured = SettingsManager.getCurrent().createListRadius;
-            return MathHelper.clamp(configured == null ? 64 : configured, CREATE_LIST_RADIUS_MIN, CREATE_LIST_RADIUS_MAX);
+            return Mth.clamp(configured == null ? 64 : configured, CREATE_LIST_RADIUS_MIN, CREATE_LIST_RADIUS_MAX);
         }
         node.ensureCreateListRadiusParameters();
         double value = 64.0;
@@ -612,7 +611,7 @@ final class PathmindSettingsPopupController {
                 value = 64.0;
             }
         }
-        return MathHelper.clamp((int) Math.round(value), CREATE_LIST_RADIUS_MIN, CREATE_LIST_RADIUS_MAX);
+        return Mth.clamp((int) Math.round(value), CREATE_LIST_RADIUS_MIN, CREATE_LIST_RADIUS_MAX);
     }
 
     void setCreateListCustomRadiusEnabled(Node node, boolean enabled) {
@@ -630,7 +629,7 @@ final class PathmindSettingsPopupController {
     }
 
     void setCreateListSettingsRadius(Node node, int radius) {
-        int clamped = MathHelper.clamp(radius, CREATE_LIST_RADIUS_MIN, CREATE_LIST_RADIUS_MAX);
+        int clamped = Mth.clamp(radius, CREATE_LIST_RADIUS_MIN, CREATE_LIST_RADIUS_MAX);
         Settings settings = SettingsManager.getCurrent();
         settings.createListRadius = clamped;
         SettingsManager.save(settings);
@@ -738,9 +737,9 @@ final class PathmindSettingsPopupController {
         boolean cleared = Node.clearRecipeCache(screen.client());
         NodeErrorNotificationOverlay overlay = NodeErrorNotificationOverlay.getInstance();
         if (cleared) {
-            overlay.show(Text.translatable("pathmind.settings.cacheCleared").getString(), UITheme.STATE_SUCCESS);
+            overlay.show(Component.translatable("pathmind.settings.cacheCleared").getString(), UITheme.STATE_SUCCESS);
         } else {
-            overlay.show(Text.translatable("pathmind.settings.cacheNotFound").getString(), UITheme.STATE_ERROR);
+            overlay.show(Component.translatable("pathmind.settings.cacheNotFound").getString(), UITheme.STATE_ERROR);
         }
     }
 
@@ -766,9 +765,9 @@ final class PathmindSettingsPopupController {
         NodeErrorNotificationOverlay overlay = NodeErrorNotificationOverlay.getInstance();
         if (result.success()) {
             screen.refreshAvailablePresets();
-            overlay.show(Text.translatable("pathmind.settings.examplePresetsRestored").getString(), UITheme.STATE_SUCCESS);
+            overlay.show(Component.translatable("pathmind.settings.examplePresetsRestored").getString(), UITheme.STATE_SUCCESS);
         } else {
-            overlay.show(Text.translatable("pathmind.settings.examplePresetsRestoreFailed").getString(), UITheme.STATE_ERROR);
+            overlay.show(Component.translatable("pathmind.settings.examplePresetsRestoreFailed").getString(), UITheme.STATE_ERROR);
         }
     }
 
@@ -845,7 +844,7 @@ final class PathmindSettingsPopupController {
         return new int[]{rowX, y, rowWidth, SETTINGS_NODE_TYPE_BUTTON_HEIGHT};
     }
 
-    void renderSettingsNodeTypeSelector(DrawContext context, int mouseX, int mouseY, int contentX, int bodyY, int contentWidth) {
+    void renderSettingsNodeTypeSelector(GuiGraphics context, int mouseX, int mouseY, int contentX, int bodyY, int contentWidth) {
         int[] selectorBounds = getSettingsNodeTypeSelectorBounds(contentX, bodyY, contentWidth);
         int[] searchBounds = getSettingsNodeTypeSearchFieldBounds(contentX, bodyY, contentWidth);
         boolean searchHovered = screen.isPointInRect(mouseX, mouseY, searchBounds[0], searchBounds[1], searchBounds[2], searchBounds[3]);
@@ -887,7 +886,7 @@ final class PathmindSettingsPopupController {
             int textFieldHeight = Math.max(10, SETTINGS_NODE_TYPE_SEARCH_HEIGHT - TEXT_FIELD_VERTICAL_PADDING * 2);
             screen.settingsNodeSearchField.setVisible(true);
             screen.settingsNodeSearchField.setEditable(true);
-            screen.settingsNodeSearchField.setSuggestion(!searchFocused && screen.settingsNodeSearchField.getText().isEmpty() ? PathmindVisualEditorScreen.tr("pathmind.search.nodeSettings") : null);
+            screen.settingsNodeSearchField.setSuggestion(!searchFocused && screen.settingsNodeSearchField.getValue().isEmpty() ? PathmindVisualEditorScreen.tr("pathmind.search.nodeSettings") : null);
             screen.settingsNodeSearchField.setPosition(searchBounds[0] + 8, searchBounds[1] + TEXT_FIELD_VERTICAL_PADDING);
             screen.settingsNodeSearchField.setWidth(Math.max(0, searchBounds[2] - 16));
             screen.settingsNodeSearchField.setHeight(textFieldHeight);
@@ -947,7 +946,7 @@ final class PathmindSettingsPopupController {
             );
         }
         if (filteredTypes.isEmpty()) {
-            context.drawTextWithShadow(screen.textRenderer(), Text.translatable("pathmind.settings.nodeSettings.noMatches"),
+            context.drawString(screen.textRenderer(), Component.translatable("pathmind.settings.nodeSettings.noMatches"),
                 contentX + 8, listTop + 8, screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.TEXT_TERTIARY));
         }
         context.disableScissor();
@@ -955,7 +954,7 @@ final class PathmindSettingsPopupController {
 
     List<NodeType> getFilteredSettingsNodeTypes() {
         List<NodeType> filteredTypes = new ArrayList<>();
-        String query = screen.settingsNodeSearchField != null ? screen.settingsNodeSearchField.getText() : "";
+        String query = screen.settingsNodeSearchField != null ? screen.settingsNodeSearchField.getValue() : "";
         String normalizedQuery = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
         for (NodeType type : SETTINGS_NODE_TYPES) {
             if (normalizedQuery.isEmpty()) {
@@ -976,10 +975,10 @@ final class PathmindSettingsPopupController {
             return "";
         }
         return switch (type) {
-            case GOTO -> Text.translatable("pathmind.settings.nodeSettings.description.goto").getString();
-            case SENSOR_KEY_PRESSED -> Text.translatable("pathmind.settings.nodeSettings.description.keyPressed").getString();
-            case CREATE_LIST -> Text.translatable("pathmind.settings.nodeSettings.description.createList").getString();
-            default -> Text.translatable("pathmind.settings.nodeSettings.description.default").getString();
+            case GOTO -> Component.translatable("pathmind.settings.nodeSettings.description.goto").getString();
+            case SENSOR_KEY_PRESSED -> Component.translatable("pathmind.settings.nodeSettings.description.keyPressed").getString();
+            case CREATE_LIST -> Component.translatable("pathmind.settings.nodeSettings.description.createList").getString();
+            default -> Component.translatable("pathmind.settings.nodeSettings.description.default").getString();
         };
     }
 
@@ -994,7 +993,7 @@ final class PathmindSettingsPopupController {
         return new int[]{listX, listY, listWidth, listHeight};
     }
 
-    void renderSettingsNodeList(DrawContext context, int mouseX, int mouseY, int popupX, int popupY, int scaledWidth, int scaledHeight, int contentX, int bodyY) {
+    void renderSettingsNodeList(GuiGraphics context, int mouseX, int mouseY, int popupX, int popupY, int scaledWidth, int scaledHeight, int contentX, int bodyY) {
         List<NodeType> settingsNodes = getSettingsNodeTypes();
         int[] listBounds = getSettingsNodeListBounds(popupX, popupY, scaledWidth, scaledHeight, contentX, bodyY);
         int listX = listBounds[0];
@@ -1002,14 +1001,14 @@ final class PathmindSettingsPopupController {
         int listWidth = listBounds[2];
         int listHeight = listBounds[3];
         if (settingsNodes.isEmpty()) {
-            screen.drawPopupTextWithEllipsis(context, Text.translatable("pathmind.settings.nodeSettings.none").getString(), contentX, bodyY, scaledWidth - 40,
+            screen.drawPopupTextWithEllipsis(context, Component.translatable("pathmind.settings.nodeSettings.none").getString(), contentX, bodyY, scaledWidth - 40,
                 screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.TEXT_TERTIARY));
             return;
         }
 
         int visibleRows = Math.max(1, listHeight / SETTINGS_NODE_LIST_ROW_HEIGHT);
         int maxScroll = Math.max(0, settingsNodes.size() - visibleRows);
-        screen.settingsNodeListScrollOffset = MathHelper.clamp(screen.settingsNodeListScrollOffset, 0, maxScroll);
+        screen.settingsNodeListScrollOffset = Mth.clamp(screen.settingsNodeListScrollOffset, 0, maxScroll);
 
         UIStyleHelper.drawBeveledPanel(
             context,
@@ -1030,7 +1029,7 @@ final class PathmindSettingsPopupController {
             int rowY = listY + (i - startIndex) * SETTINGS_NODE_LIST_ROW_HEIGHT;
             boolean hovered = screen.isPointInRect(mouseX, mouseY, listX, rowY, listWidth, SETTINGS_NODE_LIST_ROW_HEIGHT);
             boolean editing = getEffectiveSettingsTargetType() == type && !screen.settingsNodeListView;
-            String status = editing ? Text.translatable("pathmind.settings.nodeSettings.status.editing").getString() : hasEditedNodeSettings(type) ? Text.translatable("pathmind.settings.nodeSettings.status.edited").getString() : "";
+            String status = editing ? Component.translatable("pathmind.settings.nodeSettings.status.editing").getString() : hasEditedNodeSettings(type) ? Component.translatable("pathmind.settings.nodeSettings.status.edited").getString() : "";
             PathmindSettingsRowRenderer.renderStatusListRow(
                 context,
                 screen.textRenderer(),
@@ -1069,7 +1068,7 @@ final class PathmindSettingsPopupController {
         return Math.max(0, contentBottom - bodyBottom + 24);
     }
 
-    void renderSettingsPopupScrollbar(DrawContext context, int popupX, int popupY, int popupWidth, int popupHeight, int maxScroll) {
+    void renderSettingsPopupScrollbar(GuiGraphics context, int popupX, int popupY, int popupWidth, int popupHeight, int maxScroll) {
         if (maxScroll <= 0) {
             return;
         }

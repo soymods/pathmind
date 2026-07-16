@@ -3,18 +3,6 @@ package com.pathmind.util;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
 import it.unimi.dsi.fastutil.ints.IntLists;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.recipe.CraftingRecipe;
-import net.minecraft.recipe.Ingredient;
-import net.minecraft.registry.RegistryKeys;
-import net.minecraft.registry.RegistryKey;
-import net.minecraft.registry.RegistryWrapper;
-import net.minecraft.registry.entry.RegistryEntry;
-import net.minecraft.registry.entry.RegistryEntryList;
-import net.minecraft.registry.tag.TagKey;
-import net.minecraft.world.World;
-
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.Arrays;
@@ -22,6 +10,17 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import net.minecraft.core.Holder;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.core.HolderSet;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.tags.TagKey;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.crafting.CraftingRecipe;
+import net.minecraft.world.item.crafting.Ingredient;
+import net.minecraft.world.level.Level;
 
 /**
  * Bridges recipe APIs that differ between 1.21.x patch releases.
@@ -555,18 +554,18 @@ public final class RecipeCompatibilityBridge {
             return ingredientValue;
         }
         if (entry instanceof Item item) {
-            return Ingredient.ofItems(item);
+            return Ingredient.of(item);
         }
         if (entry instanceof ItemStack stack && !stack.isEmpty()) {
-            return Ingredient.ofItems(stack.getItem());
+            return Ingredient.of(stack.getItem());
         }
-        if (entry instanceof RegistryEntry<?> registryEntry) {
+        if (entry instanceof Holder<?> registryEntry) {
             Object value = registryEntry.value();
             if (value instanceof Ingredient registryIngredient) {
                 return registryIngredient;
             }
             if (value instanceof Item item) {
-                return Ingredient.ofItems(item);
+                return Ingredient.of(item);
             }
         }
         Ingredient candidate = tryCreateIngredientFromEntry(entry);
@@ -676,7 +675,7 @@ public final class RecipeCompatibilityBridge {
             Object arg = null;
             if (paramType.isInstance(registryManager)) {
                 arg = registryManager;
-            } else if (RegistryWrapper.WrapperLookup.class.isAssignableFrom(paramType)) {
+            } else if (HolderLookup.Provider.class.isAssignableFrom(paramType)) {
                 arg = resolveWrapperLookup(registryManager);
             }
             if (arg != null) {
@@ -689,15 +688,15 @@ public final class RecipeCompatibilityBridge {
         return null;
     }
 
-    private static RegistryWrapper.WrapperLookup resolveWrapperLookup(Object registryManager) {
+    private static HolderLookup.Provider resolveWrapperLookup(Object registryManager) {
         if (registryManager == null) {
             return null;
         }
-        if (registryManager instanceof World world) {
+        if (registryManager instanceof Level world) {
             try {
-                Object manager = world.getRegistryManager();
+                Object manager = world.registryAccess();
                 if (manager != registryManager) {
-                    RegistryWrapper.WrapperLookup lookup = resolveWrapperLookup(manager);
+                    HolderLookup.Provider lookup = resolveWrapperLookup(manager);
                     if (lookup != null) {
                         return lookup;
                     }
@@ -706,7 +705,7 @@ public final class RecipeCompatibilityBridge {
                 // Fall through to reflection-based lookup.
             }
         }
-        if (registryManager instanceof RegistryWrapper.WrapperLookup wrapper) {
+        if (registryManager instanceof HolderLookup.Provider wrapper) {
             return wrapper;
         }
         for (String methodName : new String[]{"getWrapperLookup", "getRegistryLookup", "getLookup"}) {
@@ -714,7 +713,7 @@ public final class RecipeCompatibilityBridge {
                 Method method = registryManager.getClass().getMethod(methodName);
                 method.setAccessible(true);
                 Object result = method.invoke(registryManager);
-                if (result instanceof RegistryWrapper.WrapperLookup wrapper) {
+                if (result instanceof HolderLookup.Provider wrapper) {
                     return wrapper;
                 }
             } catch (ReflectiveOperationException | LinkageError ignored) {
@@ -725,13 +724,13 @@ public final class RecipeCompatibilityBridge {
             if (method.getParameterCount() != 0) {
                 continue;
             }
-            if (!RegistryWrapper.WrapperLookup.class.isAssignableFrom(method.getReturnType())) {
+            if (!HolderLookup.Provider.class.isAssignableFrom(method.getReturnType())) {
                 continue;
             }
             try {
                 method.setAccessible(true);
                 Object result = method.invoke(registryManager);
-                if (result instanceof RegistryWrapper.WrapperLookup wrapper) {
+                if (result instanceof HolderLookup.Provider wrapper) {
                     return wrapper;
                 }
             } catch (ReflectiveOperationException | LinkageError ignored) {
@@ -755,7 +754,7 @@ public final class RecipeCompatibilityBridge {
             stacks.add(new ItemStack(item));
             return;
         }
-        if (entry instanceof RegistryEntry<?> registryEntry) {
+        if (entry instanceof Holder<?> registryEntry) {
             Object value = registryEntry.value();
             if (value instanceof Item item) {
                 stacks.add(new ItemStack(item));
@@ -829,12 +828,12 @@ public final class RecipeCompatibilityBridge {
         }
 
         Object itemEntry = accessValue(slotDisplay, "comp_3273", "item");
-        if (itemEntry instanceof RegistryEntry<?> registryEntry && registryEntry.value() instanceof Item item) {
-            return Ingredient.ofItems(item);
+        if (itemEntry instanceof Holder<?> registryEntry && registryEntry.value() instanceof Item item) {
+            return Ingredient.of(item);
         }
         Item holderItem = resolveItemFromHolder(itemEntry);
         if (holderItem != null) {
-            return Ingredient.ofItems(holderItem);
+            return Ingredient.of(holderItem);
         }
 
         Ingredient tagIngredient = ingredientFromTag(accessValue(slotDisplay, "comp_3275", "tag"), registryManager);
@@ -844,7 +843,7 @@ public final class RecipeCompatibilityBridge {
 
         Object stackValue = accessValue(slotDisplay, "comp_3274", "stack", "getStack", "getItemStack");
         if (stackValue instanceof ItemStack stack && !stack.isEmpty()) {
-            return Ingredient.ofItems(stack.getItem());
+            return Ingredient.of(stack.getItem());
         }
 
         Ingredient displayIngredient = ingredientFromSlotDisplayStacks(slotDisplay, registryManager);
@@ -918,7 +917,7 @@ public final class RecipeCompatibilityBridge {
         if (items == null || items.isEmpty()) {
             return null;
         }
-        return Ingredient.ofItems(items.stream().distinct().toArray(Item[]::new));
+        return Ingredient.of(items.stream().distinct().toArray(Item[]::new));
     }
 
     private static Ingredient ingredientFromSlotDisplayCandidates(Object slotDisplay, Object registryManager) {
@@ -938,14 +937,14 @@ public final class RecipeCompatibilityBridge {
                 }
                 continue;
             }
-            if (candidate instanceof RegistryEntryList<?> entryList) {
+            if (candidate instanceof HolderSet<?> entryList) {
                 Ingredient tagIngredient = createIngredientFromEntryList(entryList);
                 if (tagIngredient != null && !isIngredientEmpty(tagIngredient, registryManager)) {
                     return tagIngredient;
                 }
                 continue;
             }
-            if (candidate instanceof RegistryEntry<?> registryEntry && registryEntry.value() instanceof Item item) {
+            if (candidate instanceof Holder<?> registryEntry && registryEntry.value() instanceof Item item) {
                 items.add(item);
                 continue;
             }
@@ -976,12 +975,12 @@ public final class RecipeCompatibilityBridge {
         return createIngredientFromItems(items);
     }
 
-    private static Ingredient createIngredientFromEntryList(RegistryEntryList<?> entryList) {
+    private static Ingredient createIngredientFromEntryList(HolderSet<?> entryList) {
         if (entryList == null) {
             return null;
         }
         try {
-            Method method = Ingredient.class.getMethod("ofTag", RegistryEntryList.class);
+            Method method = Ingredient.class.getMethod("ofTag", HolderSet.class);
             method.setAccessible(true);
             Object result = method.invoke(null, entryList);
             return result instanceof Ingredient ingredient ? ingredient : null;
@@ -997,7 +996,7 @@ public final class RecipeCompatibilityBridge {
         if (holder instanceof Item item) {
             return item;
         }
-        if (holder instanceof RegistryEntry<?> registryEntry && registryEntry.value() instanceof Item entryItem) {
+        if (holder instanceof Holder<?> registryEntry && registryEntry.value() instanceof Item entryItem) {
             return entryItem;
         }
         Item item = invokeItemAccessor(holder, "comp_349");
@@ -1157,13 +1156,13 @@ public final class RecipeCompatibilityBridge {
     }
 
     private static Object createSlotDisplayContext(ClassLoader loader, Object registryManager) {
-        if (registryManager instanceof World world) {
+        if (registryManager instanceof Level world) {
             Object context = createWorldSlotDisplayContext(loader, world);
             if (context != null) {
                 return context;
             }
         }
-        RegistryWrapper.WrapperLookup lookup = resolveWrapperLookup(registryManager);
+        HolderLookup.Provider lookup = resolveWrapperLookup(registryManager);
         if (lookup == null) {
             return null;
         }
@@ -1184,7 +1183,7 @@ public final class RecipeCompatibilityBridge {
         }
     }
 
-    private static Object createWorldSlotDisplayContext(ClassLoader loader, World world) {
+    private static Object createWorldSlotDisplayContext(ClassLoader loader, Level world) {
         Class<?> contextsClass = loadSlotDisplayContextsClass(loader);
         if (contextsClass == null) {
             return null;
@@ -1231,19 +1230,19 @@ public final class RecipeCompatibilityBridge {
         if (!(tagCandidate instanceof TagKey<?> tagKey)) {
             return null;
         }
-        if (!tagKey.isOf(RegistryKeys.ITEM)) {
+        if (!tagKey.isFor(Registries.ITEM)) {
             return null;
         }
 
         @SuppressWarnings("unchecked")
         TagKey<Item> itemTag = (TagKey<Item>) tagKey;
 
-        RegistryWrapper.WrapperLookup lookup = resolveWrapperLookup(registryManager);
+        HolderLookup.Provider lookup = resolveWrapperLookup(registryManager);
         if (lookup != null) {
             try {
-                RegistryWrapper.Impl<Item> itemWrapper = resolveItemWrapper(lookup);
+                HolderLookup.RegistryLookup<Item> itemWrapper = resolveItemWrapper(lookup);
                 if (itemWrapper != null) {
-                    Optional<? extends RegistryEntryList<Item>> optional = itemWrapper.getOptional(itemTag);
+                    Optional<? extends HolderSet<Item>> optional = itemWrapper.get(itemTag);
                     if (optional.isPresent()) {
                         Ingredient ingredient = createIngredientFromTag(itemTag, optional.get());
                         if (ingredient != null && !isIngredientEmpty(ingredient, registryManager)) {
@@ -1325,11 +1324,11 @@ public final class RecipeCompatibilityBridge {
         return null;
     }
 
-    private static RegistryWrapper.Impl<Item> resolveItemWrapper(RegistryWrapper.WrapperLookup lookup) {
+    private static HolderLookup.RegistryLookup<Item> resolveItemWrapper(HolderLookup.Provider lookup) {
         if (lookup == null) {
             return null;
         }
-        RegistryWrapper.Impl<Item> wrapper = invokeLookupWrapper(lookup, "getOrThrow");
+        HolderLookup.RegistryLookup<Item> wrapper = invokeLookupWrapper(lookup, "getOrThrow");
         if (wrapper != null) {
             return wrapper;
         }
@@ -1344,14 +1343,14 @@ public final class RecipeCompatibilityBridge {
         return unwrapOptionalWrapper(invokeLookupOptional(lookup, "getOptionalWrapper"));
     }
 
-    private static RegistryWrapper.Impl<Item> invokeLookupWrapper(RegistryWrapper.WrapperLookup lookup, String methodName) {
+    private static HolderLookup.RegistryLookup<Item> invokeLookupWrapper(HolderLookup.Provider lookup, String methodName) {
         try {
-            Method method = lookup.getClass().getMethod(methodName, RegistryKey.class);
+            Method method = lookup.getClass().getMethod(methodName, ResourceKey.class);
             method.setAccessible(true);
-            Object result = method.invoke(lookup, RegistryKeys.ITEM);
-            if (result instanceof RegistryWrapper.Impl<?> impl) {
+            Object result = method.invoke(lookup, Registries.ITEM);
+            if (result instanceof HolderLookup.RegistryLookup<?> impl) {
                 @SuppressWarnings("unchecked")
-                RegistryWrapper.Impl<Item> cast = (RegistryWrapper.Impl<Item>) impl;
+                HolderLookup.RegistryLookup<Item> cast = (HolderLookup.RegistryLookup<Item>) impl;
                 return cast;
             }
         } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
@@ -1360,11 +1359,11 @@ public final class RecipeCompatibilityBridge {
         return null;
     }
 
-    private static Optional<?> invokeLookupOptional(RegistryWrapper.WrapperLookup lookup, String methodName) {
+    private static Optional<?> invokeLookupOptional(HolderLookup.Provider lookup, String methodName) {
         try {
-            Method method = lookup.getClass().getMethod(methodName, RegistryKey.class);
+            Method method = lookup.getClass().getMethod(methodName, ResourceKey.class);
             method.setAccessible(true);
-            Object result = method.invoke(lookup, RegistryKeys.ITEM);
+            Object result = method.invoke(lookup, Registries.ITEM);
             if (result instanceof Optional<?> optional) {
                 return optional;
             }
@@ -1374,21 +1373,21 @@ public final class RecipeCompatibilityBridge {
         return Optional.empty();
     }
 
-    private static RegistryWrapper.Impl<Item> unwrapOptionalWrapper(Optional<?> optional) {
+    private static HolderLookup.RegistryLookup<Item> unwrapOptionalWrapper(Optional<?> optional) {
         if (optional == null || optional.isEmpty()) {
             return null;
         }
         Object value = optional.get();
-        if (value instanceof RegistryWrapper.Impl<?> impl) {
+        if (value instanceof HolderLookup.RegistryLookup<?> impl) {
             @SuppressWarnings("unchecked")
-            RegistryWrapper.Impl<Item> cast = (RegistryWrapper.Impl<Item>) impl;
+            HolderLookup.RegistryLookup<Item> cast = (HolderLookup.RegistryLookup<Item>) impl;
             return cast;
         }
         return null;
     }
 
-    private static Ingredient createIngredientFromTag(TagKey<Item> itemTag, RegistryEntryList<Item> entries) {
-        Ingredient ingredient = invokeIngredientFactory("ofTag", RegistryEntryList.class, entries);
+    private static Ingredient createIngredientFromTag(TagKey<Item> itemTag, HolderSet<Item> entries) {
+        Ingredient ingredient = invokeIngredientFactory("ofTag", HolderSet.class, entries);
         if (ingredient != null) {
             return ingredient;
         }

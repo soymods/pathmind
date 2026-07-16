@@ -2,36 +2,9 @@ package com.pathmind.nodes;
 
 import static com.pathmind.util.PathmindI18n.tr;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import com.pathmind.util.BlockSelection;
 import com.pathmind.util.HotbarSlotSynchronizer;
-import net.minecraft.block.Block;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.ShapeContext;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.option.KeyBinding;
-import net.minecraft.client.util.InputUtil;
-import net.minecraft.client.world.ClientWorld;
-import net.minecraft.entity.EquipmentSlot;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.player.PlayerInventory;
-import net.minecraft.item.ItemStack;
-import net.minecraft.network.packet.c2s.play.PlayerActionC2SPacket;
-import net.minecraft.registry.Registries;
-import net.minecraft.util.ActionResult;
-import net.minecraft.util.Hand;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.hit.EntityHitResult;
-import net.minecraft.util.hit.HitResult;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.util.shape.VoxelShape;
-import net.minecraft.world.RaycastContext;
-
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Collections;
@@ -39,6 +12,29 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import net.minecraft.client.KeyMapping;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
+import net.minecraft.util.Mth;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.EntityHitResult;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.CollisionContext;
+import net.minecraft.world.phys.shapes.VoxelShape;
 import java.lang.reflect.Method;
 
 import org.lwjgl.glfw.GLFW;
@@ -69,37 +65,37 @@ final class NodeEntityActionCommandExecutor {
             && owner.preprocessAttachedParameter(EnumSet.of(Node.ParameterUsage.POSITION), future) == Node.ParameterHandlingResult.COMPLETE) {
             return;
         }
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
-        if (client == null || client.player == null || client.interactionManager == null || client.world == null) {
+        net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
+        if (client == null || client.player == null || client.gameMode == null || client.level == null) {
             future.completeExceptionally(new RuntimeException("Minecraft client not available"));
             return;
         }
 
-        Hand hand = owner.resolveHand(owner.getParameter("Hand"), Hand.MAIN_HAND);
+        InteractionHand hand = owner.resolveHand(owner.getParameter("Hand"), InteractionHand.MAIN_HAND);
         boolean swingOnSuccess = owner.getBooleanParameter("SwingOnSuccess", true);
         boolean sneakWhileInteracting = owner.getBooleanParameter("SneakWhileInteracting", false);
         boolean restoreSneak = owner.getBooleanParameter("RestoreSneakState", true);
 
-        boolean previousSneak = client.player.isSneaking();
+        boolean previousSneak = client.player.isShiftKeyDown();
         if (sneakWhileInteracting) {
-            client.player.setSneaking(true);
-            if (client.options != null && client.options.sneakKey != null) {
-                client.options.sneakKey.setPressed(true);
+            client.player.setShiftKeyDown(true);
+            if (client.options != null && client.options.keyShift != null) {
+                client.options.keyShift.setDown(true);
             }
         }
 
         Runnable restoreSneakState = () -> {
             if (sneakWhileInteracting && restoreSneak) {
-                client.player.setSneaking(previousSneak);
-                if (client.options != null && client.options.sneakKey != null) {
-                    client.options.sneakKey.setPressed(previousSneak);
+                client.player.setShiftKeyDown(previousSneak);
+                if (client.options != null && client.options.keyShift != null) {
+                    client.options.keyShift.setDown(previousSneak);
                 }
             }
         };
 
         RuntimeParameterData parameterData = owner.runtimeState().runtimeParameterData;
         Node attachedParameter = preprocessParameter != null ? preprocessParameter : owner.getAttachedParameter(0);
-        ActionResult result;
+        InteractionResult result;
 
         if (attachedParameter != null && attachedParameter.getType() == NodeType.PARAM_BLOCK) {
             String blockSelectionRaw = owner.getBlockParameterValue(attachedParameter);
@@ -134,14 +130,14 @@ final class NodeEntityActionCommandExecutor {
             }
 
             BlockHitResult hit = hitCandidates.getFirst();
-            orientPlayerTowards(client, hit.getPos());
-            result = client.interactionManager.interactBlock(client.player, hand, hit);
+            orientPlayerTowards(client, hit.getLocation());
+            result = client.gameMode.useItemOn(client.player, hand, hit);
         } else {
             Entity targetEntity = parameterData != null ? parameterData.targetEntity : null;
             if (targetEntity != null) {
-                if (targetEntity.isRemoved() || targetEntity.squaredDistanceTo(client.player.getEyePos()) > Node.getEntityInteractionReachSquared(client)) {
+                if (targetEntity.isRemoved() || targetEntity.distanceToSqr(client.player.getEyePosition()) > Node.getEntityInteractionReachSquared(client)) {
                     restoreSneakState.run();
-                    String entityName = String.valueOf(Registries.ENTITY_TYPE.getId(targetEntity.getType()))
+                    String entityName = String.valueOf(BuiltInRegistries.ENTITY_TYPE.getKey(targetEntity.getType()))
                         .replace("minecraft:", "")
                         .replace("_", " ");
                     owner.sendNodeErrorMessage(client, tr("pathmind.error.entityTooFarToInteract", entityName));
@@ -149,26 +145,26 @@ final class NodeEntityActionCommandExecutor {
                     return;
                 }
                 orientPlayerTowards(client, targetEntity.getBoundingBox().getCenter());
-                result = client.interactionManager.interactEntity(client.player, targetEntity, hand);
-            } else if (client.crosshairTarget instanceof EntityHitResult entityHit) {
+                result = client.gameMode.interact(client.player, targetEntity, hand);
+            } else if (client.hitResult instanceof EntityHitResult entityHit) {
                 Entity entity = entityHit.getEntity();
-                if (entity == null || entity.squaredDistanceTo(client.player.getEyePos()) > Node.getEntityInteractionReachSquared(client)) {
+                if (entity == null || entity.distanceToSqr(client.player.getEyePosition()) > Node.getEntityInteractionReachSquared(client)) {
                     restoreSneakState.run();
                     owner.sendNodeErrorMessage(client, tr("pathmind.error.targetTooFarToInteract"));
                     future.complete(null);
                     return;
                 }
                 orientPlayerTowards(client, entity.getBoundingBox().getCenter());
-                result = client.interactionManager.interactEntity(client.player, entity, hand);
-            } else if (client.crosshairTarget instanceof BlockHitResult blockHit) {
-                if (!isHitWithinReach(client, blockHit.getPos())) {
+                result = client.gameMode.interact(client.player, entity, hand);
+            } else if (client.hitResult instanceof BlockHitResult blockHit) {
+                if (!isHitWithinReach(client, blockHit.getLocation())) {
                     restoreSneakState.run();
                     owner.sendNodeErrorMessage(client, tr("pathmind.error.targetTooFarToInteract"));
                     future.complete(null);
                     return;
                 }
-                orientPlayerTowards(client, blockHit.getPos());
-                result = client.interactionManager.interactBlock(client.player, hand, blockHit);
+                orientPlayerTowards(client, blockHit.getLocation());
+                result = client.gameMode.useItemOn(client.player, hand, blockHit);
             } else {
                 restoreSneakState.run();
                 owner.sendNodeErrorMessage(client, tr("pathmind.error.noTargetInRangeForNode", owner.getType().getDisplayName()));
@@ -177,15 +173,15 @@ final class NodeEntityActionCommandExecutor {
             }
         }
 
-        if (swingOnSuccess && result != null && (result.isAccepted() || result == ActionResult.PASS)) {
-            client.player.swingHand(hand);
+        if (swingOnSuccess && result != null && (result.consumesAction() || result == InteractionResult.PASS)) {
+            client.player.swing(hand);
         }
 
         restoreSneakState.run();
         future.complete(null);
     }
 
-    private Optional<BlockPos> findNearestReachableBlock(MinecraftClient client, List<BlockSelection> selections) {
+    private Optional<BlockPos> findNearestReachableBlock(Minecraft client, List<BlockSelection> selections) {
         if (client == null || client.player == null || selections == null || selections.isEmpty()) {
             return Optional.empty();
         }
@@ -197,7 +193,7 @@ final class NodeEntityActionCommandExecutor {
         if (candidates == null || candidates.isEmpty()) {
             return Optional.empty();
         }
-        Vec3d eyePos = client.player.getEyePos();
+        Vec3 eyePos = client.player.getEyePosition();
         BlockPos best = null;
         double bestDistance = Double.MAX_VALUE;
         for (BlockPos candidate : candidates) {
@@ -209,7 +205,7 @@ final class NodeEntityActionCommandExecutor {
                 continue;
             }
             double distance = hits.stream()
-                .mapToDouble(hit -> eyePos.squaredDistanceTo(hit.getPos()))
+                .mapToDouble(hit -> eyePos.distanceToSqr(hit.getLocation()))
                 .min()
                 .orElse(Double.MAX_VALUE);
             if (distance < bestDistance) {
@@ -220,14 +216,14 @@ final class NodeEntityActionCommandExecutor {
         return Optional.ofNullable(best);
     }
 
-    private Optional<BlockPos> findNearestReachableBlockInInteractRange(MinecraftClient client, List<BlockSelection> selections) {
-        if (client == null || client.player == null || client.world == null || selections == null || selections.isEmpty()) {
+    private Optional<BlockPos> findNearestReachableBlockInInteractRange(Minecraft client, List<BlockSelection> selections) {
+        if (client == null || client.player == null || client.level == null || selections == null || selections.isEmpty()) {
             return Optional.empty();
         }
         double reachSquared = Node.getBlockInteractionReachSquared(client);
         int radius = (int) Math.ceil(Math.sqrt(reachSquared));
-        BlockPos playerPos = client.player.getBlockPos();
-        BlockPos.Mutable mutable = new BlockPos.Mutable();
+        BlockPos playerPos = client.player.blockPosition();
+        BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
         BlockPos best = null;
         double bestDistance = Double.MAX_VALUE;
 
@@ -235,7 +231,7 @@ final class NodeEntityActionCommandExecutor {
             for (int dy = -radius; dy <= radius; dy++) {
                 for (int dz = -radius; dz <= radius; dz++) {
                     mutable.set(playerPos.getX() + dx, playerPos.getY() + dy, playerPos.getZ() + dz);
-                    BlockState state = client.world.getBlockState(mutable);
+                    BlockState state = client.level.getBlockState(mutable);
                     if (state.isAir()) {
                         continue;
                     }
@@ -249,13 +245,13 @@ final class NodeEntityActionCommandExecutor {
                     if (!matches) {
                         continue;
                     }
-                    BlockPos candidate = mutable.toImmutable();
+                    BlockPos candidate = mutable.immutable();
                     List<BlockHitResult> hits = buildInteractionHitCandidates(client, candidate);
                     if (hits.isEmpty()) {
                         continue;
                     }
                     double distance = hits.stream()
-                        .mapToDouble(hit -> client.player.getEyePos().squaredDistanceTo(hit.getPos()))
+                        .mapToDouble(hit -> client.player.getEyePosition().distanceToSqr(hit.getLocation()))
                         .min()
                         .orElse(Double.MAX_VALUE);
                     if (distance < bestDistance) {
@@ -269,34 +265,34 @@ final class NodeEntityActionCommandExecutor {
         return Optional.ofNullable(best);
     }
 
-    private boolean hasReachableInteractionCandidate(MinecraftClient client, BlockPos targetPos) {
+    private boolean hasReachableInteractionCandidate(Minecraft client, BlockPos targetPos) {
         if (client == null || targetPos == null) {
             return false;
         }
         return !buildInteractionHitCandidates(client, targetPos).isEmpty();
     }
 
-    private void orientPlayerTowards(MinecraftClient client, Vec3d target) {
+    private void orientPlayerTowards(Minecraft client, Vec3 target) {
         if (client == null || client.player == null || target == null) {
             return;
         }
-        Vec3d eyes = client.player.getEyePos();
-        Vec3d delta = target.subtract(eyes);
-        if (delta.lengthSquared() <= 1.0E-6D) {
+        Vec3 eyes = client.player.getEyePosition();
+        Vec3 delta = target.subtract(eyes);
+        if (delta.lengthSqr() <= 1.0E-6D) {
             return;
         }
 
-        float yaw = (float) (MathHelper.wrapDegrees(Math.toDegrees(Math.atan2(delta.z, delta.x)) - 90.0D));
+        float yaw = (float) (Mth.wrapDegrees(Math.toDegrees(Math.atan2(delta.z, delta.x)) - 90.0D));
         float pitch = (float) (-Math.toDegrees(Math.atan2(delta.y, Math.sqrt(delta.x * delta.x + delta.z * delta.z))));
-        float clampedPitch = MathHelper.clamp(pitch, -90.0F, 90.0F);
-        client.player.setYaw(yaw);
-        client.player.setPitch(clampedPitch);
-        client.player.setHeadYaw(yaw);
-        client.player.setBodyYaw(yaw);
+        float clampedPitch = Mth.clamp(pitch, -90.0F, 90.0F);
+        client.player.setYRot(yaw);
+        client.player.setXRot(clampedPitch);
+        client.player.setYHeadRot(yaw);
+        client.player.setYBodyRot(yaw);
     }
 
-    private List<BlockHitResult> buildInteractionHitCandidates(MinecraftClient client, BlockPos targetPos) {
-        if (client == null || client.player == null || client.world == null || targetPos == null) {
+    private List<BlockHitResult> buildInteractionHitCandidates(Minecraft client, BlockPos targetPos) {
+        if (client == null || client.player == null || client.level == null || targetPos == null) {
             return Collections.emptyList();
         }
 
@@ -304,11 +300,11 @@ final class NodeEntityActionCommandExecutor {
         Optional<BlockHitResult> currentHit = owner.getCurrentBlockHitResult();
         currentHit
             .filter(hit -> targetPos.equals(hit.getBlockPos()))
-            .filter(hit -> isHitWithinReach(client, hit.getPos()))
+            .filter(hit -> isHitWithinReach(client, hit.getLocation()))
             .ifPresent(results::add);
 
-        BlockState state = client.world.getBlockState(targetPos);
-        VoxelShape shape = state.getOutlineShape(client.world, targetPos, ShapeContext.of(client.player));
+        BlockState state = client.level.getBlockState(targetPos);
+        VoxelShape shape = state.getShape(client.level, targetPos, CollisionContext.of(client.player));
         double minX = 0.0D;
         double minY = 0.0D;
         double minZ = 0.0D;
@@ -316,7 +312,7 @@ final class NodeEntityActionCommandExecutor {
         double maxY = 1.0D;
         double maxZ = 1.0D;
         if (!shape.isEmpty()) {
-            net.minecraft.util.math.Box box = shape.getBoundingBox();
+            net.minecraft.world.phys.AABB box = shape.bounds();
             minX = box.minX;
             minY = box.minY;
             minZ = box.minZ;
@@ -331,17 +327,17 @@ final class NodeEntityActionCommandExecutor {
         final double shapeMaxY = maxY;
         final double shapeMaxZ = maxZ;
 
-        Vec3d eyePos = client.player.getEyePos();
+        Vec3 eyePos = client.player.getEyePosition();
         double reachSquared = Node.getBlockInteractionReachSquared(client);
         List<Direction> orderedFaces = new ArrayList<>(List.of(Direction.values()));
         orderedFaces.sort(Comparator.comparingDouble(face -> {
-            Vec3d center = faceCenter(targetPos, shapeMinX, shapeMinY, shapeMinZ, shapeMaxX, shapeMaxY, shapeMaxZ, face);
-            return eyePos.squaredDistanceTo(center);
+            Vec3 center = faceCenter(targetPos, shapeMinX, shapeMinY, shapeMinZ, shapeMaxX, shapeMaxY, shapeMaxZ, face);
+            return eyePos.distanceToSqr(center);
         }));
 
         for (Direction face : orderedFaces) {
-            for (Vec3d hitPos : faceSamplePoints(targetPos, shapeMinX, shapeMinY, shapeMinZ, shapeMaxX, shapeMaxY, shapeMaxZ, face)) {
-                if (eyePos.squaredDistanceTo(hitPos) > reachSquared) {
+            for (Vec3 hitPos : faceSamplePoints(targetPos, shapeMinX, shapeMinY, shapeMinZ, shapeMaxX, shapeMaxY, shapeMaxZ, face)) {
+                if (eyePos.distanceToSqr(hitPos) > reachSquared) {
                     continue;
                 }
                 addUniqueHitResult(results, new BlockHitResult(hitPos, face, targetPos, false));
@@ -351,11 +347,11 @@ final class NodeEntityActionCommandExecutor {
         return results;
     }
 
-    private boolean isHitWithinReach(MinecraftClient client, Vec3d hitPos) {
+    private boolean isHitWithinReach(Minecraft client, Vec3 hitPos) {
         if (client == null || client.player == null || hitPos == null) {
             return false;
         }
-        return client.player.getEyePos().squaredDistanceTo(hitPos) <= Node.getBlockInteractionReachSquared(client);
+        return client.player.getEyePosition().distanceToSqr(hitPos) <= Node.getBlockInteractionReachSquared(client);
     }
 
     private void addUniqueHitResult(List<BlockHitResult> results, BlockHitResult candidate) {
@@ -367,26 +363,26 @@ final class NodeEntityActionCommandExecutor {
                 continue;
             }
             if (existing.getBlockPos().equals(candidate.getBlockPos())
-                && existing.getSide() == candidate.getSide()
-                && existing.getPos().squaredDistanceTo(candidate.getPos()) < 1.0E-6D) {
+                && existing.getDirection() == candidate.getDirection()
+                && existing.getLocation().distanceToSqr(candidate.getLocation()) < 1.0E-6D) {
                 return;
             }
         }
         results.add(candidate);
     }
 
-    private Vec3d faceCenter(BlockPos pos, double minX, double minY, double minZ, double maxX, double maxY, double maxZ, Direction face) {
+    private Vec3 faceCenter(BlockPos pos, double minX, double minY, double minZ, double maxX, double maxY, double maxZ, Direction face) {
         return switch (face) {
-            case DOWN -> new Vec3d(pos.getX() + 0.5D * (minX + maxX), pos.getY() + minY, pos.getZ() + 0.5D * (minZ + maxZ));
-            case UP -> new Vec3d(pos.getX() + 0.5D * (minX + maxX), pos.getY() + maxY, pos.getZ() + 0.5D * (minZ + maxZ));
-            case NORTH -> new Vec3d(pos.getX() + 0.5D * (minX + maxX), pos.getY() + 0.5D * (minY + maxY), pos.getZ() + minZ);
-            case SOUTH -> new Vec3d(pos.getX() + 0.5D * (minX + maxX), pos.getY() + 0.5D * (minY + maxY), pos.getZ() + maxZ);
-            case WEST -> new Vec3d(pos.getX() + minX, pos.getY() + 0.5D * (minY + maxY), pos.getZ() + 0.5D * (minZ + maxZ));
-            case EAST -> new Vec3d(pos.getX() + maxX, pos.getY() + 0.5D * (minY + maxY), pos.getZ() + 0.5D * (minZ + maxZ));
+            case DOWN -> new Vec3(pos.getX() + 0.5D * (minX + maxX), pos.getY() + minY, pos.getZ() + 0.5D * (minZ + maxZ));
+            case UP -> new Vec3(pos.getX() + 0.5D * (minX + maxX), pos.getY() + maxY, pos.getZ() + 0.5D * (minZ + maxZ));
+            case NORTH -> new Vec3(pos.getX() + 0.5D * (minX + maxX), pos.getY() + 0.5D * (minY + maxY), pos.getZ() + minZ);
+            case SOUTH -> new Vec3(pos.getX() + 0.5D * (minX + maxX), pos.getY() + 0.5D * (minY + maxY), pos.getZ() + maxZ);
+            case WEST -> new Vec3(pos.getX() + minX, pos.getY() + 0.5D * (minY + maxY), pos.getZ() + 0.5D * (minZ + maxZ));
+            case EAST -> new Vec3(pos.getX() + maxX, pos.getY() + 0.5D * (minY + maxY), pos.getZ() + 0.5D * (minZ + maxZ));
         };
     }
 
-    private List<Vec3d> faceSamplePoints(BlockPos pos, double minX, double minY, double minZ, double maxX, double maxY, double maxZ, Direction face) {
+    private List<Vec3> faceSamplePoints(BlockPos pos, double minX, double minY, double minZ, double maxX, double maxY, double maxZ, Direction face) {
         double inset = 0.001D;
         double centerX = 0.5D * (minX + maxX);
         double centerY = 0.5D * (minY + maxY);
@@ -398,35 +394,35 @@ final class NodeEntityActionCommandExecutor {
         double threeQuarterY = minY + (maxY - minY) * 0.75D;
         double threeQuarterZ = minZ + (maxZ - minZ) * 0.75D;
 
-        List<Vec3d> points = new ArrayList<>();
+        List<Vec3> points = new ArrayList<>();
         switch (face) {
             case UP -> {
-                points.add(new Vec3d(pos.getX() + centerX, pos.getY() + maxY - inset, pos.getZ() + centerZ));
-                points.add(new Vec3d(pos.getX() + quarterX, pos.getY() + maxY - inset, pos.getZ() + quarterZ));
-                points.add(new Vec3d(pos.getX() + threeQuarterX, pos.getY() + maxY - inset, pos.getZ() + threeQuarterZ));
-                points.add(new Vec3d(pos.getX() + quarterX, pos.getY() + maxY - inset, pos.getZ() + threeQuarterZ));
-                points.add(new Vec3d(pos.getX() + threeQuarterX, pos.getY() + maxY - inset, pos.getZ() + quarterZ));
+                points.add(new Vec3(pos.getX() + centerX, pos.getY() + maxY - inset, pos.getZ() + centerZ));
+                points.add(new Vec3(pos.getX() + quarterX, pos.getY() + maxY - inset, pos.getZ() + quarterZ));
+                points.add(new Vec3(pos.getX() + threeQuarterX, pos.getY() + maxY - inset, pos.getZ() + threeQuarterZ));
+                points.add(new Vec3(pos.getX() + quarterX, pos.getY() + maxY - inset, pos.getZ() + threeQuarterZ));
+                points.add(new Vec3(pos.getX() + threeQuarterX, pos.getY() + maxY - inset, pos.getZ() + quarterZ));
             }
-            case DOWN -> points.add(new Vec3d(pos.getX() + centerX, pos.getY() + minY + inset, pos.getZ() + centerZ));
+            case DOWN -> points.add(new Vec3(pos.getX() + centerX, pos.getY() + minY + inset, pos.getZ() + centerZ));
             case NORTH -> {
-                points.add(new Vec3d(pos.getX() + centerX, pos.getY() + centerY, pos.getZ() + minZ + inset));
-                points.add(new Vec3d(pos.getX() + quarterX, pos.getY() + quarterY, pos.getZ() + minZ + inset));
-                points.add(new Vec3d(pos.getX() + threeQuarterX, pos.getY() + threeQuarterY, pos.getZ() + minZ + inset));
+                points.add(new Vec3(pos.getX() + centerX, pos.getY() + centerY, pos.getZ() + minZ + inset));
+                points.add(new Vec3(pos.getX() + quarterX, pos.getY() + quarterY, pos.getZ() + minZ + inset));
+                points.add(new Vec3(pos.getX() + threeQuarterX, pos.getY() + threeQuarterY, pos.getZ() + minZ + inset));
             }
             case SOUTH -> {
-                points.add(new Vec3d(pos.getX() + centerX, pos.getY() + centerY, pos.getZ() + maxZ - inset));
-                points.add(new Vec3d(pos.getX() + quarterX, pos.getY() + quarterY, pos.getZ() + maxZ - inset));
-                points.add(new Vec3d(pos.getX() + threeQuarterX, pos.getY() + threeQuarterY, pos.getZ() + maxZ - inset));
+                points.add(new Vec3(pos.getX() + centerX, pos.getY() + centerY, pos.getZ() + maxZ - inset));
+                points.add(new Vec3(pos.getX() + quarterX, pos.getY() + quarterY, pos.getZ() + maxZ - inset));
+                points.add(new Vec3(pos.getX() + threeQuarterX, pos.getY() + threeQuarterY, pos.getZ() + maxZ - inset));
             }
             case WEST -> {
-                points.add(new Vec3d(pos.getX() + minX + inset, pos.getY() + centerY, pos.getZ() + centerZ));
-                points.add(new Vec3d(pos.getX() + minX + inset, pos.getY() + quarterY, pos.getZ() + quarterZ));
-                points.add(new Vec3d(pos.getX() + minX + inset, pos.getY() + threeQuarterY, pos.getZ() + threeQuarterZ));
+                points.add(new Vec3(pos.getX() + minX + inset, pos.getY() + centerY, pos.getZ() + centerZ));
+                points.add(new Vec3(pos.getX() + minX + inset, pos.getY() + quarterY, pos.getZ() + quarterZ));
+                points.add(new Vec3(pos.getX() + minX + inset, pos.getY() + threeQuarterY, pos.getZ() + threeQuarterZ));
             }
             case EAST -> {
-                points.add(new Vec3d(pos.getX() + maxX - inset, pos.getY() + centerY, pos.getZ() + centerZ));
-                points.add(new Vec3d(pos.getX() + maxX - inset, pos.getY() + quarterY, pos.getZ() + quarterZ));
-                points.add(new Vec3d(pos.getX() + maxX - inset, pos.getY() + threeQuarterY, pos.getZ() + threeQuarterZ));
+                points.add(new Vec3(pos.getX() + maxX - inset, pos.getY() + centerY, pos.getZ() + centerZ));
+                points.add(new Vec3(pos.getX() + maxX - inset, pos.getY() + quarterY, pos.getZ() + quarterZ));
+                points.add(new Vec3(pos.getX() + maxX - inset, pos.getY() + threeQuarterY, pos.getZ() + threeQuarterZ));
             }
         }
         return points;
@@ -435,8 +431,8 @@ final class NodeEntityActionCommandExecutor {
         if (owner.preprocessAttachedParameter(EnumSet.of(Node.ParameterUsage.POSITION), future) == Node.ParameterHandlingResult.COMPLETE) {
             return;
         }
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
-        if (client == null || client.player == null || client.world == null) {
+        net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
+        if (client == null || client.player == null || client.level == null) {
             NodeExecutionCompletion.completeExceptionally(future, new RuntimeException("Minecraft client not available"));
             return;
         }
@@ -453,8 +449,8 @@ final class NodeEntityActionCommandExecutor {
             if (owner.runtimeState().runtimeParameterData.targetBlockPos != null) {
                 targetPos = owner.runtimeState().runtimeParameterData.targetBlockPos;
             } else if (owner.runtimeState().runtimeParameterData.targetVector != null) {
-                Vec3d vec = owner.runtimeState().runtimeParameterData.targetVector;
-                targetPos = new BlockPos(MathHelper.floor(vec.x), MathHelper.floor(vec.y), MathHelper.floor(vec.z));
+                Vec3 vec = owner.runtimeState().runtimeParameterData.targetVector;
+                targetPos = new BlockPos(Mth.floor(vec.x), Mth.floor(vec.y), Mth.floor(vec.z));
             }
         }
 
@@ -469,7 +465,7 @@ final class NodeEntityActionCommandExecutor {
                 BlockHitResult blockHit = currentHit.get();
                 BlockPos hitPos = blockHit.getBlockPos();
                 if (hitPos != null) {
-                    BlockState hitState = client.world.getBlockState(hitPos);
+                    BlockState hitState = client.level.getBlockState(hitPos);
                     boolean matches = false;
                     for (BlockSelection selection : selections) {
                         if (selection.matches(hitState)) {
@@ -479,7 +475,7 @@ final class NodeEntityActionCommandExecutor {
                     }
                     if (matches) {
                         targetPos = hitPos;
-                        breakFace = blockHit.getSide();
+                        breakFace = blockHit.getDirection();
                     }
                 }
             }
@@ -501,7 +497,7 @@ final class NodeEntityActionCommandExecutor {
         }
         owner.runtimeState().runtimeParameterData.targetBlockPos = targetPos;
 
-        BlockState state = client.world.getBlockState(targetPos);
+        BlockState state = client.level.getBlockState(targetPos);
         if (state.isAir()) {
             NodeExecutionCompletion.complete(future);
             return;
@@ -514,7 +510,7 @@ final class NodeEntityActionCommandExecutor {
         breakFace = targeting.face();
         owner.runtimeState().runtimeParameterData.targetVector = targeting.hitPos();
 
-        float delta = state.calcBlockBreakingDelta(client.player, client.world, targetPos);
+        float delta = state.getDestroyProgress(client.player, client.level, targetPos);
         if (delta <= 0.0F) {
             NodeExecutionCompletion.fail(owner, client, future, tr("pathmind.error.blockCannotBeBroken"));
             return;
@@ -527,30 +523,30 @@ final class NodeEntityActionCommandExecutor {
             try {
                 owner.runOnClientThread(client, () -> {
                     owner.orientPlayerTowardsRuntimeTarget(client, owner.runtimeState().runtimeParameterData);
-                    if (client.interactionManager != null) {
-                        client.interactionManager.attackBlock(finalTargetPos, finalBreakFace);
+                    if (client.gameMode != null) {
+                        client.gameMode.startDestroyBlock(finalTargetPos, finalBreakFace);
                     }
-                    client.player.swingHand(Hand.MAIN_HAND);
+                    client.player.swing(InteractionHand.MAIN_HAND);
                 });
 
                 for (int i = 0; i < ticksToBreak; i++) {
                     Thread.sleep(50L);
                     Boolean isAir = owner.supplyFromClient(client,
-                        () -> client.world == null || client.world.getBlockState(finalTargetPos).isAir());
+                        () -> client.level == null || client.level.getBlockState(finalTargetPos).isAir());
                     if (Boolean.TRUE.equals(isAir)) {
                         break;
                     }
                     owner.runOnClientThread(client, () -> {
-                        if (client.interactionManager != null) {
-                            client.interactionManager.updateBlockBreakingProgress(finalTargetPos, finalBreakFace);
+                        if (client.gameMode != null) {
+                            client.gameMode.continueDestroyBlock(finalTargetPos, finalBreakFace);
                         }
                     });
                 }
 
                 owner.runOnClientThread(client, () -> {
-                    if (client.player != null && client.player.networkHandler != null) {
-                        client.player.networkHandler.sendPacket(new PlayerActionC2SPacket(
-                            PlayerActionC2SPacket.Action.STOP_DESTROY_BLOCK,
+                    if (client.player != null && client.player.connection != null) {
+                        client.player.connection.send(new ServerboundPlayerActionPacket(
+                            ServerboundPlayerActionPacket.Action.STOP_DESTROY_BLOCK,
                             finalTargetPos,
                             finalBreakFace
                         ));
@@ -564,35 +560,35 @@ final class NodeEntityActionCommandExecutor {
         }, "Pathmind-Break").start();
     }
 
-    private BreakTargeting resolveBreakTargeting(MinecraftClient client, BlockPos target) {
-        if (client == null || client.player == null || client.world == null || target == null) {
+    private BreakTargeting resolveBreakTargeting(Minecraft client, BlockPos target) {
+        if (client == null || client.player == null || client.level == null || target == null) {
             return null;
         }
-        BlockState targetState = client.world.getBlockState(target);
+        BlockState targetState = client.level.getBlockState(target);
         if (targetState == null || targetState.isAir()) {
             return null;
         }
         double reachSq = getBlockInteractionReachSquared(client);
-        for (Vec3d hitPos : getBreakAimPoints(client.world, targetState, target, preferredBreakFaces(client.player.getEyePos(), target))) {
-            BlockHitResult hit = raycastToBreakTarget(client.world, client.player, target, hitPos, reachSq);
+        for (Vec3 hitPos : getBreakAimPoints(client.level, targetState, target, preferredBreakFaces(client.player.getEyePosition(), target))) {
+            BlockHitResult hit = raycastToBreakTarget(client.level, client.player, target, hitPos, reachSq);
             if (hit != null) {
-                return new BreakTargeting(hit.getSide(), hit.getPos());
+                return new BreakTargeting(hit.getDirection(), hit.getLocation());
             }
         }
         return null;
     }
 
-    private double getBlockInteractionReachSquared(MinecraftClient client) {
+    private double getBlockInteractionReachSquared(Minecraft client) {
         return Node.getBlockInteractionReachSquared(client);
     }
 
-    private List<Direction> preferredBreakFaces(Vec3d eyePos, BlockPos target) {
+    private List<Direction> preferredBreakFaces(Vec3 eyePos, BlockPos target) {
         if (eyePos == null || target == null) {
             return List.of(Direction.UP);
         }
-        Vec3d center = Vec3d.ofCenter(target);
-        Vec3d delta = center.subtract(eyePos);
-        Direction primary = Direction.getFacing(delta.x, delta.y, delta.z).getOpposite();
+        Vec3 center = Vec3.atCenterOf(target);
+        Vec3 delta = center.subtract(eyePos);
+        Direction primary = Direction.getApproximateNearest(delta.x, delta.y, delta.z).getOpposite();
         List<Direction> faces = new ArrayList<>(6);
         faces.add(primary);
         for (Direction face : Direction.values()) {
@@ -603,39 +599,39 @@ final class NodeEntityActionCommandExecutor {
         return faces;
     }
 
-    private List<Vec3d> getBreakAimPoints(ClientWorld world, BlockState targetState, BlockPos target, List<Direction> preferredFaces) {
+    private List<Vec3> getBreakAimPoints(ClientLevel world, BlockState targetState, BlockPos target, List<Direction> preferredFaces) {
         if (world == null || targetState == null || target == null) {
             return List.of();
         }
-        VoxelShape shape = targetState.getOutlineShape(world, target);
+        VoxelShape shape = targetState.getShape(world, target);
         if (shape == null || shape.isEmpty()) {
             shape = targetState.getCollisionShape(world, target);
         }
-        List<Box> boxes = shape == null || shape.isEmpty()
-            ? List.of(new Box(0.0D, 0.0D, 0.0D, 1.0D, 1.0D, 1.0D))
-            : shape.getBoundingBoxes();
+        List<AABB> boxes = shape == null || shape.isEmpty()
+            ? List.of(new AABB(0.0D, 0.0D, 0.0D, 1.0D, 1.0D, 1.0D))
+            : shape.toAabbs();
         if (boxes.isEmpty()) {
-            boxes = List.of(new Box(0.0D, 0.0D, 0.0D, 1.0D, 1.0D, 1.0D));
+            boxes = List.of(new AABB(0.0D, 0.0D, 0.0D, 1.0D, 1.0D, 1.0D));
         }
         boxes = boxes.stream()
-            .sorted(Comparator.comparingDouble(Box::getAverageSideLength).reversed())
+            .sorted(Comparator.comparingDouble(AABB::getSize).reversed())
             .toList();
 
-        List<Vec3d> points = new ArrayList<>(boxes.size() * Math.max(1, preferredFaces.size()) + boxes.size() + 1);
+        List<Vec3> points = new ArrayList<>(boxes.size() * Math.max(1, preferredFaces.size()) + boxes.size() + 1);
         for (Direction face : preferredFaces) {
-            for (Box box : boxes) {
+            for (AABB box : boxes) {
                 points.add(getBreakFaceAimPoint(target, box, face));
             }
         }
-        for (Box box : boxes) {
+        for (AABB box : boxes) {
             points.add(worldBoxCenter(target, box));
         }
-        points.add(Vec3d.ofCenter(target));
+        points.add(Vec3.atCenterOf(target));
         return points;
     }
 
-    private Vec3d getBreakFaceAimPoint(BlockPos target, Box localBox, Direction face) {
-        Vec3d center = worldBoxCenter(target, localBox);
+    private Vec3 getBreakFaceAimPoint(BlockPos target, AABB localBox, Direction face) {
+        Vec3 center = worldBoxCenter(target, localBox);
         if (target == null || localBox == null || face == null) {
             return center;
         }
@@ -675,14 +671,14 @@ final class NodeEntityActionCommandExecutor {
                 z = minZ + epsilon;
             }
         }
-        return new Vec3d(x, y, z);
+        return new Vec3(x, y, z);
     }
 
-    private Vec3d worldBoxCenter(BlockPos target, Box localBox) {
+    private Vec3 worldBoxCenter(BlockPos target, AABB localBox) {
         if (target == null || localBox == null) {
-            return Vec3d.ZERO;
+            return Vec3.ZERO;
         }
-        return new Vec3d(
+        return new Vec3(
             target.getX() + (localBox.minX + localBox.maxX) * 0.5D,
             target.getY() + (localBox.minY + localBox.maxY) * 0.5D,
             target.getZ() + (localBox.minZ + localBox.maxZ) * 0.5D
@@ -694,38 +690,38 @@ final class NodeEntityActionCommandExecutor {
     }
 
     private BlockHitResult raycastToBreakTarget(
-        ClientWorld world,
+        ClientLevel world,
         Entity player,
         BlockPos target,
-        Vec3d hitPos,
+        Vec3 hitPos,
         double reachSq
     ) {
         if (world == null || player == null || target == null || hitPos == null) {
             return null;
         }
-        Vec3d eyePos = player.getEyePos();
-        if (eyePos.squaredDistanceTo(hitPos) > reachSq) {
+        Vec3 eyePos = player.getEyePosition();
+        if (eyePos.distanceToSqr(hitPos) > reachSq) {
             return null;
         }
-        BlockHitResult outlineHit = world.raycast(new RaycastContext(
+        BlockHitResult outlineHit = world.clip(new ClipContext(
             eyePos,
             hitPos,
-            RaycastContext.ShapeType.OUTLINE,
-            RaycastContext.FluidHandling.NONE,
+            ClipContext.Block.OUTLINE,
+            ClipContext.Fluid.NONE,
             player
         ));
         if (outlineHit == null || outlineHit.getType() != HitResult.Type.BLOCK || !target.equals(outlineHit.getBlockPos())) {
             return null;
         }
-        Vec3d outlineHitPos = outlineHit.getPos();
-        if (outlineHitPos == null || eyePos.squaredDistanceTo(outlineHitPos) > reachSq) {
+        Vec3 outlineHitPos = outlineHit.getLocation();
+        if (outlineHitPos == null || eyePos.distanceToSqr(outlineHitPos) > reachSq) {
             return null;
         }
-        BlockHitResult collisionHit = world.raycast(new RaycastContext(
+        BlockHitResult collisionHit = world.clip(new ClipContext(
             eyePos,
             outlineHitPos,
-            RaycastContext.ShapeType.COLLIDER,
-            RaycastContext.FluidHandling.NONE,
+            ClipContext.Block.COLLIDER,
+            ClipContext.Fluid.NONE,
             player
         ));
         if (collisionHit != null && collisionHit.getType() == HitResult.Type.BLOCK && !target.equals(collisionHit.getBlockPos())) {
@@ -734,7 +730,7 @@ final class NodeEntityActionCommandExecutor {
         return outlineHit;
     }
 
-    private record BreakTargeting(Direction face, Vec3d hitPos) {
+    private record BreakTargeting(Direction face, Vec3 hitPos) {
     }
     void executeTradeCommand(CompletableFuture<Void> future) {
         if (owner.preprocessAttachedParameter(EnumSet.noneOf(Node.ParameterUsage.class), future) == Node.ParameterHandlingResult.COMPLETE) {
@@ -742,31 +738,31 @@ final class NodeEntityActionCommandExecutor {
         }
         owner.ensureVillagerTradeNumberParameter();
 
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
-        if (client == null || client.player == null || client.interactionManager == null) {
+        net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
+        if (client == null || client.player == null || client.gameMode == null) {
             NodeExecutionCompletion.completeExceptionally(future, new RuntimeException("Minecraft client not available"));
             return;
         }
 
         // Check if a merchant screen is open
-        net.minecraft.client.gui.screen.Screen currentScreen = client.currentScreen;
-        if (!(currentScreen instanceof net.minecraft.client.gui.screen.ingame.MerchantScreen)) {
+        net.minecraft.client.gui.screens.Screen currentScreen = client.screen;
+        if (!(currentScreen instanceof net.minecraft.client.gui.screens.inventory.MerchantScreen)) {
             NodeExecutionCompletion.fail(owner, client, future, tr("pathmind.error.noVillagerTradingScreen"));
             return;
         }
 
-        net.minecraft.client.gui.screen.ingame.MerchantScreen merchantScreen =
-            (net.minecraft.client.gui.screen.ingame.MerchantScreen) currentScreen;
+        net.minecraft.client.gui.screens.inventory.MerchantScreen merchantScreen =
+            (net.minecraft.client.gui.screens.inventory.MerchantScreen) currentScreen;
 
         // Get the screen handler from merchant screen
-        net.minecraft.screen.MerchantScreenHandler screenHandler = merchantScreen.getScreenHandler();
+        net.minecraft.world.inventory.MerchantMenu screenHandler = merchantScreen.getMenu();
         if (screenHandler == null) {
             NodeExecutionCompletion.fail(owner, client, future, tr("pathmind.error.merchantScreenHandlerUnavailable"));
             return;
         }
 
         // Get the trade offers
-        net.minecraft.village.TradeOfferList tradeOffers = screenHandler.getRecipes();
+        net.minecraft.world.item.trading.MerchantOffers tradeOffers = screenHandler.getOffers();
         if (tradeOffers == null || tradeOffers.isEmpty()) {
             NodeExecutionCompletion.fail(owner, client, future, tr("pathmind.error.noVillagerTrades"));
             return;
@@ -778,8 +774,8 @@ final class NodeEntityActionCommandExecutor {
                 tr("pathmind.error.tradeUnavailable", selectedTradeNumber));
             return;
         }
-        net.minecraft.village.TradeOffer selectedOffer = tradeOffers.get(tradeIndex);
-        if (selectedOffer.isDisabled()) {
+        net.minecraft.world.item.trading.MerchantOffer selectedOffer = tradeOffers.get(tradeIndex);
+        if (selectedOffer.isOutOfStock()) {
             NodeExecutionCompletion.fail(owner, client, future,
                 tr("pathmind.error.tradeOutOfStock", selectedTradeNumber));
             return;
@@ -803,11 +799,11 @@ final class NodeEntityActionCommandExecutor {
                         if (preferredTradeIndex == null || preferredTradeIndex < 0 || preferredTradeIndex >= tradeOffers.size()) {
                             continue;
                         }
-                        net.minecraft.village.TradeOffer offer = tradeOffers.get(preferredTradeIndex);
+                        net.minecraft.world.item.trading.MerchantOffer offer = tradeOffers.get(preferredTradeIndex);
                         if (offer == null) {
                             continue;
                         }
-                        if (!offer.isDisabled()) {
+                        if (!offer.isOutOfStock()) {
                             anyMatchStillAvailable = true;
                         }
                         int executableTrades = getMaxExecutableTradeCount(client.player, screenHandler, offer);
@@ -821,7 +817,7 @@ final class NodeEntityActionCommandExecutor {
 
                         int completedInBatch = 0;
                         for (int i = 0; i < batchSize; i++) {
-                            if (offer.isDisabled() || !canAffordTrade(client.player, screenHandler, offer)) {
+                            if (offer.isOutOfStock() || !canAffordTrade(client.player, screenHandler, offer)) {
                                 break;
                             }
                             if (!quickMoveMerchantTradeResult(client, screenHandler)) {
@@ -862,41 +858,41 @@ final class NodeEntityActionCommandExecutor {
         }, "Pathmind-Trade").start();
     }
 
-    private void selectMerchantTrade(net.minecraft.client.MinecraftClient client,
-                                     net.minecraft.screen.MerchantScreenHandler screenHandler,
+    private void selectMerchantTrade(net.minecraft.client.Minecraft client,
+                                     net.minecraft.world.inventory.MerchantMenu screenHandler,
                                      int tradeIndex) throws InterruptedException {
         owner.runOnClientThread(client, () -> {
-            screenHandler.setRecipeIndex(tradeIndex);
-            screenHandler.switchTo(tradeIndex);
-            if (client.player != null && client.player.networkHandler != null) {
-                client.player.networkHandler.sendPacket(
-                    new net.minecraft.network.packet.c2s.play.SelectMerchantTradeC2SPacket(tradeIndex)
+            screenHandler.setSelectionHint(tradeIndex);
+            screenHandler.tryMoveItems(tradeIndex);
+            if (client.player != null && client.player.connection != null) {
+                client.player.connection.send(
+                    new net.minecraft.network.protocol.game.ServerboundSelectTradePacket(tradeIndex)
                 );
             }
         });
     }
 
-    private boolean quickMoveMerchantTradeResult(net.minecraft.client.MinecraftClient client,
-                                                 net.minecraft.screen.MerchantScreenHandler screenHandler) throws InterruptedException {
-        if (client == null || client.player == null || client.interactionManager == null || screenHandler == null) {
+    private boolean quickMoveMerchantTradeResult(net.minecraft.client.Minecraft client,
+                                                 net.minecraft.world.inventory.MerchantMenu screenHandler) throws InterruptedException {
+        if (client == null || client.player == null || client.gameMode == null || screenHandler == null) {
             return false;
         }
         final boolean[] moved = {false};
         owner.runOnClientThread(client, () -> {
             final int outputSlot = 2;
-            net.minecraft.screen.slot.Slot output = screenHandler.getSlot(outputSlot);
+            net.minecraft.world.inventory.Slot output = screenHandler.getSlot(outputSlot);
             if (output == null) {
                 return;
             }
-            net.minecraft.item.ItemStack outputStack = output.getStack();
+            net.minecraft.world.item.ItemStack outputStack = output.getItem();
             if (outputStack == null || outputStack.isEmpty()) {
                 return;
             }
-            client.interactionManager.clickSlot(
-                screenHandler.syncId,
+            client.gameMode.handleInventoryMouseClick(
+                screenHandler.containerId,
                 outputSlot,
                 0,
-                net.minecraft.screen.slot.SlotActionType.QUICK_MOVE,
+                net.minecraft.world.inventory.ClickType.QUICK_MOVE,
                 client.player
             );
             moved[0] = true;
@@ -904,22 +900,22 @@ final class NodeEntityActionCommandExecutor {
         return moved[0];
     }
 
-    private int getMaxExecutableTradeCount(net.minecraft.entity.player.PlayerEntity player,
-                                           net.minecraft.screen.MerchantScreenHandler screenHandler,
-                                           net.minecraft.village.TradeOffer offer) {
-        if (player == null || screenHandler == null || offer == null || offer.isDisabled()) {
+    private int getMaxExecutableTradeCount(net.minecraft.world.entity.player.Player player,
+                                           net.minecraft.world.inventory.MerchantMenu screenHandler,
+                                           net.minecraft.world.item.trading.MerchantOffer offer) {
+        if (player == null || screenHandler == null || offer == null || offer.isOutOfStock()) {
             return 0;
         }
 
         int maxTrades = Integer.MAX_VALUE;
-        net.minecraft.item.ItemStack firstBuyItem = getRequiredFirstBuyItem(offer);
+        net.minecraft.world.item.ItemStack firstBuyItem = getRequiredFirstBuyItem(offer);
         if (!firstBuyItem.isEmpty()) {
             int required = Math.max(1, firstBuyItem.getCount());
             int available = countAvailableForTrade(player.getInventory(), screenHandler, firstBuyItem);
             maxTrades = Math.min(maxTrades, available / required);
         }
 
-        net.minecraft.item.ItemStack secondBuyItem = getRequiredSecondBuyItem(offer);
+        net.minecraft.world.item.ItemStack secondBuyItem = getRequiredSecondBuyItem(offer);
         if (!secondBuyItem.isEmpty()) {
             int required = Math.max(1, secondBuyItem.getCount());
             int available = countAvailableForTrade(player.getInventory(), screenHandler, secondBuyItem);
@@ -930,16 +926,16 @@ final class NodeEntityActionCommandExecutor {
         return maxTrades == Integer.MAX_VALUE ? 0 : Math.max(0, maxTrades);
     }
 
-    boolean canAffordTrade(net.minecraft.entity.player.PlayerEntity player,
-                           net.minecraft.screen.MerchantScreenHandler screenHandler,
-                           net.minecraft.village.TradeOffer offer) {
+    boolean canAffordTrade(net.minecraft.world.entity.player.Player player,
+                           net.minecraft.world.inventory.MerchantMenu screenHandler,
+                           net.minecraft.world.item.trading.MerchantOffer offer) {
         if (player == null || offer == null || screenHandler == null) {
             return false;
         }
 
-        net.minecraft.entity.player.PlayerInventory inventory = player.getInventory();
+        net.minecraft.world.entity.player.Inventory inventory = player.getInventory();
 
-        net.minecraft.item.ItemStack firstBuyItem = getRequiredFirstBuyItem(offer);
+        net.minecraft.world.item.ItemStack firstBuyItem = getRequiredFirstBuyItem(offer);
         if (!firstBuyItem.isEmpty()) {
             int required = firstBuyItem.getCount();
             int available = countAvailableForTrade(inventory, screenHandler, firstBuyItem);
@@ -948,7 +944,7 @@ final class NodeEntityActionCommandExecutor {
             }
         }
 
-        net.minecraft.item.ItemStack secondBuyItem = getRequiredSecondBuyItem(offer);
+        net.minecraft.world.item.ItemStack secondBuyItem = getRequiredSecondBuyItem(offer);
         if (!secondBuyItem.isEmpty()) {
             int required = secondBuyItem.getCount();
             int available = countAvailableForTrade(inventory, screenHandler, secondBuyItem);
@@ -960,29 +956,29 @@ final class NodeEntityActionCommandExecutor {
         return true;
     }
 
-    private static net.minecraft.item.ItemStack getRequiredFirstBuyItem(net.minecraft.village.TradeOffer offer) {
-        return offer == null ? net.minecraft.item.ItemStack.EMPTY : offer.getDisplayedFirstBuyItem();
+    private static net.minecraft.world.item.ItemStack getRequiredFirstBuyItem(net.minecraft.world.item.trading.MerchantOffer offer) {
+        return offer == null ? net.minecraft.world.item.ItemStack.EMPTY : offer.getCostA();
     }
 
-    private static net.minecraft.item.ItemStack getRequiredSecondBuyItem(net.minecraft.village.TradeOffer offer) {
-        return offer == null ? net.minecraft.item.ItemStack.EMPTY : offer.getDisplayedSecondBuyItem();
+    private static net.minecraft.world.item.ItemStack getRequiredSecondBuyItem(net.minecraft.world.item.trading.MerchantOffer offer) {
+        return offer == null ? net.minecraft.world.item.ItemStack.EMPTY : offer.getCostB();
     }
 
-    static int getRequiredFirstBuyCountForTests(net.minecraft.village.TradeOffer offer) {
+    static int getRequiredFirstBuyCountForTests(net.minecraft.world.item.trading.MerchantOffer offer) {
         if (offer == null) {
             return 0;
         }
         return resolveRequiredTradeCount(
             getRequiredFirstBuyItem(offer).getCount(),
-            offer.getFirstBuyItem().itemStack().getCount()
+            offer.getItemCostA().itemStack().getCount()
         );
     }
 
-    static int getRequiredSecondBuyCountForTests(net.minecraft.village.TradeOffer offer) {
+    static int getRequiredSecondBuyCountForTests(net.minecraft.world.item.trading.MerchantOffer offer) {
         if (offer == null) {
             return 0;
         }
-        java.util.Optional<net.minecraft.village.TradedItem> secondBuyItem = offer.getSecondBuyItem();
+        java.util.Optional<net.minecraft.world.item.trading.ItemCost> secondBuyItem = offer.getItemCostB();
         int originalCount = secondBuyItem.map(item -> item.itemStack().getCount()).orElse(0);
         return resolveRequiredTradeCount(getRequiredSecondBuyItem(offer).getCount(), originalCount);
     }
@@ -995,27 +991,27 @@ final class NodeEntityActionCommandExecutor {
         return displayedCount > 0 ? displayedCount : Math.max(0, originalCount);
     }
 
-    private int countAvailableForTrade(net.minecraft.entity.player.PlayerInventory inventory,
-                                       net.minecraft.screen.MerchantScreenHandler screenHandler,
-                                       net.minecraft.item.ItemStack requiredStack) {
+    private int countAvailableForTrade(net.minecraft.world.entity.player.Inventory inventory,
+                                       net.minecraft.world.inventory.MerchantMenu screenHandler,
+                                       net.minecraft.world.item.ItemStack requiredStack) {
         int available = 0;
-        for (int i = 0; i < inventory.size(); i++) {
-            net.minecraft.item.ItemStack stack = inventory.getStack(i);
-            if (net.minecraft.item.ItemStack.areItemsEqual(stack, requiredStack)) {
+        for (int i = 0; i < inventory.getContainerSize(); i++) {
+            net.minecraft.world.item.ItemStack stack = inventory.getItem(i);
+            if (net.minecraft.world.item.ItemStack.isSameItem(stack, requiredStack)) {
                 available += stack.getCount();
             }
         }
 
         // Include items already moved into merchant input slots (0 and 1).
         for (int slotIndex = 0; slotIndex <= 1; slotIndex++) {
-            net.minecraft.item.ItemStack stack = screenHandler.getSlot(slotIndex).getStack();
-            if (net.minecraft.item.ItemStack.areItemsEqual(stack, requiredStack)) {
+            net.minecraft.world.item.ItemStack stack = screenHandler.getSlot(slotIndex).getItem();
+            if (net.minecraft.world.item.ItemStack.isSameItem(stack, requiredStack)) {
                 available += stack.getCount();
             }
         }
 
-        net.minecraft.item.ItemStack cursorStack = screenHandler.getCursorStack();
-        if (net.minecraft.item.ItemStack.areItemsEqual(cursorStack, requiredStack)) {
+        net.minecraft.world.item.ItemStack cursorStack = screenHandler.getCarried();
+        if (net.minecraft.world.item.ItemStack.isSameItem(cursorStack, requiredStack)) {
             available += cursorStack.getCount();
         }
 
@@ -1025,13 +1021,13 @@ final class NodeEntityActionCommandExecutor {
         if (owner.preprocessAttachedParameter(EnumSet.noneOf(Node.ParameterUsage.class), future) == Node.ParameterHandlingResult.COMPLETE) {
             return;
         }
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
         if (client == null || client.player == null) {
             future.completeExceptionally(new RuntimeException("Minecraft client not available"));
             return;
         }
 
-        Hand hand = owner.resolveHand(owner.getParameter("Hand"), Hand.MAIN_HAND);
+        InteractionHand hand = owner.resolveHand(owner.getParameter("Hand"), InteractionHand.MAIN_HAND);
         boolean holdDurationEnabled = owner.isAmountInputEnabled();
         double durationSeconds = holdDurationEnabled
             ? Math.max(0.0, owner.getDoubleParameter("Duration", 0.0))
@@ -1043,14 +1039,14 @@ final class NodeEntityActionCommandExecutor {
             boolean releaseAttackKey = false;
             try {
                 if (holdDurationEnabled && durationSeconds > 0.0) {
-                    if (hand == Hand.MAIN_HAND) {
+                    if (hand == InteractionHand.MAIN_HAND) {
                         long durationMs = (long) Math.ceil(durationSeconds * 1000.0);
                         long deadline = System.currentTimeMillis() + durationMs;
                         owner.runOnClientThread(client, () -> {
                             syncSelectedHotbarSlot(client);
                             performMainHandAttack(client);
-                            if (client.options != null && client.options.attackKey != null) {
-                                client.options.attackKey.setPressed(true);
+                            if (client.options != null && client.options.keyAttack != null) {
+                                client.options.keyAttack.setDown(true);
                             }
                         });
                         releaseAttackKey = true;
@@ -1067,7 +1063,7 @@ final class NodeEntityActionCommandExecutor {
                         boolean swung = false;
                         while (!swung || System.currentTimeMillis() < deadline) {
                             owner.runOnClientThread(client, () -> {
-                                client.player.swingHand(hand);
+                                client.player.swing(hand);
                             });
                             swung = true;
                             if (owner.shouldAbortForRepeatUntilGuard()) {
@@ -1083,11 +1079,11 @@ final class NodeEntityActionCommandExecutor {
                 } else {
                     for (int i = 0; i < legacyCount; i++) {
                         owner.runOnClientThread(client, () -> {
-                            if (hand == Hand.MAIN_HAND) {
+                            if (hand == InteractionHand.MAIN_HAND) {
                                 syncSelectedHotbarSlot(client);
                                 performMainHandAttack(client);
                             } else {
-                                client.player.swingHand(hand);
+                                client.player.swing(hand);
                             }
                         });
 
@@ -1104,8 +1100,8 @@ final class NodeEntityActionCommandExecutor {
                 if (releaseAttackKey) {
                     try {
                         owner.runOnClientThread(client, () -> {
-                            if (client.options != null && client.options.attackKey != null) {
-                                client.options.attackKey.setPressed(false);
+                            if (client.options != null && client.options.keyAttack != null) {
+                                client.options.keyAttack.setDown(false);
                             }
                         });
                     } catch (InterruptedException e) {
@@ -1118,22 +1114,22 @@ final class NodeEntityActionCommandExecutor {
 
     static Method resolveDoAttackMethod() {
         try {
-            return net.minecraft.client.MinecraftClient.class.getMethod("doAttack");
+            return net.minecraft.client.Minecraft.class.getMethod("doAttack");
         } catch (ReflectiveOperationException ignored) {
             return null;
         }
     }
 
-    static void syncSelectedHotbarSlot(MinecraftClient client) {
+    static void syncSelectedHotbarSlot(Minecraft client) {
         HotbarSlotSynchronizer.syncSelectedHotbarSlot(client);
     }
 
-    static void performMainHandAttack(MinecraftClient client) {
+    static void performMainHandAttack(Minecraft client) {
         if (client == null || client.player == null) {
             return;
         }
-        InputUtil.Key attackKey = InputUtil.Type.MOUSE.createFromCode(GLFW.GLFW_MOUSE_BUTTON_LEFT);
-        KeyBinding.onKeyPressed(attackKey);
+        InputConstants.Key attackKey = InputConstants.Type.MOUSE.getOrCreate(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+        KeyMapping.click(attackKey);
         try {
             if (DO_ATTACK_METHOD != null) {
                 DO_ATTACK_METHOD.invoke(client);
@@ -1142,40 +1138,40 @@ final class NodeEntityActionCommandExecutor {
         } catch (ReflectiveOperationException ignored) {
             // Fall back to the direct attack logic below.
         }
-        if (client.interactionManager != null) {
-            HitResult target = client.crosshairTarget;
+        if (client.gameMode != null) {
+            HitResult target = client.hitResult;
             if (target instanceof EntityHitResult entityHit) {
-                client.interactionManager.attackEntity(client.player, entityHit.getEntity());
+                client.gameMode.attack(client.player, entityHit.getEntity());
                 return;
             }
         }
-        client.player.swingHand(Hand.MAIN_HAND);
+        client.player.swing(InteractionHand.MAIN_HAND);
     }
     void executeEquipArmorCommand(CompletableFuture<Void> future) {
         if (owner.preprocessAttachedParameter(EnumSet.noneOf(Node.ParameterUsage.class), future) == Node.ParameterHandlingResult.COMPLETE) {
             return;
         }
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
         if (client == null || client.player == null) {
             future.completeExceptionally(new RuntimeException("Minecraft client not available"));
             return;
         }
         
-        PlayerInventory inventory = client.player.getInventory();
+        Inventory inventory = client.player.getInventory();
         int sourceSlot = owner.clampInventorySlot(inventory, owner.getIntParameter("SourceSlot", 0));
         EquipmentSlot equipmentSlot = parseEquipmentSlot(owner.getParameter("ArmorSlot"), EquipmentSlot.HEAD);
         
-        ItemStack sourceStack = inventory.getStack(sourceSlot);
+        ItemStack sourceStack = inventory.getItem(sourceSlot);
         if (sourceStack.isEmpty()) {
             future.complete(null);
             return;
         }
         
-        ItemStack current = client.player.getEquippedStack(equipmentSlot);
-        inventory.setStack(sourceSlot, current);
-        client.player.equipStack(equipmentSlot, sourceStack);
-        inventory.markDirty();
-        client.player.playerScreenHandler.sendContentUpdates();
+        ItemStack current = client.player.getItemBySlot(equipmentSlot);
+        inventory.setItem(sourceSlot, current);
+        client.player.setItemSlot(equipmentSlot, sourceStack);
+        inventory.setChanged();
+        client.player.inventoryMenu.broadcastChanges();
         future.complete(null);
     }
     
@@ -1183,27 +1179,27 @@ final class NodeEntityActionCommandExecutor {
         if (owner.preprocessAttachedParameter(EnumSet.noneOf(Node.ParameterUsage.class), future) == Node.ParameterHandlingResult.COMPLETE) {
             return;
         }
-        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
         if (client == null || client.player == null) {
             future.completeExceptionally(new RuntimeException("Minecraft client not available"));
             return;
         }
         
-        PlayerInventory inventory = client.player.getInventory();
+        Inventory inventory = client.player.getInventory();
         int sourceSlot = owner.clampInventorySlot(inventory, owner.getIntParameter("SourceSlot", 0));
-        Hand hand = owner.resolveHand(owner.getParameter("Hand"), Hand.MAIN_HAND);
+        InteractionHand hand = owner.resolveHand(owner.getParameter("Hand"), InteractionHand.MAIN_HAND);
         
-        ItemStack sourceStack = inventory.getStack(sourceSlot);
+        ItemStack sourceStack = inventory.getItem(sourceSlot);
         if (sourceStack.isEmpty()) {
             future.complete(null);
             return;
         }
         
-        ItemStack handStack = client.player.getStackInHand(hand);
-        client.player.setStackInHand(hand, sourceStack);
-        inventory.setStack(sourceSlot, handStack);
-        inventory.markDirty();
-        client.player.playerScreenHandler.sendContentUpdates();
+        ItemStack handStack = client.player.getItemInHand(hand);
+        client.player.setItemInHand(hand, sourceStack);
+        inventory.setItem(sourceSlot, handStack);
+        inventory.setChanged();
+        client.player.inventoryMenu.broadcastChanges();
         future.complete(null);
     }
 

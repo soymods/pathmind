@@ -5,15 +5,14 @@ import static com.pathmind.util.PathmindI18n.tr;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.ItemEntity;
-import net.minecraft.item.Item;
-import net.minecraft.registry.Registries;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.phys.Vec3;
 
 final class ItemParameterDefinition {
     static NodeBehaviorDefinition create() {
@@ -34,9 +33,9 @@ final class ItemParameterDefinition {
         return values;
     }
 
-    private static Optional<Vec3d> resolvePositionTarget(Node owner, Node parameterNode, RuntimeParameterData data,
+    private static Optional<Vec3> resolvePositionTarget(Node owner, Node parameterNode, RuntimeParameterData data,
                                                          CompletableFuture<Void> future) {
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         if (client == null || client.player == null) {
             return Optional.empty();
         }
@@ -50,11 +49,11 @@ final class ItemParameterDefinition {
         boolean hasValidCandidate = false;
         for (String candidateId : itemIds) {
             Identifier identifier = Identifier.tryParse(candidateId);
-            if (identifier == null || !Registries.ITEM.containsId(identifier)) {
+            if (identifier == null || !BuiltInRegistries.ITEM.containsKey(identifier)) {
                 continue;
             }
             hasValidCandidate = true;
-            Item item = Registries.ITEM.get(identifier);
+            Item item = BuiltInRegistries.ITEM.getValue(identifier);
             Optional<BlockPos> match = owner.findNearestDroppedItem(client, item, range);
             if (match.isEmpty()) {
                 continue;
@@ -64,7 +63,7 @@ final class ItemParameterDefinition {
                 data.targetItem = item;
                 data.targetItemId = candidateId;
             }
-            return Optional.of(Vec3d.ofCenter(match.get()));
+            return Optional.of(Vec3.atCenterOf(match.get()));
         }
         if (!hasValidCandidate) {
             owner.sendParameterSearchFailure(NodeBehaviorDefinitionSupport.unknownItemMessage(owner, itemIds.get(0)), future);
@@ -74,33 +73,33 @@ final class ItemParameterDefinition {
         return Optional.empty();
     }
 
-    private static Node.ListValueEntry resolveListEntry(Node owner, Node parameterNode, MinecraftClient client) {
+    private static Node.ListValueEntry resolveListEntry(Node owner, Node parameterNode, Minecraft client) {
         double range = Node.parseDoubleOrDefault(Node.getParameterString(parameterNode, "Range"), Node.PARAMETER_SEARCH_RADIUS);
         Entity nearest = null;
         double nearestDistance = Double.MAX_VALUE;
         for (String candidateId : owner.resolveItemIdsFromParameter(parameterNode)) {
             Identifier identifier = Identifier.tryParse(candidateId);
-            if (identifier == null || !Registries.ITEM.containsId(identifier)) {
+            if (identifier == null || !BuiltInRegistries.ITEM.containsKey(identifier)) {
                 continue;
             }
-            Item item = Registries.ITEM.get(identifier);
+            Item item = BuiltInRegistries.ITEM.getValue(identifier);
             for (ItemEntity itemEntity : owner.findItemsByType(client, item, range)) {
                 if (itemEntity == null || itemEntity.isRemoved()) {
                     continue;
                 }
-                double distance = itemEntity.squaredDistanceTo(client.player);
+                double distance = itemEntity.distanceToSqr(client.player);
                 if (distance < nearestDistance) {
                     nearest = itemEntity;
                     nearestDistance = distance;
                 }
             }
         }
-        return nearest != null ? new Node.ListValueEntry(NodeType.PARAM_ITEM, nearest.getUuidAsString()) : null;
+        return nearest != null ? new Node.ListValueEntry(NodeType.PARAM_ITEM, nearest.getStringUUID()) : null;
     }
 
-    private static BlockPos resolveGotoFallbackTarget(Node owner, Node parameterNode, MinecraftClient client,
+    private static BlockPos resolveGotoFallbackTarget(Node owner, Node parameterNode, Minecraft client,
                                                       CompletableFuture<Void> future) {
-        if (client == null || client.player == null || client.world == null) {
+        if (client == null || client.player == null || client.level == null) {
             return null;
         }
         List<String> itemIds = owner.resolveItemIdsFromParameter(parameterNode);
@@ -116,10 +115,10 @@ final class ItemParameterDefinition {
 
         for (String candidateId : itemIds) {
             Identifier identifier = Identifier.tryParse(candidateId);
-            if (identifier == null || !Registries.ITEM.containsId(identifier)) {
+            if (identifier == null || !BuiltInRegistries.ITEM.containsKey(identifier)) {
                 continue;
             }
-            Item candidateItem = Registries.ITEM.get(identifier);
+            Item candidateItem = BuiltInRegistries.ITEM.getValue(identifier);
             Optional<BlockPos> target = owner.findNearestDroppedItem(client, candidateItem, searchRange);
             if (target.isPresent()) {
                 matchedPosition = target;

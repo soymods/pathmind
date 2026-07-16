@@ -3,30 +3,29 @@ package com.pathmind.ui.control;
 import com.pathmind.mixin.TextFieldWidgetAccessor;
 import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.widget.TextFieldWidget;
-import net.minecraft.text.Text;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.network.chat.Component;
+import net.minecraft.util.Mth;
 import net.minecraft.util.Util;
-import net.minecraft.util.math.MathHelper;
-
 import java.lang.reflect.Field;
 
-public class PathmindTextField extends TextFieldWidget {
+public class PathmindTextField extends EditBox {
     private static final int SELECTION_COLOR = 0x664F86C6;
     private static final Field TEXT_SHADOW_FIELD = findTextShadowField();
 
-    private final TextRenderer pathmindTextRenderer;
+    private final Font pathmindTextRenderer;
 
-    public PathmindTextField(TextRenderer textRenderer, int x, int y, int width, int height, Text text) {
+    public PathmindTextField(Font textRenderer, int x, int y, int width, int height, Component text) {
         super(textRenderer, x, y, width, height, text);
         this.pathmindTextRenderer = textRenderer;
         applyPathmindDefaults();
     }
 
     /** Creates a standard Pathmind field with a configured maximum length. */
-    public static PathmindTextField create(TextRenderer textRenderer, int x, int y, int width, int height,
-                                           Text text, int maxLength) {
+    public static PathmindTextField create(Font textRenderer, int x, int y, int width, int height,
+                                           Component text, int maxLength) {
         PathmindTextField field = new PathmindTextField(textRenderer, x, y, width, height, text);
         field.setMaxLength(maxLength);
         return field;
@@ -36,15 +35,15 @@ public class PathmindTextField extends TextFieldWidget {
      * Creates a standard field that starts hidden and non-editable, as popup
      * and transient editor fields do before they are opened.
      */
-    public static PathmindTextField createInactive(TextRenderer textRenderer, int x, int y, int width, int height,
-                                                   Text text, int maxLength) {
+    public static PathmindTextField createInactive(Font textRenderer, int x, int y, int width, int height,
+                                                   Component text, int maxLength) {
         PathmindTextField field = create(textRenderer, x, y, width, height, text, maxLength);
         deactivate(field);
         return field;
     }
 
     /** Hides a transient field and clears its interactive state. */
-    public static void deactivate(TextFieldWidget field) {
+    public static void deactivate(EditBox field) {
         if (field == null) {
             return;
         }
@@ -54,13 +53,13 @@ public class PathmindTextField extends TextFieldWidget {
     }
 
     private void applyPathmindDefaults() {
-        this.setDrawsBackground(false);
-        this.setEditableColor(UITheme.TEXT_PRIMARY);
-        this.setUneditableColor(UITheme.TEXT_TERTIARY);
+        this.setBordered(false);
+        this.setTextColor(UITheme.TEXT_PRIMARY);
+        this.setTextColorUneditable(UITheme.TEXT_TERTIARY);
     }
 
     @Override
-    public void renderWidget(DrawContext context, int mouseX, int mouseY, float delta) {
+    public void renderWidget(GuiGraphics context, int mouseX, int mouseY, float delta) {
         if (!this.isVisible()) {
             return;
         }
@@ -68,11 +67,11 @@ public class PathmindTextField extends TextFieldWidget {
         TextFieldWidgetAccessor accessor = (TextFieldWidgetAccessor) this;
         int innerX = getInnerX();
         int innerWidth = Math.max(0, this.getInnerWidth());
-        int textY = this.getY() + Math.max(0, (this.getHeight() - this.pathmindTextRenderer.fontHeight) / 2);
+        int textY = this.getY() + Math.max(0, (this.getHeight() - this.pathmindTextRenderer.lineHeight) / 2);
         int textColor = accessor.pathmind$isEditable() ? accessor.pathmind$getEditableColor() : accessor.pathmind$getUneditableColor();
-        String text = this.getText();
-        int firstCharacterIndex = MathHelper.clamp(accessor.pathmind$getFirstCharacterIndex(), 0, text.length());
-        String visibleText = this.pathmindTextRenderer.trimToWidth(text.substring(firstCharacterIndex), innerWidth);
+        String text = this.getValue();
+        int firstCharacterIndex = Mth.clamp(accessor.pathmind$getFirstCharacterIndex(), 0, text.length());
+        String visibleText = this.pathmindTextRenderer.plainSubstrByWidth(text.substring(firstCharacterIndex), innerWidth);
 
         renderSelection(context, accessor, text, firstCharacterIndex, innerX, innerWidth, textY);
         renderText(context, accessor, innerX, textY, innerWidth, textColor, visibleText);
@@ -80,7 +79,7 @@ public class PathmindTextField extends TextFieldWidget {
         renderCaret(context, text, firstCharacterIndex, innerX, innerWidth, textY);
     }
 
-    private void renderSelection(DrawContext context, TextFieldWidgetAccessor accessor, String text,
+    private void renderSelection(GuiGraphics context, TextFieldWidgetAccessor accessor, String text,
                                  int firstCharacterIndex, int innerX, int innerWidth, int textY) {
         int selectionStart = accessor.pathmind$getSelectionStart();
         int selectionEnd = accessor.pathmind$getSelectionEnd();
@@ -98,37 +97,37 @@ public class PathmindTextField extends TextFieldWidget {
         }
         int fieldLeft = innerX;
         int fieldRight = innerX + innerWidth;
-        left = MathHelper.clamp(left, fieldLeft, fieldRight);
-        right = MathHelper.clamp(right, fieldLeft, fieldRight);
+        left = Mth.clamp(left, fieldLeft, fieldRight);
+        right = Mth.clamp(right, fieldLeft, fieldRight);
         if (right > left) {
-            context.fill(left, textY - 1, right, textY + this.pathmindTextRenderer.fontHeight + 1, SELECTION_COLOR);
+            context.fill(left, textY - 1, right, textY + this.pathmindTextRenderer.lineHeight + 1, SELECTION_COLOR);
         }
     }
 
-    private void renderText(DrawContext context, TextFieldWidgetAccessor accessor, int innerX, int textY, int innerWidth,
+    private void renderText(GuiGraphics context, TextFieldWidgetAccessor accessor, int innerX, int textY, int innerWidth,
                             int textColor, String visibleText) {
         if (!visibleText.isEmpty()) {
             if (usesTextShadow()) {
-                context.drawTextWithShadow(this.pathmindTextRenderer, visibleText, innerX, textY, textColor);
+                context.drawString(this.pathmindTextRenderer, visibleText, innerX, textY, textColor);
             } else {
-                context.drawText(this.pathmindTextRenderer, visibleText, innerX, textY, textColor, false);
+                context.drawString(this.pathmindTextRenderer, visibleText, innerX, textY, textColor, false);
             }
             return;
         }
-        Text placeholder = accessor.pathmind$getPlaceholder();
+        Component placeholder = accessor.pathmind$getPlaceholder();
         if (!this.isFocused() && placeholder != null) {
-            String placeholderText = this.pathmindTextRenderer.trimToWidth(placeholder.getString(), innerWidth);
-            context.drawText(this.pathmindTextRenderer, placeholderText, innerX, textY, textColor, false);
+            String placeholderText = this.pathmindTextRenderer.plainSubstrByWidth(placeholder.getString(), innerWidth);
+            context.drawString(this.pathmindTextRenderer, placeholderText, innerX, textY, textColor, false);
         }
     }
 
-    private void renderSuggestion(DrawContext context, TextFieldWidgetAccessor accessor, int textY, int textColor,
+    private void renderSuggestion(GuiGraphics context, TextFieldWidgetAccessor accessor, int textY, int textColor,
                                   String text, String visibleText, int firstCharacterIndex, int innerX, int innerWidth) {
         String suggestion = accessor.pathmind$getSuggestion();
-        if (suggestion == null || suggestion.isEmpty() || this.getCursor() != text.length()) {
+        if (suggestion == null || suggestion.isEmpty() || this.getCursorPosition() != text.length()) {
             return;
         }
-        int suggestionX = getVisibleCharacterX(text, firstCharacterIndex, innerX, innerWidth, this.getCursor());
+        int suggestionX = getVisibleCharacterX(text, firstCharacterIndex, innerX, innerWidth, this.getCursorPosition());
         int fieldRight = innerX + innerWidth;
         if (suggestionX >= fieldRight) {
             return;
@@ -137,38 +136,38 @@ public class PathmindTextField extends TextFieldWidget {
         if (remainingWidth <= 0) {
             return;
         }
-        String visibleSuggestion = this.pathmindTextRenderer.trimToWidth(suggestion, remainingWidth);
+        String visibleSuggestion = this.pathmindTextRenderer.plainSubstrByWidth(suggestion, remainingWidth);
         if (visibleSuggestion.isEmpty()) {
             return;
         }
-        context.drawText(this.pathmindTextRenderer, visibleSuggestion, suggestionX, textY, (textColor & 0x00FFFFFF) | 0x77000000, false);
+        context.drawString(this.pathmindTextRenderer, visibleSuggestion, suggestionX, textY, (textColor & 0x00FFFFFF) | 0x77000000, false);
     }
 
-    private void renderCaret(DrawContext context, String text, int firstCharacterIndex, int innerX, int innerWidth, int textY) {
-        if (!this.isFocused() || ((Util.getMeasuringTimeMs() / 300L) & 1L) != 0L) {
+    private void renderCaret(GuiGraphics context, String text, int firstCharacterIndex, int innerX, int innerWidth, int textY) {
+        if (!this.isFocused() || ((Util.getMillis() / 300L) & 1L) != 0L) {
             return;
         }
-        int caretX = getVisibleCharacterX(text, firstCharacterIndex, innerX, innerWidth, this.getCursor());
+        int caretX = getVisibleCharacterX(text, firstCharacterIndex, innerX, innerWidth, this.getCursorPosition());
         int fieldLeft = innerX;
         int fieldRight = innerX + innerWidth;
         if (caretX < fieldLeft || caretX > fieldRight) {
             return;
         }
-        UIStyleHelper.drawTextCaret(context, caretX, textY, textY + this.pathmindTextRenderer.fontHeight, fieldRight, 0xFFFFFFFF);
+        UIStyleHelper.drawTextCaret(context, caretX, textY, textY + this.pathmindTextRenderer.lineHeight, fieldRight, 0xFFFFFFFF);
     }
 
     private int getInnerX() {
-        return this.getX() + (this.drawsBackground() ? 4 : 0);
+        return this.getX() + (this.isBordered() ? 4 : 0);
     }
 
     private int getVisibleCharacterX(String text, int firstCharacterIndex, int innerX, int innerWidth, int characterIndex) {
-        int clampedIndex = MathHelper.clamp(characterIndex, 0, text.length());
+        int clampedIndex = Mth.clamp(characterIndex, 0, text.length());
         if (clampedIndex <= firstCharacterIndex) {
             return innerX;
         }
         String textBeforeCharacter = text.substring(firstCharacterIndex, clampedIndex);
-        String visiblePrefix = this.pathmindTextRenderer.trimToWidth(textBeforeCharacter, innerWidth);
-        return innerX + this.pathmindTextRenderer.getWidth(visiblePrefix);
+        String visiblePrefix = this.pathmindTextRenderer.plainSubstrByWidth(textBeforeCharacter, innerWidth);
+        return innerX + this.pathmindTextRenderer.width(visiblePrefix);
     }
 
     private boolean usesTextShadow() {
@@ -184,7 +183,7 @@ public class PathmindTextField extends TextFieldWidget {
 
     private static Field findTextShadowField() {
         try {
-            Field field = TextFieldWidget.class.getDeclaredField("textShadow");
+            Field field = EditBox.class.getDeclaredField("textShadow");
             field.setAccessible(true);
             return field;
         } catch (NoSuchFieldException ignored) {

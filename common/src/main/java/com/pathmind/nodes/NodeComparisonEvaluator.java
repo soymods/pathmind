@@ -2,8 +2,6 @@ package com.pathmind.nodes;
 
 import com.pathmind.execution.ExecutionManager;
 import com.pathmind.util.BlockSelection;
-import net.minecraft.item.ItemStack;
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
@@ -13,6 +11,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
+import net.minecraft.world.item.ItemStack;
 
 final class NodeComparisonEvaluator {
     private final Node owner;

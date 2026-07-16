@@ -6,10 +6,10 @@ import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.DrawContextBridge;
 import com.pathmind.util.TextRenderUtil;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.widget.TextFieldWidget;
-import net.minecraft.text.Text;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.network.chat.Component;
 
 /**
  * Shared renderer for compact settings rows in Pathmind screens.
@@ -18,14 +18,14 @@ public final class PathmindSettingsRowRenderer {
     private PathmindSettingsRowRenderer() {
     }
 
-    public static void renderToggleRow(DrawContext context, TextRenderer textRenderer,
+    public static void renderToggleRow(GuiGraphics context, Font textRenderer,
                                        int mouseX, int mouseY,
                                        int labelX, int centerY, String label,
                                        boolean active, int popupX, int popupWidth,
                                        int toggleWidth, int toggleHeight,
                                        int accentColor, PopupAnimationHandler animation,
                                        String onLabel, String offLabel) {
-        int labelY = centerY - textRenderer.fontHeight / 2;
+        int labelY = centerY - textRenderer.lineHeight / 2;
         int toggleX = popupX + popupWidth - toggleWidth - 20;
         int toggleY = centerY - toggleHeight / 2;
         int maxLabelWidth = Math.max(0, toggleX - labelX - 8);
@@ -47,7 +47,7 @@ public final class PathmindSettingsRowRenderer {
             toggleY,
             toggleWidth,
             toggleHeight,
-            Text.literal(active ? onLabel : offLabel),
+            Component.literal(active ? onLabel : offLabel),
             active ? PathmindPopupRenderer.ButtonStyle.PRIMARY : PathmindPopupRenderer.ButtonStyle.DEFAULT,
             hovered ? 1f : 0f,
             accentColor,
@@ -55,7 +55,7 @@ public final class PathmindSettingsRowRenderer {
         );
     }
 
-    public static void renderSliderRow(DrawContext context, TextRenderer textRenderer,
+    public static void renderSliderRow(GuiGraphics context, Font textRenderer,
                                        int mouseX, int mouseY,
                                        int labelX, int centerY, String label,
                                        int value, int min, int max,
@@ -64,11 +64,11 @@ public final class PathmindSettingsRowRenderer {
                                        int sliderHandleWidth, int sliderHandleHeight,
                                        int accentColor, PopupAnimationHandler animation,
                                        String unitLabel, boolean handleActive) {
-        int labelY = centerY - textRenderer.fontHeight / 2;
+        int labelY = centerY - textRenderer.lineHeight / 2;
         int sliderX = popupX + popupWidth - sliderWidth - 20;
         int sliderY = centerY - sliderHeight / 2;
         String valueText = value + unitLabel;
-        int valueTextWidth = textRenderer.getWidth(valueText);
+        int valueTextWidth = textRenderer.width(valueText);
         int valueBoxWidth = Math.max(36, valueTextWidth + 10);
         int valueBoxX = sliderX - valueBoxWidth - 8;
         int valueBoxY = centerY - sliderHeight / 2;
@@ -92,10 +92,10 @@ public final class PathmindSettingsRowRenderer {
             PathmindPopupRenderer.animatedColor(animation, UITheme.TEXT_TERTIARY)
         ));
         int valueTextX = valueBoxX + Math.max(4, (valueBoxWidth - valueTextWidth) / 2);
-        int valueTextY = valueBoxY + (valueBoxHeight - textRenderer.fontHeight) / 2 + 1;
-        context.drawTextWithShadow(
+        int valueTextY = valueBoxY + (valueBoxHeight - textRenderer.lineHeight) / 2 + 1;
+        context.drawString(
             textRenderer,
-            Text.literal(valueText),
+            Component.literal(valueText),
             valueTextX,
             valueTextY,
             PathmindPopupRenderer.animatedColor(animation, UITheme.TEXT_HEADER)
@@ -119,15 +119,15 @@ public final class PathmindSettingsRowRenderer {
         UIStyleHelper.drawSliderHandle(context, handleX, handleY, sliderHandleWidth, sliderHandleHeight, handlePalette);
     }
 
-    public static void renderNumericField(DrawContext context, TextRenderer textRenderer, TextFieldWidget field,
+    public static void renderNumericField(GuiGraphics context, Font textRenderer, EditBox field,
                                           int mouseX, int mouseY,
                                           int labelX, int centerY, String label,
                                           int valueBoxX, int valueBoxY, int valueBoxWidth, int valueBoxHeight,
-                                          String valueText, Text unitText,
+                                          String valueText, Component unitText,
                                           int accentColor, PopupAnimationHandler animation,
                                           float fieldHoverProgress, boolean focused,
                                           int textFieldVerticalPadding) {
-        int labelY = centerY - textRenderer.fontHeight / 2;
+        int labelY = centerY - textRenderer.lineHeight / 2;
         int maxLabelWidth = Math.max(0, valueBoxX - labelX - 8);
         PathmindPopupRenderer.drawTextWithEllipsis(
             context,
@@ -151,14 +151,14 @@ public final class PathmindSettingsRowRenderer {
         DrawContextBridge.drawBorder(context, valueBoxX, valueBoxY, valueBoxWidth, valueBoxHeight, valueBoxBorder);
 
         if (field != null) {
-            if (!focused && !valueText.equals(field.getText())) {
-                field.setText(valueText);
+            if (!focused && !valueText.equals(field.getValue())) {
+                field.setValue(valueText);
             }
             field.setVisible(true);
             field.setEditable(true);
             int textColor = PathmindPopupRenderer.animatedColor(animation, UITheme.TEXT_HEADER);
-            field.setEditableColor(textColor);
-            field.setUneditableColor(textColor);
+            field.setTextColor(textColor);
+            field.setTextColorUneditable(textColor);
             int textFieldHeight = Math.max(10, valueBoxHeight - textFieldVerticalPadding * 2);
             field.setPosition(valueBoxX + 4, valueBoxY + textFieldVerticalPadding);
             field.setWidth(valueBoxWidth - 8);
@@ -167,8 +167,8 @@ public final class PathmindSettingsRowRenderer {
         }
 
         int unitX = valueBoxX + valueBoxWidth + 6;
-        int unitY = valueBoxY + (valueBoxHeight - textRenderer.fontHeight) / 2 + 1;
-        context.drawTextWithShadow(
+        int unitY = valueBoxY + (valueBoxHeight - textRenderer.lineHeight) / 2 + 1;
+        context.drawString(
             textRenderer,
             unitText,
             unitX,
@@ -177,7 +177,7 @@ public final class PathmindSettingsRowRenderer {
         );
     }
 
-    public static void renderNumericSlider(DrawContext context, int centerY,
+    public static void renderNumericSlider(GuiGraphics context, int centerY,
                                            int sliderX, int sliderY, int sliderWidth, int sliderHeight,
                                            int sliderHandleWidth, int sliderHandleHeight,
                                            int value, int min, int max,
@@ -200,7 +200,7 @@ public final class PathmindSettingsRowRenderer {
         UIStyleHelper.drawSliderHandle(context, handleX, handleY, sliderHandleWidth, sliderHandleHeight, handlePalette);
     }
 
-    public static void renderStatusListRow(DrawContext context, TextRenderer textRenderer,
+    public static void renderStatusListRow(GuiGraphics context, Font textRenderer,
                                            int x, int y, int width, int height,
                                            String label, String status,
                                            boolean hovered, boolean selected,
@@ -217,30 +217,30 @@ public final class PathmindSettingsRowRenderer {
         DrawContextBridge.drawBorder(context, x, y, width, height, PathmindPopupRenderer.animatedColor(animation, rowBorder));
 
         String safeStatus = status == null ? "" : status;
-        int statusWidth = safeStatus.isEmpty() ? 0 : textRenderer.getWidth(safeStatus);
+        int statusWidth = safeStatus.isEmpty() ? 0 : textRenderer.width(safeStatus);
         int maxLabelWidth = Math.max(0, width - 12 - statusWidth - (safeStatus.isEmpty() ? 0 : 8));
         String rowText = TextRenderUtil.trimWithEllipsis(textRenderer, label == null ? "" : label, maxLabelWidth);
-        context.drawTextWithShadow(
+        context.drawString(
             textRenderer,
-            Text.literal(rowText),
+            Component.literal(rowText),
             x + 6,
-            y + (height - textRenderer.fontHeight) / 2 + 1,
+            y + (height - textRenderer.lineHeight) / 2 + 1,
             PathmindPopupRenderer.animatedColor(animation, UITheme.TEXT_PRIMARY)
         );
 
         if (!safeStatus.isEmpty()) {
             int statusColor = selected ? accentColor : PathmindPopupRenderer.animatedColor(animation, UITheme.TEXT_TERTIARY);
-            context.drawTextWithShadow(
+            context.drawString(
                 textRenderer,
-                Text.literal(safeStatus),
+                Component.literal(safeStatus),
                 x + width - statusWidth - 6,
-                y + (height - textRenderer.fontHeight) / 2 + 1,
+                y + (height - textRenderer.lineHeight) / 2 + 1,
                 statusColor
             );
         }
     }
 
-    public static void renderAccentOption(DrawContext context, TextRenderer textRenderer,
+    public static void renderAccentOption(GuiGraphics context, Font textRenderer,
                                           int x, int y, int width, int height,
                                           String label, int swatchColor,
                                           boolean selected, float hoverProgress,
@@ -274,19 +274,19 @@ public final class PathmindSettingsRowRenderer {
         );
 
         int labelX = swatchX + swatchSize + 4;
-        int labelY = y + (height - textRenderer.fontHeight) / 2 + 1;
+        int labelY = y + (height - textRenderer.lineHeight) / 2 + 1;
         int maxLabelWidth = Math.max(0, x + width - labelX - 4);
         String rowText = TextRenderUtil.trimWithEllipsis(textRenderer, label == null ? "" : label, maxLabelWidth);
-        context.drawTextWithShadow(
+        context.drawString(
             textRenderer,
-            Text.literal(rowText),
+            Component.literal(rowText),
             labelX,
             labelY,
             PathmindPopupRenderer.animatedColor(animation, AnimationHelper.lerpColor(UITheme.TEXT_PRIMARY, accentColor, hoverProgress))
         );
     }
 
-    public static void renderDescriptionListRow(DrawContext context, TextRenderer textRenderer,
+    public static void renderDescriptionListRow(GuiGraphics context, Font textRenderer,
                                                 int x, int y, int width, int height,
                                                 String label, String description,
                                                 boolean hovered, boolean selected,
@@ -301,16 +301,16 @@ public final class PathmindSettingsRowRenderer {
         int labelColor = PathmindPopupRenderer.animatedColor(animation, AnimationHelper.lerpColor(UITheme.TEXT_PRIMARY, accentColor, hoverProgress));
         int metaColor = PathmindPopupRenderer.animatedColor(animation, AnimationHelper.lerpColor(UITheme.TEXT_TERTIARY, UITheme.TEXT_SECONDARY, hoverProgress));
         int maxTextWidth = Math.max(0, width - 16);
-        context.drawTextWithShadow(
+        context.drawString(
             textRenderer,
-            Text.literal(TextRenderUtil.trimWithEllipsis(textRenderer, label == null ? "" : label, maxTextWidth)),
+            Component.literal(TextRenderUtil.trimWithEllipsis(textRenderer, label == null ? "" : label, maxTextWidth)),
             x + 8,
             y + 6,
             labelColor
         );
-        context.drawTextWithShadow(
+        context.drawString(
             textRenderer,
-            Text.literal(TextRenderUtil.trimWithEllipsis(textRenderer, description == null ? "" : description, maxTextWidth)),
+            Component.literal(TextRenderUtil.trimWithEllipsis(textRenderer, description == null ? "" : description, maxTextWidth)),
             x + 8,
             y + 16,
             metaColor

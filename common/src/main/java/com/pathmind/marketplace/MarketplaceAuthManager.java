@@ -6,7 +6,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.pathmind.PathmindCommon;
 import dev.architectury.platform.Platform;
-import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.Minecraft;
 import net.minecraft.util.Util;
 
 import com.sun.net.httpserver.HttpExchange;
@@ -386,7 +386,7 @@ public final class MarketplaceAuthManager {
             return;
         }
         try {
-            Util.getOperatingSystem().open(url);
+            Util.getPlatform().openUri(url);
             return;
         } catch (Exception ignored) {
         }
@@ -651,9 +651,9 @@ public final class MarketplaceAuthManager {
     }
 
     private static Path getBaseDirectory() {
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client != null && client.runDirectory != null) {
-            return client.runDirectory.toPath().resolve(BASE_DIRECTORY_NAME);
+        Minecraft client = Minecraft.getInstance();
+        if (client != null && client.gameDirectory != null) {
+            return client.gameDirectory.toPath().resolve(BASE_DIRECTORY_NAME);
         }
         return Platform.getGameFolder().resolve(BASE_DIRECTORY_NAME);
     }

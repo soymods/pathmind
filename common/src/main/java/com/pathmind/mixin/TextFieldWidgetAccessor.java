@@ -1,33 +1,33 @@
 package com.pathmind.mixin;
 
-import net.minecraft.client.gui.widget.TextFieldWidget;
-import net.minecraft.text.Text;
+import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.network.chat.Component;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;
 
-@Mixin(TextFieldWidget.class)
+@Mixin(EditBox.class)
 public interface TextFieldWidgetAccessor {
-    @Accessor("firstCharacterIndex")
+    @Accessor("displayPos")
     int pathmind$getFirstCharacterIndex();
 
-    @Accessor("selectionStart")
+    @Accessor("cursorPos")
     int pathmind$getSelectionStart();
 
-    @Accessor("selectionEnd")
+    @Accessor("highlightPos")
     int pathmind$getSelectionEnd();
 
-    @Accessor("placeholder")
-    Text pathmind$getPlaceholder();
+    @Accessor("hint")
+    Component pathmind$getPlaceholder();
 
     @Accessor("suggestion")
     String pathmind$getSuggestion();
 
-    @Accessor("editableColor")
+    @Accessor("textColor")
     int pathmind$getEditableColor();
 
-    @Accessor("uneditableColor")
+    @Accessor("textColorUneditable")
     int pathmind$getUneditableColor();
 
-    @Accessor("editable")
+    @Accessor("isEditable")
     boolean pathmind$isEditable();
 }

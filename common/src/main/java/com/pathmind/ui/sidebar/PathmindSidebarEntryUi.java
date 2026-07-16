@@ -4,18 +4,17 @@ import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.animation.HoverAnimator;
 import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.text.Text;
-
 import java.util.List;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.network.chat.Component;
 
 /** Shared animated rendering for every entry in the node sidebar. */
 final class PathmindSidebarEntryUi {
     private PathmindSidebarEntryUi() {
     }
 
-    static float renderRowBackground(DrawContext context, int left, int top, int right, int height,
+    static float renderRowBackground(GuiGraphics context, int left, int top, int right, int height,
                                      Object animationKey, boolean hovered) {
         float progress = hoverProgress(animationKey, hovered);
         int background = AnimationHelper.lerpColor(
@@ -28,7 +27,7 @@ final class PathmindSidebarEntryUi {
         return AnimationHelper.lerpColor(idleColor, hoverColor, hoverProgress(animationKey, hovered));
     }
 
-    static void renderNodeEntry(DrawContext context, TextRenderer textRenderer,
+    static void renderNodeEntry(GuiGraphics context, Font textRenderer,
                                 int rowLeft, int rowTop, int rowRight, int rowHeight,
                                 int indicatorX, int indicatorY, int indicatorSize, int indicatorColor,
                                 int textX, int textY, List<String> lines, int lineHeight,
@@ -46,7 +45,7 @@ final class PathmindSidebarEntryUi {
         int textColor = AnimationHelper.lerpColor(idleTextColor, hoverTextColor, progress);
         int lineY = textY;
         for (String line : lines) {
-            context.drawTextWithShadow(textRenderer, Text.literal(line), textX, lineY, textColor);
+            context.drawString(textRenderer, Component.literal(line), textX, lineY, textColor);
             lineY += lineHeight;
         }
     }

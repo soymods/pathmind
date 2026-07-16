@@ -3,25 +3,24 @@ package com.pathmind.nodes;
 import static com.pathmind.util.PathmindI18n.tr;
 
 import com.pathmind.util.EntityStateOptions;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.component.DataComponentTypes;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.ItemEntity;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.registry.Registries;
-import net.minecraft.text.Text;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.Vec3d;
-
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
 final class NodeAttributeDetectionEvaluator {
     private final Node owner;
@@ -33,7 +32,7 @@ final class NodeAttributeDetectionEvaluator {
     boolean evaluateAttributeDetectionSensor() {
         owner.normalizeAttributeDetectionParameters();
         Node parameterNode = owner.resolveSensorParameterNode(owner.getAttachedParameter(0), 0);
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         if (parameterNode == null) {
             if (client != null) {
                 owner.sendNodeErrorMessage(client, tr("pathmind.error.requiresTargetParameter", owner.getType().getDisplayName()));
@@ -68,7 +67,7 @@ final class NodeAttributeDetectionEvaluator {
                                                      AttributeDetectionConfig.AttributeOption attribute,
                                                      String expectedValue) {
         RuntimeParameterData data = new RuntimeParameterData();
-        Optional<Vec3d> resolved = owner.resolvePositionTarget(parameterNode, data, null);
+        Optional<Vec3> resolved = owner.resolvePositionTarget(parameterNode, data, null);
         if (resolved.isEmpty() || data.targetEntity == null) {
             return false;
         }
@@ -78,7 +77,7 @@ final class NodeAttributeDetectionEvaluator {
             case CUSTOM_NAME -> evaluateStringAttribute(getEntityCustomName(entity), expectedValue);
             case HAS_CUSTOM_NAME -> evaluateBooleanAttribute(entity.hasCustomName(), expectedValue);
             case TYPE -> evaluateStringAttribute(getEntityTypeId(entity), expectedValue);
-            case UUID -> evaluateStringAttribute(entity.getUuidAsString(), expectedValue);
+            case UUID -> evaluateStringAttribute(entity.getStringUUID(), expectedValue);
             case HEALTH -> entity instanceof LivingEntity livingEntity
                 && evaluateNumericAttribute(livingEntity.getHealth(), expectedValue);
             case MAX_HEALTH -> entity instanceof LivingEntity livingEntity
@@ -86,16 +85,16 @@ final class NodeAttributeDetectionEvaluator {
             case X -> evaluateNumericAttribute(entity.getX(), expectedValue);
             case Y -> evaluateNumericAttribute(entity.getY(), expectedValue);
             case Z -> evaluateNumericAttribute(entity.getZ(), expectedValue);
-            case YAW -> evaluateNumericAttribute(entity.getYaw(), expectedValue);
-            case PITCH -> evaluateNumericAttribute(entity.getPitch(), expectedValue);
+            case YAW -> evaluateNumericAttribute(entity.getYRot(), expectedValue);
+            case PITCH -> evaluateNumericAttribute(entity.getXRot(), expectedValue);
             case IS_ALIVE -> evaluateBooleanAttribute(entity.isAlive(), expectedValue);
-            case IS_ON_GROUND -> evaluateBooleanAttribute(entity.isOnGround(), expectedValue);
+            case IS_ON_GROUND -> evaluateBooleanAttribute(entity.onGround(), expectedValue);
             case IS_ON_FIRE -> evaluateBooleanAttribute(entity.isOnFire(), expectedValue);
-            case IS_SNEAKING -> evaluateBooleanAttribute(entity.isSneaking(), expectedValue);
+            case IS_SNEAKING -> evaluateBooleanAttribute(entity.isShiftKeyDown(), expectedValue);
             case IS_SPRINTING -> evaluateBooleanAttribute(entity.isSprinting(), expectedValue);
             case IS_SWIMMING -> evaluateBooleanAttribute(entity.isSwimming(), expectedValue);
             case IS_BABY -> evaluateBooleanAttribute(EntityStateOptions.matchesState(entity, "age=baby"), expectedValue);
-            case TAG -> evaluateTagAttribute(entity.getCommandTags(), expectedValue);
+            case TAG -> evaluateTagAttribute(entity.getTags(), expectedValue);
             default -> false;
         };
     }
@@ -108,25 +107,25 @@ final class NodeAttributeDetectionEvaluator {
             return false;
         }
         ItemEntity itemEntity = resolved.get();
-        ItemStack stack = itemEntity.getStack();
+        ItemStack stack = itemEntity.getItem();
         if (stack == null || stack.isEmpty()) {
             return false;
         }
         return switch (attribute) {
-            case NAME -> evaluateStringAttribute(stack.getName().getString(), expectedValue);
+            case NAME -> evaluateStringAttribute(stack.getHoverName().getString(), expectedValue);
             case CUSTOM_NAME -> evaluateStringAttribute(getItemCustomName(stack), expectedValue);
-            case HAS_CUSTOM_NAME -> evaluateBooleanAttribute(stack.get(DataComponentTypes.CUSTOM_NAME) != null, expectedValue);
+            case HAS_CUSTOM_NAME -> evaluateBooleanAttribute(stack.get(DataComponents.CUSTOM_NAME) != null, expectedValue);
             case ITEM_ID -> evaluateStringAttribute(getItemId(stack), expectedValue);
             case COUNT -> evaluateNumericAttribute(stack.getCount(), expectedValue);
-            case MAX_COUNT -> evaluateNumericAttribute(stack.getMaxCount(), expectedValue);
-            case DAMAGE -> evaluateNumericAttribute(stack.getDamage(), expectedValue);
+            case MAX_COUNT -> evaluateNumericAttribute(stack.getMaxStackSize(), expectedValue);
+            case DAMAGE -> evaluateNumericAttribute(stack.getDamageValue(), expectedValue);
             case MAX_DAMAGE -> evaluateNumericAttribute(stack.getMaxDamage(), expectedValue);
             case X -> evaluateNumericAttribute(itemEntity.getX(), expectedValue);
             case Y -> evaluateNumericAttribute(itemEntity.getY(), expectedValue);
             case Z -> evaluateNumericAttribute(itemEntity.getZ(), expectedValue);
             case IS_STACKABLE -> evaluateBooleanAttribute(stack.isStackable(), expectedValue);
-            case IS_ENCHANTED -> evaluateBooleanAttribute(stack.hasEnchantments(), expectedValue);
-            case IS_DAMAGEABLE -> evaluateBooleanAttribute(stack.isDamageable(), expectedValue);
+            case IS_ENCHANTED -> evaluateBooleanAttribute(stack.isEnchanted(), expectedValue);
+            case IS_DAMAGEABLE -> evaluateBooleanAttribute(stack.isDamageableItem(), expectedValue);
             default -> false;
         };
     }
@@ -135,8 +134,8 @@ final class NodeAttributeDetectionEvaluator {
         if (parameterNode == null || parameterNode.getType() != NodeType.PARAM_ITEM) {
             return Optional.empty();
         }
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client == null || client.player == null || client.world == null) {
+        Minecraft client = Minecraft.getInstance();
+        if (client == null || client.player == null || client.level == null) {
             return Optional.empty();
         }
         List<String> itemIds = owner.resolveItemIdsFromParameter(parameterNode);
@@ -148,15 +147,15 @@ final class NodeAttributeDetectionEvaluator {
         double nearestDistance = Double.MAX_VALUE;
         for (String candidateId : itemIds) {
             Identifier identifier = Identifier.tryParse(candidateId);
-            if (identifier == null || !Registries.ITEM.containsId(identifier)) {
+            if (identifier == null || !BuiltInRegistries.ITEM.containsKey(identifier)) {
                 continue;
             }
-            Item item = Registries.ITEM.get(identifier);
+            Item item = BuiltInRegistries.ITEM.getValue(identifier);
             Optional<ItemEntity> candidate = findNearestDroppedItemEntity(client, item, range);
             if (candidate.isEmpty()) {
                 continue;
             }
-            double distance = candidate.get().squaredDistanceTo(client.player);
+            double distance = candidate.get().distanceToSqr(client.player);
             if (nearest == null || distance < nearestDistance) {
                 nearest = candidate.get();
                 nearestDistance = distance;
@@ -165,18 +164,18 @@ final class NodeAttributeDetectionEvaluator {
         return Optional.ofNullable(nearest);
     }
 
-    private Optional<ItemEntity> findNearestDroppedItemEntity(MinecraftClient client, Item item, double range) {
-        if (client == null || client.player == null || client.world == null || item == null) {
+    private Optional<ItemEntity> findNearestDroppedItemEntity(Minecraft client, Item item, double range) {
+        if (client == null || client.player == null || client.level == null || item == null) {
             return Optional.empty();
         }
         double searchRadius = Math.max(1.0, range);
-        Box searchBox = client.player.getBoundingBox().expand(searchRadius);
-        List<ItemEntity> entities = client.world.getEntitiesByClass(ItemEntity.class, searchBox,
-            entity -> entity != null && !entity.isRemoved() && !entity.getStack().isEmpty() && entity.getStack().isOf(item));
+        AABB searchBox = client.player.getBoundingBox().inflate(searchRadius);
+        List<ItemEntity> entities = client.level.getEntitiesOfClass(ItemEntity.class, searchBox,
+            entity -> entity != null && !entity.isRemoved() && !entity.getItem().isEmpty() && entity.getItem().is(item));
         if (entities.isEmpty()) {
             return Optional.empty();
         }
-        ItemEntity nearest = Collections.min(entities, Comparator.comparingDouble(entity -> entity.squaredDistanceTo(client.player)));
+        ItemEntity nearest = Collections.min(entities, Comparator.comparingDouble(entity -> entity.distanceToSqr(client.player)));
         return Optional.of(nearest);
     }
 
@@ -241,7 +240,7 @@ final class NodeAttributeDetectionEvaluator {
         if (entity == null) {
             return "";
         }
-        Identifier id = Registries.ENTITY_TYPE.getId(entity.getType());
+        Identifier id = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType());
         return "minecraft".equals(id.getNamespace()) ? id.getPath() : id.toString();
     }
 
@@ -249,7 +248,7 @@ final class NodeAttributeDetectionEvaluator {
         if (stack == null || stack.isEmpty()) {
             return "";
         }
-        Identifier id = Registries.ITEM.getId(stack.getItem());
+        Identifier id = BuiltInRegistries.ITEM.getKey(stack.getItem());
 
         return "minecraft".equals(id.getNamespace()) ? id.getPath() : id.toString();
     }
@@ -258,7 +257,7 @@ final class NodeAttributeDetectionEvaluator {
         if (stack == null || stack.isEmpty()) {
             return "";
         }
-        Text customName = stack.get(DataComponentTypes.CUSTOM_NAME);
+        Component customName = stack.get(DataComponents.CUSTOM_NAME);
         return customName != null ? customName.getString() : "";
     }
 }

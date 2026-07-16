@@ -12,15 +12,14 @@ import com.pathmind.ui.animation.AnimatedValue;
 import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.TextRenderUtil;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.text.Text;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.network.chat.Component;
 import com.pathmind.util.DrawContextBridge;
 
 /**
@@ -45,7 +44,7 @@ public class VariablesOverlay {
         this.lastDisplayLines = List.of();
     }
 
-    public void render(DrawContext context, TextRenderer textRenderer, int screenWidth, int screenHeight) {
+    public void render(GuiGraphics context, Font textRenderer, int screenWidth, int screenHeight) {
         List<RuntimeVariableEntry> entries = executionManager.getRuntimeVariableEntries();
         List<RuntimeListEntry> listEntries = executionManager.getRuntimeListEntries();
         List<String> lines = (entries.isEmpty() && listEntries.isEmpty()) ? List.of() : buildDisplayLines(entries, listEntries);
@@ -67,7 +66,7 @@ public class VariablesOverlay {
             return;
         }
 
-        int lineHeight = textRenderer.fontHeight + LINE_SPACING;
+        int lineHeight = textRenderer.lineHeight + LINE_SPACING;
         int overlayHeight = PADDING * 2 + lineHeight * lines.size();
         int slideOffset = (int) ((1f - progress) * SLIDE_OFFSET);
         int overlayX = MARGIN - slideOffset;
@@ -94,9 +93,9 @@ public class VariablesOverlay {
         for (int i = 0; i < lines.size(); i++) {
             String line = trimTextToWidth(lines.get(i), textRenderer, OVERLAY_WIDTH - PADDING * 2);
             int color = i == 0 ? UITheme.ACCENT_AMBER : UITheme.TEXT_HEADER;
-            context.drawTextWithShadow(
+            context.drawString(
                 textRenderer,
-                Text.literal(line),
+                Component.literal(line),
                 textX,
                 textY + i * lineHeight,
                 AnimationHelper.multiplyAlpha(color, progress)
@@ -122,7 +121,7 @@ public class VariablesOverlay {
         }
 
         List<String> lines = new ArrayList<>();
-        lines.add(Text.translatable("pathmind.runtimeScope.overlay.title").getString());
+        lines.add(Component.translatable("pathmind.runtimeScope.overlay.title").getString());
 
         for (RuntimeVariableEntry entry : entries) {
             RuntimeVariable variable = entry.getVariable();
@@ -186,7 +185,7 @@ public class VariablesOverlay {
             case GLOBAL -> "pathmind.runtimeScope.global.short";
             case CHAIN -> "pathmind.runtimeScope.local.short";
         };
-        return Text.translatable(key).getString();
+        return Component.translatable(key).getString();
     }
 
     private String formatListValue(RuntimeList list) {
@@ -428,7 +427,7 @@ public class VariablesOverlay {
         return trimmed.substring(0, 6);
     }
 
-    private String trimTextToWidth(String text, TextRenderer textRenderer, int maxWidth) {
+    private String trimTextToWidth(String text, Font textRenderer, int maxWidth) {
         return TextRenderUtil.trimWithEllipsis(textRenderer, text, maxWidth);
     }
 

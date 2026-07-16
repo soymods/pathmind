@@ -1,12 +1,11 @@
 package com.pathmind.util;
 
-import net.minecraft.entity.player.PlayerInventory;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.ItemStack;
-
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
 
 /**
  * Compatibility helpers for PlayerInventory slot APIs that changed across 1.21.x.
@@ -20,7 +19,7 @@ public final class PlayerInventoryBridge {
     private PlayerInventoryBridge() {
     }
 
-    public static int getSelectedSlot(PlayerInventory inventory) {
+    public static int getSelectedSlot(Inventory inventory) {
         if (inventory == null) {
             return -1;
         }
@@ -45,7 +44,7 @@ public final class PlayerInventoryBridge {
         throw new IllegalStateException("No compatible way to read PlayerInventory selected slot");
     }
 
-    public static void setSelectedSlot(PlayerInventory inventory, int slot) {
+    public static void setSelectedSlot(Inventory inventory, int slot) {
         if (inventory == null) {
             return;
         }
@@ -73,7 +72,7 @@ public final class PlayerInventoryBridge {
 
     private static Method resolveGetter() {
         try {
-            return PlayerInventory.class.getMethod("getSelectedSlot");
+            return Inventory.class.getMethod("getSelectedSlot");
         } catch (NoSuchMethodException ignored) {
             return null;
         }
@@ -81,7 +80,7 @@ public final class PlayerInventoryBridge {
 
     private static Field resolveField() {
         try {
-            Field field = PlayerInventory.class.getDeclaredField("selectedSlot");
+            Field field = Inventory.class.getDeclaredField("selectedSlot");
             field.setAccessible(true);
             return field;
         } catch (NoSuchFieldException ignored) {
@@ -91,15 +90,15 @@ public final class PlayerInventoryBridge {
 
     private static Method resolveSetter() {
         try {
-            return PlayerInventory.class.getMethod("setSelectedSlot", int.class);
+            return Inventory.class.getMethod("setSelectedSlot", int.class);
         } catch (NoSuchMethodException ignored) {
             return null;
         }
     }
 
     private static Field resolvePlayerField() {
-        for (Field field : PlayerInventory.class.getDeclaredFields()) {
-            if (PlayerEntity.class.isAssignableFrom(field.getType())) {
+        for (Field field : Inventory.class.getDeclaredFields()) {
+            if (Player.class.isAssignableFrom(field.getType())) {
                 field.setAccessible(true);
                 return field;
             }
@@ -107,26 +106,26 @@ public final class PlayerInventoryBridge {
         return null;
     }
 
-    private static int inferSelectedSlot(PlayerInventory inventory) {
-        PlayerEntity player = resolvePlayer(inventory);
+    private static int inferSelectedSlot(Inventory inventory) {
+        Player player = resolvePlayer(inventory);
         if (player == null) {
             return -1;
         }
-        ItemStack mainHand = player.getMainHandStack();
+        ItemStack mainHand = player.getMainHandItem();
         if (mainHand == null) {
             return -1;
         }
-        int hotbarSize = PlayerInventory.getHotbarSize();
+        int hotbarSize = Inventory.getSelectionSize();
         for (int slot = 0; slot < hotbarSize; slot++) {
-            ItemStack stack = inventory.getStack(slot);
+            ItemStack stack = inventory.getItem(slot);
             if (stack == mainHand) {
                 return slot;
             }
         }
         if (!mainHand.isEmpty()) {
             for (int slot = 0; slot < hotbarSize; slot++) {
-                ItemStack stack = inventory.getStack(slot);
-                if (!stack.isEmpty() && ItemStack.areItemsEqual(stack, mainHand)) {
+                ItemStack stack = inventory.getItem(slot);
+                if (!stack.isEmpty() && ItemStack.isSameItem(stack, mainHand)) {
                     return slot;
                 }
             }
@@ -134,12 +133,12 @@ public final class PlayerInventoryBridge {
         return -1;
     }
 
-    private static boolean trySetInferredSelectedSlot(PlayerInventory inventory, int slot) {
+    private static boolean trySetInferredSelectedSlot(Inventory inventory, int slot) {
         int current = inferSelectedSlot(inventory);
         if (current < 0) {
             return false;
         }
-        for (Field field : PlayerInventory.class.getDeclaredFields()) {
+        for (Field field : Inventory.class.getDeclaredFields()) {
             if (field.getType() != int.class) {
                 continue;
             }
@@ -157,13 +156,13 @@ public final class PlayerInventoryBridge {
         return false;
     }
 
-    private static PlayerEntity resolvePlayer(PlayerInventory inventory) {
+    private static Player resolvePlayer(Inventory inventory) {
         if (PLAYER_FIELD == null) {
             return null;
         }
         try {
             Object value = PLAYER_FIELD.get(inventory);
-            return value instanceof PlayerEntity player ? player : null;
+            return value instanceof Player player ? player : null;
         } catch (IllegalAccessException ignored) {
             return null;
         }

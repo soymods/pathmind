@@ -3,7 +3,7 @@ package com.pathmind;
 import com.pathmind.util.VersionSupport;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.util.Identifier;
+import net.minecraft.resources.Identifier;
 import org.slf4j.Logger;
 
 public class PathmindMod implements ModInitializer {

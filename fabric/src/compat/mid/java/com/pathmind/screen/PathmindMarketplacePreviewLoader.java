@@ -5,8 +5,6 @@ import com.pathmind.data.NodeGraphPersistence;
 import com.pathmind.marketplace.MarketplacePreset;
 import com.pathmind.marketplace.MarketplaceService;
 import com.pathmind.nodes.Node;
-import net.minecraft.client.MinecraftClient;
-
 import java.util.ArrayDeque;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -14,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
+import net.minecraft.client.Minecraft;
 
 final class PathmindMarketplacePreviewLoader {
     private static final int MAX_CONCURRENT_REQUESTS = 3;
@@ -30,7 +29,7 @@ final class PathmindMarketplacePreviewLoader {
         return cache.get(preset.getId());
     }
 
-    void request(MinecraftClient client, MarketplacePreset preset, String accessToken) {
+    void request(Minecraft client, MarketplacePreset preset, String accessToken) {
         String presetId = preset == null ? null : preset.getId();
         if (presetId == null || cache.containsKey(presetId) || loading.contains(presetId) || queued.contains(presetId)) {
             return;
@@ -53,7 +52,7 @@ final class PathmindMarketplacePreviewLoader {
         queue.removeIf(queuedPreset -> preset.getId().equals(queuedPreset.getId()));
     }
 
-    private void startRequest(MinecraftClient client, MarketplacePreset preset, String presetId, String accessToken) {
+    private void startRequest(Minecraft client, MarketplacePreset preset, String presetId, String accessToken) {
         loading.add(presetId);
         MarketplaceService.fetchPresetGraphData(preset, accessToken).whenComplete((graphData, throwable) -> {
             if (client == null) {
@@ -69,7 +68,7 @@ final class PathmindMarketplacePreviewLoader {
         });
     }
 
-    private void drainQueue(MinecraftClient client, String accessToken) {
+    private void drainQueue(Minecraft client, String accessToken) {
         while (loading.size() < MAX_CONCURRENT_REQUESTS && !queue.isEmpty()) {
             MarketplacePreset queuedPreset = queue.poll();
             String queuedPresetId = queuedPreset == null ? null : queuedPreset.getId();

@@ -1,10 +1,9 @@
 package com.pathmind.util;
 
-import net.minecraft.client.texture.NativeImage;
-import net.minecraft.client.texture.NativeImageBackedTexture;
-
+import com.mojang.blaze3d.platform.NativeImage;
 import java.lang.reflect.Constructor;
 import java.util.function.Supplier;
+import net.minecraft.client.renderer.texture.DynamicTexture;
 
 /**
  * Bridges NativeImageBackedTexture constructor differences across 1.21.x targets.
@@ -13,13 +12,13 @@ public final class TextureCompatibilityBridge {
     private TextureCompatibilityBridge() {
     }
 
-    public static NativeImageBackedTexture createNativeImageBackedTexture(String debugName, NativeImage image) {
+    public static DynamicTexture createNativeImageBackedTexture(String debugName, NativeImage image) {
         if (image == null) {
             return null;
         }
 
         try {
-            Constructor<NativeImageBackedTexture> supplierCtor = NativeImageBackedTexture.class
+            Constructor<DynamicTexture> supplierCtor = DynamicTexture.class
                 .getConstructor(Supplier.class, NativeImage.class);
             Supplier<String> supplier = () -> debugName == null || debugName.isBlank() ? "pathmind_texture" : debugName;
             return supplierCtor.newInstance(supplier, image);
@@ -27,7 +26,7 @@ public final class TextureCompatibilityBridge {
         }
 
         try {
-            Constructor<NativeImageBackedTexture> imageCtor = NativeImageBackedTexture.class
+            Constructor<DynamicTexture> imageCtor = DynamicTexture.class
                 .getConstructor(NativeImage.class);
             return imageCtor.newInstance(image);
         } catch (ReflectiveOperationException e) {

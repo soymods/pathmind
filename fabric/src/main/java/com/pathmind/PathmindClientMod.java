@@ -45,25 +45,24 @@ import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.fabricmc.fabric.api.event.player.UseEntityCallback;
 import net.fabricmc.fabric.api.event.player.UseItemCallback;
 import net.fabricmc.fabric.api.message.v1.ServerMessageEvents;
-import net.minecraft.block.BlockState;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.Element;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.screen.ChatScreen;
-import net.minecraft.client.gui.screen.GameMenuScreen;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.screen.ingame.InventoryScreen;
-import net.minecraft.client.gui.screen.ingame.MerchantScreen;
-import net.minecraft.client.gui.widget.TextFieldWidget;
-import net.minecraft.entity.ItemEntity;
-import net.minecraft.item.Item;
-import net.minecraft.client.gui.screen.TitleScreen;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.components.events.GuiEventListener;
+import net.minecraft.client.gui.screens.ChatScreen;
+import net.minecraft.client.gui.screens.PauseScreen;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.TitleScreen;
+import net.minecraft.client.gui.screens.inventory.InventoryScreen;
+import net.minecraft.client.gui.screens.inventory.MerchantScreen;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
 import org.lwjgl.glfw.GLFW;
-import net.minecraft.registry.Registries;
-import net.minecraft.util.ActionResult;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -332,19 +331,19 @@ public class PathmindClientMod implements ClientModInitializer {
         // Player interaction events
         AttackBlockCallback.EVENT.register((player, world, hand, pos, direction) -> {
             fireFabricEvent(EVT_PLAYER_ATTACK_BLOCK);
-            return ActionResult.PASS;
+            return InteractionResult.PASS;
         });
         AttackEntityCallback.EVENT.register((player, world, hand, entity, hitResult) -> {
             fireFabricEvent(EVT_PLAYER_ATTACK_ENTITY);
-            return ActionResult.PASS;
+            return InteractionResult.PASS;
         });
         UseBlockCallback.EVENT.register((player, world, hand, hitResult) -> {
             fireFabricEvent(EVT_PLAYER_USE_BLOCK);
-            return ActionResult.PASS;
+            return InteractionResult.PASS;
         });
         UseEntityCallback.EVENT.register((player, world, hand, entity, hitResult) -> {
             fireFabricEvent(EVT_PLAYER_USE_ENTITY);
-            return ActionResult.PASS;
+            return InteractionResult.PASS;
         });
         UseItemCallbackCompat.register(this::fireFabricEvent, EVT_PLAYER_USE_ITEM);
     }
@@ -356,7 +355,7 @@ public class PathmindClientMod implements ClientModInitializer {
         FabricEventTracker.record(eventName);
     }
 
-    private void handlePendingClientLaunch(MinecraftClient client) {
+    private void handlePendingClientLaunch(Minecraft client) {
         if (!pendingClientLaunch) {
             return;
         }
@@ -368,11 +367,11 @@ public class PathmindClientMod implements ClientModInitializer {
         BackgroundStartRunner.getInstance().launch(StartLaunchMode.CLIENT_LAUNCH);
     }
 
-    private void handlePendingWorldJoinLaunch(MinecraftClient client) {
+    private void handlePendingWorldJoinLaunch(Minecraft client) {
         if (!pendingWorldJoinLaunch) {
             return;
         }
-        if (client == null || client.player == null || client.world == null || client.getNetworkHandler() == null) {
+        if (client == null || client.player == null || client.level == null || client.getConnection() == null) {
             return;
         }
 
@@ -381,12 +380,12 @@ public class PathmindClientMod implements ClientModInitializer {
         BackgroundStartRunner.getInstance().launch(StartLaunchMode.WORLD_JOIN);
     }
 
-    private void handleScreenLaunchTriggers(MinecraftClient client) {
+    private void handleScreenLaunchTriggers(Minecraft client) {
         if (client == null) {
             lastObservedScreen = null;
             return;
         }
-        Screen currentScreen = client.currentScreen;
+        Screen currentScreen = client.screen;
         if (currentScreen == lastObservedScreen) {
             return;
         }
@@ -404,7 +403,7 @@ public class PathmindClientMod implements ClientModInitializer {
         if (screen instanceof TitleScreen) {
             return "main_menu";
         }
-        if (screen instanceof GameMenuScreen) {
+        if (screen instanceof PauseScreen) {
             return "pause_menu";
         }
         if (screen instanceof ChatScreen) {
@@ -456,24 +455,24 @@ public class PathmindClientMod implements ClientModInitializer {
         ExecutionManager.getInstance().requestStopAll();
     }
 
-    private void handleKeybinds(MinecraftClient client) {
+    private void handleKeybinds(Minecraft client) {
         if (client == null) {
             return;
         }
 
         // Check if visual editor keybind was pressed (Title screen only)
-        while (PathmindKeybinds.OPEN_VISUAL_EDITOR.wasPressed()) {
-            if (client.currentScreen != null && !(client.currentScreen instanceof TitleScreen)) {
+        while (PathmindKeybinds.OPEN_VISUAL_EDITOR.consumeClick()) {
+            if (client.screen != null && !(client.screen instanceof TitleScreen)) {
                 continue;
             }
-            PathmindScreens.openVisualEditorOrWarn(client, client.currentScreen);
+            PathmindScreens.openVisualEditorOrWarn(client, client.screen);
         }
 
         ExecutionManager manager = ExecutionManager.getInstance();
-        boolean editorOpen = PathmindScreens.isVisualEditorScreen(client.currentScreen);
+        boolean editorOpen = PathmindScreens.isVisualEditorScreen(client.screen);
         // Allow execution to continue for normal in-game GUIs so GUI nodes can work,
         // but freeze Pathmind when the vanilla pause menu is open in multiplayer too.
-        manager.setSingleplayerPaused((client.isInSingleplayer() && editorOpen) || isPauseMenuOpen(client));
+        manager.setSingleplayerPaused((client.isLocalServer() && editorOpen) || isPauseMenuOpen(client));
         if (editorOpen) {
             stopGraphsKeyDown = false;
             playGraphsKeyDown = false;
@@ -495,56 +494,56 @@ public class PathmindClientMod implements ClientModInitializer {
         playGraphsKeyDown = playDown;
     }
 
-    private boolean isPathmindKeyDown(MinecraftClient client, net.minecraft.client.option.KeyBinding keyBinding, int fallbackKeyCode) {
-        if (keyBinding != null && keyBinding.isPressed()) {
+    private boolean isPathmindKeyDown(Minecraft client, net.minecraft.client.KeyMapping keyBinding, int fallbackKeyCode) {
+        if (keyBinding != null && keyBinding.isDown()) {
             return true;
         }
         if (client == null || client.getWindow() == null) {
             return false;
         }
-        long handle = client.getWindow().getHandle();
+        long handle = client.getWindow().handle();
         return handle != 0L && GLFW.glfwGetKey(handle, fallbackKeyCode) == GLFW.GLFW_PRESS;
     }
 
-    private boolean isPauseMenuOpen(MinecraftClient client) {
-        return client != null && client.currentScreen instanceof GameMenuScreen;
+    private boolean isPauseMenuOpen(Minecraft client) {
+        return client != null && client.screen instanceof PauseScreen;
     }
 
-    private boolean shouldIgnoreKeybinds(MinecraftClient client) {
-        if (client == null || client.currentScreen == null) {
+    private boolean shouldIgnoreKeybinds(Minecraft client) {
+        if (client == null || client.screen == null) {
             return false;
         }
-        if (client.currentScreen instanceof ChatScreen) {
+        if (client.screen instanceof ChatScreen) {
             return true;
         }
-        return isTextInputFocused(client.currentScreen);
+        return isTextInputFocused(client.screen);
     }
 
     private boolean isTextInputFocused(Screen screen) {
-        Element focused = getFocusedElement(screen);
-        if (focused instanceof TextFieldWidget textField) {
+        GuiEventListener focused = getFocusedElement(screen);
+        if (focused instanceof EditBox textField) {
             return textField.isFocused();
         }
         return false;
     }
 
-    private Element getFocusedElement(Screen screen) {
+    private GuiEventListener getFocusedElement(Screen screen) {
         if (screen == null) {
             return null;
         }
         try {
             java.lang.reflect.Method method = Screen.class.getMethod("getFocused");
             Object focused = method.invoke(screen);
-            return focused instanceof Element element ? element : null;
+            return focused instanceof GuiEventListener element ? element : null;
         } catch (ReflectiveOperationException ignored) {
             return null;
         }
     }
 
-    private void handleRecipeCacheWarmup(MinecraftClient client) {
+    private void handleRecipeCacheWarmup(Minecraft client) {
         // Integrated-server availability is the real prerequisite for recipe-cache warmup.
         // Using it directly is more robust across version-specific singleplayer state handling.
-        if (client == null || client.getServer() == null) {
+        if (client == null || client.getSingleplayerServer() == null) {
             if (nodeErrorNotificationOverlay != null) {
                 nodeErrorNotificationOverlay.dismiss(RECIPE_CACHE_NOTIFICATION_KEY);
             }
@@ -575,7 +574,7 @@ public class PathmindClientMod implements ClientModInitializer {
                 0.0f
             );
         }
-        if (client.getServer() == null) {
+        if (client.getSingleplayerServer() == null) {
             if (nodeErrorNotificationOverlay != null) {
                 nodeErrorNotificationOverlay.showProgress(
                     RECIPE_CACHE_NOTIFICATION_KEY,
@@ -642,7 +641,7 @@ public class PathmindClientMod implements ClientModInitializer {
     }
 
     private boolean runNavigatorCommand(String rawCommand) {
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         if (client == null) {
             return true;
         }
@@ -697,8 +696,8 @@ public class PathmindClientMod implements ClientModInitializer {
         return true;
     }
 
-    private void handleNavigatorGoto(MinecraftClient client, String[] parts) {
-        if (client == null || client.player == null || client.world == null) {
+    private void handleNavigatorGoto(Minecraft client, String[] parts) {
+        if (client == null || client.player == null || client.level == null) {
             showNavigatorMessage("Pathmind Nav is unavailable right now.");
             return;
         }
@@ -719,8 +718,8 @@ public class PathmindClientMod implements ClientModInitializer {
         showNavigatorMessage("Pathmind Nav: heading to " + target.pos().getX() + " " + target.pos().getY() + " " + target.pos().getZ());
     }
 
-    private void handleNavigatorPathPreview(MinecraftClient client, String[] parts) {
-        if (client == null || client.player == null || client.world == null) {
+    private void handleNavigatorPathPreview(Minecraft client, String[] parts) {
+        if (client == null || client.player == null || client.level == null) {
             showNavigatorMessage("Pathmind Nav is unavailable right now.");
             return;
         }
@@ -744,7 +743,7 @@ public class PathmindClientMod implements ClientModInitializer {
     private record NavigatorTarget(BlockPos pos, boolean nearBlock) {
     }
 
-    private NavigatorTarget parseNavigatorTarget(MinecraftClient client, String[] parts, int coordinateStartIndex, String usageCommand) {
+    private NavigatorTarget parseNavigatorTarget(Minecraft client, String[] parts, int coordinateStartIndex, String usageCommand) {
         if (client == null || client.player == null) {
             showNavigatorMessage("Pathmind Nav is unavailable right now.");
             return null;
@@ -782,8 +781,8 @@ public class PathmindClientMod implements ClientModInitializer {
         return null;
     }
 
-    private NavigatorTarget resolveNavigatorBlockTarget(MinecraftClient client, String rawBlockId, String usageCommand) {
-        if (client == null || client.player == null || client.world == null) {
+    private NavigatorTarget resolveNavigatorBlockTarget(Minecraft client, String rawBlockId, String usageCommand) {
+        if (client == null || client.player == null || client.level == null) {
             showNavigatorMessage("Pathmind Nav is unavailable right now.");
             return null;
         }
@@ -793,7 +792,7 @@ public class PathmindClientMod implements ClientModInitializer {
             return null;
         }
         Identifier identifier = Identifier.tryParse(normalized);
-        if (identifier == null || !Registries.BLOCK.containsId(identifier)) {
+        if (identifier == null || !BuiltInRegistries.BLOCK.containsKey(identifier)) {
             showNavigatorMessage("Unknown block identifier: " + rawBlockId);
             return null;
         }
@@ -813,8 +812,8 @@ public class PathmindClientMod implements ClientModInitializer {
         return new NavigatorTarget(nearest.get(), true);
     }
 
-    private NavigatorTarget resolveNavigatorItemTarget(MinecraftClient client, String rawItemId, String usageCommand) {
-        if (client == null || client.player == null || client.world == null) {
+    private NavigatorTarget resolveNavigatorItemTarget(Minecraft client, String rawItemId, String usageCommand) {
+        if (client == null || client.player == null || client.level == null) {
             showNavigatorMessage("Pathmind Nav is unavailable right now.");
             return null;
         }
@@ -824,18 +823,18 @@ public class PathmindClientMod implements ClientModInitializer {
             return null;
         }
         Identifier identifier = Identifier.tryParse(normalized);
-        if (identifier == null || !Registries.ITEM.containsId(identifier)) {
+        if (identifier == null || !BuiltInRegistries.ITEM.containsKey(identifier)) {
             showNavigatorMessage("Unknown item identifier: " + rawItemId);
             return null;
         }
 
-        Item item = Registries.ITEM.get(identifier);
+        Item item = BuiltInRegistries.ITEM.getValue(identifier);
         Optional<ItemEntity> nearest = findNearestDroppedItemEntity(client, item, NAVIGATOR_PARAMETER_SEARCH_RADIUS);
         if (nearest.isEmpty()) {
             showNavigatorMessage("No nearby dropped item found for " + normalized + ".");
             return null;
         }
-        return new NavigatorTarget(nearest.get().getBlockPos(), false);
+        return new NavigatorTarget(nearest.get().blockPosition(), false);
     }
 
     private String normalizeNavigatorResourceId(String rawId, boolean block) {
@@ -858,13 +857,13 @@ public class PathmindClientMod implements ClientModInitializer {
         return namespaced != null ? namespaced.toString() : null;
     }
 
-    private Optional<BlockPos> findNearestBlock(MinecraftClient client, List<BlockSelection> selections, double range) {
-        if (client == null || client.player == null || client.world == null || selections == null || selections.isEmpty()) {
+    private Optional<BlockPos> findNearestBlock(Minecraft client, List<BlockSelection> selections, double range) {
+        if (client == null || client.player == null || client.level == null || selections == null || selections.isEmpty()) {
             return Optional.empty();
         }
         int radius = Math.max(1, Math.min((int) Math.ceil(range), 64));
-        BlockPos playerPos = client.player.getBlockPos();
-        BlockPos.Mutable mutable = new BlockPos.Mutable();
+        BlockPos playerPos = client.player.blockPosition();
+        BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
         BlockPos bestPos = null;
         double bestDistance = Double.MAX_VALUE;
 
@@ -872,7 +871,7 @@ public class PathmindClientMod implements ClientModInitializer {
             for (int dy = -radius; dy <= radius; dy++) {
                 for (int dz = -radius; dz <= radius; dz++) {
                     mutable.set(playerPos.getX() + dx, playerPos.getY() + dy, playerPos.getZ() + dz);
-                    BlockState state = client.world.getBlockState(mutable);
+                    BlockState state = client.level.getBlockState(mutable);
                     if (state == null || state.isAir()) {
                         continue;
                     }
@@ -886,10 +885,10 @@ public class PathmindClientMod implements ClientModInitializer {
                     if (!matches) {
                         continue;
                     }
-                    double distance = mutable.getSquaredDistance(playerPos);
+                    double distance = mutable.distSqr(playerPos);
                     if (distance < bestDistance) {
                         bestDistance = distance;
-                        bestPos = mutable.toImmutable();
+                        bestPos = mutable.immutable();
                     }
                 }
             }
@@ -898,22 +897,22 @@ public class PathmindClientMod implements ClientModInitializer {
         return Optional.ofNullable(bestPos);
     }
 
-    private Optional<ItemEntity> findNearestDroppedItemEntity(MinecraftClient client, Item item, double range) {
-        if (client == null || client.player == null || client.world == null || item == null) {
+    private Optional<ItemEntity> findNearestDroppedItemEntity(Minecraft client, Item item, double range) {
+        if (client == null || client.player == null || client.level == null || item == null) {
             return Optional.empty();
         }
         double searchRadius = Math.max(1.0D, range);
-        Box searchBox = client.player.getBoundingBox().expand(searchRadius);
-        List<ItemEntity> entities = client.world.getEntitiesByClass(
+        AABB searchBox = client.player.getBoundingBox().inflate(searchRadius);
+        List<ItemEntity> entities = client.level.getEntitiesOfClass(
             ItemEntity.class,
             searchBox,
-            entity -> entity != null && !entity.isRemoved() && !entity.getStack().isEmpty() && entity.getStack().isOf(item)
+            entity -> entity != null && !entity.isRemoved() && !entity.getItem().isEmpty() && entity.getItem().is(item)
         );
         if (entities.isEmpty()) {
             return Optional.empty();
         }
         ItemEntity nearest = entities.stream()
-            .min(Comparator.comparingDouble(entity -> entity.squaredDistanceTo(client.player)))
+            .min(Comparator.comparingDouble(entity -> entity.distanceToSqr(client.player)))
             .orElse(null);
         return Optional.ofNullable(nearest);
     }

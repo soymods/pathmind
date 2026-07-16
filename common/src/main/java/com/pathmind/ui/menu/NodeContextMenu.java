@@ -3,12 +3,11 @@ package com.pathmind.ui.menu;
 import com.pathmind.ui.animation.PopupAnimationHandler;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.MatrixStackBridge;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.text.Text;
-
 import java.util.Arrays;
 import java.util.List;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.network.chat.Component;
 
 public class NodeContextMenu {
 
@@ -134,7 +133,7 @@ public class NodeContextMenu {
         return null;
     }
 
-    public void render(DrawContext context, TextRenderer textRenderer) {
+    public void render(GuiGraphics context, Font textRenderer) {
         if (!isOpen) {
             return;
         }
@@ -146,7 +145,7 @@ public class NodeContextMenu {
 
         int menuHeight = PADDING * 2 + (actions.size() * ITEM_HEIGHT);
 
-        var matrices = context.getMatrices();
+        var matrices = context.pose();
         MatrixStackBridge.push(matrices);
         MatrixStackBridge.translate(matrices, menuX, menuY);
         MatrixStackBridge.scale(matrices, scale, scale);
@@ -159,8 +158,8 @@ public class NodeContextMenu {
             boolean hovered = i == hoveredIndex;
             ContextMenuRenderer.renderMenuItem(context, menuX, itemY, MENU_WIDTH, ITEM_HEIGHT, hovered);
             int textX = menuX + TEXT_OFFSET_X;
-            int textY = itemY + (ITEM_HEIGHT - textRenderer.fontHeight) / 2;
-            context.drawTextWithShadow(textRenderer, Text.translatable(actions.get(i).getTranslationKey()), textX, textY, UITheme.CONTEXT_MENU_TEXT);
+            int textY = itemY + (ITEM_HEIGHT - textRenderer.lineHeight) / 2;
+            context.drawString(textRenderer, Component.translatable(actions.get(i).getTranslationKey()), textX, textY, UITheme.CONTEXT_MENU_TEXT);
             itemY += ITEM_HEIGHT;
         }
 

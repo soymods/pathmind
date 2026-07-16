@@ -1,24 +1,23 @@
 package com.pathmind.util;
 
-import net.minecraft.registry.entry.RegistryEntry;
-import net.minecraft.village.VillagerData;
-import net.minecraft.village.VillagerProfession;
-
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import net.minecraft.core.Holder;
+import net.minecraft.world.entity.npc.villager.VillagerData;
+import net.minecraft.world.entity.npc.villager.VillagerProfession;
 
 /**
  * Bridges VillagerData.withProfession() across Minecraft versions.
  * Some versions take RegistryEntry&lt;VillagerProfession&gt;, others take VillagerProfession directly.
  */
 public final class VillagerDataCompatibilityBridge {
-    private static final Method WITH_PROFESSION_ENTRY = resolveMethod("withProfession", RegistryEntry.class);
+    private static final Method WITH_PROFESSION_ENTRY = resolveMethod("withProfession", Holder.class);
     private static final Method WITH_PROFESSION_VALUE = resolveMethod("withProfession", VillagerProfession.class);
 
     private VillagerDataCompatibilityBridge() {
     }
 
-    public static VillagerData withProfession(VillagerData data, RegistryEntry<VillagerProfession> professionEntry) {
+    public static VillagerData withProfession(VillagerData data, Holder<VillagerProfession> professionEntry) {
         if (data == null || professionEntry == null) {
             return data;
         }

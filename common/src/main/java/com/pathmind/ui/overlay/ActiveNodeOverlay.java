@@ -6,14 +6,14 @@ import com.pathmind.nodes.Node;
 import com.pathmind.ui.animation.AnimatedValue;
 import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.theme.UITheme;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.text.Text;
 import com.pathmind.util.DrawContextBridge;
 import com.pathmind.util.PathmindI18n;
 import com.pathmind.util.TextRenderUtil;
 import java.util.ArrayList;
 import java.util.List;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.network.chat.Component;
 
 /**
  * HUD overlay that displays the currently active node in the top right corner.
@@ -41,7 +41,7 @@ public class ActiveNodeOverlay {
     /**
      * Render the overlay if execution is active
      */
-    public void render(DrawContext context, TextRenderer textRenderer, int screenWidth, int screenHeight) {
+    public void render(GuiGraphics context, Font textRenderer, int screenWidth, int screenHeight) {
         boolean isExecuting = executionManager.isExecuting();
         boolean showingCompletion = executionManager.isDisplayingCompletion();
         Node primaryNode = executionManager.getActiveNode();
@@ -83,10 +83,10 @@ public class ActiveNodeOverlay {
             int textRightX = overlayX + OVERLAY_WIDTH - 8;
 
             String titleText = i == 0 ? tr("pathmind.overlay.activeNode") : tr("pathmind.overlay.activeNode.numbered", i + 1);
-            int titleWidth = textRenderer.getWidth(titleText);
-            context.drawTextWithShadow(
+            int titleWidth = textRenderer.width(titleText);
+            context.drawString(
                 textRenderer,
-                Text.literal(titleText),
+                Component.literal(titleText),
                 textRightX - titleWidth,
                 overlayY + 6,
                 AnimationHelper.multiplyAlpha(UITheme.ACCENT_SKY, progress)
@@ -107,10 +107,10 @@ public class ActiveNodeOverlay {
                 nodeColor = node != null ? node.getColor() : UITheme.ACCENT_SKY;
             }
 
-            int nodeTypeWidth = textRenderer.getWidth(nodeTypeName);
-            context.drawTextWithShadow(
+            int nodeTypeWidth = textRenderer.width(nodeTypeName);
+            context.drawString(
                 textRenderer,
-                Text.literal(nodeTypeName),
+                Component.literal(nodeTypeName),
                 textRightX - nodeTypeWidth,
                 overlayY + 18,
                 AnimationHelper.multiplyAlpha(nodeColor, progress)
@@ -119,20 +119,20 @@ public class ActiveNodeOverlay {
             String timeText = i == 0
                 ? tr("pathmind.overlay.nodeTime", formatDuration(executionManager.getActiveNodeDuration()))
                 : tr("pathmind.overlay.nodeTimeUnknown");
-            int timeWidth = textRenderer.getWidth(timeText);
-            context.drawTextWithShadow(
+            int timeWidth = textRenderer.width(timeText);
+            context.drawString(
                 textRenderer,
-                Text.literal(timeText),
+                Component.literal(timeText),
                 textRightX - timeWidth,
                 overlayY + 30,
                 AnimationHelper.multiplyAlpha(UITheme.TEXT_HEADER, progress)
             );
 
             String statusText = showingCompletion ? tr("pathmind.overlay.finished") : tr("pathmind.overlay.executing");
-            int statusWidth = textRenderer.getWidth(statusText);
-            context.drawTextWithShadow(
+            int statusWidth = textRenderer.width(statusText);
+            context.drawString(
                 textRenderer,
-                Text.literal(statusText),
+                Component.literal(statusText),
                 textRightX - statusWidth,
                 overlayY + 42,
                 AnimationHelper.multiplyAlpha(showingCompletion ? UITheme.STATE_ERROR : UITheme.ACCENT_SKY, progress)
@@ -152,7 +152,7 @@ public class ActiveNodeOverlay {
     /**
      * Render a one-line active-node indicator for menus and other non-world screens.
      */
-    public void renderCompact(DrawContext context, TextRenderer textRenderer, int screenWidth, int screenHeight) {
+    public void renderCompact(GuiGraphics context, Font textRenderer, int screenWidth, int screenHeight) {
         boolean isExecuting = executionManager.isExecuting();
         boolean showingCompletion = executionManager.isDisplayingCompletion();
         Node primaryNode = executionManager.getActiveNode();
@@ -180,11 +180,11 @@ public class ActiveNodeOverlay {
 
         int availableTextWidth = COMPACT_MAX_WIDTH - 18;
         String pattern = showingCompletion ? tr("pathmind.overlay.finishedNode", "") : tr("pathmind.overlay.runningNode", "");
-        int valueWidth = availableTextWidth - textRenderer.getWidth(pattern);
+        int valueWidth = availableTextWidth - textRenderer.width(pattern);
         String text = showingCompletion
             ? tr("pathmind.overlay.finishedNode", trimToWidth(textRenderer, nodeTypeName, valueWidth))
             : tr("pathmind.overlay.runningNode", trimToWidth(textRenderer, nodeTypeName, valueWidth));
-        int textWidth = textRenderer.getWidth(text);
+        int textWidth = textRenderer.width(text);
         int overlayWidth = Math.max(COMPACT_MIN_WIDTH, Math.min(COMPACT_MAX_WIDTH, textWidth + 18));
         int slideOffset = (int) ((1f - progress) * SLIDE_OFFSET);
         int overlayX = screenWidth - overlayWidth - MARGIN + slideOffset;
@@ -195,9 +195,9 @@ public class ActiveNodeOverlay {
         DrawContextBridge.drawBorder(context, overlayX, overlayY, overlayWidth, COMPACT_HEIGHT,
             AnimationHelper.multiplyAlpha(UITheme.BORDER_HIGHLIGHT, progress));
         context.fill(overlayX + 5, overlayY + 5, overlayX + 10, overlayY + 10, AnimationHelper.multiplyAlpha(nodeColor, progress));
-        context.drawTextWithShadow(
+        context.drawString(
             textRenderer,
-            Text.literal(text),
+            Component.literal(text),
             overlayX + 14,
             overlayY + 5,
             AnimationHelper.multiplyAlpha(UITheme.TEXT_HEADER, progress)
@@ -219,7 +219,7 @@ public class ActiveNodeOverlay {
         }
     }
 
-    private void renderNavigatorCard(DrawContext context, TextRenderer textRenderer, int screenWidth, float progress,
+    private void renderNavigatorCard(GuiGraphics context, Font textRenderer, int screenWidth, float progress,
                                      int cardIndex, int cardSpacing, PathmindNavigator.Snapshot snapshot) {
         int slideOffset = (int) ((1f - progress) * SLIDE_OFFSET);
         int overlayX = screenWidth - OVERLAY_WIDTH - MARGIN + slideOffset;
@@ -232,19 +232,19 @@ public class ActiveNodeOverlay {
 
         int textRightX = overlayX + OVERLAY_WIDTH - 8;
         String titleText = tr("pathmind.navigator.title");
-        context.drawTextWithShadow(
+        context.drawString(
             textRenderer,
-            Text.literal(titleText),
-            textRightX - textRenderer.getWidth(titleText),
+            Component.literal(titleText),
+            textRightX - textRenderer.width(titleText),
             overlayY + 6,
             AnimationHelper.multiplyAlpha(UITheme.ACCENT_SKY, progress)
         );
 
         String targetText = formatTarget(snapshot.targetPos());
-        context.drawTextWithShadow(
+        context.drawString(
             textRenderer,
-            Text.literal(targetText),
-            textRightX - textRenderer.getWidth(targetText),
+            Component.literal(targetText),
+            textRightX - textRenderer.width(targetText),
             overlayY + 18,
             AnimationHelper.multiplyAlpha(UITheme.TEXT_HEADER, progress)
         );
@@ -252,10 +252,10 @@ public class ActiveNodeOverlay {
         String distanceText = snapshot.distance() >= 0.0D
             ? tr("pathmind.navigator.distance", snapshot.distance())
             : tr("pathmind.navigator.distanceUnknown");
-        context.drawTextWithShadow(
+        context.drawString(
             textRenderer,
-            Text.literal(distanceText),
-            textRightX - textRenderer.getWidth(distanceText),
+            Component.literal(distanceText),
+            textRightX - textRenderer.width(distanceText),
             overlayY + 30,
             AnimationHelper.multiplyAlpha(UITheme.TEXT_PRIMARY, progress)
         );
@@ -271,10 +271,10 @@ public class ActiveNodeOverlay {
         int statusColor = snapshot.state() == PathmindNavigator.State.FAILED
             ? UITheme.STATE_ERROR
             : UITheme.ACCENT_SKY;
-        context.drawTextWithShadow(
+        context.drawString(
             textRenderer,
-            Text.literal(statusText),
-            textRightX - textRenderer.getWidth(statusText),
+            Component.literal(statusText),
+            textRightX - textRenderer.width(statusText),
             overlayY + 42,
             AnimationHelper.multiplyAlpha(statusColor, progress)
         );
@@ -285,14 +285,14 @@ public class ActiveNodeOverlay {
         DrawContextBridge.drawBorder(context, dotX, dotY, 8, 8, AnimationHelper.multiplyAlpha(UITheme.BORDER_HIGHLIGHT, progress));
     }
 
-    private String formatTarget(net.minecraft.util.math.BlockPos targetPos) {
+    private String formatTarget(net.minecraft.core.BlockPos targetPos) {
         if (targetPos == null) {
             return tr("pathmind.navigator.targetUnknown");
         }
         return tr("pathmind.navigator.target", targetPos.getX(), targetPos.getY(), targetPos.getZ());
     }
 
-    private String trimToWidth(TextRenderer textRenderer, String value, int maxWidth) {
+    private String trimToWidth(Font textRenderer, String value, int maxWidth) {
         return TextRenderUtil.trimWithEllipsis(textRenderer, value, maxWidth);
     }
 

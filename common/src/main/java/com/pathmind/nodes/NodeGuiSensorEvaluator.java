@@ -1,33 +1,32 @@
 package com.pathmind.nodes;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.entity.player.PlayerInventory;
-import net.minecraft.item.ItemStack;
-import net.minecraft.screen.AnvilScreenHandler;
-import net.minecraft.screen.BeaconScreenHandler;
-import net.minecraft.screen.BlastFurnaceScreenHandler;
-import net.minecraft.screen.BrewingStandScreenHandler;
-import net.minecraft.screen.CartographyTableScreenHandler;
-import net.minecraft.screen.CraftingScreenHandler;
-import net.minecraft.screen.EnchantmentScreenHandler;
-import net.minecraft.screen.FurnaceScreenHandler;
-import net.minecraft.screen.Generic3x3ContainerScreenHandler;
-import net.minecraft.screen.GenericContainerScreenHandler;
-import net.minecraft.screen.GrindstoneScreenHandler;
-import net.minecraft.screen.HopperScreenHandler;
-import net.minecraft.screen.LoomScreenHandler;
-import net.minecraft.screen.PlayerScreenHandler;
-import net.minecraft.screen.ScreenHandler;
-import net.minecraft.screen.SmithingScreenHandler;
-import net.minecraft.screen.slot.Slot;
-import net.minecraft.screen.SmokerScreenHandler;
-import net.minecraft.screen.StonecutterScreenHandler;
-
 import com.pathmind.util.GuiSelectionMode;
 
 import java.util.Map;
 import java.util.Optional;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.AnvilMenu;
+import net.minecraft.world.inventory.BeaconMenu;
+import net.minecraft.world.inventory.BlastFurnaceMenu;
+import net.minecraft.world.inventory.BrewingStandMenu;
+import net.minecraft.world.inventory.CartographyTableMenu;
+import net.minecraft.world.inventory.ChestMenu;
+import net.minecraft.world.inventory.CraftingMenu;
+import net.minecraft.world.inventory.DispenserMenu;
+import net.minecraft.world.inventory.EnchantmentMenu;
+import net.minecraft.world.inventory.FurnaceMenu;
+import net.minecraft.world.inventory.GrindstoneMenu;
+import net.minecraft.world.inventory.HopperMenu;
+import net.minecraft.world.inventory.InventoryMenu;
+import net.minecraft.world.inventory.LoomMenu;
+import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.inventory.SmithingMenu;
+import net.minecraft.world.inventory.SmokerMenu;
+import net.minecraft.world.inventory.StonecutterMenu;
+import net.minecraft.world.item.ItemStack;
 
 final class NodeGuiSensorEvaluator {
     private final Node owner;
@@ -37,15 +36,15 @@ final class NodeGuiSensorEvaluator {
     }
 
     boolean isOpenGuiFilled() {
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         if (client == null || client.player == null) {
             return false;
         }
-        PlayerInventory inventory = client.player.getInventory();
+        Inventory inventory = client.player.getInventory();
         if (inventory == null) {
             return false;
         }
-        ScreenHandler handler = client.player.currentScreenHandler;
+        AbstractContainerMenu handler = client.player.containerMenu;
         if (handler == null) {
             return false;
         }
@@ -63,7 +62,7 @@ final class NodeGuiSensorEvaluator {
         }
 
         boolean inspectPlayerInventory = guiMode == GuiSelectionMode.PLAYER_INVENTORY
-            || (guiMode == null && (handler instanceof PlayerScreenHandler || !hasContainerSlots(handler)));
+            || (guiMode == null && (handler instanceof InventoryMenu || !hasContainerSlots(handler)));
         boolean inspectContainer = guiMode != GuiSelectionMode.PLAYER_INVENTORY && (!inspectPlayerInventory);
         boolean foundRelevantSlots = false;
 
@@ -71,12 +70,12 @@ final class NodeGuiSensorEvaluator {
             if (slot == null) {
                 continue;
             }
-            boolean playerSlot = slot.inventory instanceof PlayerInventory;
+            boolean playerSlot = slot.container instanceof Inventory;
             if (inspectPlayerInventory != playerSlot) {
                 continue;
             }
             foundRelevantSlots = true;
-            ItemStack stack = slot.getStack();
+            ItemStack stack = slot.getItem();
             if (stack == null || stack.isEmpty()) {
                 return false;
             }
@@ -85,13 +84,13 @@ final class NodeGuiSensorEvaluator {
     }
 
     Optional<CurrentGui> getCurrentGui() {
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client == null || client.player == null || client.currentScreen == null) {
+        Minecraft client = Minecraft.getInstance();
+        if (client == null || client.player == null || client.screen == null) {
             return Optional.empty();
         }
-        GuiSelectionMode mode = resolveGuiMode(client.player.currentScreenHandler, client.currentScreen);
-        String id = mode != null ? mode.getId() : screenId(client.currentScreen);
-        String title = client.currentScreen.getTitle() != null ? client.currentScreen.getTitle().getString() : "";
+        GuiSelectionMode mode = resolveGuiMode(client.player.containerMenu, client.screen);
+        String id = mode != null ? mode.getId() : screenId(client.screen);
+        String title = client.screen.getTitle() != null ? client.screen.getTitle().getString() : "";
         if (id == null || id.isBlank()) {
             return Optional.empty();
         }
@@ -109,16 +108,16 @@ final class NodeGuiSensorEvaluator {
         return values;
     }
 
-    private boolean isPlayerInventoryFilled(PlayerInventory inventory) {
+    private boolean isPlayerInventoryFilled(Inventory inventory) {
         if (inventory == null) {
             return false;
         }
-        int slotCount = Math.min(36, inventory.size());
+        int slotCount = Math.min(36, inventory.getContainerSize());
         if (slotCount <= 0) {
             return false;
         }
         for (int slotIndex = 0; slotIndex < slotCount; slotIndex++) {
-            ItemStack stack = inventory.getStack(slotIndex);
+            ItemStack stack = inventory.getItem(slotIndex);
             if (stack == null || stack.isEmpty()) {
                 return false;
             }
@@ -126,102 +125,102 @@ final class NodeGuiSensorEvaluator {
         return true;
     }
 
-    private boolean hasContainerSlots(ScreenHandler handler) {
+    private boolean hasContainerSlots(AbstractContainerMenu handler) {
         if (handler == null) {
             return false;
         }
         for (Slot slot : handler.slots) {
-            if (slot != null && !(slot.inventory instanceof PlayerInventory)) {
+            if (slot != null && !(slot.container instanceof Inventory)) {
                 return true;
             }
         }
         return false;
     }
 
-    private boolean matchesGuiMode(ScreenHandler handler, GuiSelectionMode mode) {
+    private boolean matchesGuiMode(AbstractContainerMenu handler, GuiSelectionMode mode) {
         if (handler == null || mode == null) {
             return false;
         }
         return switch (mode) {
             case PLAYER_INVENTORY -> true;
-            case CRAFTING_TABLE -> handler instanceof CraftingScreenHandler && !(handler instanceof PlayerScreenHandler);
-            case FURNACE -> handler instanceof FurnaceScreenHandler;
-            case BLAST_FURNACE -> handler instanceof BlastFurnaceScreenHandler;
-            case SMOKER -> handler instanceof SmokerScreenHandler;
-            case ENCHANTING_TABLE -> handler instanceof EnchantmentScreenHandler;
-            case BREWING_STAND -> handler instanceof BrewingStandScreenHandler;
-            case ANVIL -> handler instanceof AnvilScreenHandler;
-            case GRINDSTONE -> handler instanceof GrindstoneScreenHandler;
-            case STONECUTTER -> handler instanceof StonecutterScreenHandler;
-            case SMITHING_TABLE -> handler instanceof SmithingScreenHandler;
-            case LOOM -> handler instanceof LoomScreenHandler;
-            case CARTOGRAPHY_TABLE -> handler instanceof CartographyTableScreenHandler;
-            case BARREL -> handler instanceof GenericContainerScreenHandler generic && generic.getRows() == 3;
-            case CHEST_DOUBLE -> handler instanceof GenericContainerScreenHandler generic && generic.getRows() >= 6;
-            case SHULKER_BOX -> handler instanceof GenericContainerScreenHandler generic && generic.getRows() == 3;
-            case HOPPER -> handler instanceof HopperScreenHandler;
-            case DISPENSER -> handler instanceof Generic3x3ContainerScreenHandler;
-            case BEACON -> handler instanceof BeaconScreenHandler;
+            case CRAFTING_TABLE -> handler instanceof CraftingMenu && !(handler instanceof InventoryMenu);
+            case FURNACE -> handler instanceof FurnaceMenu;
+            case BLAST_FURNACE -> handler instanceof BlastFurnaceMenu;
+            case SMOKER -> handler instanceof SmokerMenu;
+            case ENCHANTING_TABLE -> handler instanceof EnchantmentMenu;
+            case BREWING_STAND -> handler instanceof BrewingStandMenu;
+            case ANVIL -> handler instanceof AnvilMenu;
+            case GRINDSTONE -> handler instanceof GrindstoneMenu;
+            case STONECUTTER -> handler instanceof StonecutterMenu;
+            case SMITHING_TABLE -> handler instanceof SmithingMenu;
+            case LOOM -> handler instanceof LoomMenu;
+            case CARTOGRAPHY_TABLE -> handler instanceof CartographyTableMenu;
+            case BARREL -> handler instanceof ChestMenu generic && generic.getRowCount() == 3;
+            case CHEST_DOUBLE -> handler instanceof ChestMenu generic && generic.getRowCount() >= 6;
+            case SHULKER_BOX -> handler instanceof ChestMenu generic && generic.getRowCount() == 3;
+            case HOPPER -> handler instanceof HopperMenu;
+            case DISPENSER -> handler instanceof DispenserMenu;
+            case BEACON -> handler instanceof BeaconMenu;
         };
     }
 
-    private GuiSelectionMode resolveGuiMode(ScreenHandler handler, Screen screen) {
+    private GuiSelectionMode resolveGuiMode(AbstractContainerMenu handler, Screen screen) {
         if (handler == null) {
             return null;
         }
         String title = screen != null && screen.getTitle() != null
             ? screen.getTitle().getString().toLowerCase(java.util.Locale.ROOT)
             : "";
-        if (handler instanceof PlayerScreenHandler) {
+        if (handler instanceof InventoryMenu) {
             return GuiSelectionMode.PLAYER_INVENTORY;
         }
-        if (handler instanceof CraftingScreenHandler) {
+        if (handler instanceof CraftingMenu) {
             return GuiSelectionMode.CRAFTING_TABLE;
         }
-        if (handler instanceof FurnaceScreenHandler) {
+        if (handler instanceof FurnaceMenu) {
             return GuiSelectionMode.FURNACE;
         }
-        if (handler instanceof BlastFurnaceScreenHandler) {
+        if (handler instanceof BlastFurnaceMenu) {
             return GuiSelectionMode.BLAST_FURNACE;
         }
-        if (handler instanceof SmokerScreenHandler) {
+        if (handler instanceof SmokerMenu) {
             return GuiSelectionMode.SMOKER;
         }
-        if (handler instanceof EnchantmentScreenHandler) {
+        if (handler instanceof EnchantmentMenu) {
             return GuiSelectionMode.ENCHANTING_TABLE;
         }
-        if (handler instanceof BrewingStandScreenHandler) {
+        if (handler instanceof BrewingStandMenu) {
             return GuiSelectionMode.BREWING_STAND;
         }
-        if (handler instanceof AnvilScreenHandler) {
+        if (handler instanceof AnvilMenu) {
             return GuiSelectionMode.ANVIL;
         }
-        if (handler instanceof GrindstoneScreenHandler) {
+        if (handler instanceof GrindstoneMenu) {
             return GuiSelectionMode.GRINDSTONE;
         }
-        if (handler instanceof StonecutterScreenHandler) {
+        if (handler instanceof StonecutterMenu) {
             return GuiSelectionMode.STONECUTTER;
         }
-        if (handler instanceof SmithingScreenHandler) {
+        if (handler instanceof SmithingMenu) {
             return GuiSelectionMode.SMITHING_TABLE;
         }
-        if (handler instanceof LoomScreenHandler) {
+        if (handler instanceof LoomMenu) {
             return GuiSelectionMode.LOOM;
         }
-        if (handler instanceof CartographyTableScreenHandler) {
+        if (handler instanceof CartographyTableMenu) {
             return GuiSelectionMode.CARTOGRAPHY_TABLE;
         }
-        if (handler instanceof HopperScreenHandler) {
+        if (handler instanceof HopperMenu) {
             return GuiSelectionMode.HOPPER;
         }
-        if (handler instanceof Generic3x3ContainerScreenHandler) {
+        if (handler instanceof DispenserMenu) {
             return GuiSelectionMode.DISPENSER;
         }
-        if (handler instanceof BeaconScreenHandler) {
+        if (handler instanceof BeaconMenu) {
             return GuiSelectionMode.BEACON;
         }
-        if (handler instanceof GenericContainerScreenHandler generic) {
-            if (generic.getRows() >= 6) {
+        if (handler instanceof ChestMenu generic) {
+            if (generic.getRowCount() >= 6) {
                 return GuiSelectionMode.CHEST_DOUBLE;
             }
             if (title.contains("shulker")) {
@@ -230,7 +229,7 @@ final class NodeGuiSensorEvaluator {
             if (title.contains("barrel")) {
                 return GuiSelectionMode.BARREL;
             }
-            return generic.getRows() == 3 ? GuiSelectionMode.BARREL : null;
+            return generic.getRowCount() == 3 ? GuiSelectionMode.BARREL : null;
         }
         return null;
     }

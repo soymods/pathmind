@@ -8,8 +8,8 @@ import java.lang.reflect.Method;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.util.Identifier;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.resources.Identifier;
 
 /**
  * Draws un-atlased GUI textures across the wildly different 1.21.x renderer APIs.
@@ -25,27 +25,27 @@ final class GuiTextureRenderer {
         return BACKEND != RendererBackend.NO_OP;
     }
 
-    static void drawIcon(DrawContext context, Identifier texture, int x, int y, int size, int color) {
+    static void drawIcon(GuiGraphics context, Identifier texture, int x, int y, int size, int color) {
         drawTexture(context, List.of(texture), x, y, size, size, color);
     }
 
-    static boolean tryDrawIcon(DrawContext context, Identifier texture, int x, int y, int size, int color) {
+    static boolean tryDrawIcon(GuiGraphics context, Identifier texture, int x, int y, int size, int color) {
         return tryDrawTexture(context, List.of(texture), x, y, size, size, color);
     }
 
-    static void drawIcon(DrawContext context, List<Identifier> textures, int x, int y, int size, int color) {
+    static void drawIcon(GuiGraphics context, List<Identifier> textures, int x, int y, int size, int color) {
         drawTexture(context, textures, x, y, size, size, color);
     }
 
-    static void drawTexture(DrawContext context, Identifier texture, int x, int y, int width, int height, int color) {
+    static void drawTexture(GuiGraphics context, Identifier texture, int x, int y, int width, int height, int color) {
         drawTexture(context, List.of(texture), x, y, width, height, color);
     }
 
-    static void drawTexture(DrawContext context, List<Identifier> textures, int x, int y, int width, int height, int color) {
+    static void drawTexture(GuiGraphics context, List<Identifier> textures, int x, int y, int width, int height, int color) {
         tryDrawTexture(context, textures, x, y, width, height, color);
     }
 
-    static boolean tryDrawTexture(DrawContext context, List<Identifier> textures, int x, int y, int width, int height, int color) {
+    static boolean tryDrawTexture(GuiGraphics context, List<Identifier> textures, int x, int y, int width, int height, int color) {
         try {
             RuntimeException lastException = null;
             for (Identifier texture : textures) {
@@ -101,7 +101,7 @@ final class GuiTextureRenderer {
     }
 
     private interface RendererBackend {
-        void draw(DrawContext context, Identifier texture, int x, int y, int width, int height, int color);
+        void draw(GuiGraphics context, Identifier texture, int x, int y, int width, int height, int color);
 
         RendererBackend NO_OP = (context, texture, x, y, width, height, color) -> {
         };
@@ -126,7 +126,7 @@ final class GuiTextureRenderer {
         }
 
         private static Method findDrawGuiTextureMethod() {
-            for (Method method : DrawContext.class.getMethods()) {
+            for (Method method : GuiGraphics.class.getMethods()) {
                 if (!"drawGuiTexture".equals(method.getName())) {
                     continue;
                 }
@@ -154,7 +154,7 @@ final class GuiTextureRenderer {
         }
 
         private static Method findDrawTextureMethod() {
-            for (Method method : DrawContext.class.getMethods()) {
+            for (Method method : GuiGraphics.class.getMethods()) {
                 if (!"drawTexture".equals(method.getName())) {
                     continue;
                 }
@@ -181,7 +181,7 @@ final class GuiTextureRenderer {
         }
 
         @Override
-        public void draw(DrawContext context, Identifier texture, int x, int y, int width, int height, int color) {
+        public void draw(GuiGraphics context, Identifier texture, int x, int y, int width, int height, int color) {
             float alpha = ((color >>> 24) & 0xFF) / 255.0f;
             float red = ((color >>> 16) & 0xFF) / 255.0f;
             float green = ((color >>> 8) & 0xFF) / 255.0f;
@@ -280,7 +280,7 @@ final class GuiTextureRenderer {
         }
 
         private static Method findDrawTextureMethod(Class<?> pipelineClass) {
-            for (Method method : DrawContext.class.getMethods()) {
+            for (Method method : GuiGraphics.class.getMethods()) {
                 Class<?>[] parameters = method.getParameterTypes();
                 if (!matchesCommonParameters(parameters, pipelineClass)) {
                     continue;
@@ -292,7 +292,7 @@ final class GuiTextureRenderer {
         }
 
         private static Method findDrawGuiTextureMethod(Class<?> pipelineClass) {
-            for (Method method : DrawContext.class.getMethods()) {
+            for (Method method : GuiGraphics.class.getMethods()) {
                 Class<?>[] parameters = method.getParameterTypes();
                 if (!matchesGuiTextureParameters(parameters, pipelineClass)) {
                     continue;
@@ -304,7 +304,7 @@ final class GuiTextureRenderer {
         }
 
         @Override
-        public void draw(DrawContext context, Identifier texture, int x, int y, int width, int height, int color) {
+        public void draw(GuiGraphics context, Identifier texture, int x, int y, int width, int height, int color) {
             boolean needsShaderTint = (drawGuiTextureMethod != null && !guiTextureSupportsTint && !texture.getPath().startsWith("textures/"))
                 || (drawTextureMethod != null && !supportsTint);
             if (needsShaderTint) {
@@ -363,7 +363,7 @@ final class GuiTextureRenderer {
         }
 
         private static Method findDrawTextureMethod() {
-            for (Method method : DrawContext.class.getMethods()) {
+            for (Method method : GuiGraphics.class.getMethods()) {
                 Class<?>[] parameters = method.getParameterTypes();
                 if (!matchesCommonParameters(parameters, Function.class)) {
                     continue;
@@ -375,7 +375,7 @@ final class GuiTextureRenderer {
         }
 
         private static Method findDrawGuiTextureMethod() {
-            for (Method method : DrawContext.class.getMethods()) {
+            for (Method method : GuiGraphics.class.getMethods()) {
                 Class<?>[] parameters = method.getParameterTypes();
                 if (!matchesGuiTextureParameters(parameters, Function.class)) {
                     continue;
@@ -427,7 +427,7 @@ final class GuiTextureRenderer {
         }
 
         @Override
-        public void draw(DrawContext context, Identifier texture, int x, int y, int width, int height, int color) {
+        public void draw(GuiGraphics context, Identifier texture, int x, int y, int width, int height, int color) {
             boolean needsShaderTint = (drawGuiTextureMethod != null && !guiTextureSupportsTint && !texture.getPath().startsWith("textures/"))
                 || (drawTextureMethod != null && !supportsTint);
             if (needsShaderTint) {

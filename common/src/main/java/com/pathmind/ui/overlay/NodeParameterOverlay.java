@@ -14,18 +14,18 @@ import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.InventorySlotModeHelper;
 import com.pathmind.util.TextRenderUtil;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.widget.ButtonWidget;
-import net.minecraft.client.font.TextRenderer;
 import com.pathmind.util.RenderStateBridge;
-import net.minecraft.text.Text;
-import net.minecraft.util.math.MathHelper;
 import org.lwjgl.glfw.GLFW;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.network.chat.Component;
+import net.minecraft.util.Mth;
 import com.pathmind.util.DrawContextBridge;
 import com.pathmind.util.InputCompatibilityBridge;
 import com.pathmind.util.ButtonWidgetCompatibilityBridge;
@@ -161,8 +161,8 @@ public class NodeParameterOverlay {
     private int totalContentHeight;
     private int maxScroll;
     private int scrollOffset;
-    private ButtonWidget saveButton;
-    private ButtonWidget cancelButton;
+    private Button saveButton;
+    private Button cancelButton;
     private final Runnable onClose;
     private final Consumer<Node> onSave;
     private final PopupAnimationHandler popupAnimation = new PopupAnimationHandler();
@@ -349,7 +349,7 @@ public class NodeParameterOverlay {
         updateButtonPositions();
     }
 
-    public void render(DrawContext context, TextRenderer textRenderer, int mouseX, int mouseY, float delta) {
+    public void render(GuiGraphics context, Font textRenderer, int mouseX, int mouseY, float delta) {
         scissorEnabled = false;
         popupAnimation.tick();
         if (pendingClose && popupAnimation.isFullyHidden()) {
@@ -384,9 +384,9 @@ public class NodeParameterOverlay {
         setScissor(context, clipLeft, clipTop, clipRight, clipBottom);
 
         // Render title
-        context.drawTextWithShadow(
+        context.drawString(
             textRenderer,
-            Text.translatable("pathmind.overlay.editParameters", node.getType().getDisplayName()),
+            Component.translatable("pathmind.overlay.editParameters", node.getType().getDisplayName()),
             popupX + 20,
             popupY + 15,
             applyPopupAlpha(UITheme.TEXT_PRIMARY, popupAlpha)
@@ -417,15 +417,15 @@ public class NodeParameterOverlay {
             sectionY += DIRECTION_MODE_TAB_HEIGHT + SECTION_SPACING;
         }
 
-        this.textLineHeight = textRenderer.fontHeight;
+        this.textLineHeight = textRenderer.lineHeight;
         for (int i = 0; i < node.getParameters().size(); i++) {
             if (!shouldDisplayParameter(i)) {
                 continue;
             }
             NodeParameter param = node.getParameters().get(i);
-            context.drawTextWithShadow(
+            context.drawString(
                 textRenderer,
-                Text.literal(getParameterDisplayName(param) + " (" + param.getType().getDisplayName() + "):"),
+                Component.literal(getParameterDisplayName(param) + " (" + param.getType().getDisplayName() + "):"),
                 popupX + 20,
                 sectionY + 4,
                 applyPopupAlpha(UITheme.TEXT_PRIMARY, popupAlpha)
@@ -500,10 +500,10 @@ public class NodeParameterOverlay {
                         clampedStart = clampedEnd;
                         clampedEnd = tmp;
                     }
-                    int selectionStartX = textX + textRenderer.getWidth(value.substring(0, clampedStart));
-                    int selectionEndX = textX + textRenderer.getWidth(value.substring(0, clampedEnd));
-                    selectionStartX = MathHelper.clamp(selectionStartX, fieldX + 2, fieldX + fieldWidth - 2);
-                    selectionEndX = MathHelper.clamp(selectionEndX, fieldX + 2, fieldX + fieldWidth - 2);
+                    int selectionStartX = textX + textRenderer.width(value.substring(0, clampedStart));
+                    int selectionEndX = textX + textRenderer.width(value.substring(0, clampedEnd));
+                    selectionStartX = Mth.clamp(selectionStartX, fieldX + 2, fieldX + fieldWidth - 2);
+                    selectionEndX = Mth.clamp(selectionEndX, fieldX + 2, fieldX + fieldWidth - 2);
                     if (selectionEndX != selectionStartX) {
                         context.fill(selectionStartX, fieldY + 4, selectionEndX, fieldY + fieldHeight - 4,
                             applyPopupAlpha(0x80426AD5, popupAlpha));
@@ -511,9 +511,9 @@ public class NodeParameterOverlay {
                 }
 
             if (!displayText.isEmpty()) {
-                context.drawTextWithShadow(
+                context.drawString(
                     textRenderer,
-                    Text.literal(displayText),
+                    Component.literal(displayText),
                     textX,
                     textY,
                     applyPopupAlpha(textColor, popupAlpha)
@@ -523,8 +523,8 @@ public class NodeParameterOverlay {
             if (isFocused) {
                 updateCaretBlinkState();
                 if (caretVisible) {
-                    int caretIndex = showingPlaceholder ? 0 : MathHelper.clamp(caretPositions.get(i), 0, baseValue.length());
-                    int caretX = textX + textRenderer.getWidth(baseValue.substring(0, caretIndex));
+                    int caretIndex = showingPlaceholder ? 0 : Mth.clamp(caretPositions.get(i), 0, baseValue.length());
+                    int caretX = textX + textRenderer.width(baseValue.substring(0, caretIndex));
                     caretX = Math.min(caretX, fieldX + fieldWidth - 2);
                     UIStyleHelper.drawTextCaret(
                         context,
@@ -552,7 +552,7 @@ public class NodeParameterOverlay {
         RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
     }
 
-    private void renderButton(DrawContext context, TextRenderer textRenderer, ButtonWidget button, int mouseX, int mouseY) {
+    private void renderButton(GuiGraphics context, Font textRenderer, Button button, int mouseX, int mouseY) {
         if (button == null) {
             return;
         }
@@ -574,7 +574,7 @@ public class NodeParameterOverlay {
             applyPopupAlpha(borderColor, popupAlpha));
 
         // Render button text
-        context.drawCenteredTextWithShadow(
+        context.drawCenteredString(
             textRenderer,
             button.getMessage(),
             button.getX() + button.getWidth() / 2,
@@ -583,7 +583,7 @@ public class NodeParameterOverlay {
         );
     }
 
-    private void renderScrollbar(DrawContext context, int contentTop, int contentBottom) {
+    private void renderScrollbar(GuiGraphics context, int contentTop, int contentBottom) {
         if (maxScroll <= 0) {
             return;
         }
@@ -612,11 +612,11 @@ public class NodeParameterOverlay {
 
     private int applyPopupAlpha(int color, float alphaMultiplier) {
         int baseAlpha = (color >>> 24) & 0xFF;
-        int applied = Math.round(baseAlpha * MathHelper.clamp(alphaMultiplier, 0f, 1f));
+        int applied = Math.round(baseAlpha * Mth.clamp(alphaMultiplier, 0f, 1f));
         return (applied << 24) | (color & 0x00FFFFFF);
     }
 
-    private void setScissor(DrawContext context, int left, int top, int right, int bottom) {
+    private void setScissor(GuiGraphics context, int left, int top, int right, int bottom) {
         if (scissorEnabled) {
             context.disableScissor();
             scissorEnabled = false;
@@ -625,7 +625,7 @@ public class NodeParameterOverlay {
         scissorEnabled = true;
     }
 
-    private void clearScissor(DrawContext context) {
+    private void clearScissor(GuiGraphics context) {
         if (!scissorEnabled) {
             return;
         }
@@ -681,7 +681,7 @@ public class NodeParameterOverlay {
         };
     }
 
-    private void renderDirectionModeTabs(DrawContext context, TextRenderer textRenderer, int fieldX, int fieldY,
+    private void renderDirectionModeTabs(GuiGraphics context, Font textRenderer, int fieldX, int fieldY,
                                          int fieldWidth, int mouseX, int mouseY, float popupAlpha) {
         if (!isCombinedDirectionNode()) {
             return;
@@ -718,14 +718,14 @@ public class NodeParameterOverlay {
         DrawContextBridge.drawBorder(context, splitX, fieldY, cardinalWidth, DIRECTION_MODE_TAB_HEIGHT,
             applyPopupAlpha(exactMode ? inactiveBorder : accentColor, popupAlpha));
 
-        int textY = fieldY + (DIRECTION_MODE_TAB_HEIGHT - textRenderer.fontHeight) / 2 + 1;
-        String exactLabel = Text.translatable("pathmind.option.directionMode.exact").getString();
-        String cardinalLabel = Text.translatable("pathmind.option.directionMode.cardinal").getString();
-        int exactTextX = fieldX + Math.max(0, (exactWidth - textRenderer.getWidth(exactLabel)) / 2);
-        int cardinalTextX = splitX + Math.max(0, (cardinalWidth - textRenderer.getWidth(cardinalLabel)) / 2);
-        context.drawTextWithShadow(textRenderer, Text.literal(exactLabel), exactTextX, textY,
+        int textY = fieldY + (DIRECTION_MODE_TAB_HEIGHT - textRenderer.lineHeight) / 2 + 1;
+        String exactLabel = Component.translatable("pathmind.option.directionMode.exact").getString();
+        String cardinalLabel = Component.translatable("pathmind.option.directionMode.cardinal").getString();
+        int exactTextX = fieldX + Math.max(0, (exactWidth - textRenderer.width(exactLabel)) / 2);
+        int cardinalTextX = splitX + Math.max(0, (cardinalWidth - textRenderer.width(cardinalLabel)) / 2);
+        context.drawString(textRenderer, Component.literal(exactLabel), exactTextX, textY,
             applyPopupAlpha(exactMode ? UITheme.TEXT_EDITING : UITheme.TEXT_PRIMARY, popupAlpha));
-        context.drawTextWithShadow(textRenderer, Text.literal(cardinalLabel), cardinalTextX, textY,
+        context.drawString(textRenderer, Component.literal(cardinalLabel), cardinalTextX, textY,
             applyPopupAlpha(exactMode ? UITheme.TEXT_PRIMARY : UITheme.TEXT_EDITING, popupAlpha));
     }
 
@@ -1242,15 +1242,15 @@ public class NodeParameterOverlay {
     }
     
     private void recreateButtons() {
-        this.saveButton = ButtonWidget.builder(
-            Text.translatable("pathmind.button.save"),
+        this.saveButton = Button.builder(
+            Component.translatable("pathmind.button.save"),
             b -> saveParameters()
-        ).dimensions(popupX + 20, computeVisibleButtonY(), BUTTON_WIDTH, BUTTON_HEIGHT).build();
+        ).bounds(popupX + 20, computeVisibleButtonY(), BUTTON_WIDTH, BUTTON_HEIGHT).build();
 
-        this.cancelButton = ButtonWidget.builder(
-            Text.translatable("pathmind.button.cancel"),
+        this.cancelButton = Button.builder(
+            Component.translatable("pathmind.button.cancel"),
             b -> close()
-        ).dimensions(popupX + popupWidth - (BUTTON_WIDTH + 20), computeVisibleButtonY(), BUTTON_WIDTH, BUTTON_HEIGHT).build();
+        ).bounds(popupX + popupWidth - (BUTTON_WIDTH + 20), computeVisibleButtonY(), BUTTON_WIDTH, BUTTON_HEIGHT).build();
 
         updateButtonPositions();
     }
@@ -1326,7 +1326,7 @@ public class NodeParameterOverlay {
         return false;
     }
 
-    private int renderButtonSelector(DrawContext context, TextRenderer textRenderer, int fieldX, int fieldY, int fieldWidth,
+    private int renderButtonSelector(GuiGraphics context, Font textRenderer, int fieldX, int fieldY, int fieldWidth,
                                      int mouseX, int mouseY, int paramIndex, float popupAlpha) {
         KeySpec[][] layout = getButtonSelectorLayout();
         int totalHeight = getButtonSelectorHeight();
@@ -1366,12 +1366,12 @@ public class NodeParameterOverlay {
                 DrawContextBridge.drawBorder(context, keyX, rowTop, keyWidth, keyHeight, applyPopupAlpha(keyBorder, popupAlpha));
 
                 String label = key.label;
-                int textWidth = textRenderer.getWidth(label);
+                int textWidth = textRenderer.width(label);
                 int textX = keyX + Math.max(2, (keyWidth - textWidth) / 2);
-                int textY = rowTop + (keyHeight - textRenderer.fontHeight) / 2 + 1;
-                context.drawTextWithShadow(
+                int textY = rowTop + (keyHeight - textRenderer.lineHeight) / 2 + 1;
+                context.drawString(
                     textRenderer,
-                    Text.literal(label),
+                    Component.literal(label),
                     textX,
                     textY,
                     applyPopupAlpha(UITheme.TEXT_PRIMARY, popupAlpha)
@@ -1481,7 +1481,7 @@ public class NodeParameterOverlay {
         focusedFieldIndex = index;
         ensureCaretEntry(index);
         String value = getFieldValue(index);
-        caretPositions.set(index, MathHelper.clamp(caretPositions.get(index), 0, value.length()));
+        caretPositions.set(index, Mth.clamp(caretPositions.get(index), 0, value.length()));
         clearSelectionForField(index);
         resetCaretBlink();
     }
@@ -1490,25 +1490,25 @@ public class NodeParameterOverlay {
         if (index < 0 || index >= parameterValues.size()) {
             return;
         }
-        TextRenderer textRenderer = getClientTextRenderer();
+        Font textRenderer = getClientTextRenderer();
         if (textRenderer == null) {
             return;
         }
         int relativeX = (int)Math.round(mouseX) - (fieldX + 4);
-        int clampedX = MathHelper.clamp(relativeX, 0, fieldWidth - 8);
+        int clampedX = Mth.clamp(relativeX, 0, fieldWidth - 8);
         String value = getFieldValue(index);
         int caretIndex = getCaretIndexForPixel(value, clampedX, textRenderer);
         moveCaretForField(index, caretIndex, extendSelection);
     }
 
-    private int getCaretIndexForPixel(String value, int targetX, TextRenderer textRenderer) {
+    private int getCaretIndexForPixel(String value, int targetX, Font textRenderer) {
         if (value == null || value.isEmpty()) {
             return 0;
         }
         int width = 0;
         for (int i = 0; i < value.length(); i++) {
             char c = value.charAt(i);
-            int charWidth = textRenderer.getWidth(String.valueOf(c));
+            int charWidth = textRenderer.width(String.valueOf(c));
             if (width + charWidth / 2 >= targetX) {
                 return i;
             }
@@ -1520,7 +1520,7 @@ public class NodeParameterOverlay {
     private void moveCaretForField(int index, int position, boolean extendSelection) {
         ensureCaretEntry(index);
         String value = getFieldValue(index);
-        int clamped = MathHelper.clamp(position, 0, value.length());
+        int clamped = Mth.clamp(position, 0, value.length());
         if (extendSelection) {
             if (selectionAnchors.get(index) == -1) {
                 selectionAnchors.set(index, caretPositions.get(index));
@@ -1611,8 +1611,8 @@ public class NodeParameterOverlay {
             clearSelectionForField(index);
             return false;
         }
-        start = MathHelper.clamp(start, 0, value.length());
-        end = MathHelper.clamp(end, 0, value.length());
+        start = Mth.clamp(start, 0, value.length());
+        end = Mth.clamp(end, 0, value.length());
         String updated = value.substring(0, start) + value.substring(end);
         setParameterValue(index, updated);
         caretPositions.set(index, start);
@@ -1626,7 +1626,7 @@ public class NodeParameterOverlay {
             return;
         }
         String value = getFieldValue(index);
-        int caret = MathHelper.clamp(caretPositions.get(index), 0, value.length());
+        int caret = Mth.clamp(caretPositions.get(index), 0, value.length());
         if (caret == 0) {
             return;
         }
@@ -1641,7 +1641,7 @@ public class NodeParameterOverlay {
             return;
         }
         String value = getFieldValue(index);
-        int caret = MathHelper.clamp(caretPositions.get(index), 0, value.length());
+        int caret = Mth.clamp(caretPositions.get(index), 0, value.length());
         if (caret == 0) {
             return;
         }
@@ -1685,7 +1685,7 @@ public class NodeParameterOverlay {
             return;
         }
         String value = getFieldValue(index);
-        int caret = MathHelper.clamp(caretPositions.get(index), 0, value.length());
+        int caret = Mth.clamp(caretPositions.get(index), 0, value.length());
         if (caret >= value.length()) {
             return;
         }
@@ -1716,8 +1716,8 @@ public class NodeParameterOverlay {
         String value = getFieldValue(index);
         int start = Math.min(selectionStarts.get(index), selectionEnds.get(index));
         int end = Math.max(selectionStarts.get(index), selectionEnds.get(index));
-        start = MathHelper.clamp(start, 0, value.length());
-        end = MathHelper.clamp(end, 0, value.length());
+        start = Mth.clamp(start, 0, value.length());
+        end = Mth.clamp(end, 0, value.length());
         if (start >= end) {
             return;
         }
@@ -1736,19 +1736,19 @@ public class NodeParameterOverlay {
         if (text == null || text.isEmpty()) {
             return false;
         }
-        TextRenderer textRenderer = getClientTextRenderer();
+        Font textRenderer = getClientTextRenderer();
         if (textRenderer == null) {
             return false;
         }
         ensureCaretEntry(index);
         clearPlaceholderIfActive(index);
         String value = getFieldValue(index);
-        int caret = MathHelper.clamp(caretPositions.get(index), 0, value.length());
+        int caret = Mth.clamp(caretPositions.get(index), 0, value.length());
         if (hasSelectionForField(index)) {
             int start = Math.min(selectionStarts.get(index), selectionEnds.get(index));
             int end = Math.max(selectionStarts.get(index), selectionEnds.get(index));
-            start = MathHelper.clamp(start, 0, value.length());
-            end = MathHelper.clamp(end, 0, value.length());
+            start = Mth.clamp(start, 0, value.length());
+            end = Mth.clamp(end, 0, value.length());
             value = value.substring(0, start) + value.substring(end);
             caret = start;
             caretPositions.set(index, caret);
@@ -1762,7 +1762,7 @@ public class NodeParameterOverlay {
                 continue;
             }
             String candidate = value.substring(0, caret) + c + value.substring(caret);
-            if (textRenderer.getWidth(candidate) > availableWidth) {
+            if (textRenderer.width(candidate) > availableWidth) {
                 break;
             }
             value = candidate;
@@ -1801,23 +1801,23 @@ public class NodeParameterOverlay {
         }
     }
 
-    private TextRenderer getClientTextRenderer() {
-        MinecraftClient client = MinecraftClient.getInstance();
-        return client != null ? client.textRenderer : null;
+    private Font getClientTextRenderer() {
+        Minecraft client = Minecraft.getInstance();
+        return client != null ? client.font : null;
     }
 
     private String getClipboardText() {
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client != null && client.keyboard != null) {
-            return client.keyboard.getClipboard();
+        Minecraft client = Minecraft.getInstance();
+        if (client != null && client.keyboardHandler != null) {
+            return client.keyboardHandler.getClipboard();
         }
         return "";
     }
 
     private void setClipboardText(String text) {
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client != null && client.keyboard != null) {
-            client.keyboard.setClipboard(text == null ? "" : text);
+        Minecraft client = Minecraft.getInstance();
+        if (client != null && client.keyboardHandler != null) {
+            client.keyboardHandler.setClipboard(text == null ? "" : text);
         }
     }
 
@@ -1903,7 +1903,7 @@ public class NodeParameterOverlay {
             || (modifiers & (GLFW.GLFW_MOD_CONTROL | GLFW.GLFW_MOD_SUPER)) != 0;
     }
 
-    private String trimDisplayString(TextRenderer renderer, String text, int availableWidth) {
+    private String trimDisplayString(Font renderer, String text, int availableWidth) {
         return TextRenderUtil.trimWithEllipsis(renderer, text, availableWidth);
     }
 

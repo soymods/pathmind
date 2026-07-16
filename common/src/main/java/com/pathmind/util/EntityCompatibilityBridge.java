@@ -1,12 +1,11 @@
 package com.pathmind.util;
 
-import net.minecraft.entity.Entity;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.World;
-
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * Bridges Entity world/position accessors across 1.21.x.
@@ -23,11 +22,11 @@ public final class EntityCompatibilityBridge {
     private EntityCompatibilityBridge() {
     }
 
-    public static Vec3d getPos(Entity entity) {
+    public static Vec3 getPos(Entity entity) {
         if (entity == null) {
             return null;
         }
-        Vec3d result = invokeVec(entity, GET_POS);
+        Vec3 result = invokeVec(entity, GET_POS);
         if (result != null) {
             return result;
         }
@@ -42,7 +41,7 @@ public final class EntityCompatibilityBridge {
         if (GET_LERPED_POS != null) {
             try {
                 Object value = GET_LERPED_POS.invoke(entity, 1.0f);
-                if (value instanceof Vec3d vec) {
+                if (value instanceof Vec3 vec) {
                     return vec;
                 }
             } catch (IllegalAccessException | InvocationTargetException ignored) {
@@ -52,11 +51,11 @@ public final class EntityCompatibilityBridge {
         return null;
     }
 
-    public static World getWorld(Entity entity) {
+    public static Level getWorld(Entity entity) {
         if (entity == null) {
             return null;
         }
-        World world = invokeWorld(entity, GET_WORLD);
+        Level world = invokeWorld(entity, GET_WORLD);
         if (world != null) {
             return world;
         }
@@ -67,7 +66,7 @@ public final class EntityCompatibilityBridge {
         if (WORLD_FIELD != null) {
             try {
                 Object value = WORLD_FIELD.get(entity);
-                return value instanceof World worldValue ? worldValue : null;
+                return value instanceof Level worldValue ? worldValue : null;
             } catch (IllegalAccessException ignored) {
                 return null;
             }
@@ -75,25 +74,25 @@ public final class EntityCompatibilityBridge {
         return null;
     }
 
-    private static Vec3d invokeVec(Entity entity, Method method) {
+    private static Vec3 invokeVec(Entity entity, Method method) {
         if (method == null) {
             return null;
         }
         try {
             Object value = method.invoke(entity);
-            return value instanceof Vec3d vec ? vec : null;
+            return value instanceof Vec3 vec ? vec : null;
         } catch (IllegalAccessException | InvocationTargetException ignored) {
             return null;
         }
     }
 
-    private static World invokeWorld(Entity entity, Method method) {
+    private static Level invokeWorld(Entity entity, Method method) {
         if (method == null) {
             return null;
         }
         try {
             Object value = method.invoke(entity);
-            return value instanceof World world ? world : null;
+            return value instanceof Level world ? world : null;
         } catch (IllegalAccessException | InvocationTargetException ignored) {
             return null;
         }

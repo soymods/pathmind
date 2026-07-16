@@ -1,20 +1,20 @@
 package com.pathmind.ui.overlay;
 
 import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.pathmind.execution.PathmindNavigator;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.client.render.RenderLayer;
-import net.minecraft.client.render.VertexConsumer;
-import net.minecraft.client.render.VertexConsumerProvider;
-import net.minecraft.client.util.math.MatrixStack;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.Vec3d;
 import org.lwjgl.opengl.GL11;
 
 import java.util.ArrayList;
 import java.util.List;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.RenderType;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
 public final class NavigatorWorldOverlay {
     private static final int PATH_COLOR = 0xFF66D8FF;
@@ -34,8 +34,8 @@ public final class NavigatorWorldOverlay {
     }
 
     public static void render(
-        MatrixStack matrices,
-        VertexConsumerProvider.Immediate consumers,
+        PoseStack matrices,
+        MultiBufferSource.BufferSource consumers,
         double cameraX,
         double cameraY,
         double cameraZ
@@ -54,8 +54,8 @@ public final class NavigatorWorldOverlay {
             return;
         }
 
-        MinecraftClient client = MinecraftClient.getInstance();
-        ClientPlayerEntity player = client != null ? client.player : null;
+        Minecraft client = Minecraft.getInstance();
+        LocalPlayer player = client != null ? client.player : null;
         if (player == null) {
             return;
         }
@@ -71,14 +71,14 @@ public final class NavigatorWorldOverlay {
         } catch (Throwable ignored) {
             // Never fail the debug renderer because of Pathmind indicators.
         } finally {
-            consumers.draw();
+            consumers.endBatch();
             endOverlayPass();
         }
     }
 
     private static void renderPath(
-        MatrixStack matrices,
-        VertexConsumerProvider.Immediate consumers,
+        PoseStack matrices,
+        MultiBufferSource.BufferSource consumers,
         List<BlockPos> path,
         BlockPos goalPos,
         int pathIndex,
@@ -86,14 +86,14 @@ public final class NavigatorWorldOverlay {
         double cameraY,
         double cameraZ
     ) {
-        MinecraftClient client = MinecraftClient.getInstance();
-        ClientPlayerEntity player = client != null ? client.player : null;
+        Minecraft client = Minecraft.getInstance();
+        LocalPlayer player = client != null ? client.player : null;
         if (player == null || goalPos == null) {
             return;
         }
 
-        List<Vec3d> points = new ArrayList<>((path == null ? 0 : path.size()) + 2);
-        points.add(cameraRelative(new Vec3d(player.getX(), player.getY() + 0.18D, player.getZ()), cameraX, cameraY, cameraZ));
+        List<Vec3> points = new ArrayList<>((path == null ? 0 : path.size()) + 2);
+        points.add(cameraRelative(new Vec3(player.getX(), player.getY() + 0.18D, player.getZ()), cameraX, cameraY, cameraZ));
         if (path != null) {
             int startIndex = Math.max(0, Math.min(pathIndex, path.size()));
             for (int i = startIndex; i < path.size(); i++) {
@@ -101,7 +101,7 @@ public final class NavigatorWorldOverlay {
                 points.add(cameraRelative(pathPoint(node), cameraX, cameraY, cameraZ));
             }
         }
-        Vec3d goalPoint = cameraRelative(pathPoint(goalPos), cameraX, cameraY, cameraZ);
+        Vec3 goalPoint = cameraRelative(pathPoint(goalPos), cameraX, cameraY, cameraZ);
         if (points.isEmpty() || !sameRenderPoint(points.get(points.size() - 1), goalPoint)) {
             points.add(goalPoint);
         }
@@ -112,9 +112,9 @@ public final class NavigatorWorldOverlay {
     }
 
     private static void renderCandidatePaths(
-        MatrixStack matrices,
-        VertexConsumerProvider.Immediate consumers,
-        ClientPlayerEntity player,
+        PoseStack matrices,
+        MultiBufferSource.BufferSource consumers,
+        LocalPlayer player,
         List<List<BlockPos>> candidatePaths,
         double cameraX,
         double cameraY,
@@ -130,8 +130,8 @@ public final class NavigatorWorldOverlay {
             if (candidate == null || candidate.isEmpty()) {
                 continue;
             }
-            List<Vec3d> points = new ArrayList<>(candidate.size() + 1);
-            points.add(cameraRelative(new Vec3d(player.getX(), player.getY() + 0.18D, player.getZ()), cameraX, cameraY, cameraZ));
+            List<Vec3> points = new ArrayList<>(candidate.size() + 1);
+            points.add(cameraRelative(new Vec3(player.getX(), player.getY() + 0.18D, player.getZ()), cameraX, cameraY, cameraZ));
             for (BlockPos node : candidate) {
                 points.add(cameraRelative(pathPoint(node), cameraX, cameraY, cameraZ));
             }
@@ -140,9 +140,9 @@ public final class NavigatorWorldOverlay {
     }
 
     private static void renderDashedSegments(
-        MatrixStack matrices,
-        VertexConsumerProvider.Immediate consumers,
-        List<Vec3d> points,
+        PoseStack matrices,
+        MultiBufferSource.BufferSource consumers,
+        List<Vec3> points,
         double phase,
         int color
     ) {
@@ -156,10 +156,10 @@ public final class NavigatorWorldOverlay {
     }
 
     private static void renderAnimatedSegment(
-        MatrixStack matrices,
-        VertexConsumerProvider.Immediate consumers,
-        Vec3d start,
-        Vec3d end,
+        PoseStack matrices,
+        MultiBufferSource.BufferSource consumers,
+        Vec3 start,
+        Vec3 end,
         double phase,
         int color
     ) {
@@ -168,15 +168,15 @@ public final class NavigatorWorldOverlay {
             return;
         }
 
-        VertexConsumer lines = consumers.getBuffer(RenderLayer.getLines());
-        Vec3d direction = end.subtract(start).normalize();
+        VertexConsumer lines = consumers.getBuffer(RenderType.lines());
+        Vec3 direction = end.subtract(start).normalize();
         double offset = -phase;
         while (offset < segmentLength) {
             double dashStartDistance = Math.max(0.0D, offset);
             double dashEndDistance = Math.min(segmentLength, offset + DASH_LENGTH);
             if (dashEndDistance > dashStartDistance) {
-                Vec3d dashStart = start.add(direction.multiply(dashStartDistance));
-                Vec3d dashEnd = start.add(direction.multiply(dashEndDistance));
+                Vec3 dashStart = start.add(direction.scale(dashStartDistance));
+                Vec3 dashEnd = start.add(direction.scale(dashEndDistance));
                 drawLine(matrices, lines, dashStart, dashEnd, color);
             }
             offset += DASH_CYCLE;
@@ -184,8 +184,8 @@ public final class NavigatorWorldOverlay {
     }
 
     private static void renderGoal(
-        MatrixStack matrices,
-        VertexConsumerProvider.Immediate consumers,
+        PoseStack matrices,
+        MultiBufferSource.BufferSource consumers,
         BlockPos goalPos,
         double cameraX,
         double cameraY,
@@ -197,7 +197,7 @@ public final class NavigatorWorldOverlay {
         double maxX = goalPos.getX() + 1.0D - GOAL_INSET - cameraX;
         double maxY = minY + GOAL_HEIGHT;
         double maxZ = goalPos.getZ() + 1.0D - GOAL_INSET - cameraZ;
-        VertexConsumer lines = consumers.getBuffer(RenderLayer.getLines());
+        VertexConsumer lines = consumers.getBuffer(RenderType.lines());
 
         renderGoalEdge(matrices, lines, minX, minY, minZ, minX, maxY, minZ);
         renderGoalEdge(matrices, lines, maxX, minY, minZ, maxX, maxY, minZ);
@@ -216,8 +216,8 @@ public final class NavigatorWorldOverlay {
     }
 
     private static void renderStepMarkers(
-        MatrixStack matrices,
-        VertexConsumerProvider.Immediate consumers,
+        PoseStack matrices,
+        MultiBufferSource.BufferSource consumers,
         List<BlockPos> path,
         int pathIndex,
         double cameraX,
@@ -235,14 +235,14 @@ public final class NavigatorWorldOverlay {
             if (i < Math.max(0, pathIndex)) {
                 continue;
             }
-            Box marker = Box.of(cameraRelative(pathPoint(step), cameraX, cameraY, cameraZ), 0.34D, 0.34D, 0.34D);
+            AABB marker = AABB.ofSize(cameraRelative(pathPoint(step), cameraX, cameraY, cameraZ), 0.34D, 0.34D, 0.34D);
             renderBoxOutline(matrices, consumers, marker, STEP_COLOR);
         }
     }
 
     private static void renderBreakTargets(
-        MatrixStack matrices,
-        VertexConsumerProvider.Immediate consumers,
+        PoseStack matrices,
+        MultiBufferSource.BufferSource consumers,
         List<BlockPos> breakTargets,
         double cameraX,
         double cameraY,
@@ -255,7 +255,7 @@ public final class NavigatorWorldOverlay {
             if (breakTarget == null) {
                 continue;
             }
-            Box marker = new Box(
+            AABB marker = new AABB(
                 breakTarget.getX() + 0.02D - cameraX,
                 breakTarget.getY() + 0.02D - cameraY,
                 breakTarget.getZ() + 0.02D - cameraZ,
@@ -268,8 +268,8 @@ public final class NavigatorWorldOverlay {
     }
 
     private static void renderPlaceTargets(
-        MatrixStack matrices,
-        VertexConsumerProvider.Immediate consumers,
+        PoseStack matrices,
+        MultiBufferSource.BufferSource consumers,
         List<BlockPos> placeTargets,
         double cameraX,
         double cameraY,
@@ -282,7 +282,7 @@ public final class NavigatorWorldOverlay {
             if (placeTarget == null) {
                 continue;
             }
-            Box marker = new Box(
+            AABB marker = new AABB(
                 placeTarget.getX() + 0.02D - cameraX,
                 placeTarget.getY() + 0.02D - cameraY,
                 placeTarget.getZ() + 0.02D - cameraZ,
@@ -340,12 +340,12 @@ public final class NavigatorWorldOverlay {
     }
 
     private static void renderBoxOutline(
-        MatrixStack matrices,
-        VertexConsumerProvider.Immediate consumers,
-        Box box,
+        PoseStack matrices,
+        MultiBufferSource.BufferSource consumers,
+        AABB box,
         int color
     ) {
-        VertexConsumer lines = consumers.getBuffer(RenderLayer.getLines());
+        VertexConsumer lines = consumers.getBuffer(RenderType.lines());
 
         renderGoalEdge(matrices, lines, box.minX, box.minY, box.minZ, box.maxX, box.minY, box.minZ, color);
         renderGoalEdge(matrices, lines, box.minX, box.minY, box.maxZ, box.maxX, box.minY, box.maxZ, color);
@@ -364,7 +364,7 @@ public final class NavigatorWorldOverlay {
     }
 
     private static void renderGoalEdge(
-        MatrixStack matrices,
+        PoseStack matrices,
         VertexConsumer lines,
         double startX,
         double startY,
@@ -377,7 +377,7 @@ public final class NavigatorWorldOverlay {
     }
 
     private static void renderGoalEdge(
-        MatrixStack matrices,
+        PoseStack matrices,
         VertexConsumer lines,
         double startX,
         double startY,
@@ -387,28 +387,28 @@ public final class NavigatorWorldOverlay {
         double endZ,
         int color
     ) {
-        drawLine(matrices, lines, new Vec3d(startX, startY, startZ), new Vec3d(endX, endY, endZ), color);
+        drawLine(matrices, lines, new Vec3(startX, startY, startZ), new Vec3(endX, endY, endZ), color);
     }
 
     private static double animationPhase() {
         return (System.currentTimeMillis() / 1000.0D * ANIMATION_SPEED) % DASH_CYCLE;
     }
 
-    private static Vec3d pathPoint(BlockPos pos) {
-        return new Vec3d(pos.getX() + 0.5D, pos.getY() + 0.18D, pos.getZ() + 0.5D);
+    private static Vec3 pathPoint(BlockPos pos) {
+        return new Vec3(pos.getX() + 0.5D, pos.getY() + 0.18D, pos.getZ() + 0.5D);
     }
 
-    private static Vec3d cameraRelative(Vec3d point, double cameraX, double cameraY, double cameraZ) {
-        return new Vec3d(point.x - cameraX, point.y - cameraY, point.z - cameraZ);
+    private static Vec3 cameraRelative(Vec3 point, double cameraX, double cameraY, double cameraZ) {
+        return new Vec3(point.x - cameraX, point.y - cameraY, point.z - cameraZ);
     }
 
-    private static boolean sameRenderPoint(Vec3d a, Vec3d b) {
-        return a != null && b != null && a.squaredDistanceTo(b) <= 0.0001D;
+    private static boolean sameRenderPoint(Vec3 a, Vec3 b) {
+        return a != null && b != null && a.distanceToSqr(b) <= 0.0001D;
     }
 
-    private static void drawLine(MatrixStack matrices, VertexConsumer lines, Vec3d start, Vec3d end, int color) {
-        MatrixStack.Entry entry = matrices.peek();
-        Vec3d delta = end.subtract(start);
+    private static void drawLine(PoseStack matrices, VertexConsumer lines, Vec3 start, Vec3 end, int color) {
+        PoseStack.Pose entry = matrices.last();
+        Vec3 delta = end.subtract(start);
         double length = delta.length();
         float nx = 0.0F;
         float ny = 0.0F;
@@ -424,12 +424,12 @@ public final class NavigatorWorldOverlay {
         int blue = color & 0xFF;
         int alpha = (color >>> 24) & 0xFF;
 
-        lines.vertex(entry, (float) start.x, (float) start.y, (float) start.z)
-            .color(red, green, blue, alpha)
-            .normal(entry, nx, ny, nz);
-        lines.vertex(entry, (float) end.x, (float) end.y, (float) end.z)
-            .color(red, green, blue, alpha)
-            .normal(entry, nx, ny, nz);
+        lines.addVertex(entry, (float) start.x, (float) start.y, (float) start.z)
+            .setColor(red, green, blue, alpha)
+            .setNormal(entry, nx, ny, nz);
+        lines.addVertex(entry, (float) end.x, (float) end.y, (float) end.z)
+            .setColor(red, green, blue, alpha)
+            .setNormal(entry, nx, ny, nz);
     }
 
     private static float red(int color) {

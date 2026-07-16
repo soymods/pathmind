@@ -2,10 +2,9 @@ package com.pathmind.screen;
 
 import com.pathmind.PathmindCommon;
 import com.pathmind.util.BaritoneDependencyChecker;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.screen.Screen;
-
 import java.lang.reflect.Constructor;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.Screen;
 
 /**
  * Centralized helpers for opening Pathmind screens without crashing when dependencies are missing.
@@ -22,12 +21,12 @@ public final class PathmindScreens {
      * @param client Minecraft client instance
      * @param parent Screen to return to when closing the warning
      */
-    public static void openVisualEditorOrWarn(MinecraftClient client, Screen parent) {
+    public static void openVisualEditorOrWarn(Minecraft client, Screen parent) {
         if (client == null) {
             return;
         }
 
-        if (isVisualEditor(client.currentScreen)) {
+        if (isVisualEditor(client.screen)) {
             return;
         }
 
@@ -38,20 +37,20 @@ public final class PathmindScreens {
         }
     }
 
-    public static void showMissingScreen(MinecraftClient client) {
-        showMissingScreen(client, client != null ? client.currentScreen : null);
+    public static void showMissingScreen(Minecraft client) {
+        showMissingScreen(client, client != null ? client.screen : null);
     }
 
     public static boolean isVisualEditorScreen(Screen screen) {
         return isVisualEditor(screen);
     }
 
-    private static void showMissingScreen(MinecraftClient client, Screen parent) {
+    private static void showMissingScreen(Minecraft client, Screen parent) {
         if (client == null) {
             return;
         }
 
-        if (!(client.currentScreen instanceof MissingBaritoneApiScreen)) {
+        if (!(client.screen instanceof MissingBaritoneApiScreen)) {
             client.setScreen(new MissingBaritoneApiScreen(parent));
         }
     }

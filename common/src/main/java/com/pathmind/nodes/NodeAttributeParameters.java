@@ -2,8 +2,8 @@ package com.pathmind.nodes;
 
 import com.pathmind.util.GuiSelectionMode;
 import java.util.List;
-import net.minecraft.registry.Registries;
-import net.minecraft.util.Identifier;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
 
 final class NodeAttributeParameters {
     private NodeAttributeParameters() {
@@ -256,10 +256,10 @@ final class NodeAttributeParameters {
             count = 1;
         }
         Identifier identifier = Identifier.tryParse(itemId);
-        if (identifier == null || !Registries.ITEM.containsId(identifier)) {
+        if (identifier == null || !BuiltInRegistries.ITEM.containsKey(identifier)) {
             return TradeKeyPart.empty();
         }
-        return new TradeKeyPart(Registries.ITEM.get(identifier).getName().getString(), count);
+        return new TradeKeyPart(BuiltInRegistries.ITEM.getValue(identifier).getName().getString(), count);
     }
 
     private static final class TradeKeyPart {

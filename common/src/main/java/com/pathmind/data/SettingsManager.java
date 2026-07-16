@@ -3,8 +3,6 @@ package com.pathmind.data;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import dev.architectury.platform.Platform;
-import net.minecraft.client.MinecraftClient;
-
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -12,6 +10,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import net.minecraft.client.Minecraft;
 
 /**
  * Utility class that manages Pathmind user settings.
@@ -174,9 +173,9 @@ public final class SettingsManager {
     }
 
     private static Path getMinecraftDirectory() {
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client != null && client.runDirectory != null) {
-            return client.runDirectory.toPath();
+        Minecraft client = Minecraft.getInstance();
+        if (client != null && client.gameDirectory != null) {
+            return client.gameDirectory.toPath();
         }
         try {
             Path gameFolder = Platform.getGameFolder();

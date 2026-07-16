@@ -3,9 +3,9 @@ package com.pathmind.ui.menu;
 import com.pathmind.nodes.NodeCategory;
 import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.text.Text;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.network.chat.Component;
 
 /**
  * Utility class for rendering context menu elements with consistent styling.
@@ -24,14 +24,14 @@ public final class ContextMenuRenderer {
     /**
      * Renders a menu background with border.
      */
-    public static void renderMenuBackground(DrawContext context, int x, int y, int width, int height) {
+    public static void renderMenuBackground(GuiGraphics context, int x, int y, int width, int height) {
         renderMenuBackground(context, x, y, width, height, true);
     }
 
     /**
      * Renders a menu background with optional left border (for submenus).
      */
-    public static void renderMenuBackground(DrawContext context, int x, int y, int width, int height, boolean includeLeftBorder) {
+    public static void renderMenuBackground(GuiGraphics context, int x, int y, int width, int height, boolean includeLeftBorder) {
         if (includeLeftBorder) {
             UIStyleHelper.drawBeveledPanel(context, x, y, width, height, UITheme.CONTEXT_MENU_BG, UITheme.CONTEXT_MENU_BORDER, UITheme.PANEL_INNER_BORDER);
             return;
@@ -40,33 +40,33 @@ public final class ContextMenuRenderer {
         context.fill(x, y, x + width, y + height, UITheme.CONTEXT_MENU_BG);
         int right = x + width - 1;
         int bottom = y + height - 1;
-        context.drawHorizontalLine(x, right, y, UITheme.CONTEXT_MENU_BORDER);
-        context.drawHorizontalLine(x, right, bottom, UITheme.CONTEXT_MENU_BORDER);
-        context.drawVerticalLine(right, y, bottom, UITheme.CONTEXT_MENU_BORDER);
+        context.hLine(x, right, y, UITheme.CONTEXT_MENU_BORDER);
+        context.hLine(x, right, bottom, UITheme.CONTEXT_MENU_BORDER);
+        context.vLine(right, y, bottom, UITheme.CONTEXT_MENU_BORDER);
         if (width > 3 && height > 3) {
             int innerRight = right - 1;
             int innerBottom = bottom - 1;
-            context.drawHorizontalLine(x + 1, innerRight, y + 1, UITheme.PANEL_INNER_BORDER);
-            context.drawHorizontalLine(x + 1, innerRight, innerBottom, UITheme.PANEL_INNER_BORDER);
-            context.drawVerticalLine(innerRight, y + 1, innerBottom, UITheme.PANEL_INNER_BORDER);
+            context.hLine(x + 1, innerRight, y + 1, UITheme.PANEL_INNER_BORDER);
+            context.hLine(x + 1, innerRight, innerBottom, UITheme.PANEL_INNER_BORDER);
+            context.vLine(innerRight, y + 1, innerBottom, UITheme.PANEL_INNER_BORDER);
         }
     }
 
     /**
      * Renders a menu background without right border (for submenu on left).
      */
-    public static void renderMenuBackgroundNoRightBorder(DrawContext context, int x, int y, int width, int height) {
+    public static void renderMenuBackgroundNoRightBorder(GuiGraphics context, int x, int y, int width, int height) {
         context.fill(x, y, x + width, y + height, UITheme.CONTEXT_MENU_BG);
         int right = x + width - 1;
         int bottom = y + height - 1;
-        context.drawHorizontalLine(x, right, y, UITheme.CONTEXT_MENU_BORDER);
-        context.drawHorizontalLine(x, right, bottom, UITheme.CONTEXT_MENU_BORDER);
-        context.drawVerticalLine(x, y, bottom, UITheme.CONTEXT_MENU_BORDER);
+        context.hLine(x, right, y, UITheme.CONTEXT_MENU_BORDER);
+        context.hLine(x, right, bottom, UITheme.CONTEXT_MENU_BORDER);
+        context.vLine(x, y, bottom, UITheme.CONTEXT_MENU_BORDER);
         if (width > 3 && height > 3) {
             int innerBottom = bottom - 1;
-            context.drawHorizontalLine(x, right - 1, y + 1, UITheme.PANEL_INNER_BORDER);
-            context.drawHorizontalLine(x, right - 1, innerBottom, UITheme.PANEL_INNER_BORDER);
-            context.drawVerticalLine(x + 1, y + 1, innerBottom, UITheme.PANEL_INNER_BORDER);
+            context.hLine(x, right - 1, y + 1, UITheme.PANEL_INNER_BORDER);
+            context.hLine(x, right - 1, innerBottom, UITheme.PANEL_INNER_BORDER);
+            context.vLine(x + 1, y + 1, innerBottom, UITheme.PANEL_INNER_BORDER);
         }
     }
 
@@ -74,7 +74,7 @@ public final class ContextMenuRenderer {
      * Renders a menu item background (with optional hover state).
      * Inset by 1px to avoid covering menu borders.
      */
-    public static void renderMenuItem(DrawContext context, int x, int y, int width, int height, boolean hovered) {
+    public static void renderMenuItem(GuiGraphics context, int x, int y, int width, int height, boolean hovered) {
         if (hovered) {
             // Inset by 1px on left and right to keep borders visible
             context.fill(x + 1, y, x + width - 1, y + height, UITheme.CONTEXT_MENU_ITEM_HOVER);
@@ -84,7 +84,7 @@ public final class ContextMenuRenderer {
     /**
      * Renders a category item with text and arrow.
      */
-    public static void renderCategoryItem(DrawContext context, TextRenderer textRenderer,
+    public static void renderCategoryItem(GuiGraphics context, Font textRenderer,
                                           int x, int y, int width, int height,
                                           NodeCategory category, boolean hovered) {
         // Render hover background
@@ -92,10 +92,10 @@ public final class ContextMenuRenderer {
 
         // Render category text
         int textX = x + TEXT_OFFSET_X;
-        int textY = y + (height - textRenderer.fontHeight) / 2;
-        context.drawTextWithShadow(
+        int textY = y + (height - textRenderer.lineHeight) / 2;
+        context.drawString(
             textRenderer,
-            Text.literal(category.getDisplayName()),
+            Component.literal(category.getDisplayName()),
             textX,
             textY,
             UITheme.CONTEXT_MENU_TEXT
@@ -110,7 +110,7 @@ public final class ContextMenuRenderer {
     /**
      * Renders a node item with text.
      */
-    public static void renderNodeItem(DrawContext context, TextRenderer textRenderer,
+    public static void renderNodeItem(GuiGraphics context, Font textRenderer,
                                       int x, int y, int width, int height,
                                       String nodeName, int nodeColor, boolean hovered, boolean indented) {
         // Render hover background
@@ -121,10 +121,10 @@ public final class ContextMenuRenderer {
 
         // Render node text
         int textX = itemX + TEXT_OFFSET_X;
-        int textY = y + (height - textRenderer.fontHeight) / 2;
-        context.drawTextWithShadow(
+        int textY = y + (height - textRenderer.lineHeight) / 2;
+        context.drawString(
             textRenderer,
-            Text.literal(nodeName),
+            Component.literal(nodeName),
             textX,
             textY,
             UITheme.CONTEXT_MENU_TEXT
@@ -134,46 +134,46 @@ public final class ContextMenuRenderer {
     /**
      * Renders a group header separator (non-clickable).
      */
-    public static void renderGroupHeader(DrawContext context, TextRenderer textRenderer,
+    public static void renderGroupHeader(GuiGraphics context, Font textRenderer,
                                          int x, int y, int width, int height, String groupName) {
         // Render group text at top
         int textX = x + 8;
         int textY = y + 2;
-        context.drawTextWithShadow(
+        context.drawString(
             textRenderer,
-            Text.literal(groupName),
+            Component.literal(groupName),
             textX,
             textY,
             UITheme.CONTEXT_MENU_GROUP_HEADER
         );
 
         // Render separator line below text
-        int lineY = y + textRenderer.fontHeight + 3;
+        int lineY = y + textRenderer.lineHeight + 3;
         context.fill(x + 4, lineY, x + width - 4, lineY + 1, UITheme.CONTEXT_MENU_SEPARATOR);
     }
 
     /**
      * Renders a horizontal separator line.
      */
-    public static void renderSeparator(DrawContext context, int x, int y, int width) {
+    public static void renderSeparator(GuiGraphics context, int x, int y, int width) {
         context.fill(x, y, x + width, y + 1, UITheme.CONTEXT_MENU_SEPARATOR);
     }
 
-    public static void renderMagnifyingGlass(DrawContext context, int x, int y, int color) {
-        context.drawHorizontalLine(x + 1, x + 3, y, color);
-        context.drawHorizontalLine(x, x + 4, y + 1, color);
-        context.drawVerticalLine(x, y + 2, y + 4, color);
-        context.drawVerticalLine(x + 4, y + 2, y + 4, color);
-        context.drawHorizontalLine(x + 1, x + 3, y + 5, color);
-        context.drawHorizontalLine(x + 5, x + 6, y + 5, color);
-        context.drawHorizontalLine(x + 6, x + 7, y + 6, color);
-        context.drawHorizontalLine(x + 7, x + 8, y + 7, color);
+    public static void renderMagnifyingGlass(GuiGraphics context, int x, int y, int color) {
+        context.hLine(x + 1, x + 3, y, color);
+        context.hLine(x, x + 4, y + 1, color);
+        context.vLine(x, y + 2, y + 4, color);
+        context.vLine(x + 4, y + 2, y + 4, color);
+        context.hLine(x + 1, x + 3, y + 5, color);
+        context.hLine(x + 5, x + 6, y + 5, color);
+        context.hLine(x + 6, x + 7, y + 6, color);
+        context.hLine(x + 7, x + 8, y + 7, color);
     }
 
     /**
      * Renders a submenu arrow indicator (►).
      */
-    private static void renderArrow(DrawContext context, int x, int y) {
+    private static void renderArrow(GuiGraphics context, int x, int y) {
         // Draw a simple right-facing triangle
         int color = UITheme.CONTEXT_MENU_TEXT;
 

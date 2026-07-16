@@ -1,11 +1,7 @@
 package com.pathmind.screen;
 
+import com.mojang.blaze3d.platform.NativeImage;
 import com.pathmind.util.TextureCompatibilityBridge;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.texture.NativeImage;
-import net.minecraft.client.texture.NativeImageBackedTexture;
-import net.minecraft.util.Identifier;
-
 import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -16,23 +12,26 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.texture.DynamicTexture;
+import net.minecraft.resources.ResourceLocation;
 
 final class PathmindMarketplaceAvatarLoader {
     private static final HttpClient HTTP_CLIENT = HttpClient.newHttpClient();
 
     private String accountTextureUrl = null;
-    private Identifier accountTextureId = null;
+    private ResourceLocation accountTextureId = null;
     private boolean accountLoading = false;
 
     private String viewedAuthorUrl = null;
     private String viewedAuthorTextureUrl = null;
-    private Identifier viewedAuthorTextureId = null;
+    private ResourceLocation viewedAuthorTextureId = null;
     private boolean viewedAuthorLoading = false;
 
-    private final Map<String, Identifier> authorDirectoryTextures = new HashMap<>();
+    private final Map<String, ResourceLocation> authorDirectoryTextures = new HashMap<>();
     private final Set<String> authorDirectoryLoading = new HashSet<>();
 
-    Identifier getAccount(MinecraftClient client, String avatarUrl) {
+    ResourceLocation getAccount(Minecraft client, String avatarUrl) {
         if (avatarUrl == null || avatarUrl.isBlank()) {
             return null;
         }
@@ -59,7 +58,7 @@ final class PathmindMarketplaceAvatarLoader {
         return accountTextureId;
     }
 
-    Identifier getViewedAuthor(MinecraftClient client, String avatarUrl) {
+    ResourceLocation getViewedAuthor(Minecraft client, String avatarUrl) {
         viewedAuthorUrl = avatarUrl;
         if (avatarUrl == null || avatarUrl.isBlank()) {
             return null;
@@ -87,11 +86,11 @@ final class PathmindMarketplaceAvatarLoader {
         return viewedAuthorTextureId;
     }
 
-    Identifier getAuthorDirectory(MinecraftClient client, String avatarUrl) {
+    ResourceLocation getAuthorDirectory(Minecraft client, String avatarUrl) {
         if (avatarUrl == null || avatarUrl.isBlank()) {
             return null;
         }
-        Identifier existing = authorDirectoryTextures.get(avatarUrl);
+        ResourceLocation existing = authorDirectoryTextures.get(avatarUrl);
         if (existing != null) {
             return existing;
         }
@@ -139,13 +138,13 @@ final class PathmindMarketplaceAvatarLoader {
         }
     }
 
-    private Identifier registerAvatarTexture(MinecraftClient client, String avatarUrl, NativeImage image) {
+    private ResourceLocation registerAvatarTexture(Minecraft client, String avatarUrl, NativeImage image) {
         if (client == null || image == null) {
             return null;
         }
-        NativeImageBackedTexture texture = TextureCompatibilityBridge.createNativeImageBackedTexture("pathmind_marketplace_avatar", image);
-        Identifier id = Identifier.of("pathmind", "textures/dynamic/marketplace_avatar_" + Integer.toHexString(avatarUrl.hashCode()));
-        client.getTextureManager().registerTexture(id, texture);
+        DynamicTexture texture = TextureCompatibilityBridge.createNativeImageBackedTexture("pathmind_marketplace_avatar", image);
+        ResourceLocation id = ResourceLocation.fromNamespaceAndPath("pathmind", "textures/dynamic/marketplace_avatar_" + Integer.toHexString(avatarUrl.hashCode()));
+        client.getTextureManager().register(id, texture);
         return id;
     }
 }

@@ -1,11 +1,10 @@
 package com.pathmind.util;
 
-import net.minecraft.util.math.BlockPos;
-
 import java.io.File;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import net.minecraft.core.BlockPos;
 
 /**
  * Reflection-based wrapper for Baritone API usage when the dependency is optional.

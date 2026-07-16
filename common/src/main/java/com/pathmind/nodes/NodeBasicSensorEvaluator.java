@@ -1,13 +1,13 @@
 package com.pathmind.nodes;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import com.pathmind.util.InputCompatibilityBridge;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.util.InputUtil;
-import net.minecraft.util.math.MathHelper;
 import org.lwjgl.glfw.GLFW;
 
 import java.lang.reflect.Field;
 import java.util.Locale;
+import net.minecraft.client.Minecraft;
+import net.minecraft.util.Mth;
 
 final class NodeBasicSensorEvaluator {
     private final Node owner;
@@ -17,20 +17,20 @@ final class NodeBasicSensorEvaluator {
     }
 
     boolean evaluateHealthBelow() {
-        double amount = MathHelper.clamp(owner.getDoubleParameter("Amount", 10.0), 0.0, 40.0);
+        double amount = Mth.clamp(owner.getDoubleParameter("Amount", 10.0), 0.0, 40.0);
         Node amountParameter = owner.getAttachedParameterOfType(
             NodeType.PARAM_AMOUNT,
             NodeType.OPERATOR_RANDOM,
             NodeType.OPERATOR_MOD
         );
         if (amountParameter != null) {
-            amount = MathHelper.clamp(Node.parseNodeDouble(amountParameter, "Amount", amount), 0.0, 40.0);
+            amount = Mth.clamp(Node.parseNodeDouble(amountParameter, "Amount", amount), 0.0, 40.0);
         }
         return isHealthBelow(amount);
     }
 
     boolean evaluateHungerBelow() {
-        int amount = MathHelper.clamp(owner.getIntParameter("Amount", 10), 0, 20);
+        int amount = Mth.clamp(owner.getIntParameter("Amount", 10), 0, 20);
         Node amountParameter = owner.getAttachedParameterOfType(
             NodeType.PARAM_AMOUNT,
             NodeType.OPERATOR_RANDOM,
@@ -38,7 +38,7 @@ final class NodeBasicSensorEvaluator {
         );
         if (amountParameter != null) {
             double parsed = Node.parseNodeDouble(amountParameter, "Amount", amount);
-            amount = MathHelper.clamp((int) Math.round(parsed), 0, 20);
+            amount = Mth.clamp((int) Math.round(parsed), 0, 20);
         }
         return isHungerBelow(amount);
     }
@@ -60,28 +60,28 @@ final class NodeBasicSensorEvaluator {
     }
 
     boolean isDaytime() {
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client == null || client.world == null) {
+        Minecraft client = Minecraft.getInstance();
+        if (client == null || client.level == null) {
             return false;
         }
-        long time = client.world.getTimeOfDay() % 24000L;
+        long time = client.level.getDayTime() % 24000L;
         return time < 12000L;
     }
 
     boolean isRaining() {
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client == null || client.world == null || client.player == null) {
+        Minecraft client = Minecraft.getInstance();
+        if (client == null || client.level == null || client.player == null) {
             return false;
         }
-        return client.world.isRaining() || client.world.hasRain(client.player.getBlockPos());
+        return client.level.isRaining() || client.level.isRainingAt(client.player.blockPosition());
     }
 
     boolean isKeyPressed(String keyName) {
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         if (client == null || client.getWindow() == null) {
             return false;
         }
-        if (!owner.isKeyPressedActivatesInGuis() && client.currentScreen != null) {
+        if (!owner.isKeyPressedActivatesInGuis() && client.screen != null) {
             return false;
         }
         Integer keyCode = resolveKeyCode(keyName);
@@ -107,14 +107,14 @@ final class NodeBasicSensorEvaluator {
         if (glfwCode != null) {
             return glfwCode;
         }
-        InputUtil.Key key = InputUtil.fromTranslationKey(trimmed);
-        int code = key.getCode();
+        InputConstants.Key key = InputConstants.getKey(trimmed);
+        int code = key.getValue();
         if (code != GLFW.GLFW_KEY_UNKNOWN) {
             return code;
         }
         String normalized = trimmed.toLowerCase(Locale.ROOT).replace(" ", "_");
-        InputUtil.Key normalizedKey = InputUtil.fromTranslationKey("key.keyboard." + normalized);
-        int normalizedCode = normalizedKey.getCode();
+        InputConstants.Key normalizedKey = InputConstants.getKey("key.keyboard." + normalized);
+        int normalizedCode = normalizedKey.getValue();
         if (normalizedCode != GLFW.GLFW_KEY_UNKNOWN) {
             return normalizedCode;
         }
@@ -162,7 +162,7 @@ final class NodeBasicSensorEvaluator {
     }
 
     boolean isHealthBelow(double amount) {
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         if (client == null || client.player == null) {
             return false;
         }
@@ -170,10 +170,10 @@ final class NodeBasicSensorEvaluator {
     }
 
     boolean isHungerBelow(int amount) {
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         if (client == null || client.player == null) {
             return false;
         }
-        return client.player.getHungerManager().getFoodLevel() < amount;
+        return client.player.getFoodData().getFoodLevel() < amount;
     }
 }

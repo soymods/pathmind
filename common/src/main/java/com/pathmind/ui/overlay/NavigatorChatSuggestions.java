@@ -2,17 +2,17 @@ package com.pathmind.ui.overlay;
 
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.DrawContextBridge;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.screen.ChatScreen;
-import net.minecraft.client.gui.widget.TextFieldWidget;
 import org.lwjgl.glfw.GLFW;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.screens.ChatScreen;
 
 /**
  * Renders a lightweight suggestion menu above chat for Pathmind's ! navigator commands.
@@ -37,15 +37,15 @@ public final class NavigatorChatSuggestions {
         return INSTANCE;
     }
 
-    public void render(ChatScreen chatScreen, DrawContext context, int mouseX, int mouseY) {
+    public void render(ChatScreen chatScreen, GuiGraphics context, int mouseX, int mouseY) {
         if (chatScreen == null || context == null) {
             return;
         }
-        TextFieldWidget input = resolveChatField(chatScreen);
+        EditBox input = resolveChatField(chatScreen);
         if (input == null) {
             return;
         }
-        List<SuggestionEntry> suggestions = getSuggestions(input.getText());
+        List<SuggestionEntry> suggestions = getSuggestions(input.getValue());
         if (suggestions.isEmpty()) {
             selectedIndex = 0;
             return;
@@ -53,8 +53,8 @@ public final class NavigatorChatSuggestions {
 
         selectedIndex = Math.max(0, Math.min(selectedIndex, suggestions.size() - 1));
 
-        MinecraftClient client = MinecraftClient.getInstance();
-        TextRenderer textRenderer = client != null ? client.textRenderer : null;
+        Minecraft client = Minecraft.getInstance();
+        Font textRenderer = client != null ? client.font : null;
         if (textRenderer == null) {
             return;
         }
@@ -73,28 +73,28 @@ public final class NavigatorChatSuggestions {
                 context.fill(x + 1, rowY - 1, x + WIDTH - 1, rowY + ENTRY_HEIGHT - 1, 0x503A3A3A);
             }
             int commandX = x + 6;
-            int hintX = Math.min(x + WIDTH - 8, commandX + textRenderer.getWidth(entry.command()) + 12);
-            context.drawTextWithShadow(textRenderer, entry.command(), commandX, rowY, UITheme.TEXT_HEADER);
-            context.drawTextWithShadow(textRenderer, entry.hint(), hintX, rowY, UITheme.TEXT_SECONDARY);
+            int hintX = Math.min(x + WIDTH - 8, commandX + textRenderer.width(entry.command()) + 12);
+            context.drawString(textRenderer, entry.command(), commandX, rowY, UITheme.TEXT_HEADER);
+            context.drawString(textRenderer, entry.hint(), hintX, rowY, UITheme.TEXT_SECONDARY);
         }
     }
 
-    public void tick(MinecraftClient client) {
-        if (client == null || !(client.currentScreen instanceof ChatScreen chatScreen)) {
+    public void tick(Minecraft client) {
+        if (client == null || !(client.screen instanceof ChatScreen chatScreen)) {
             return;
         }
-        TextFieldWidget input = resolveChatField(chatScreen);
-        if (input == null || getSuggestions(input.getText()).isEmpty()) {
+        EditBox input = resolveChatField(chatScreen);
+        if (input == null || getSuggestions(input.getValue()).isEmpty()) {
             selectedIndex = 0;
         }
     }
 
     public boolean handleKeyPressed(ChatScreen chatScreen, int keyCode) {
-        TextFieldWidget input = resolveChatField(chatScreen);
+        EditBox input = resolveChatField(chatScreen);
         if (input == null) {
             return false;
         }
-        List<SuggestionEntry> suggestions = getSuggestions(input.getText());
+        List<SuggestionEntry> suggestions = getSuggestions(input.getValue());
         if (suggestions.isEmpty()) {
             selectedIndex = 0;
             return false;
@@ -119,15 +119,15 @@ public final class NavigatorChatSuggestions {
         }
     }
 
-    private void applySelectedSuggestion(TextFieldWidget input, List<SuggestionEntry> suggestions) {
+    private void applySelectedSuggestion(EditBox input, List<SuggestionEntry> suggestions) {
         if (input == null || suggestions.isEmpty()) {
             return;
         }
         selectedIndex = Math.max(0, Math.min(selectedIndex, suggestions.size() - 1));
-        String completion = normalizeCompletion(input.getText(), suggestions.get(selectedIndex).completion());
-        input.setText(completion);
-        input.setCursorToEnd(false);
-        input.setSelectionEnd(input.getText().length());
+        String completion = normalizeCompletion(input.getValue(), suggestions.get(selectedIndex).completion());
+        input.setValue(completion);
+        input.moveCursorToEnd(false);
+        input.setHighlightPos(input.getValue().length());
     }
 
     private String normalizeCompletion(String currentText, String completion) {
@@ -200,7 +200,7 @@ public final class NavigatorChatSuggestions {
         List<SuggestionEntry> suggestions = new ArrayList<>();
         int partCount = parts != null ? parts.length : 0;
         if (partCount == 1 && endsWithSpace) {
-            MinecraftClient client = MinecraftClient.getInstance();
+            Minecraft client = Minecraft.getInstance();
             if (client != null && client.player != null) {
                 int x = client.player.getBlockX();
                 int y = client.player.getBlockY();
@@ -298,17 +298,17 @@ public final class NavigatorChatSuggestions {
         }
     }
 
-    private TextFieldWidget resolveChatField(ChatScreen chatScreen) {
+    private EditBox resolveChatField(ChatScreen chatScreen) {
         Class<?> type = chatScreen.getClass();
         while (type != null) {
             for (Field field : type.getDeclaredFields()) {
-                if (field.getType() != TextFieldWidget.class) {
+                if (field.getType() != EditBox.class) {
                     continue;
                 }
                 try {
                     field.setAccessible(true);
                     Object value = field.get(chatScreen);
-                    if (value instanceof TextFieldWidget widget) {
+                    if (value instanceof EditBox widget) {
                         return widget;
                     }
                 } catch (IllegalAccessException ignored) {
@@ -320,15 +320,15 @@ public final class NavigatorChatSuggestions {
         return null;
     }
 
-    private void drawPanelBorder(DrawContext context, int x, int y, int width, int height, int color) {
+    private void drawPanelBorder(GuiGraphics context, int x, int y, int width, int height, int color) {
         if (context == null || width <= 0 || height <= 0) {
             return;
         }
         int right = x + width - 1;
         int bottom = y + height - 1;
-        context.drawHorizontalLine(x, right, y, color);
-        context.drawVerticalLine(x, y, bottom, color);
-        context.drawVerticalLine(right, y, bottom, color);
+        context.hLine(x, right, y, color);
+        context.vLine(x, y, bottom, color);
+        context.vLine(right, y, bottom, color);
     }
 
     private record SuggestionEntry(String command, String hint, String completion) {

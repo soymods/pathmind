@@ -9,11 +9,11 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import net.minecraft.block.Block;
-import net.minecraft.block.BlockState;
-import net.minecraft.registry.Registries;
-import net.minecraft.state.property.Property;
-import net.minecraft.util.Identifier;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.Property;
 
 /**
  * Represents a block selection that may optionally include block state data.
@@ -82,7 +82,7 @@ public final class BlockSelection {
         if (state == null || block == null) {
             return false;
         }
-        if (!state.isOf(block)) {
+        if (!state.is(block)) {
             return false;
         }
         if (filledSlots != null) {
@@ -97,7 +97,7 @@ public final class BlockSelection {
         for (Map.Entry<Property<?>, Comparable<?>> entry : properties.entrySet()) {
             Property<?> property = entry.getKey();
             Comparable<?> requested = entry.getValue();
-            Comparable<?> actual = state.get(property);
+            Comparable<?> actual = state.getValue(property);
             if (!Objects.equals(actual, requested)) {
                 return false;
             }
@@ -124,10 +124,10 @@ public final class BlockSelection {
             : "";
 
         Identifier identifier = normalizeBlockIdentifier(blockPart);
-        if (identifier == null || !Registries.BLOCK.containsId(identifier)) {
+        if (identifier == null || !BuiltInRegistries.BLOCK.containsKey(identifier)) {
             return Optional.empty();
         }
-        Block block = Registries.BLOCK.get(identifier);
+        Block block = BuiltInRegistries.BLOCK.getValue(identifier);
         Map<Property<?>, Comparable<?>> requested = new LinkedHashMap<>();
         Integer filledSlots = null;
         if (!statePart.isEmpty()) {
@@ -159,14 +159,14 @@ public final class BlockSelection {
                         return Optional.empty();
                     }
                 }
-                Property<?> property = block.getStateManager().getProperty(propertyName);
+                Property<?> property = block.getStateDefinition().getProperty(propertyName);
                 if (property == null) {
                     return Optional.empty();
                 }
                 if (isDirectionProperty(property)) {
                     continue;
                 }
-                Optional<?> parsedValue = property.parse(propertyValue);
+                Optional<?> parsedValue = property.getValue(propertyValue);
                 if (parsedValue.isEmpty()) {
                     return Optional.empty();
                 }
@@ -201,13 +201,13 @@ public final class BlockSelection {
         if (state == null) {
             return "";
         }
-        Map<Property<?>, Comparable<?>> entries = state.getEntries();
+        Map<Property<?>, Comparable<?>> entries = state.getValues();
         return buildPropertyString(entries, null);
     }
 
     private static Optional<String> sanitizeBlockOnly(String blockId) {
         Identifier identifier = normalizeBlockIdentifier(blockId);
-        if (identifier == null || !Registries.BLOCK.containsId(identifier)) {
+        if (identifier == null || !BuiltInRegistries.BLOCK.containsKey(identifier)) {
             return Optional.empty();
         }
         return Optional.of(identifier.toString());
@@ -260,16 +260,16 @@ public final class BlockSelection {
      */
     public static List<StateOption> getStateOptions(String blockId) {
         Identifier identifier = Identifier.tryParse(blockId);
-        if (identifier == null || !Registries.BLOCK.containsId(identifier)) {
+        if (identifier == null || !BuiltInRegistries.BLOCK.containsKey(identifier)) {
             return Collections.emptyList();
         }
-        Block block = Registries.BLOCK.get(identifier);
+        Block block = BuiltInRegistries.BLOCK.getValue(identifier);
         if (hasSlotOccupiedProperties(block)) {
             return getFilledSlotsOptions(block);
         }
         List<StateOption> options = new ArrayList<>();
-        for (BlockState state : block.getStateManager().getStates()) {
-            Map<Property<?>, Comparable<?>> entries = state.getEntries();
+        for (BlockState state : block.getStateDefinition().getPossibleStates()) {
+            Map<Property<?>, Comparable<?>> entries = state.getValues();
             String description = buildPropertyString(entries, null);
             if (!description.isEmpty()) {
                 options.add(new StateOption(description, description));
@@ -315,7 +315,7 @@ public final class BlockSelection {
     @SuppressWarnings({"rawtypes", "unchecked"})
     private static String propertyValueToString(Property<?> property, Comparable<?> value) {
         Property rawProperty = property;
-        return property.getName() + "=" + rawProperty.name(value);
+        return property.getName() + "=" + rawProperty.getName(value);
     }
 
     private static boolean isDirectionProperty(Property<?> property) {
@@ -336,7 +336,7 @@ public final class BlockSelection {
             return 0;
         }
         int count = 0;
-        for (Property<?> property : block.getStateManager().getProperties()) {
+        for (Property<?> property : block.getStateDefinition().getProperties()) {
             String name = property.getName().toLowerCase(Locale.ROOT);
             if (name.startsWith("slot_") && name.endsWith("_occupied")) {
                 count++;
@@ -347,7 +347,7 @@ public final class BlockSelection {
 
     private static List<StateOption> getFilledSlotsOptions(Block block) {
         List<StateOption> options = new ArrayList<>();
-        for (BlockState state : block.getStateManager().getStates()) {
+        for (BlockState state : block.getStateDefinition().getPossibleStates()) {
             int filled = countFilledSlots(state);
             String value = FILLED_SLOTS_PROPERTY + "=" + filled;
             String display = filled == 1 ? "1 slot filled" : filled + " slots filled";
@@ -367,7 +367,7 @@ public final class BlockSelection {
             return 0;
         }
         int count = 0;
-        for (Map.Entry<Property<?>, Comparable<?>> entry : state.getEntries().entrySet()) {
+        for (Map.Entry<Property<?>, Comparable<?>> entry : state.getValues().entrySet()) {
             String name = entry.getKey().getName().toLowerCase(Locale.ROOT);
             if (name.startsWith("slot_") && name.endsWith("_occupied")) {
                 Object value = entry.getValue();

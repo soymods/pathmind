@@ -1,6 +1,6 @@
 package com.pathmind.nodes;
 
-import net.minecraft.text.Text;
+import net.minecraft.network.chat.Component;
 
 /**
  * Enum representing different categories of nodes for sidebar organization.
@@ -30,7 +30,7 @@ public enum NodeCategory {
     }
 
     public String getDisplayName() {
-        return Text.translatable(translationKey).getString();
+        return Component.translatable(translationKey).getString();
     }
 
     public int getColor() {
@@ -38,7 +38,7 @@ public enum NodeCategory {
     }
 
     public String getDescription() {
-        return Text.translatable(descriptionKey).getString();
+        return Component.translatable(descriptionKey).getString();
     }
 
     public String getIcon() {

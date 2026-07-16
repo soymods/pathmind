@@ -1,16 +1,16 @@
 package com.pathmind.util;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.network.ClientConnection;
-import net.minecraft.network.packet.Packet;
-import net.minecraft.screen.ScreenHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.List;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.network.Connection;
+import net.minecraft.network.protocol.Packet;
+import net.minecraft.world.inventory.AbstractContainerMenu;
 
 public final class UiUtilsProxy {
     private static final Logger LOGGER = LoggerFactory.getLogger("Pathmind/UiUtils");
@@ -274,7 +274,7 @@ public final class UiUtilsProxy {
         }
     }
 
-    public static boolean setStoredScreen(Screen screen, ScreenHandler handler) {
+    public static boolean setStoredScreen(Screen screen, AbstractContainerMenu handler) {
         if (!init() || backend != Backend.LEGACY) {
             return false;
         }
@@ -301,21 +301,21 @@ public final class UiUtilsProxy {
         }
     }
 
-    public static ScreenHandler getStoredScreenHandler() {
+    public static AbstractContainerMenu getStoredScreenHandler() {
         if (!init() || backend != Backend.LEGACY) {
             return null;
         }
         try {
             Object value = storedScreenHandlerField.get(null);
-            return value instanceof ScreenHandler ? (ScreenHandler) value : null;
+            return value instanceof AbstractContainerMenu ? (AbstractContainerMenu) value : null;
         } catch (IllegalAccessException e) {
             LOGGER.warn("Failed to access UI Utils stored screen handler: {}", e.getMessage());
             return null;
         }
     }
 
-    public static boolean flushDelayedPackets(MinecraftClient client) {
-        if (!init() || client == null || client.getNetworkHandler() == null) {
+    public static boolean flushDelayedPackets(Minecraft client) {
+        if (!init() || client == null || client.getConnection() == null) {
             return false;
         }
         Boolean restoreDelay = null;
@@ -335,11 +335,11 @@ public final class UiUtilsProxy {
         for (Object packet : new java.util.ArrayList<>(packets)) {
             if (packet instanceof Packet<?> cast) {
                 if (backend == Backend.MODERN) {
-                    if (!tryWriteAndFlush(client.getNetworkHandler().getConnection(), cast)) {
+                    if (!tryWriteAndFlush(client.getConnection().getConnection(), cast)) {
                         return false;
                     }
                 } else {
-                    client.getNetworkHandler().sendPacket(cast);
+                    client.getConnection().send(cast);
                 }
             }
         }
@@ -350,7 +350,7 @@ public final class UiUtilsProxy {
         return true;
     }
 
-    public static boolean tryWriteAndFlush(ClientConnection connection, Packet<?> packet) {
+    public static boolean tryWriteAndFlush(Connection connection, Packet<?> packet) {
         if (connection == null || packet == null) {
             return false;
         }

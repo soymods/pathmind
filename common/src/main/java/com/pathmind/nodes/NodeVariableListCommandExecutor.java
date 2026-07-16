@@ -571,7 +571,7 @@ final class NodeVariableListCommandExecutor {
                     if (identifier == null || !BuiltInRegistries.ENTITY_TYPE.containsKey(identifier)) {
                         continue;
                     }
-                    EntityType<?> entityType = BuiltInRegistries.ENTITY_TYPE.getValue(identifier);
+                    EntityType<?> entityType = BuiltInRegistries.ENTITY_TYPE.getOptional(identifier).orElse(null);
                     matches.addAll(useCustomRadius
                         ? findEntitiesByTypeWithinRange(client, entityType, searchRadius, state)
                         : findRenderedEntitiesByType(client, entityType, state));
@@ -625,7 +625,7 @@ final class NodeVariableListCommandExecutor {
                 if (identifier == null || !BuiltInRegistries.ITEM.containsKey(identifier)) {
                     continue;
                 }
-                Item item = BuiltInRegistries.ITEM.getValue(identifier);
+                Item item = BuiltInRegistries.ITEM.getOptional(identifier).orElse(null);
                 matches.addAll(useCustomRadius
                     ? findItemsWithinRange(client, item, searchRadius)
                     : findRenderedItemsByType(client, item));

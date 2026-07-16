@@ -14,15 +14,23 @@ architectury {
 
 val requestedMinecraftVersion = rootProject.extra["requestedMinecraftVersion"] as String
 val commonSourceFamily = rootProject.extra["commonSourceFamily"] as String
+val packagingGeneration = rootProject.extra["packagingGeneration"] as String
+val canonicalMojangVersion = rootProject.extra["canonicalMojangVersion"] as String
+val canonicalMappingsRevision = rootProject.extra["canonicalMappingsRevision"] as String
 dependencies {
     minecraft("com.mojang:minecraft:$requestedMinecraftVersion")
-    mappings(
-        if (requestedMinecraftVersion == "1.21.11") {
-            loom.officialMojangMappings()
-        } else {
-            rootProject.files("gradle/mappings/$requestedMinecraftVersion-canonical-1.21.11.jar")
-        }
-    )
+    when (packagingGeneration) {
+        "pre26-remapped" -> mappings(
+            if (requestedMinecraftVersion == canonicalMojangVersion) {
+                loom.officialMojangMappings()
+            } else {
+                "com.pathmind.mappings:$requestedMinecraftVersion-canonical-$canonicalMojangVersion:" +
+                    canonicalMappingsRevision
+            }
+        )
+        "mc26-unobfuscated" -> Unit
+        else -> throw GradleException("Unknown packaging generation '$packagingGeneration'")
+    }
     modImplementation("net.fabricmc:fabric-loader:${rootProject.extra["fabricLoaderVersion"] as String}")
 
     implementation("com.google.code.gson:gson:2.10.1")
@@ -44,10 +52,13 @@ sourceSets {
     main {
         java {
             when {
-                commonSourceFamily == "legacy" -> srcDir("src/compat/legacy/base/java")
-                commonSourceFamily == "mid" -> srcDir("src/compat/mid/java")
-                commonSourceFamily == "modern" -> srcDir("src/compat/modern/java")
+                commonSourceFamily == "mc-1.21.0-1.21.8" -> srcDir("src/compat/mc-1.21.0-1.21.8/java")
+                commonSourceFamily == "mc-1.21.9-1.21.10" -> srcDir("src/compat/mc-1.21.9-1.21.10/java")
+                commonSourceFamily == "mc-1.21.11" -> srcDir("src/compat/mc-1.21.11/java")
                 else -> throw GradleException("Unknown common source family '$commonSourceFamily' for Minecraft $requestedMinecraftVersion")
+            }
+            if (commonSourceFamily == "mc-1.21.0-1.21.8" || commonSourceFamily == "mc-1.21.9-1.21.10") {
+                srcDir("src/compat/api/mc-1.21.0-1.21.10/java")
             }
         }
     }

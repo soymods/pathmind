@@ -5316,8 +5316,8 @@ public class NodeGraph {
         if (identifier == null || !BuiltInRegistries.ITEM.containsKey(identifier)) {
             return TradeKeyPart.empty();
         }
-        Item item = BuiltInRegistries.ITEM.getValue(identifier);
-        return new TradeKeyPart(item.getName().getString(), count);
+        Item item = BuiltInRegistries.ITEM.getOptional(identifier).orElse(null);
+        return new TradeKeyPart(new ItemStack(item).getHoverName().getString(), count);
     }
 
     private static final class TradeKeyPart {
@@ -12237,7 +12237,7 @@ public class NodeGraph {
         }
         Minecraft client = Minecraft.getInstance();
         net.minecraft.world.level.Level world = client != null ? client.level : null;
-        List<EntityStateOptions.StateOption> options = EntityStateOptions.getOptions(BuiltInRegistries.ENTITY_TYPE.getValue(id), world);
+        List<EntityStateOptions.StateOption> options = EntityStateOptions.getOptions(BuiltInRegistries.ENTITY_TYPE.getOptional(id).orElse(null), world);
         if (options.isEmpty()) {
             return Collections.emptyList();
         }
@@ -13104,7 +13104,7 @@ public class NodeGraph {
             return ItemStack.EMPTY;
         }
         if (isBlockParameter(node, index)) {
-            var block = BuiltInRegistries.BLOCK.getValue(id);
+            var block = BuiltInRegistries.BLOCK.getOptional(id).orElse(null);
             if (block == null) {
                 return ItemStack.EMPTY;
             }
@@ -13115,14 +13115,14 @@ public class NodeGraph {
             return new ItemStack(item);
         }
         if (isItemParameter(node, index)) {
-            Item item = BuiltInRegistries.ITEM.getValue(id);
+            Item item = BuiltInRegistries.ITEM.getOptional(id).orElse(null);
             if (item == null || item == Items.AIR) {
                 return ItemStack.EMPTY;
             }
             return new ItemStack(item);
         }
         if (isEntityParameter(node, index)) {
-            var entityType = BuiltInRegistries.ENTITY_TYPE.getValue(id);
+            var entityType = BuiltInRegistries.ENTITY_TYPE.getOptional(id).orElse(null);
             if (entityType == null) {
                 return ItemStack.EMPTY;
             }

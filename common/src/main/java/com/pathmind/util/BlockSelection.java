@@ -127,7 +127,7 @@ public final class BlockSelection {
         if (identifier == null || !BuiltInRegistries.BLOCK.containsKey(identifier)) {
             return Optional.empty();
         }
-        Block block = BuiltInRegistries.BLOCK.getValue(identifier);
+        Block block = BuiltInRegistries.BLOCK.getOptional(identifier).orElse(null);
         Map<Property<?>, Comparable<?>> requested = new LinkedHashMap<>();
         Integer filledSlots = null;
         if (!statePart.isEmpty()) {
@@ -263,7 +263,7 @@ public final class BlockSelection {
         if (identifier == null || !BuiltInRegistries.BLOCK.containsKey(identifier)) {
             return Collections.emptyList();
         }
-        Block block = BuiltInRegistries.BLOCK.getValue(identifier);
+        Block block = BuiltInRegistries.BLOCK.getOptional(identifier).orElse(null);
         if (hasSlotOccupiedProperties(block)) {
             return getFilledSlotsOptions(block);
         }

@@ -806,7 +806,7 @@ final class NodeNavigationCommandExecutor {
             if (identifier == null || !BuiltInRegistries.ITEM.containsKey(identifier)) {
                 continue;
             }
-            Item candidateItem = BuiltInRegistries.ITEM.getValue(identifier);
+            Item candidateItem = BuiltInRegistries.ITEM.getOptional(identifier).orElse(null);
             Optional<BlockPos> target = findNearestDroppedItem(client, candidateItem, searchRange);
             if (target.isPresent()) {
                 matchedPosition = target;
@@ -860,7 +860,7 @@ final class NodeNavigationCommandExecutor {
             if (identifier == null || !BuiltInRegistries.ENTITY_TYPE.containsKey(identifier)) {
                 continue;
             }
-            EntityType<?> entityType = BuiltInRegistries.ENTITY_TYPE.getValue(identifier);
+            EntityType<?> entityType = BuiltInRegistries.ENTITY_TYPE.getOptional(identifier).orElse(null);
             Optional<Entity> target = findNearestEntity(client, entityType, range, state);
             if (target.isEmpty()) {
                 continue;

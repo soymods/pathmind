@@ -27,7 +27,6 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.item.crafting.CraftingInput;
 import net.minecraft.world.item.crafting.CraftingRecipe;
 import net.minecraft.world.item.crafting.Ingredient;
-import net.minecraft.world.item.crafting.RecipeAccess;
 import net.minecraft.world.item.crafting.RecipeHolder;
 import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.item.crafting.ShapedRecipe;
@@ -110,7 +109,7 @@ final class NodeCraftCommandExecutor {
             return;
         }
 
-        Item targetItem = BuiltInRegistries.ITEM.getValue(identifier);
+        Item targetItem = BuiltInRegistries.ITEM.getOptional(identifier).orElse(null);
         if (client == null || client.player == null || client.level == null) {
             NodeExecutionCompletion.completeExceptionally(future, new RuntimeException("Minecraft client not available"));
             return;
@@ -124,7 +123,7 @@ final class NodeCraftCommandExecutor {
             return;
         }
 
-        String itemDisplayName = targetItem.getName().getString();
+        String itemDisplayName = new ItemStack(targetItem).getHoverName().getString();
 
         AbstractContainerMenu handler = client.player.containerMenu;
         if (!isCompatibleCraftingHandler(handler, craftMode)) {
@@ -792,7 +791,7 @@ final class NodeCraftCommandExecutor {
         if (book == null || client == null || client.getSingleplayerServer() == null) {
             return;
         }
-        RecipeAccess manager = client.getSingleplayerServer().getRecipeManager();
+        Object manager = client.getSingleplayerServer().getRecipeManager();
         if (manager == null) {
             return;
         }
@@ -2727,7 +2726,7 @@ final class NodeCraftCommandExecutor {
             if (id == null || !BuiltInRegistries.ITEM.containsKey(id)) {
                 continue;
             }
-            items.add(BuiltInRegistries.ITEM.getValue(id));
+            items.add(BuiltInRegistries.ITEM.getOptional(id).orElse(null));
         }
         if (items.isEmpty()) {
             return null;
@@ -3034,7 +3033,7 @@ final class NodeCraftCommandExecutor {
         }
         MinecraftServer server = client.getSingleplayerServer();
         if (server != null) {
-            RecipeAccess manager = server.getRecipeManager();
+            Object manager = server.getRecipeManager();
             if (manager != null && !managers.contains(manager)) {
                 managers.add(manager);
             }
@@ -3053,7 +3052,7 @@ final class NodeCraftCommandExecutor {
         }
         if (client.level != null) {
             try {
-                RecipeAccess manager = client.level.recipeAccess();
+                Object manager = findRecipeAccess(client.level);
                 if (manager != null && !managers.contains(manager)) {
                     managers.add(manager);
                 }
@@ -3062,6 +3061,25 @@ final class NodeCraftCommandExecutor {
             }
         }
         return managers;
+    }
+
+    private Object findRecipeAccess(Object level) {
+        if (level == null) {
+            return null;
+        }
+        for (String methodName : List.of("recipeAccess", "getRecipeManager")) {
+            try {
+                java.lang.reflect.Method method = level.getClass().getMethod(methodName);
+                method.setAccessible(true);
+                Object result = method.invoke(level);
+                if (result != null) {
+                    return result;
+                }
+            } catch (ReflectiveOperationException ignored) {
+                // Try the next API-family name.
+            }
+        }
+        return null;
     }
 
     static class CraftingSummary {
@@ -3375,7 +3393,7 @@ final class NodeCraftCommandExecutor {
         if (hasUsableRecipeCacheInternal(client)) {
             return null;
         }
-        RecipeAccess manager = client.getSingleplayerServer().getRecipeManager();
+        Object manager = client.getSingleplayerServer().getRecipeManager();
         if (manager == null) {
             return null;
         }

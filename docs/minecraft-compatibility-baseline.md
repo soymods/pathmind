@@ -10,11 +10,13 @@ This document records the compatibility state protected by Pass 1 of the [Minecr
 - compatibility and source-family selection;
 - target Java version and packaging generation;
 - release loaders;
-- Yarn, Fabric Loader, Fabric API, and NeoForge build pins;
+- canonical Mojang mapping artifacts plus Fabric Loader, Fabric API, and NeoForge build pins;
 - minimum Fabric Loader metadata;
-- legacy Fabric use-item and render source selection;
+- range-named Fabric use-item and render capability selection;
 - NeoForge UI source selection;
 - optional Baritone runtime availability.
+
+The generation-specific mechanics and stable contributor commands are documented in [Pathmind Build Generations](build-generations.md).
 
 Use these tasks when inspecting or changing compatibility:
 
@@ -55,17 +57,17 @@ The manifest preserves the following pre-migration source selection exactly:
 
 | Minecraft | Common/Fabric base | Fabric use-item | Fabric world render | NeoForge UI |
 | --- | --- | --- | --- | --- |
-| `1.21`–`1.21.1` | `legacy` | `typed` | `old` | `legacy` |
-| `1.21.2`–`1.21.3` | `legacy` | `action` | `old-allocator` | `legacy` |
-| `1.21.4` | `legacy` | `action` | `old-allocator-nolightmap` | `legacy` |
-| `1.21.5` | `legacy` | `action` | `transitional` | `legacy` |
-| `1.21.6`–`1.21.8` | `legacy` | `action` | `late` | `legacy` |
-| `1.21.9`–`1.21.10` | `mid` | built into family | built into family | `legacy` |
-| `1.21.11` | `modern` | built into family | built into family | `modern` |
+| `1.21`–`1.21.1` | `mc-1.21.0-1.21.8` | `mc-1.21.0-1.21.1` | `mc-1.21.0-1.21.1` | `mc-1.21.0-1.21.10` |
+| `1.21.2`–`1.21.3` | `mc-1.21.0-1.21.8` | `mc-1.21.2-1.21.8` | `mc-1.21.2-1.21.3` | `mc-1.21.0-1.21.10` |
+| `1.21.4` | `mc-1.21.0-1.21.8` | `mc-1.21.2-1.21.8` | `mc-1.21.4` | `mc-1.21.0-1.21.10` |
+| `1.21.5` | `mc-1.21.0-1.21.8` | `mc-1.21.2-1.21.8` | `mc-1.21.5` | `mc-1.21.0-1.21.10` |
+| `1.21.6`–`1.21.8` | `mc-1.21.0-1.21.8` | `mc-1.21.2-1.21.8` | `mc-1.21.6-1.21.8` | `mc-1.21.0-1.21.10` |
+| `1.21.9`–`1.21.10` | `mc-1.21.9-1.21.10` | built into family | built into family | `mc-1.21.0-1.21.10` |
+| `1.21.11` | `mc-1.21.11` | built into family | built into family | `mc-1.21.11` |
 
 Baritone can be attached as a local development runtime only for `1.21.6` through `1.21.8`. The API remains compile-optional for other versions when a local API jar is present.
 
-These names record the current repository. They are not the desired final names: Pass 4 replaces the open-ended `legacy`, `mid`, and `modern` organization with explicit compatibility contracts and version ranges.
+These names are contracts, not relative labels. A future target must declare a new explicit range or deliberately reuse one whose API contract is unchanged.
 
 ## Artifact and metadata contract
 
@@ -89,7 +91,7 @@ Fabric metadata is client-only and declares exact Minecraft compatibility, Java 
 
 ## Source duplication inventory
 
-The Pass 1 inventory found:
+The historical Pass 1 inventory found:
 
 - 239 files under `common/src/main`;
 - 12 files in each common `legacy`, `mid`, and `modern` compatibility family;
@@ -103,7 +105,7 @@ Every one of the 36 common compatibility files has a matching Fabric path. Of th
 - `PathmindSettingsPopupController.java`;
 - `PathmindVisualEditorScreen.java`.
 
-The differences are not explained by Minecraft-family APIs alone. They include product-level differences such as text-field construction helpers, hit-testing helpers, onboarding/tutorial behavior, and example-preset restoration. Pass 1 deliberately does not overwrite either side. Until Pass 4 establishes one canonical implementation, changes to these files require an explicit comparison of the common and Fabric copies; a blind copy in either direction can remove behavior.
+Pass 4 removed the Fabric product mirror, promoted family-independent marketplace behavior to `common/src/main`, and consolidated the preview loader, preset popup, and graph preview renderer shared by `1.21` through `1.21.10`. The historical counts above remain useful for measuring the migration, but they no longer describe the active layout.
 
 The Fabric-only compatibility files cover loader events, key bindings, chat hooks, use-item callbacks, main-menu integration, and version-specific world-overlay rendering. NeoForge has loader-specific bootstrap/event logic plus its legacy/modern main-menu button implementation. These are expected loader or Minecraft API boundaries, although Pass 4 will narrow their contracts.
 
@@ -147,7 +149,7 @@ During normal development:
 
 ```bash
 ./gradlew check -Pmc_version=1.21.11
-./gradlew :fabric:remapJar :neoforge:remapJar -Pmc_version=1.21.11
+./gradlew buildSelectedTarget -Pmc_version=1.21.11
 ```
 
 Before merging compatibility, mapping, build, source-set, metadata, or release changes:

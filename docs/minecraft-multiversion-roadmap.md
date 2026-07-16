@@ -122,6 +122,8 @@ Create a repeatable baseline for all current targets before changing mappings or
 
 ## Pass 2: Standardize the entire codebase on Mojang names
 
+**Status:** Implemented July 16, 2026. Authored common and loader sources use Mojang names, older targets consume generated canonical mapping jars, and the custom common-to-NeoForge remapper is gone. Default-target and oldest-target compilation have been confirmed; final full-matrix verification remains pending.
+
 ### Goal
 
 Remove the mapping-language divide between Fabric, shared code, and NeoForge. All authored Java and Mixin sources should use Mojang names, including sources that still produce remapped `1.21.x` Fabric jars.
@@ -158,6 +160,8 @@ No new Yarn-named production source may be added. Yarn may remain an implementat
 
 ## Pass 3: Split build generations and centralize version selection
 
+**Status:** Implemented July 16, 2026; user-run verification pending. Build-generation contracts, stable root tasks, generation-aware packaging, Java selection, CI discovery/cache separation, unknown-target checks, and a non-release 26.x Java 25 placeholder are in place.
+
 ### Goal
 
 Teach the repository that `1.21.x` and `26.x` share product source but have different toolchain and packaging rules.
@@ -187,6 +191,8 @@ Teach the repository that `1.21.x` and `26.x` share product source but have diff
 - Root build and run commands hide included-build or plugin-generation complexity from contributors.
 
 ## Pass 4: Replace mirrored implementations with compatibility contracts
+
+**Status:** In progress July 16, 2026. Ambiguous source-family names and the complete Fabric editor/marketplace mirror have been removed. Family-independent marketplace behavior and the shared `1.21.0`–`1.21.10` preview/preset implementations are canonicalized, capability ranges are explicit, and structural verification prevents those mirrors from returning. Canonicalizing the remaining common screen shells is the next Pass 4 stage.
 
 ### Goal
 

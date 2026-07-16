@@ -17,6 +17,10 @@ val neoforgeVersion = rootProject.extra["neoforgeVersion"] as? String
             "update the target in gradle/minecraft-versions.properties."
     )
 val neoForgeUiFamily = rootProject.extra["neoForgeUiFamily"] as String
+val packagingGeneration = rootProject.extra["packagingGeneration"] as String
+val neoForgeReleaseTask = rootProject.extra["neoForgeReleaseTask"] as String
+val canonicalMojangVersion = rootProject.extra["canonicalMojangVersion"] as String
+val canonicalMappingsRevision = rootProject.extra["canonicalMappingsRevision"] as String
 
 base {
     archivesName.set("${rootProject.property("archives_base_name") as String}-neoforge")
@@ -42,13 +46,18 @@ configurations {
 
 dependencies {
     minecraft("com.mojang:minecraft:$requestedMinecraftVersion")
-    mappings(
-        if (requestedMinecraftVersion == "1.21.11") {
-            loom.officialMojangMappings()
-        } else {
-            rootProject.files("gradle/mappings/$requestedMinecraftVersion-canonical-1.21.11.jar")
-        }
-    )
+    when (packagingGeneration) {
+        "pre26-remapped" -> mappings(
+            if (requestedMinecraftVersion == canonicalMojangVersion) {
+                loom.officialMojangMappings()
+            } else {
+                "com.pathmind.mappings:$requestedMinecraftVersion-canonical-$canonicalMojangVersion:" +
+                    canonicalMappingsRevision
+            }
+        )
+        "mc26-unobfuscated" -> Unit
+        else -> throw GradleException("Unknown packaging generation '$packagingGeneration'")
+    }
 
     "neoForge"("net.neoforged:neoforge:$neoforgeVersion")
 
@@ -60,10 +69,10 @@ dependencies {
 sourceSets {
     main {
         java {
-            if (neoForgeUiFamily == "legacy") {
-                srcDir("src/compat/legacy/base/java")
-            } else if (neoForgeUiFamily == "modern") {
-                srcDir("src/compat/modern/java")
+            if (neoForgeUiFamily == "mc-1.21.0-1.21.10") {
+                srcDir("src/compat/mc-1.21.0-1.21.10/java")
+            } else if (neoForgeUiFamily == "mc-1.21.11") {
+                srcDir("src/compat/mc-1.21.11/java")
             } else {
                 throw GradleException("Unknown NeoForge UI family '$neoForgeUiFamily' for Minecraft $requestedMinecraftVersion")
             }
@@ -84,11 +93,16 @@ tasks.processResources {
 tasks.shadowJar {
     exclude("architectury.common.json")
     configurations = listOf(project.configurations["shadowCommon"])
-    archiveClassifier.set("dev-shadow")
+    if (neoForgeReleaseTask == "shadowJar") {
+        archiveClassifier.set(null as String?)
+    } else {
+        archiveClassifier.set("dev-shadow")
+    }
     from(rootProject.file("LICENSE.txt")) { rename { "${it}_${base.archivesName.get()}" } }
 }
 
 tasks.remapJar {
+    enabled = neoForgeReleaseTask == "remapJar"
     inputFile.set(tasks.shadowJar.get().archiveFile)
     archiveClassifier.set(null as String?)
     dependsOn(tasks.shadowJar)

@@ -73,6 +73,15 @@ public final class DrawContextBridge {
         }
     }
 
+    /** Ends a scissor region after submitting any buffered GUI work that belongs inside it. */
+    public static void disableScissor(GuiGraphics context) {
+        if (context == null) {
+            return;
+        }
+        flush(context);
+        context.disableScissor();
+    }
+
     private static java.lang.reflect.Method resolveNoArgMethod(String name) {
         try {
             java.lang.reflect.Method method = GuiGraphics.class.getMethod(name);

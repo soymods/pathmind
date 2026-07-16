@@ -53,7 +53,7 @@ final class ItemParameterDefinition {
                 continue;
             }
             hasValidCandidate = true;
-            Item item = BuiltInRegistries.ITEM.getValue(identifier);
+            Item item = BuiltInRegistries.ITEM.getOptional(identifier).orElse(null);
             Optional<BlockPos> match = owner.findNearestDroppedItem(client, item, range);
             if (match.isEmpty()) {
                 continue;
@@ -82,7 +82,7 @@ final class ItemParameterDefinition {
             if (identifier == null || !BuiltInRegistries.ITEM.containsKey(identifier)) {
                 continue;
             }
-            Item item = BuiltInRegistries.ITEM.getValue(identifier);
+            Item item = BuiltInRegistries.ITEM.getOptional(identifier).orElse(null);
             for (ItemEntity itemEntity : owner.findItemsByType(client, item, range)) {
                 if (itemEntity == null || itemEntity.isRemoved()) {
                     continue;
@@ -118,7 +118,7 @@ final class ItemParameterDefinition {
             if (identifier == null || !BuiltInRegistries.ITEM.containsKey(identifier)) {
                 continue;
             }
-            Item candidateItem = BuiltInRegistries.ITEM.getValue(identifier);
+            Item candidateItem = BuiltInRegistries.ITEM.getOptional(identifier).orElse(null);
             Optional<BlockPos> target = owner.findNearestDroppedItem(client, candidateItem, searchRange);
             if (target.isPresent()) {
                 matchedPosition = target;

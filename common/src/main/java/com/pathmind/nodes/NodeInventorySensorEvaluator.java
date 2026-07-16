@@ -127,7 +127,7 @@ final class NodeInventorySensorEvaluator {
             if (identifier == null || !BuiltInRegistries.ITEM.containsKey(identifier)) {
                 continue;
             }
-            Item item = BuiltInRegistries.ITEM.getValue(identifier);
+            Item item = BuiltInRegistries.ITEM.getOptional(identifier).orElse(null);
             if (client.player.getInventory().countItem(item) > 0) {
                 return true;
             }
@@ -150,7 +150,7 @@ final class NodeInventorySensorEvaluator {
             if (identifier == null || !BuiltInRegistries.ITEM.containsKey(identifier)) {
                 continue;
             }
-            Item item = BuiltInRegistries.ITEM.getValue(identifier);
+            Item item = BuiltInRegistries.ITEM.getOptional(identifier).orElse(null);
             if (client.player.getInventory().countItem(item) >= needed) {
                 return true;
             }
@@ -171,7 +171,7 @@ final class NodeInventorySensorEvaluator {
             if (identifier == null || !BuiltInRegistries.ITEM.containsKey(identifier)) {
                 continue;
             }
-            Item item = BuiltInRegistries.ITEM.getValue(identifier);
+            Item item = BuiltInRegistries.ITEM.getOptional(identifier).orElse(null);
             if (stack.is(item)) {
                 return true;
             }

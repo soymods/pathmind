@@ -46,7 +46,7 @@ final class TransientEntityPositionTracker {
         if (id == null || !BuiltInRegistries.ENTITY_TYPE.containsKey(id)) {
             return;
         }
-        EntityType<?> type = BuiltInRegistries.ENTITY_TYPE.getValue(id);
+        EntityType<?> type = BuiltInRegistries.ENTITY_TYPE.getOptional(id).orElse(null);
         double searchRadius = Math.max(1.0D, range);
         AABB searchBox = client.player.getBoundingBox().inflate(searchRadius);
         for (Entity entity : client.level.getEntities(client.player, searchBox)) {

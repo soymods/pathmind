@@ -12,22 +12,28 @@ jobs:
   discover-targets:
     runs-on: ubuntu-latest
     outputs:
-      versions: ${{ steps.versions.outputs.versions }}
+      matrix: ${{ steps.targets.outputs.matrix }}
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
       - name: Discover supported Minecraft targets
-        id: versions
+        id: targets
         shell: bash
         run: |
-          VERSIONS="$(sed -n 's/^supported_versions=//p' gradle/minecraft-versions.properties \
-            | tr ',' '\n' \
-            | jq -R . \
-            | jq -s -c .)"
+          MANIFEST=gradle/minecraft-versions.properties
+          TARGETS="$(sed -n 's/^supported_versions=//p' "$MANIFEST" | tr ',' '\n' | while read -r version; do
+            java_version="$(awk -F= -v key="version.${version}.java_version" '$1 == key { print $2 }' "$MANIFEST")"
+            generation="$(awk -F= -v key="version.${version}.packaging_generation" '$1 == key { print $2 }' "$MANIFEST")"
+            jq -cn \
+              --arg minecraft_version "$version" \
+              --arg java_version "$java_version" \
+              --arg packaging_generation "$generation" \
+              '{minecraft_version: $minecraft_version, java_version: $java_version, packaging_generation: $packaging_generation}'
+          done | jq -sc '{include: .}')"
 
-          echo "versions=${VERSIONS}" >> "$GITHUB_OUTPUT"
+          echo "matrix=${TARGETS}" >> "$GITHUB_OUTPUT"
 
   test:
     runs-on: ubuntu-latest
@@ -42,6 +48,10 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: gradle
+          cache-dependency-path: |
+            **/*.gradle*
+            gradle/wrapper/gradle-wrapper.properties
+            gradle/build-generation-cache/pre26-remapped.marker
 
       - name: Download Baritone API dependency
         run: |
@@ -53,7 +63,16 @@ jobs:
         run: chmod +x gradlew
 
       - name: Verify compatibility manifest
-        run: ./gradlew verifyCompatibilityManifest -Pmc_version=1.21.11
+        run: ./gradlew verifyCompatibilityManifest verifyBuildGenerationRouting -Pmc_version=1.21.11
+
+      - name: Verify unknown targets fail during configuration
+        shell: bash
+        run: |
+          if ./gradlew help -Pmc_version=pathmind-invalid > unknown-target.log 2>&1; then
+            echo "Unknown target unexpectedly configured successfully."
+            exit 1
+          fi
+          grep -F "No version spec configured for Minecraft pathmind-invalid" unknown-target.log
 
       - name: Unit tests
         run: ./gradlew :common:test -Pmc_version=1.21.11
@@ -65,8 +84,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      matrix:
-        minecraft_version: ${{ fromJSON(needs.discover-targets.outputs.versions) }}
+      matrix: ${{ fromJSON(needs.discover-targets.outputs.matrix) }}
 
     steps:
       - name: Check out repository
@@ -76,8 +94,12 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '21'
+          java-version: ${{ matrix.java_version }}
           cache: gradle
+          cache-dependency-path: |
+            **/*.gradle*
+            gradle/wrapper/gradle-wrapper.properties
+            gradle/build-generation-cache/${{ matrix.packaging_generation }}.marker
 
       - name: Download Baritone API dependency
         run: |
@@ -89,7 +111,7 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build mod jars for Minecraft ${{ matrix.minecraft_version }}
-        run: ./gradlew :fabric:remapJar :neoforge:remapJar -Pmc_version=${{ matrix.minecraft_version }}
+        run: ./gradlew buildSelectedTarget -Pmc_version=${{ matrix.minecraft_version }}
 
       - name: Stage release jars
         shell: bash

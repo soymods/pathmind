@@ -2760,7 +2760,7 @@ public class Node {
                 return false;
             }
             net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
-            return !EntityStateOptions.getOptions(BuiltInRegistries.ENTITY_TYPE.getValue(identifier), client != null ? client.level : null).isEmpty();
+            return !EntityStateOptions.getOptions(BuiltInRegistries.ENTITY_TYPE.getOptional(identifier).orElse(null), client != null ? client.level : null).isEmpty();
         }
         return false;
     }
@@ -6477,7 +6477,7 @@ public class Node {
             return trimmedState;
         }
         net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
-        if (!EntityStateOptions.isStateSupported(BuiltInRegistries.ENTITY_TYPE.getValue(identifier), client != null ? client.level : null, trimmedState)) {
+        if (!EntityStateOptions.isStateSupported(BuiltInRegistries.ENTITY_TYPE.getOptional(identifier).orElse(null), client != null ? client.level : null, trimmedState)) {
             notifyInvalidEntityStateSelection(primaryEntity, trimmedState);
             return trimmedState;
         }
@@ -7013,7 +7013,7 @@ public class Node {
             if (elementType == NodeType.PARAM_ENTITY) {
                 Identifier identifier = Identifier.tryParse(trimmedEntry);
                 if (identifier != null && BuiltInRegistries.ENTITY_TYPE.containsKey(identifier)) {
-                    EntityType<?> entityType = BuiltInRegistries.ENTITY_TYPE.getValue(identifier);
+                    EntityType<?> entityType = BuiltInRegistries.ENTITY_TYPE.getOptional(identifier).orElse(null);
                     Optional<Entity> nearest = findNearestEntity(client, entityType, PARAMETER_SEARCH_RADIUS, "");
                     if (nearest.isPresent()) {
                         Entity entity = nearest.get();

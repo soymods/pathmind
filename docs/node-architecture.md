@@ -332,41 +332,29 @@ If new UI repeats button, popup, dropdown, row, or validation styling, first add
 
 ## Compat Source Set Rules
 
-The active project has two relevant source trees:
+`common/src/main` owns shared product behavior. Fabric and NeoForge compatibility trees may contain loader wiring and narrow vanilla-API adapters, but must not contain editor, marketplace, node, or execution-engine copies. The root `src` directory is inactive and is not a build input.
 
-- `common/src`: shared Architectury/common code and the NeoForge source of compat UI files.
-- `fabric/src`: Fabric platform source set, including its current compat UI copies.
+Minecraft-family directories always state their supported range:
 
-The root `src` directory contains no active Java or resource sources and is not a build input. Do not copy compatibility changes there.
+- `common/src/compat/mc-1.21.0-1.21.8`
+- `common/src/compat/mc-1.21.9-1.21.10`
+- `common/src/compat/mc-1.21.11`
+- `fabric/src/compat/mc-*` for Fabric API boundaries
+- `fabric/src/compat/api/<capability>/mc-*` for independently changing capabilities
+- `neoforge/src/compat/mc-*` for NeoForge API boundaries
 
-Version-specific UI files are split under:
+Family-independent marketplace actions, async orchestration, avatar loading, flow control, and layout live in `common/src/main`. The `mc-1.21.0-1.21.10` adapter layer owns the three additional implementations shared by those targets. Do not put a class into a family directory merely because it calls Minecraft; put it there only when its API or behavior genuinely differs for that range.
 
-- `compat/legacy/base`
-- `compat/mid`
-- `compat/modern`
+Use this ownership test:
 
-The compatibility baseline found 27 byte-identical common/Fabric file pairs and 9 divergent pairs. The divergent pairs are `PathmindVisualEditorScreen`, `PathmindMarketplaceScreen`, and `PathmindSettingsPopupController` in all three families. Their differences currently include product behavior rather than only Minecraft APIs, so neither side may be blindly copied over the other. Compare both implementations and deliberately apply a change to every applicable loader until the compatibility-contract extraction removes these copies.
+1. Pure graph, routine, persistence, validation, or marketplace behavior belongs in canonical common code.
+2. A vanilla signature or rendering/input difference belongs in a Minecraft-family or capability adapter.
+3. Lifecycle, event registration, metadata, and packaging belong in the loader module.
+4. A new target must reuse the canonical editor and marketplace behavior; copying those files is rejected by `verifyCompatibilityStructure`.
 
 See [`minecraft-compatibility-baseline.md`](minecraft-compatibility-baseline.md) for the complete inventory and [`minecraft-multiversion-roadmap.md`](minecraft-multiversion-roadmap.md) for the consolidation plan.
 
-Useful mirror check:
-
-```bash
-python3 - <<'PY'
-from pathlib import Path
-rels = [
-    'compat/modern/java/com/pathmind/screen/PathmindVisualEditorScreen.java',
-    'compat/mid/java/com/pathmind/screen/PathmindVisualEditorScreen.java',
-    'compat/legacy/base/java/com/pathmind/screen/PathmindVisualEditorScreen.java',
-    'compat/modern/java/com/pathmind/screen/PathmindMarketplaceScreen.java',
-    'compat/mid/java/com/pathmind/screen/PathmindMarketplaceScreen.java',
-    'compat/legacy/base/java/com/pathmind/screen/PathmindMarketplaceScreen.java',
-]
-for rel in rels:
-    same = (Path('common/src') / rel).read_bytes() == (Path('fabric/src') / rel).read_bytes()
-    print(f'{rel}: {"identical" if same else "review divergence"}')
-PY
-```
+Run `./gradlew verifyCompatibilityManifest verifyCompatibilityStructure` after changing source-family routing.
 
 ## Verification Checklist
 

@@ -149,6 +149,7 @@ Contributor documentation:
 
 - [`docs/node-architecture.md`](docs/node-architecture.md) maps the node system, execution routing, UI helpers, localization rules, and current compat source sets.
 - [`docs/minecraft-compatibility-baseline.md`](docs/minecraft-compatibility-baseline.md) records the protected `1.21.x` matrix, artifact contract, source inventory, and smoke-test procedure.
+- [`docs/build-generations.md`](docs/build-generations.md) explains the stable build commands and the Java 21/remapped versus Java 25/unobfuscated boundary.
 - [`docs/minecraft-multiversion-roadmap.md`](docs/minecraft-multiversion-roadmap.md) defines the staged transition to clean `1.21.x` and `26.x` support.
 
 ### Build From Source
@@ -156,7 +157,7 @@ Contributor documentation:
 ```bash
 git clone https://github.com/soymods/pathmind.git
 cd pathmind
-./gradlew :fabric:remapJar :neoforge:remapJar "-Pmc_version=1.21.11"
+./gradlew buildSelectedTarget "-Pmc_version=1.21.11"
 ```
 
 Fabric jars are written to `fabric/build/libs/`, NeoForge jars to `neoforge/build/libs/`.
@@ -183,14 +184,14 @@ Unqualified `runClient` and `runServer` default to Fabric because Fabric is the 
 ### Build A Specific Minecraft Target
 
 ```bash
-# Both platforms
-./gradlew :fabric:remapJar :neoforge:remapJar -Pmc_version="1.21.11"
+# All declared release loaders
+./gradlew buildSelectedTarget -Pmc_version="1.21.11"
 
 # Fabric only
-./gradlew :fabric:remapJar -Pmc_version="1.21.11"
+./gradlew buildSelectedFabric -Pmc_version="1.21.11"
 
 # NeoForge only
-./gradlew :neoforge:remapJar -Pmc_version="1.21.11"
+./gradlew buildSelectedNeoForge -Pmc_version="1.21.11"
 ```
 
 Convenience tasks:
@@ -202,6 +203,8 @@ Compatibility tasks:
 
 - `./gradlew compatibilityReport` - prints dependency, Java, loader, and source-family selection for every target
 - `./gradlew verifyCompatibilityManifest` - checks the manifest against runtime support, metadata, docs, and CI
+- `./gradlew verifyCompatibilityStructure` - rejects ambiguous family names and loader-level product mirrors
+- `./gradlew configureMc26BuildGeneration` - validates the Java 25, mapping-free 26.x placeholder without claiming runtime support
 
 The machine-readable version source of truth is [`gradle/minecraft-versions.properties`](gradle/minecraft-versions.properties).
 

@@ -14,6 +14,10 @@ val fabricApiVersion = rootProject.extra["fabricApiVersion"] as String
 val fabricLoaderVersion = rootProject.extra["fabricLoaderVersion"] as String
 val fabricLoaderMinimumVersion = rootProject.extra["fabricLoaderMinimumVersion"] as String
 val targetJavaVersion = rootProject.extra["targetJavaVersion"] as Int
+val packagingGeneration = rootProject.extra["packagingGeneration"] as String
+val fabricReleaseTask = rootProject.extra["fabricReleaseTask"] as String
+val canonicalMojangVersion = rootProject.extra["canonicalMojangVersion"] as String
+val canonicalMappingsRevision = rootProject.extra["canonicalMappingsRevision"] as String
 val fabricBaseFamily = rootProject.extra["fabricBaseFamily"] as String
 val fabricUseItemFamily = rootProject.extra["fabricUseItemFamily"] as String
 val fabricRenderFamily = rootProject.extra["fabricRenderFamily"] as String
@@ -42,13 +46,18 @@ configurations {
 
 dependencies {
     minecraft("com.mojang:minecraft:$requestedMinecraftVersion")
-    mappings(
-        if (requestedMinecraftVersion == "1.21.11") {
-            loom.officialMojangMappings()
-        } else {
-            rootProject.files("gradle/mappings/$requestedMinecraftVersion-canonical-1.21.11.jar")
-        }
-    )
+    when (packagingGeneration) {
+        "pre26-remapped" -> mappings(
+            if (requestedMinecraftVersion == canonicalMojangVersion) {
+                loom.officialMojangMappings()
+            } else {
+                "com.pathmind.mappings:$requestedMinecraftVersion-canonical-$canonicalMojangVersion:" +
+                    canonicalMappingsRevision
+            }
+        )
+        "mc26-unobfuscated" -> Unit
+        else -> throw GradleException("Unknown packaging generation '$packagingGeneration'")
+    }
     modImplementation("net.fabricmc:fabric-loader:$fabricLoaderVersion")
 
     modImplementation("net.fabricmc.fabric-api:fabric-api:$fabricApiVersion")
@@ -84,25 +93,25 @@ sourceSets {
             setSrcDirs(listOf("src/main/java"))
             exclude("com/pathmind/screen/PathmindMarketplaceScreen.java")
             exclude("com/pathmind/screen/PathmindVisualEditorScreen.java")
-            if (fabricBaseFamily == "legacy") {
-                srcDir("src/compat/legacy/base/java")
+            if (fabricBaseFamily == "mc-1.21.0-1.21.8") {
+                srcDir("src/compat/mc-1.21.0-1.21.8/java")
                 when (fabricUseItemFamily) {
-                    "typed" -> srcDir("src/compat/legacy/useitem/typed/java")
-                    "action" -> srcDir("src/compat/legacy/useitem/action/java")
+                    "mc-1.21.0-1.21.1" -> srcDir("src/compat/api/use-item/mc-1.21.0-1.21.1/java")
+                    "mc-1.21.2-1.21.8" -> srcDir("src/compat/api/use-item/mc-1.21.2-1.21.8/java")
                     else -> throw GradleException("Unknown Fabric use-item family '$fabricUseItemFamily' for Minecraft $requestedMinecraftVersion")
                 }
                 when (fabricRenderFamily) {
-                    "old" -> srcDir("src/compat/legacy/render/old/java")
-                    "old-allocator" -> srcDir("src/compat/legacy/render/old-allocator/java")
-                    "old-allocator-nolightmap" -> srcDir("src/compat/legacy/render/old-allocator-nolightmap/java")
-                    "transitional" -> srcDir("src/compat/legacy/render/transitional/java")
-                    "late" -> srcDir("src/compat/legacy/render/late/java")
+                    "mc-1.21.0-1.21.1" -> srcDir("src/compat/api/world-render/mc-1.21.0-1.21.1/java")
+                    "mc-1.21.2-1.21.3" -> srcDir("src/compat/api/world-render/mc-1.21.2-1.21.3/java")
+                    "mc-1.21.4" -> srcDir("src/compat/api/world-render/mc-1.21.4/java")
+                    "mc-1.21.5" -> srcDir("src/compat/api/world-render/mc-1.21.5/java")
+                    "mc-1.21.6-1.21.8" -> srcDir("src/compat/api/world-render/mc-1.21.6-1.21.8/java")
                     else -> throw GradleException("Unknown Fabric render family '$fabricRenderFamily' for Minecraft $requestedMinecraftVersion")
                 }
-            } else if (fabricBaseFamily == "mid") {
-                srcDir("src/compat/mid/java")
-            } else if (fabricBaseFamily == "modern") {
-                srcDir("src/compat/modern/java")
+            } else if (fabricBaseFamily == "mc-1.21.9-1.21.10") {
+                srcDir("src/compat/mc-1.21.9-1.21.10/java")
+            } else if (fabricBaseFamily == "mc-1.21.11") {
+                srcDir("src/compat/mc-1.21.11/java")
             } else {
                 throw GradleException("Unknown Fabric base family '$fabricBaseFamily' for Minecraft $requestedMinecraftVersion")
             }
@@ -125,11 +134,16 @@ tasks.processResources {
 tasks.shadowJar {
     exclude("architectury.common.json")
     configurations = listOf(project.configurations["shadowCommon"])
-    archiveClassifier.set("dev-shadow")
+    if (fabricReleaseTask == "shadowJar") {
+        archiveClassifier.set(null as String?)
+    } else {
+        archiveClassifier.set("dev-shadow")
+    }
     from(rootProject.file("LICENSE.txt")) { rename { "${it}_${base.archivesName.get()}" } }
 }
 
 tasks.remapJar {
+    enabled = fabricReleaseTask == "remapJar"
     injectAccessWidener.set(true)
     inputFile.set(tasks.shadowJar.get().archiveFile)
     archiveClassifier.set(null as String?)

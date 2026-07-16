@@ -534,7 +534,10 @@ public class VillagerTradeSelector {
             }
             String display = titleCase(path);
             ResourceKey<VillagerProfession> key = ResourceKey.create(Registries.VILLAGER_PROFESSION, id);
-            Holder<VillagerProfession> entry = BuiltInRegistries.VILLAGER_PROFESSION.get(id).orElse(null);
+            VillagerProfession profession = BuiltInRegistries.VILLAGER_PROFESSION.getOptional(id).orElse(null);
+            Holder<VillagerProfession> entry = profession == null
+                ? null
+                : BuiltInRegistries.VILLAGER_PROFESSION.wrapAsHolder(profession);
             if (entry == null) {
                 continue;
             }
@@ -749,7 +752,7 @@ public class VillagerTradeSelector {
             return option.entry.value();
         }
         if (option.key != null) {
-            return BuiltInRegistries.VILLAGER_PROFESSION.getValue(option.key);
+            return BuiltInRegistries.VILLAGER_PROFESSION.getOptional(option.key.identifier()).orElse(null);
         }
         return null;
     }

@@ -630,7 +630,7 @@ final class NodeWorldActionCommandExecutor {
             throw new Node.PlacementFailure("Cannot place block \"" + blockId + "\": unknown block item.");
         }
 
-        Item targetItem = BuiltInRegistries.ITEM.getValue(identifier);
+        Item targetItem = BuiltInRegistries.ITEM.getOptional(identifier).orElse(null);
         ItemStack current = client.player.getItemInHand(hand);
         if (!current.isEmpty() && current.is(targetItem)) {
             return;
@@ -888,7 +888,11 @@ final class NodeWorldActionCommandExecutor {
                 }
             }
 
-            Vec3 placementNormal = Vec3.atLowerCornerOf(placementSide.getUnitVec3i());
+            Vec3 placementNormal = new Vec3(
+                placementSide.getStepX(),
+                placementSide.getStepY(),
+                placementSide.getStepZ()
+            );
             double faceAlignment = preferredLook != null ? preferredLook.dot(placementNormal) : 0.0D;
 
             for (double offsetA : FACE_OFFSET_SAMPLES) {
@@ -972,7 +976,7 @@ final class NodeWorldActionCommandExecutor {
             return null;
         }
 
-        return BuiltInRegistries.BLOCK.getValue(identifier);
+        return BuiltInRegistries.BLOCK.getOptional(identifier).orElse(null);
     }
 
     double getPlacementReachSquared(net.minecraft.client.Minecraft client) {

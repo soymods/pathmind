@@ -828,7 +828,7 @@ public class PathmindClientMod implements ClientModInitializer {
             return null;
         }
 
-        Item item = BuiltInRegistries.ITEM.getValue(identifier);
+        Item item = BuiltInRegistries.ITEM.getOptional(identifier).orElse(null);
         Optional<ItemEntity> nearest = findNearestDroppedItemEntity(client, item, NAVIGATOR_PARAMETER_SEARCH_RADIUS);
         if (nearest.isEmpty()) {
             showNavigatorMessage("No nearby dropped item found for " + normalized + ".");

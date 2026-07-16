@@ -121,7 +121,7 @@ final class NodeVisibilitySensorEvaluator {
             if (identifier == null || !BuiltInRegistries.ENTITY_TYPE.containsKey(identifier)) {
                 continue;
             }
-            EntityType<?> entityType = BuiltInRegistries.ENTITY_TYPE.getValue(identifier);
+            EntityType<?> entityType = BuiltInRegistries.ENTITY_TYPE.getOptional(identifier).orElse(null);
             if (isEntityRendered(client, entityType, state)) {
                 return true;
             }
@@ -164,7 +164,7 @@ final class NodeVisibilitySensorEvaluator {
             if (identifier == null || !BuiltInRegistries.ENTITY_TYPE.containsKey(identifier)) {
                 continue;
             }
-            EntityType<?> entityType = BuiltInRegistries.ENTITY_TYPE.getValue(identifier);
+            EntityType<?> entityType = BuiltInRegistries.ENTITY_TYPE.getOptional(identifier).orElse(null);
             if (isEntityVisible(client, entityType, state)) {
                 return true;
             }
@@ -188,15 +188,15 @@ final class NodeVisibilitySensorEvaluator {
         Identifier identifier = Identifier.tryParse(normalized);
         if (identifier != null) {
             if (BuiltInRegistries.BLOCK.containsKey(identifier)) {
-                Block block = BuiltInRegistries.BLOCK.getValue(identifier);
+                Block block = BuiltInRegistries.BLOCK.getOptional(identifier).orElse(null);
                 return isBlockVisible(client, block);
             }
             if (BuiltInRegistries.ITEM.containsKey(identifier)) {
-                Item item = BuiltInRegistries.ITEM.getValue(identifier);
+                Item item = BuiltInRegistries.ITEM.getOptional(identifier).orElse(null);
                 return isItemVisible(client, item);
             }
             if (BuiltInRegistries.ENTITY_TYPE.containsKey(identifier)) {
-                EntityType<?> entityType = BuiltInRegistries.ENTITY_TYPE.getValue(identifier);
+                EntityType<?> entityType = BuiltInRegistries.ENTITY_TYPE.getOptional(identifier).orElse(null);
                 return isEntityVisible(client, entityType, "");
             }
         }
@@ -217,15 +217,15 @@ final class NodeVisibilitySensorEvaluator {
         Identifier identifier = Identifier.tryParse(normalized);
         if (identifier != null) {
             if (BuiltInRegistries.BLOCK.containsKey(identifier)) {
-                Block block = BuiltInRegistries.BLOCK.getValue(identifier);
+                Block block = BuiltInRegistries.BLOCK.getOptional(identifier).orElse(null);
                 return isBlockRendered(client, block);
             }
             if (BuiltInRegistries.ITEM.containsKey(identifier)) {
-                Item item = BuiltInRegistries.ITEM.getValue(identifier);
+                Item item = BuiltInRegistries.ITEM.getOptional(identifier).orElse(null);
                 return isItemRendered(client, item);
             }
             if (BuiltInRegistries.ENTITY_TYPE.containsKey(identifier)) {
-                EntityType<?> entityType = BuiltInRegistries.ENTITY_TYPE.getValue(identifier);
+                EntityType<?> entityType = BuiltInRegistries.ENTITY_TYPE.getOptional(identifier).orElse(null);
                 return isEntityRendered(client, entityType, "");
             }
         }

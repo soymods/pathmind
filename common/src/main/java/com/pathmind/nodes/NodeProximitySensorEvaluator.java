@@ -157,7 +157,7 @@ final class NodeProximitySensorEvaluator {
             if (identifier == null || !BuiltInRegistries.ENTITY_TYPE.containsKey(identifier)) {
                 continue;
             }
-            EntityType<?> entityType = BuiltInRegistries.ENTITY_TYPE.getValue(identifier);
+            EntityType<?> entityType = BuiltInRegistries.ENTITY_TYPE.getOptional(identifier).orElse(null);
             List<Entity> entities = world.getEntities(
                 client.player,
                 client.player.getBoundingBox().inflate(0.15),

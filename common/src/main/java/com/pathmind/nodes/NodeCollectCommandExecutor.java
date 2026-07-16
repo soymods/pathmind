@@ -340,7 +340,7 @@ final class NodeCollectCommandExecutor {
         if (identifier == null || !BuiltInRegistries.BLOCK.containsKey(identifier)) {
             return false;
         }
-        Block block = BuiltInRegistries.BLOCK.getValue(identifier);
+        Block block = BuiltInRegistries.BLOCK.getOptional(identifier).orElse(null);
         Item item = block.asItem();
         if (item == null || item == Items.AIR) {
             return false;

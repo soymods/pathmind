@@ -14,9 +14,9 @@ import java.util.Set;
 public final class PathmindMixinPlugin implements IMixinConfigPlugin {
     private static final String UI_UTILS_OVERLAY_MIXIN = "com.pathmind.mixin.UiUtilsOverlayBlockerMixin";
     private static final String UI_UTILS_OVERLAY_TARGET = "com.mrbreaknfix.ui_utils.gui.BaseOverlay";
-    // Fabric-era catch-all that injects at the Yarn-named Screen.renderWithTooltip(DrawContext,...)
-    // INVOKE inside GameRenderer.render. That descriptor does not remap under NeoForge's Mojang
-    // mappings ("Unable to locate method mapping"), and NeoForge already draws Pathmind HUD/overlays
+    // Legacy Fabric catch-all that injects at a Screen tooltip-render invocation inside
+    // GameRenderer.render. That descriptor is unavailable to the NeoForge production transform,
+    // and NeoForge already draws Pathmind HUD/overlays
     // through RenderGuiEvent.Post, so skip this mixin entirely on NeoForge.
     private static final String GAME_RENDERER_MIXIN = "com.pathmind.mixin.GameRendererMixin";
 

@@ -112,19 +112,16 @@ Use this decision path:
 
 Prefer structured result enums over boolean flags for workflows. They make call sites easier to audit and give contributors an obvious place to add new outcomes later.
 
-## Compatibility Copies
+## Compatibility Ownership
 
-Marketplace screen helpers currently exist under each compat source set:
+Marketplace behavior is loader-independent. `PathmindMarketplaceActions`, `PathmindMarketplaceAsyncController`, `PathmindMarketplaceAvatarLoader`, `PathmindMarketplaceFlowController`, and `PathmindMarketplaceLayout` therefore live once under `common/src/main` and are consumed by both loaders.
 
-- `common/src/compat/...`
-- `fabric/src/compat/...`
+Only a proven Minecraft API difference may create a file below `common/src/compat/mc-*`. Independently changing GUI capabilities should use an explicit capability range under `common/src/compat/api`. Fabric and NeoForge compatibility directories must not mirror marketplace screens or controllers; `verifyCompatibilityStructure` rejects those copies.
 
-The root `src` tree is inactive and must not receive compatibility copies. When changing shared helper classes such as `PathmindMarketplaceAsyncController`, `PathmindMarketplaceFlowController`, `PathmindMarketplaceActions`, or the media loaders, keep the active common/Fabric copies synchronized unless a documented API or loader difference requires a fork.
-
-The main marketplace/editor files already contain documented product-level drift between common and Fabric. Do not blindly overwrite one with the other. See [`minecraft-compatibility-baseline.md`](minecraft-compatibility-baseline.md) for the inventory and [`minecraft-multiversion-roadmap.md`](minecraft-multiversion-roadmap.md) for the plan to replace these copies with compatibility contracts.
+When adding a target, register its explicit range and reuse the canonical helpers. If a vanilla signature changed, adapt the signature at the boundary instead of copying the workflow or screen.
 
 Useful checks:
 
 - `./gradlew compileJava -q`
 - `git diff --check`
-- `shasum` across copied helper files when the helper should be identical in every source set
+- `./gradlew verifyCompatibilityStructure`

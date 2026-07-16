@@ -64,7 +64,7 @@ final class EntityParameterDefinition {
             if (identifier == null || !BuiltInRegistries.ENTITY_TYPE.containsKey(identifier)) {
                 continue;
             }
-            EntityType<?> entityType = BuiltInRegistries.ENTITY_TYPE.getValue(identifier);
+            EntityType<?> entityType = BuiltInRegistries.ENTITY_TYPE.getOptional(identifier).orElse(null);
             Optional<Entity> entity = owner.findNearestEntity(client, entityType, range, state);
             if (entity.isEmpty()) {
                 continue;
@@ -100,7 +100,7 @@ final class EntityParameterDefinition {
             if (identifier == null || !BuiltInRegistries.ENTITY_TYPE.containsKey(identifier)) {
                 continue;
             }
-            EntityType<?> entityType = BuiltInRegistries.ENTITY_TYPE.getValue(identifier);
+            EntityType<?> entityType = BuiltInRegistries.ENTITY_TYPE.getOptional(identifier).orElse(null);
             Optional<TransientEntityPositionTracker.TrackedPosition> recent =
                 TransientEntityPositionTracker.findRecent(client, entityType, range);
             if (recent.isEmpty()) {
@@ -154,7 +154,7 @@ final class EntityParameterDefinition {
                 if (identifier == null || !BuiltInRegistries.ENTITY_TYPE.containsKey(identifier)) {
                     continue;
                 }
-                EntityType<?> entityType = BuiltInRegistries.ENTITY_TYPE.getValue(identifier);
+                EntityType<?> entityType = BuiltInRegistries.ENTITY_TYPE.getOptional(identifier).orElse(null);
                 Optional<Entity> candidate = owner.findNearestEntity(client, entityType, range, state);
                 if (candidate.isEmpty()) {
                     continue;
@@ -189,7 +189,7 @@ final class EntityParameterDefinition {
             if (identifier == null || !BuiltInRegistries.ENTITY_TYPE.containsKey(identifier)) {
                 continue;
             }
-            EntityType<?> entityType = BuiltInRegistries.ENTITY_TYPE.getValue(identifier);
+            EntityType<?> entityType = BuiltInRegistries.ENTITY_TYPE.getOptional(identifier).orElse(null);
             Optional<Entity> target = owner.findNearestEntity(client, entityType, range, state);
             if (target.isEmpty()) {
                 continue;

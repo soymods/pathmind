@@ -1,5 +1,6 @@
 import com.pathmind.build.GenerateCanonicalMojangMappingsTask
 import org.gradle.api.GradleException
+import org.gradle.jvm.toolchain.JavaToolchainService
 import java.util.Properties
 import java.util.zip.ZipFile
 
@@ -18,7 +19,6 @@ data class MinecraftVersionSpec(
     val javaVersion: Int,
     val packagingGeneration: String,
     val releaseLoaders: Set<String>,
-    val yarnMappings: String,
     val fabricLoaderVersion: String,
     val fabricLoaderMinimumVersion: String,
     val fabricApiVersion: String,
@@ -30,6 +30,31 @@ data class MinecraftVersionSpec(
     val neoForgeUiFamily: String,
     val baritoneRuntime: Boolean
 )
+
+data class BuildGenerationSpec(
+    val javaVersion: Int,
+    val mappingsMode: String,
+    val releaseTasks: Map<String, String>
+) {
+    fun releaseTask(loader: String): String = releaseTasks[loader]
+        ?: throw GradleException("Build generation does not define a release task for loader '$loader'")
+}
+
+val buildGenerations = mapOf(
+    "pre26-remapped" to BuildGenerationSpec(
+        javaVersion = 21,
+        mappingsMode = "canonical-mojang-remapped",
+        releaseTasks = mapOf("fabric" to "remapJar", "neoforge" to "remapJar")
+    ),
+    "mc26-unobfuscated" to BuildGenerationSpec(
+        javaVersion = 25,
+        mappingsMode = "unobfuscated-no-mappings",
+        releaseTasks = mapOf("fabric" to "shadowJar", "neoforge" to "shadowJar")
+    )
+)
+
+val canonicalMojangVersion = "1.21.11"
+val canonicalMappingsRevision = "v6"
 
 val compatibilityManifestFile = layout.projectDirectory.file("gradle/minecraft-versions.properties").asFile
 val compatibilityManifest = Properties().apply {
@@ -65,7 +90,6 @@ val supportedMinecraftVersions = linkedMapOf<String, MinecraftVersionSpec>().app
                 .split(',')
                 .map(String::trim)
                 .toSet(),
-            yarnMappings = manifestValue(prefix + "yarn_mappings"),
             fabricLoaderVersion = manifestValue(prefix + "fabric_loader"),
             fabricLoaderMinimumVersion = manifestValue(prefix + "fabric_loader_min"),
             fabricApiVersion = manifestValue(prefix + "fabric_api"),
@@ -98,14 +122,21 @@ val requestedSpec = supportedMinecraftVersions[requestedMinecraftVersion]
             "Add it to gradle/minecraft-versions.properties before selecting it."
     )
 
+val requestedBuildGeneration = buildGenerations[requestedSpec.packagingGeneration]
+    ?: throw GradleException(
+        "Unknown build generation '${requestedSpec.packagingGeneration}' for Minecraft $requestedMinecraftVersion"
+    )
+
 extra["requestedMinecraftVersion"] = requestedMinecraftVersion
-extra["yarnMappings"] = requestedSpec.yarnMappings
 extra["fabricLoaderVersion"] = requestedSpec.fabricLoaderVersion
 extra["fabricLoaderMinimumVersion"] = requestedSpec.fabricLoaderMinimumVersion
 extra["fabricApiVersion"] = requestedSpec.fabricApiVersion
 extra["neoforgeVersion"] = requestedSpec.neoforgeVersion
 extra["compatibilityFamily"] = requestedSpec.compatibilityFamily
 extra["packagingGeneration"] = requestedSpec.packagingGeneration
+extra["mappingsMode"] = requestedBuildGeneration.mappingsMode
+extra["fabricReleaseTask"] = requestedBuildGeneration.releaseTask("fabric")
+extra["neoForgeReleaseTask"] = requestedBuildGeneration.releaseTask("neoforge")
 extra["targetJavaVersion"] = requestedSpec.javaVersion
 extra["commonSourceFamily"] = requestedSpec.commonSourceFamily
 extra["fabricBaseFamily"] = requestedSpec.fabricBaseFamily
@@ -113,6 +144,8 @@ extra["fabricUseItemFamily"] = requestedSpec.fabricUseItemFamily
 extra["fabricRenderFamily"] = requestedSpec.fabricRenderFamily
 extra["neoForgeUiFamily"] = requestedSpec.neoForgeUiFamily
 extra["baritoneRuntime"] = requestedSpec.baritoneRuntime
+extra["canonicalMojangVersion"] = canonicalMojangVersion
+extra["canonicalMappingsRevision"] = canonicalMappingsRevision
 
 val defaultRunTaskAliases = mapOf(
     "runclient" to ":fabric:runClient",
@@ -131,7 +164,7 @@ architectury {
     minecraft = requestedMinecraftVersion
 }
 
-apply(plugin = "base")
+apply(plugin = "java")
 
 tasks.register("runFabricClient") {
     group = "loom"
@@ -163,6 +196,30 @@ tasks.register("runNeoForgeServer") {
     }
 }
 
+tasks.register("buildSelectedTarget") {
+    group = "build"
+    description = "Build Pathmind for the selected Minecraft target using its declared packaging generation"
+    requestedSpec.releaseLoaders.forEach { loader ->
+        dependsOn(":$loader:${requestedBuildGeneration.releaseTask(loader)}")
+    }
+}
+
+fun registerSelectedLoaderBuild(loader: String, displayName: String) = tasks.register("buildSelected$displayName") {
+    group = "build"
+    description = "Build the selected Minecraft target for $displayName using its declared packaging generation"
+    if (loader in requestedSpec.releaseLoaders) {
+        dependsOn(":$loader:${requestedBuildGeneration.releaseTask(loader)}")
+    }
+    doFirst {
+        if (loader !in requestedSpec.releaseLoaders) {
+            throw GradleException("$displayName is not a release loader for Minecraft $requestedMinecraftVersion")
+        }
+    }
+}
+
+registerSelectedLoaderBuild("fabric", "Fabric")
+registerSelectedLoaderBuild("neoforge", "NeoForge")
+
 subprojects {
     apply(plugin = "java")
 
@@ -170,6 +227,10 @@ subprojects {
     group = rootProject.property("maven_group") as String
 
     repositories {
+        flatDir {
+            name = "PathmindCanonicalMappings"
+            dirs(rootProject.layout.projectDirectory.dir("gradle/mappings"))
+        }
         maven { url = uri("https://maven.architectury.dev/") }
         maven { url = uri("https://maven.fabricmc.net/") }
         maven { url = uri("https://maven.neoforged.net/releases/") }
@@ -212,7 +273,6 @@ val compatibilityManifestFields = setOf(
     "java_version",
     "packaging_generation",
     "release_loaders",
-    "yarn_mappings",
     "fabric_loader",
     "fabric_loader_min",
     "fabric_api",
@@ -236,7 +296,15 @@ val verifyCompatibilityManifest = tasks.register("verifyCompatibilityManifest") 
         layout.projectDirectory.file("fabric/src/main/resources/fabric.mod.json"),
         layout.projectDirectory.file("neoforge/src/main/resources/META-INF/neoforge.mods.toml"),
         layout.projectDirectory.file("README.md"),
+        layout.projectDirectory.file("docs/build-generations.md"),
+        layout.projectDirectory.file("gradle/minecraft-version-templates/26.x.properties"),
         layout.projectDirectory.file(".github/workflows/build.yml")
+    )
+    inputs.files(
+        supportedMinecraftVersions
+            .filter { (version, spec) -> version != canonicalMojangVersion && spec.packagingGeneration == "pre26-remapped" }
+            .keys
+            .map { version -> layout.projectDirectory.file("gradle/mappings/$version-canonical-$canonicalMojangVersion-$canonicalMappingsRevision.jar") }
     )
 
     doLast {
@@ -254,11 +322,18 @@ val verifyCompatibilityManifest = tasks.register("verifyCompatibilityManifest") 
 
         val allowedPackagingGenerations = setOf("pre26-remapped", "mc26-unobfuscated")
         val allowedLoaders = setOf("fabric", "neoforge")
-        val allowedCommonFamilies = setOf("legacy", "mid", "modern")
-        val allowedFabricBaseFamilies = setOf("legacy", "mid", "modern")
-        val allowedUseItemFamilies = setOf("typed", "action", "none")
-        val allowedRenderFamilies = setOf("old", "old-allocator", "old-allocator-nolightmap", "transitional", "late", "none")
-        val allowedNeoForgeUiFamilies = setOf("legacy", "modern")
+        val allowedCommonFamilies = setOf("mc-1.21.0-1.21.8", "mc-1.21.9-1.21.10", "mc-1.21.11")
+        val allowedFabricBaseFamilies = allowedCommonFamilies
+        val allowedUseItemFamilies = setOf("mc-1.21.0-1.21.1", "mc-1.21.2-1.21.8", "none")
+        val allowedRenderFamilies = setOf(
+            "mc-1.21.0-1.21.1",
+            "mc-1.21.2-1.21.3",
+            "mc-1.21.4",
+            "mc-1.21.5",
+            "mc-1.21.6-1.21.8",
+            "none"
+        )
+        val allowedNeoForgeUiFamilies = setOf("mc-1.21.0-1.21.10", "mc-1.21.11")
 
         val numericallySortedVersions = supportedMinecraftVersionIds.sortedWith { left, right ->
             val leftParts = left.split('.').map(String::toInt)
@@ -274,8 +349,21 @@ val verifyCompatibilityManifest = tasks.register("verifyCompatibilityManifest") 
         }
 
         supportedMinecraftVersions.forEach { (version, spec) ->
+            val generation = buildGenerations[spec.packagingGeneration]
+                ?: fail("Minecraft $version selects unknown build generation '${spec.packagingGeneration}'")
             if (spec.javaVersion <= 0) fail("Minecraft $version has invalid Java ${spec.javaVersion}")
             if (spec.packagingGeneration !in allowedPackagingGenerations) fail("Minecraft $version has unknown packaging generation '${spec.packagingGeneration}'")
+            if (spec.javaVersion != generation.javaVersion) {
+                fail("Minecraft $version declares Java ${spec.javaVersion}, but ${spec.packagingGeneration} requires Java ${generation.javaVersion}")
+            }
+            if (spec.packagingGeneration == "pre26-remapped" && version != canonicalMojangVersion) {
+                val canonicalMappings = layout.projectDirectory
+                    .file("gradle/mappings/$version-canonical-$canonicalMojangVersion-$canonicalMappingsRevision.jar")
+                    .asFile
+                if (!canonicalMappings.isFile) {
+                    fail("Minecraft $version is missing canonical mapping jar ${canonicalMappings.relativeTo(projectDir)}")
+                }
+            }
             if (spec.releaseLoaders.isEmpty() || !allowedLoaders.containsAll(spec.releaseLoaders)) fail("Minecraft $version has invalid release loaders ${spec.releaseLoaders}")
             if ("neoforge" in spec.releaseLoaders && spec.neoforgeVersion == null) fail("Minecraft $version releases NeoForge but has no NeoForge version")
             if (spec.commonSourceFamily !in allowedCommonFamilies) fail("Minecraft $version has unknown common source family '${spec.commonSourceFamily}'")
@@ -284,34 +372,27 @@ val verifyCompatibilityManifest = tasks.register("verifyCompatibilityManifest") 
             if (spec.fabricRenderFamily !in allowedRenderFamilies) fail("Minecraft $version has unknown Fabric render family '${spec.fabricRenderFamily}'")
             if (spec.neoForgeUiFamily !in allowedNeoForgeUiFamilies) fail("Minecraft $version has unknown NeoForge UI family '${spec.neoForgeUiFamily}'")
 
-            val commonDirectory = layout.projectDirectory.dir(
-                when (spec.commonSourceFamily) {
-                    "legacy" -> "common/src/compat/legacy/base/java"
-                    else -> "common/src/compat/${spec.commonSourceFamily}/java"
-                }
-            ).asFile
+            val commonDirectory = layout.projectDirectory
+                .dir("common/src/compat/${spec.commonSourceFamily}/java")
+                .asFile
             if (!commonDirectory.isDirectory) fail("Minecraft $version selects missing common source directory ${commonDirectory.relativeTo(projectDir)}")
 
-            val fabricBaseDirectory = layout.projectDirectory.dir(
-                when (spec.fabricBaseFamily) {
-                    "legacy" -> "fabric/src/compat/legacy/base/java"
-                    else -> "fabric/src/compat/${spec.fabricBaseFamily}/java"
-                }
-            ).asFile
+            val fabricBaseDirectory = layout.projectDirectory
+                .dir("fabric/src/compat/${spec.fabricBaseFamily}/java")
+                .asFile
             if (!fabricBaseDirectory.isDirectory) fail("Minecraft $version selects missing Fabric source directory ${fabricBaseDirectory.relativeTo(projectDir)}")
-            if (spec.fabricBaseFamily == "legacy") {
-                val useItemDirectory = layout.projectDirectory.dir("fabric/src/compat/legacy/useitem/${spec.fabricUseItemFamily}/java").asFile
-                val renderDirectory = layout.projectDirectory.dir("fabric/src/compat/legacy/render/${spec.fabricRenderFamily}/java").asFile
+            if (spec.fabricUseItemFamily != "none") {
+                val useItemDirectory = layout.projectDirectory.dir("fabric/src/compat/api/use-item/${spec.fabricUseItemFamily}/java").asFile
                 if (!useItemDirectory.isDirectory) fail("Minecraft $version selects missing Fabric use-item directory ${useItemDirectory.relativeTo(projectDir)}")
+            }
+            if (spec.fabricRenderFamily != "none") {
+                val renderDirectory = layout.projectDirectory.dir("fabric/src/compat/api/world-render/${spec.fabricRenderFamily}/java").asFile
                 if (!renderDirectory.isDirectory) fail("Minecraft $version selects missing Fabric render directory ${renderDirectory.relativeTo(projectDir)}")
             }
 
-            val neoForgeDirectory = layout.projectDirectory.dir(
-                when (spec.neoForgeUiFamily) {
-                    "legacy" -> "neoforge/src/compat/legacy/base/java"
-                    else -> "neoforge/src/compat/${spec.neoForgeUiFamily}/java"
-                }
-            ).asFile
+            val neoForgeDirectory = layout.projectDirectory
+                .dir("neoforge/src/compat/${spec.neoForgeUiFamily}/java")
+                .asFile
             if (!neoForgeDirectory.isDirectory) fail("Minecraft $version selects missing NeoForge UI directory ${neoForgeDirectory.relativeTo(projectDir)}")
         }
 
@@ -367,6 +448,14 @@ val verifyCompatibilityManifest = tasks.register("verifyCompatibilityManifest") 
         val workflow = layout.projectDirectory.file(".github/workflows/build.yml").asFile.readText()
         if (!workflow.contains("gradle/minecraft-versions.properties")) fail("CI target discovery does not read the compatibility manifest")
         if (workflow.contains("MinecraftVersionSpec\\(")) fail("CI still scrapes MinecraftVersionSpec from build.gradle.kts")
+        if (!workflow.contains("matrix.java_version")) fail("CI does not select Java from the manifest-derived matrix")
+        if (!workflow.contains("matrix.packaging_generation")) fail("CI caches are not separated by build generation")
+        if (!workflow.contains("buildSelectedTarget")) fail("CI bypasses generation-aware release task selection")
+
+        val generationDocs = layout.projectDirectory.file("docs/build-generations.md").asFile.readText()
+        buildGenerations.keys.forEach { generation ->
+            if (!generationDocs.contains("`$generation`")) fail("build generation '$generation' is undocumented")
+        }
 
         println("Compatibility manifest verified for ${supportedMinecraftVersionIds.size} Minecraft targets.")
     }
@@ -377,6 +466,18 @@ tasks.register("printSupportedMinecraftVersions") {
     description = "Prints the supported Minecraft versions as a JSON array"
     doLast {
         println(supportedMinecraftVersionIds.joinToString(prefix = "[\"", postfix = "\"]", separator = "\",\""))
+    }
+}
+
+tasks.register("printReleaseMatrix") {
+    group = "help"
+    description = "Prints the release matrix with Java and build-generation routing as JSON"
+    doLast {
+        val entries = supportedMinecraftVersions.map { (version, spec) ->
+            "{\"minecraft_version\":\"$version\",\"java_version\":${spec.javaVersion}," +
+                "\"packaging_generation\":\"${spec.packagingGeneration}\"}"
+        }
+        println(entries.joinToString(prefix = "{\"include\":[", postfix = "]}", separator = ","))
     }
 }
 
@@ -405,43 +506,170 @@ tasks.named("check") {
     dependsOn(verifyCompatibilityManifest)
 }
 
-val canonicalMojangVersion = "1.21.11"
+val verifyCompatibilityStructure = tasks.register("verifyCompatibilityStructure") {
+    group = "verification"
+    description = "Enforces explicit compatibility families and prevents loader-level product mirrors"
+    doLast {
+        val forbiddenFamilyDirectories = listOf(
+            "common/src/compat/legacy",
+            "common/src/compat/mid",
+            "common/src/compat/modern",
+            "fabric/src/compat/legacy",
+            "fabric/src/compat/mid",
+            "fabric/src/compat/modern",
+            "neoforge/src/compat/legacy",
+            "neoforge/src/compat/modern"
+        ).map { layout.projectDirectory.dir(it).asFile }.filter(File::exists)
+        if (forbiddenFamilyDirectories.isNotEmpty()) {
+            throw GradleException(
+                "Ambiguous compatibility directories are not allowed: " +
+                    forbiddenFamilyDirectories.map { it.relativeTo(projectDir) }
+            )
+        }
 
-fun cachedOfficialMappings(version: String): File {
+        val canonicalMarketplaceFiles = setOf(
+            "PathmindMarketplaceActions.java",
+            "PathmindMarketplaceAsyncController.java",
+            "PathmindMarketplaceAvatarLoader.java",
+            "PathmindMarketplaceFlowController.java",
+            "PathmindMarketplaceLayout.java"
+        )
+        val canonicalScreenDirectory = layout.projectDirectory
+            .dir("common/src/main/java/com/pathmind/screen")
+            .asFile
+        val missingCanonicalFiles = canonicalMarketplaceFiles.filterNot {
+            canonicalScreenDirectory.resolve(it).isFile
+        }
+        if (missingCanonicalFiles.isNotEmpty()) {
+            throw GradleException("Missing canonical marketplace implementations: $missingCanonicalFiles")
+        }
+
+        val compatibilityCopies = layout.projectDirectory
+            .dir("common/src/compat")
+            .asFile
+            .walkTopDown()
+            .filter { it.isFile && it.name in canonicalMarketplaceFiles }
+            .map { it.relativeTo(projectDir) }
+            .toList()
+        if (compatibilityCopies.isNotEmpty()) {
+            throw GradleException("Family copies of canonical marketplace behavior are not allowed: $compatibilityCopies")
+        }
+
+        val forbiddenLoaderProductNames = setOf(
+            "PathmindMarketplaceScreen.java",
+            "PathmindVisualEditorScreen.java",
+            "PathmindSettingsPopupController.java",
+            "PathmindPresetPopupController.java",
+            "PathmindMarketplacePopupController.java",
+            "PathmindMarketplaceGraphPreviewRenderer.java",
+            "PathmindMarketplacePreviewLoader.java"
+        ) + canonicalMarketplaceFiles
+        val loaderProductCopies = layout.projectDirectory
+            .dir("fabric/src/compat")
+            .asFile
+            .walkTopDown()
+            .filter { it.isFile && it.name in forbiddenLoaderProductNames }
+            .map { it.relativeTo(projectDir) }
+            .toList()
+        if (loaderProductCopies.isNotEmpty()) {
+            throw GradleException("Fabric compatibility code must not mirror product screens: $loaderProductCopies")
+        }
+    }
+}
+
+tasks.named("check") {
+    dependsOn(verifyCompatibilityStructure)
+}
+
+val verifyBuildGenerationRouting = tasks.register("verifyBuildGenerationRouting") {
+    group = "verification"
+    description = "Checks remapped and unobfuscated generation contracts"
+    doLast {
+        val pre26 = buildGenerations.getValue("pre26-remapped")
+        check(pre26.javaVersion == 21)
+        check(pre26.mappingsMode == "canonical-mojang-remapped")
+        check(pre26.releaseTask("fabric") == "remapJar")
+        check(pre26.releaseTask("neoforge") == "remapJar")
+
+        val mc26 = buildGenerations.getValue("mc26-unobfuscated")
+        check(mc26.javaVersion == 25)
+        check(mc26.mappingsMode == "unobfuscated-no-mappings")
+        check(mc26.releaseTask("fabric") == "shadowJar")
+        check(mc26.releaseTask("neoforge") == "shadowJar")
+    }
+}
+
+tasks.named("check") {
+    dependsOn(verifyBuildGenerationRouting)
+}
+
+tasks.register("configureMc26BuildGeneration") {
+    group = "build setup"
+    description = "Resolves the Java 25 and unobfuscated packaging contract used by future 26.x targets"
+    val generation = buildGenerations.getValue("mc26-unobfuscated")
+    val placeholder = layout.projectDirectory.file("gradle/minecraft-version-templates/26.x.properties")
+    inputs.file(placeholder)
+    val javaToolchains = project.extensions.getByType<JavaToolchainService>()
+    val launcher = javaToolchains.launcherFor {
+        languageVersion.set(JavaLanguageVersion.of(generation.javaVersion))
+    }
+    doLast {
+        val placeholderProperties = Properties().apply {
+            placeholder.asFile.inputStream().use(::load)
+        }
+        check(placeholderProperties.getProperty("java_version") == generation.javaVersion.toString())
+        check(placeholderProperties.getProperty("packaging_generation") == "mc26-unobfuscated")
+        check(placeholderProperties.getProperty("mappings") == "none")
+        val selectedLauncher = launcher.get()
+        println("generation=mc26-unobfuscated")
+        println("java=${selectedLauncher.metadata.languageVersion}")
+        println("mappings=${generation.mappingsMode}")
+        println("fabricTask=${generation.releaseTask("fabric")}")
+        println("neoforgeTask=${generation.releaseTask("neoforge")}")
+    }
+}
+
+fun cachedOfficialMappings(version: String, fileName: String): File {
     val versionCache = File(System.getProperty("user.home"), ".gradle/caches/fabric-loom/$version")
     val direct = versionCache.walkTopDown()
         .maxDepth(2)
         .firstOrNull { file ->
-            file.name == "mappings.tiny" &&
+            file.name == fileName &&
                 file.parentFile.name.startsWith("loom.mappings.") &&
-                !file.parentFile.name.contains("-neoforge-")
+                file.parentFile.name.contains(".layered+hash.40545-v2")
         }
     if (direct != null) return direct
 
-    return versionCache.walkTopDown()
-        .maxDepth(2)
-        .firstOrNull { it.name == "mappings-mojang.tiny" }
-        ?: throw GradleException(
-            "Official mappings for Minecraft $version are not cached yet. " +
-                "Run ./gradlew :common:compileJava -Pmc_version=$version once before regenerating mapping overlays."
-        )
+    throw GradleException(
+        "Official $fileName for Minecraft $version is not cached yet. Configure that target once before " +
+            "regenerating mapping overlays."
+    )
 }
 
-val canonicalMappingsFile = provider { cachedOfficialMappings(canonicalMojangVersion) }
+val canonicalMappingsFile = provider { cachedOfficialMappings(canonicalMojangVersion, "mappings-base.tiny") }
 val generateCanonicalMojangMappings = tasks.register("generateCanonicalMojangMappings") {
     group = "build setup"
     description = "Regenerates the checked-in cross-version Mojang-name overlays"
 }
 
-supportedMinecraftVersionIds
-    .filterNot { it == canonicalMojangVersion }
+supportedMinecraftVersions
+    .filter { (version, spec) -> version != canonicalMojangVersion && spec.packagingGeneration == "pre26-remapped" }
+    .keys
     .forEach { version ->
         val task = tasks.register<GenerateCanonicalMojangMappingsTask>("generateCanonicalMojangMappings${version.toTaskSuffix()}") {
             group = "build setup"
             description = "Generates canonical Mojang-name mappings for Minecraft $version"
-            targetMappings.set(layout.file(provider { cachedOfficialMappings(version) }))
+            targetMappings.set(layout.file(provider { cachedOfficialMappings(version, "mappings-base.tiny") }))
+            targetComposedMappings.set(layout.file(provider { cachedOfficialMappings(version, "mappings.tiny") }))
             canonicalMappings.set(layout.file(canonicalMappingsFile))
-            outputMappings.set(layout.projectDirectory.file("gradle/mappings/$version-canonical-$canonicalMojangVersion.jar"))
+            authoredSources.from(
+                fileTree("common/src") { include("**/*.java") },
+                fileTree("fabric/src") { include("**/*.java") },
+                fileTree("neoforge/src") { include("**/*.java") }
+            )
+            outputMappings.set(layout.projectDirectory.file(
+                "gradle/mappings/$version-canonical-$canonicalMojangVersion-$canonicalMappingsRevision.jar"
+            ))
         }
         generateCanonicalMojangMappings.configure { dependsOn(task) }
     }
@@ -466,8 +694,9 @@ supportedMinecraftVersions.keys.forEach { version ->
         val fabricSupported = "fabric" in spec.releaseLoaders
         val neoforgeSupported = "neoforge" in spec.releaseLoaders
         val targets = buildList {
-            if (fabricSupported) add(":fabric:remapJar")
-            if (neoforgeSupported) add(":neoforge:remapJar")
+            val generation = buildGenerations.getValue(spec.packagingGeneration)
+            if (fabricSupported) add(":fabric:${generation.releaseTask("fabric")}")
+            if (neoforgeSupported) add(":neoforge:${generation.releaseTask("neoforge")}")
         }
 
         if (org.gradle.internal.os.OperatingSystem.current().isWindows) {

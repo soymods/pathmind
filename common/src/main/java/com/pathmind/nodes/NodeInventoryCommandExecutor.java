@@ -67,7 +67,7 @@ final class NodeInventoryCommandExecutor {
                 if (identifier == null || !BuiltInRegistries.ITEM.containsKey(identifier)) {
                     continue;
                 }
-                Item targetItem = BuiltInRegistries.ITEM.getValue(identifier);
+                Item targetItem = BuiltInRegistries.ITEM.getOptional(identifier).orElse(null);
                 foundSlot = findHotbarSlotWithItem(inventory, targetItem);
                 if (foundSlot != -1) {
                     break;
@@ -651,7 +651,7 @@ final class NodeInventoryCommandExecutor {
             if (identifier == null || !BuiltInRegistries.ITEM.containsKey(identifier)) {
                 continue;
             }
-            Item candidateItem = BuiltInRegistries.ITEM.getValue(identifier);
+            Item candidateItem = BuiltInRegistries.ITEM.getOptional(identifier).orElse(null);
             if (stack.is(candidateItem)) {
                 return true;
             }
@@ -935,7 +935,7 @@ final class NodeInventoryCommandExecutor {
             if (identifier == null || !BuiltInRegistries.ITEM.containsKey(identifier)) {
                 continue;
             }
-            Item candidateItem = BuiltInRegistries.ITEM.getValue(identifier);
+            Item candidateItem = BuiltInRegistries.ITEM.getOptional(identifier).orElse(null);
             if (selectionType == SlotSelectionType.GUI_CONTAINER && handler != null) {
                 for (int i = 0; i < handler.slots.size(); i++) {
                     Slot slot = handler.getSlot(i);
@@ -1238,7 +1238,7 @@ final class NodeInventoryCommandExecutor {
             if (identifier == null || !BuiltInRegistries.ITEM.containsKey(identifier)) {
                 continue;
             }
-            Item candidateItem = BuiltInRegistries.ITEM.getValue(identifier);
+            Item candidateItem = BuiltInRegistries.ITEM.getOptional(identifier).orElse(null);
 
             if (selectionType == SlotSelectionType.GUI_CONTAINER && handler != null) {
                 // Search through all handler slots
@@ -1453,7 +1453,7 @@ final class NodeInventoryCommandExecutor {
             if (identifier == null || !BuiltInRegistries.ITEM.containsKey(identifier)) {
                 continue;
             }
-            Item candidateItem = BuiltInRegistries.ITEM.getValue(identifier);
+            Item candidateItem = BuiltInRegistries.ITEM.getOptional(identifier).orElse(null);
             int slot = findAccessibleSlotWithItem(inventory, candidateItem);
             if (slot >= 0) {
                 return new ItemSearchResult(slot, candidateItem, candidateId);

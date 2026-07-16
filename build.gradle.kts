@@ -49,7 +49,7 @@ val buildGenerations = mapOf(
     "mc26-unobfuscated" to BuildGenerationSpec(
         javaVersion = 25,
         mappingsMode = "unobfuscated-no-mappings",
-        releaseTasks = mapOf("fabric" to "shadowJar", "neoforge" to "shadowJar")
+        releaseTasks = mapOf("fabric" to "jar", "neoforge" to "jar")
     )
 )
 
@@ -126,6 +126,7 @@ val requestedBuildGeneration = buildGenerations[requestedSpec.packagingGeneratio
     ?: throw GradleException(
         "Unknown build generation '${requestedSpec.packagingGeneration}' for Minecraft $requestedMinecraftVersion"
     )
+val usesIsolatedMc26Build = requestedSpec.packagingGeneration == "mc26-unobfuscated"
 
 extra["requestedMinecraftVersion"] = requestedMinecraftVersion
 extra["fabricLoaderVersion"] = requestedSpec.fabricLoaderVersion
@@ -148,9 +149,9 @@ extra["canonicalMojangVersion"] = canonicalMojangVersion
 extra["canonicalMappingsRevision"] = canonicalMappingsRevision
 
 val defaultRunTaskAliases = mapOf(
-    "runclient" to ":fabric:runClient",
-    "runserver" to ":fabric:runServer",
-    "runclientrenderdoc" to ":fabric:runClientRenderDoc"
+    "runclient" to "runFabricClient",
+    "runserver" to "runFabricServer",
+    "runclientrenderdoc" to "runFabricClient"
 )
 val requestedTaskNames = gradle.startParameter.taskNames
 val aliasedTaskNames = requestedTaskNames.map { requested ->
@@ -166,53 +167,71 @@ architectury {
 
 apply(plugin = "java")
 
-tasks.register("runFabricClient") {
-    group = "loom"
-    description = "Run the Fabric development client for Minecraft $requestedMinecraftVersion"
-    dependsOn(":fabric:runClient")
-}
-
-tasks.register("runNeoForgeClient") {
-    group = "loom"
-    description = "Run the NeoForge development client for Minecraft $requestedMinecraftVersion"
-    dependsOn(":neoforge:runClient")
-    onlyIf {
-        requestedSpec.neoforgeVersion != null
+fun org.gradle.api.tasks.Exec.configureMc26Invocation(vararg targetTasks: String) {
+    workingDir = projectDir
+    val arguments = arrayOf("-p", "mc26", *targetTasks, "-Pmc_version=$requestedMinecraftVersion")
+    if (org.gradle.internal.os.OperatingSystem.current().isWindows) {
+        commandLine("cmd", "/c", "gradlew.bat", *arguments)
+    } else {
+        commandLine("./gradlew", *arguments)
     }
 }
 
-tasks.register("runFabricServer") {
-    group = "loom"
-    description = "Run the Fabric development server for Minecraft $requestedMinecraftVersion"
-    dependsOn(":fabric:runServer")
-}
-
-tasks.register("runNeoForgeServer") {
-    group = "loom"
-    description = "Run the NeoForge development server for Minecraft $requestedMinecraftVersion"
-    dependsOn(":neoforge:runServer")
-    onlyIf {
-        requestedSpec.neoforgeVersion != null
+fun registerRunTask(name: String, legacyTask: String, mc26Task: String, loader: String) {
+    if (usesIsolatedMc26Build) {
+        tasks.register<org.gradle.api.tasks.Exec>(name) {
+            group = "run"
+            description = "Run the $loader development target for Minecraft $requestedMinecraftVersion"
+            configureMc26Invocation(mc26Task)
+        }
+    } else {
+        tasks.register(name) {
+            group = "loom"
+            description = "Run the $loader development target for Minecraft $requestedMinecraftVersion"
+            dependsOn(legacyTask)
+        }
     }
 }
 
-tasks.register("buildSelectedTarget") {
-    group = "build"
-    description = "Build Pathmind for the selected Minecraft target using its declared packaging generation"
-    requestedSpec.releaseLoaders.forEach { loader ->
-        dependsOn(":$loader:${requestedBuildGeneration.releaseTask(loader)}")
+registerRunTask("runFabricClient", ":fabric:runClient", ":fabric:runClient", "Fabric client")
+registerRunTask("runNeoForgeClient", ":neoforge:runClient", ":neoforge:runClient", "NeoForge client")
+registerRunTask("runFabricServer", ":fabric:runServer", ":fabric:runServer", "Fabric server")
+registerRunTask("runNeoForgeServer", ":neoforge:runServer", ":neoforge:runServer", "NeoForge server")
+
+if (usesIsolatedMc26Build) {
+    tasks.register<org.gradle.api.tasks.Exec>("buildSelectedTarget") {
+        group = "build"
+        description = "Build Pathmind for the selected Minecraft target using its isolated unobfuscated toolchain"
+        configureMc26Invocation(*requestedSpec.releaseLoaders.map { ":$it:jar" }.toTypedArray())
+    }
+} else {
+    tasks.register("buildSelectedTarget") {
+        group = "build"
+        description = "Build Pathmind for the selected Minecraft target using its declared packaging generation"
+        requestedSpec.releaseLoaders.forEach { loader ->
+            dependsOn(":$loader:${requestedBuildGeneration.releaseTask(loader)}")
+        }
     }
 }
 
-fun registerSelectedLoaderBuild(loader: String, displayName: String) = tasks.register("buildSelected$displayName") {
-    group = "build"
-    description = "Build the selected Minecraft target for $displayName using its declared packaging generation"
-    if (loader in requestedSpec.releaseLoaders) {
-        dependsOn(":$loader:${requestedBuildGeneration.releaseTask(loader)}")
+fun registerSelectedLoaderBuild(loader: String, displayName: String): TaskProvider<out Task> {
+    if (usesIsolatedMc26Build) {
+        return tasks.register<org.gradle.api.tasks.Exec>("buildSelected$displayName") {
+            group = "build"
+            description = "Build the selected Minecraft target for $displayName using its isolated unobfuscated toolchain"
+            configureMc26Invocation(":$loader:jar")
+        }
     }
-    doFirst {
-        if (loader !in requestedSpec.releaseLoaders) {
-            throw GradleException("$displayName is not a release loader for Minecraft $requestedMinecraftVersion")
+    return tasks.register("buildSelected$displayName") {
+        group = "build"
+        description = "Build the selected Minecraft target for $displayName using its declared packaging generation"
+        if (loader in requestedSpec.releaseLoaders) {
+            dependsOn(":$loader:${requestedBuildGeneration.releaseTask(loader)}")
+        }
+        doFirst {
+            if (loader !in requestedSpec.releaseLoaders) {
+                throw GradleException("$displayName is not a release loader for Minecraft $requestedMinecraftVersion")
+            }
         }
     }
 }
@@ -322,7 +341,7 @@ val verifyCompatibilityManifest = tasks.register("verifyCompatibilityManifest") 
 
         val allowedPackagingGenerations = setOf("pre26-remapped", "mc26-unobfuscated")
         val allowedLoaders = setOf("fabric", "neoforge")
-        val allowedCommonFamilies = setOf("mc-1.21.0-1.21.8", "mc-1.21.9-1.21.10", "mc-1.21.11")
+        val allowedCommonFamilies = setOf("mc-1.21.0-1.21.8", "mc-1.21.9-1.21.10", "mc-1.21.11", "mc-26.1-26.2")
         val allowedFabricBaseFamilies = allowedCommonFamilies
         val allowedUseItemFamilies = setOf("mc-1.21.0-1.21.1", "mc-1.21.2-1.21.8", "none")
         val allowedRenderFamilies = setOf(
@@ -333,7 +352,7 @@ val verifyCompatibilityManifest = tasks.register("verifyCompatibilityManifest") 
             "mc-1.21.6-1.21.8",
             "none"
         )
-        val allowedNeoForgeUiFamilies = setOf("mc-1.21.0-1.21.10", "mc-1.21.11")
+        val allowedNeoForgeUiFamilies = setOf("mc-1.21.0-1.21.10", "mc-1.21.11", "mc-26.1-26.2")
 
         val numericallySortedVersions = supportedMinecraftVersionIds.sortedWith { left, right ->
             val leftParts = left.split('.').map(String::toInt)
@@ -574,6 +593,34 @@ val verifyCompatibilityStructure = tasks.register("verifyCompatibilityStructure"
         if (loaderProductCopies.isNotEmpty()) {
             throw GradleException("Fabric compatibility code must not mirror product screens: $loaderProductCopies")
         }
+
+        val backendNeutralRoots = listOf(
+            "common/src/main/java",
+            "common/src/compat/mc-26.1-26.2/java",
+            "fabric/src/compat/mc-26.1-26.2/java",
+            "neoforge/src/compat/mc-26.1-26.2/java"
+        ).map { layout.projectDirectory.dir(it).asFile }
+        val rawGraphicsPatterns = listOf(
+            "org.lwjgl.opengl",
+            "com.mojang.blaze3d.opengl",
+            "GlStateManager",
+            "GL11.",
+            "GL20.",
+            "GL30."
+        )
+        val backendLeaks = backendNeutralRoots
+            .asSequence()
+            .filter(File::isDirectory)
+            .flatMap { it.walkTopDown().asSequence() }
+            .filter { it.isFile && it.extension == "java" }
+            .filter { file -> rawGraphicsPatterns.any(file.readText()::contains) }
+            .map { it.relativeTo(projectDir) }
+            .toList()
+        if (backendLeaks.isNotEmpty()) {
+            throw GradleException(
+                "Shared and 26.x code must be render-backend neutral; raw OpenGL references found in $backendLeaks"
+            )
+        }
     }
 }
 
@@ -594,8 +641,8 @@ val verifyBuildGenerationRouting = tasks.register("verifyBuildGenerationRouting"
         val mc26 = buildGenerations.getValue("mc26-unobfuscated")
         check(mc26.javaVersion == 25)
         check(mc26.mappingsMode == "unobfuscated-no-mappings")
-        check(mc26.releaseTask("fabric") == "shadowJar")
-        check(mc26.releaseTask("neoforge") == "shadowJar")
+        check(mc26.releaseTask("fabric") == "jar")
+        check(mc26.releaseTask("neoforge") == "jar")
     }
 }
 
@@ -605,7 +652,7 @@ tasks.named("check") {
 
 tasks.register("configureMc26BuildGeneration") {
     group = "build setup"
-    description = "Resolves the Java 25 and unobfuscated packaging contract used by future 26.x targets"
+    description = "Resolves the Java 25 and unobfuscated packaging contract used by 26.x targets"
     val generation = buildGenerations.getValue("mc26-unobfuscated")
     val placeholder = layout.projectDirectory.file("gradle/minecraft-version-templates/26.x.properties")
     inputs.file(placeholder)
@@ -693,10 +740,14 @@ supportedMinecraftVersions.keys.forEach { version ->
         val spec = supportedMinecraftVersions.getValue(version)
         val fabricSupported = "fabric" in spec.releaseLoaders
         val neoforgeSupported = "neoforge" in spec.releaseLoaders
-        val targets = buildList {
-            val generation = buildGenerations.getValue(spec.packagingGeneration)
-            if (fabricSupported) add(":fabric:${generation.releaseTask("fabric")}")
-            if (neoforgeSupported) add(":neoforge:${generation.releaseTask("neoforge")}")
+        val targets = if (spec.packagingGeneration == "mc26-unobfuscated") {
+            listOf("buildSelectedTarget")
+        } else {
+            buildList {
+                val generation = buildGenerations.getValue(spec.packagingGeneration)
+                if (fabricSupported) add(":fabric:${generation.releaseTask("fabric")}")
+                if (neoforgeSupported) add(":neoforge:${generation.releaseTask("neoforge")}")
+            }
         }
 
         if (org.gradle.internal.os.OperatingSystem.current().isWindows) {
@@ -709,14 +760,19 @@ supportedMinecraftVersions.keys.forEach { version ->
             project.delete(versionOutputDir)
         }
         doLast {
+            val generationRoot = if (spec.packagingGeneration == "mc26-unobfuscated") {
+                layout.projectDirectory.dir("mc26").asFile
+            } else {
+                projectDir
+            }
             project.copy {
                 if (fabricSupported) {
-                    from(project(":fabric").layout.buildDirectory.dir("libs")) {
+                    from(generationRoot.resolve("fabric/build/libs")) {
                         include("*mc$version.jar")
                     }
                 }
                 if (neoforgeSupported) {
-                    from(project(":neoforge").layout.buildDirectory.dir("libs")) {
+                    from(generationRoot.resolve("neoforge/build/libs")) {
                         include("*mc$version.jar")
                     }
                 }

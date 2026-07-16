@@ -28,11 +28,11 @@ Use these tasks when inspecting or changing compatibility:
 
 `verifyCompatibilityManifest` rejects missing or unknown manifest fields, invalid family values, stale runtime support, stale README targets, hard-coded metadata versions, duplicated Gradle defaults, and CI discovery that no longer reads the manifest. The root `check` lifecycle task includes this verification.
 
-Gradle's Java toolchain is always set from the selected manifest row. Compilation, tests, and Loom development clients therefore use Java 21 for the baseline targets even when Gradle itself was started by a newer host JVM. This prevents old NeoForge/Mixin stacks from attempting to read newer class-file formats.
+Gradle's Java toolchain is always set from the selected manifest row. The pre-26 projects use Java 21 even when Gradle was started by a newer host JVM, while the isolated 26.x build uses Java 25. This prevents either loader generation from inheriting an incompatible class-file level.
 
 ## Protected target matrix
 
-All targets in this baseline use Java 21 and the `pre26-remapped` packaging generation. Fabric and NeoForge are release loaders for every row.
+The `1.21.x` baseline targets use Java 21 and `pre26-remapped`; `26.1` and `26.2` use Java 25 and `mc26-unobfuscated`. Fabric and NeoForge are release loaders for every row.
 
 | Minecraft | Compatibility family | Fabric API | NeoForge |
 | --- | --- | --- | --- |
@@ -48,8 +48,10 @@ All targets in this baseline use Java 21 and the `pre26-remapped` packaging gene
 | `1.21.9` | `mc-1.21.9-1.21.10` | `0.134.1+1.21.9` | `21.9.16-beta` |
 | `1.21.10` | `mc-1.21.9-1.21.10` | `0.138.4+1.21.10` | `21.10.64` |
 | `1.21.11` | `mc-1.21.11` | `0.140.2+1.21.11` | `21.11.42` |
+| `26.1` | `mc-26.1` | `0.145.1+26.1` | `26.1.0.19-beta` |
+| `26.2` | `mc-26.2` | `0.154.2+26.2` | `26.2.0.15-beta` |
 
-The Fabric build pin is `0.17.3` for every baseline target. Existing release metadata accepts Fabric Loader `0.17.2` or newer; both values are explicit in the manifest so packaging does not silently change during Pass 1.
+The `1.21.x` Fabric build pin is `0.17.3`, with release metadata accepting `0.17.2` or newer. Minecraft `26.1` and `26.2` build and require Fabric Loader `0.19.3`. These values remain explicit in the manifest so packaging cannot silently change.
 
 ## Source-family baseline
 
@@ -64,6 +66,7 @@ The manifest preserves the following pre-migration source selection exactly:
 | `1.21.6`–`1.21.8` | `mc-1.21.0-1.21.8` | `mc-1.21.2-1.21.8` | `mc-1.21.6-1.21.8` | `mc-1.21.0-1.21.10` |
 | `1.21.9`–`1.21.10` | `mc-1.21.9-1.21.10` | built into family | built into family | `mc-1.21.0-1.21.10` |
 | `1.21.11` | `mc-1.21.11` | built into family | built into family | `mc-1.21.11` |
+| `26.1`–`26.2` | `mc-26.1-26.2` | built into family | built into family | `mc-26.1-26.2` |
 
 Baritone can be attached as a local development runtime only for `1.21.6` through `1.21.8`. The API remains compile-optional for other versions when a local API jar is present.
 
@@ -87,7 +90,7 @@ pathmind-neoforge-1.1.5+mc1.21.11.jar
 
 The public jar must not have `-dev`, `-dev-shadow`, `-sources`, `-all`, or `-javadoc` in its name. Development and sources jars may exist beside it but are excluded from staging.
 
-Fabric metadata is client-only and declares exact Minecraft compatibility, Java 21+, Fabric Loader 0.17.2+, and Fabric API. NeoForge metadata is client-only and declares the exact Minecraft version plus the target's minimum NeoForge version.
+Fabric metadata is client-only and declares exact Minecraft compatibility plus the row's Java, Fabric Loader, and Fabric API requirements. NeoForge metadata is client-only and declares the exact Minecraft version plus the target's minimum NeoForge version.
 
 ## Source duplication inventory
 

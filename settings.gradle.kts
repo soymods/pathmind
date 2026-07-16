@@ -40,4 +40,19 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "pathmind"
-include("common", "fabric", "neoforge")
+
+val requestedMinecraftVersion = providers.gradleProperty("mc_version")
+    .orElse(providers.gradleProperty("minecraft_version"))
+    .get()
+val compatibilityManifest = java.util.Properties().apply {
+    file("gradle/minecraft-versions.properties").inputStream().use(::load)
+}
+val packagingGeneration = compatibilityManifest
+    .getProperty("version.$requestedMinecraftVersion.packaging_generation")
+
+// Minecraft 26+ uses unobfuscated Fabric Loom and ModDevGradle in the isolated
+// mc26 build. Loading the pre-26 Architectury projects would configure an
+// incompatible remapping toolchain before root delegation can occur.
+if (packagingGeneration != "mc26-unobfuscated") {
+    include("common", "fabric", "neoforge")
+}

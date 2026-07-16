@@ -51,6 +51,7 @@ tasks.matching { it.name == "runClient" || it.name == "runServer" }.configureEac
 sourceSets {
     main {
         java {
+            srcDir("src/compat/api/pre26/java")
             when {
                 commonSourceFamily == "mc-1.21.0-1.21.8" -> srcDir("src/compat/mc-1.21.0-1.21.8/java")
                 commonSourceFamily == "mc-1.21.9-1.21.10" -> srcDir("src/compat/mc-1.21.9-1.21.10/java")

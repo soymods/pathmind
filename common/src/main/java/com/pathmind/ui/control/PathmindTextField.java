@@ -10,12 +10,14 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
 import net.minecraft.util.Util;
 import java.lang.reflect.Field;
+import java.util.function.Predicate;
 
 public class PathmindTextField extends EditBox {
     private static final int SELECTION_COLOR = 0x664F86C6;
     private static final Field TEXT_SHADOW_FIELD = findTextShadowField();
 
     private final Font pathmindTextRenderer;
+    private Predicate<String> pathmindFilter = value -> true;
 
     public PathmindTextField(Font textRenderer, int x, int y, int width, int height, Component text) {
         super(textRenderer, x, y, width, height, text);
@@ -50,6 +52,30 @@ public class PathmindTextField extends EditBox {
         field.setFocused(false);
         field.setVisible(false);
         field.setEditable(false);
+    }
+
+    /** Stable input filter retained across the pre-26 and 26.x EditBox APIs. */
+    public void setPathmindFilter(Predicate<String> filter) {
+        this.pathmindFilter = filter != null ? filter : value -> true;
+    }
+
+    @Override
+    public void setValue(String value) {
+        if (pathmindFilter == null || pathmindFilter.test(value)) {
+            super.setValue(value);
+        }
+    }
+
+    @Override
+    public void insertText(String text) {
+        TextFieldWidgetAccessor accessor = (TextFieldWidgetAccessor) this;
+        String current = getValue();
+        int selectionStart = Math.min(accessor.pathmind$getSelectionStart(), accessor.pathmind$getSelectionEnd());
+        int selectionEnd = Math.max(accessor.pathmind$getSelectionStart(), accessor.pathmind$getSelectionEnd());
+        String candidate = current.substring(0, selectionStart) + text + current.substring(selectionEnd);
+        if (pathmindFilter == null || pathmindFilter.test(candidate)) {
+            super.insertText(text);
+        }
     }
 
     private void applyPathmindDefaults() {

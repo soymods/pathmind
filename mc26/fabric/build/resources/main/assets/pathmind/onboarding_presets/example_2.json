@@ -1,0 +1,481 @@
+{
+  "nodes": [
+    {
+      "id": "tutorial-2-start",
+      "type": "START",
+      "x": 0,
+      "y": 110,
+      "parameters": [],
+      "parameterAttachments": [],
+      "startNodeNumber": 1,
+      "startLaunchMode": "manual"
+    },
+    {
+      "id": "tutorial-2-set-score",
+      "type": "SET_VARIABLE",
+      "x": 190,
+      "y": 110,
+      "parameters": [],
+      "attachedParameterId": "tutorial-2-score-target",
+      "parameterAttachments": [
+        {
+          "slotIndex": 0,
+          "parameterNodeId": "tutorial-2-score-target"
+        },
+        {
+          "slotIndex": 1,
+          "parameterNodeId": "tutorial-2-score-value"
+        }
+      ]
+    },
+    {
+      "id": "tutorial-2-score-target",
+      "type": "VARIABLE",
+      "x": 200,
+      "y": 170,
+      "parameters": [
+        {
+          "id": "variable",
+          "name": "Variable",
+          "value": "score",
+          "type": "STRING",
+          "userEdited": true
+        }
+      ],
+      "parentParameterHostId": "tutorial-2-set-score",
+      "parameterAttachments": []
+    },
+    {
+      "id": "tutorial-2-score-value",
+      "type": "PARAM_AMOUNT",
+      "x": 200,
+      "y": 240,
+      "parameters": [
+        {
+          "id": "amount",
+          "name": "Amount",
+          "value": "3",
+          "type": "DOUBLE",
+          "userEdited": true
+        }
+      ],
+      "parentParameterHostId": "tutorial-2-set-score",
+      "parameterAttachments": []
+    },
+    {
+      "id": "tutorial-2-calculate",
+      "type": "CHANGE_VARIABLE",
+      "x": 470,
+      "y": 110,
+      "parameters": [
+        {
+          "id": "change_variable_amount",
+          "name": "Amount",
+          "value": "1",
+          "type": "INTEGER",
+          "userEdited": false
+        },
+        {
+          "id": "change_variable_operation",
+          "name": "Operation",
+          "value": "+",
+          "type": "STRING",
+          "userEdited": false
+        }
+      ],
+      "parameterAttachments": [],
+      "messageLines": [
+        "doubled = $score * 2"
+      ]
+    },
+    {
+      "id": "tutorial-2-report",
+      "type": "MESSAGE",
+      "x": 720,
+      "y": 110,
+      "parameters": [],
+      "parameterAttachments": [],
+      "messageLines": [
+        "Data ready: score is $score and doubled is $doubled. Now the graph will also inspect the world."
+      ],
+      "messageClientSide": true
+    },
+    {
+      "id": "tutorial-2-if-else",
+      "type": "CONTROL_IF_ELSE",
+      "x": 1370,
+      "y": 110,
+      "parameters": [],
+      "attachedSensorId": "tutorial-2-condition-and",
+      "parameterAttachments": []
+    },
+    {
+      "id": "tutorial-2-condition-and",
+      "type": "OPERATOR_BOOLEAN_AND",
+      "x": 1380,
+      "y": 170,
+      "parameters": [],
+      "parentControlId": "tutorial-2-if-else",
+      "attachedParameterId": "tutorial-2-greater-than",
+      "parameterAttachments": [
+        {
+          "slotIndex": 0,
+          "parameterNodeId": "tutorial-2-greater-than"
+        },
+        {
+          "slotIndex": 1,
+          "parameterNodeId": "tutorial-2-on-ground"
+        }
+      ]
+    },
+    {
+      "id": "tutorial-2-greater-than",
+      "type": "OPERATOR_GREATER",
+      "x": 1390,
+      "y": 230,
+      "parameters": [
+        {
+          "id": "inclusive",
+          "name": "Inclusive",
+          "value": "false",
+          "type": "BOOLEAN",
+          "userEdited": false
+        }
+      ],
+      "parentParameterHostId": "tutorial-2-condition-and",
+      "attachedParameterId": "tutorial-2-doubled-read",
+      "parameterAttachments": [
+        {
+          "slotIndex": 0,
+          "parameterNodeId": "tutorial-2-doubled-read"
+        },
+        {
+          "slotIndex": 1,
+          "parameterNodeId": "tutorial-2-threshold"
+        }
+      ]
+    },
+    {
+      "id": "tutorial-2-doubled-read",
+      "type": "VARIABLE",
+      "x": 1400,
+      "y": 290,
+      "parameters": [
+        {
+          "id": "variable",
+          "name": "Variable",
+          "value": "doubled",
+          "type": "STRING",
+          "userEdited": true
+        }
+      ],
+      "parentParameterHostId": "tutorial-2-greater-than",
+      "parameterAttachments": []
+    },
+    {
+      "id": "tutorial-2-threshold",
+      "type": "PARAM_AMOUNT",
+      "x": 1400,
+      "y": 360,
+      "parameters": [
+        {
+          "id": "amount",
+          "name": "Amount",
+          "value": "5",
+          "type": "DOUBLE",
+          "userEdited": true
+        }
+      ],
+      "parentParameterHostId": "tutorial-2-greater-than",
+      "parameterAttachments": []
+    },
+    {
+      "id": "tutorial-2-on-ground",
+      "type": "SENSOR_IS_ON_GROUND",
+      "x": 1660,
+      "y": 230,
+      "parameters": [],
+      "parentParameterHostId": "tutorial-2-condition-and",
+      "parameterAttachments": []
+    },
+    {
+      "id": "tutorial-2-true-message",
+      "type": "MESSAGE",
+      "x": 2240,
+      "y": -110,
+      "parameters": [],
+      "parameterAttachments": [],
+      "messageLines": [
+        "TRUE: doubled is above 5 and you are on the ground, so run the movement branch."
+      ],
+      "messageClientSide": true
+    },
+    {
+      "id": "tutorial-2-true-walk",
+      "type": "WALK",
+      "x": 2800,
+      "y": -110,
+      "parameters": [
+        {
+          "id": "duration",
+          "name": "Duration",
+          "value": "0.75",
+          "type": "DOUBLE",
+          "userEdited": true
+        },
+        {
+          "id": "distance",
+          "name": "Distance",
+          "value": "0.0",
+          "type": "DOUBLE",
+          "userEdited": false
+        }
+      ],
+      "attachedParameterId": "tutorial-2-walk-direction",
+      "parameterAttachments": [
+        {
+          "slotIndex": 0,
+          "parameterNodeId": "tutorial-2-walk-direction"
+        },
+        {
+          "slotIndex": 1,
+          "parameterNodeId": "tutorial-2-walk-duration"
+        }
+      ]
+    },
+    {
+      "id": "tutorial-2-walk-direction",
+      "type": "PARAM_DIRECTION",
+      "x": 2810,
+      "y": -50,
+      "parameters": [
+        {
+          "id": "direction_mode",
+          "name": "Mode",
+          "value": "cardinal",
+          "type": "STRING",
+          "userEdited": true
+        },
+        {
+          "id": "direction_cardinal",
+          "name": "Direction",
+          "value": "east",
+          "type": "STRING",
+          "userEdited": true
+        }
+      ],
+      "parentParameterHostId": "tutorial-2-true-walk",
+      "parameterAttachments": []
+    },
+    {
+      "id": "tutorial-2-walk-duration",
+      "type": "PARAM_DURATION",
+      "mode": "WAIT_SECONDS",
+      "x": 2810,
+      "y": 30,
+      "parameters": [
+        {
+          "id": "duration",
+          "name": "Duration",
+          "value": "0.75",
+          "type": "DOUBLE",
+          "userEdited": true
+        }
+      ],
+      "parentParameterHostId": "tutorial-2-true-walk",
+      "parameterAttachments": []
+    },
+    {
+      "id": "tutorial-2-true-jump",
+      "type": "JUMP",
+      "x": 3110,
+      "y": -110,
+      "parameters": [],
+      "parameterAttachments": []
+    },
+    {
+      "id": "tutorial-2-false-message",
+      "type": "MESSAGE",
+      "x": 2240,
+      "y": 370,
+      "parameters": [],
+      "parameterAttachments": [],
+      "messageLines": [
+        "FALSE: one condition failed. Toggle crouch, wait briefly, then toggle it back."
+      ],
+      "messageClientSide": true
+    },
+    {
+      "id": "tutorial-2-crouch-on",
+      "type": "CROUCH",
+      "x": 2790,
+      "y": 370,
+      "parameters": [],
+      "parameterAttachments": []
+    },
+    {
+      "id": "tutorial-2-false-wait",
+      "type": "WAIT",
+      "mode": "WAIT_SECONDS",
+      "x": 2970,
+      "y": 370,
+      "parameters": [
+        {
+          "id": "duration",
+          "name": "Duration",
+          "value": "0.5",
+          "type": "DOUBLE",
+          "userEdited": true
+        }
+      ],
+      "parameterAttachments": []
+    },
+    {
+      "id": "tutorial-2-crouch-off",
+      "type": "CROUCH",
+      "x": 3180,
+      "y": 370,
+      "parameters": [],
+      "parameterAttachments": []
+    },
+    {
+      "id": "tutorial-2-join-any",
+      "type": "CONTROL_JOIN_ANY",
+      "x": 3420,
+      "y": 110,
+      "parameters": [],
+      "parameterAttachments": []
+    },
+    {
+      "id": "tutorial-2-finish",
+      "type": "MESSAGE",
+      "x": 3670,
+      "y": 110,
+      "parameters": [],
+      "parameterAttachments": [],
+      "messageLines": [
+        "Both branches reconnect at Join Any. The data, sensor, control flow, and world actions are one complete system."
+      ],
+      "messageClientSide": true
+    },
+    {
+      "id": "tutorial-2-note-data",
+      "type": "STICKY_NOTE",
+      "x": 150,
+      "y": -260,
+      "parameters": [],
+      "parameterAttachments": [],
+      "stickyNoteText": "DATA PIPELINE\nSet Variable stores 3 as score. Calculate reads $score and creates doubled. Message fields can insert either runtime value inline.",
+      "stickyNoteWidth": 650,
+      "stickyNoteHeight": 125
+    },
+    {
+      "id": "tutorial-2-note-condition",
+      "type": "STICKY_NOTE",
+      "x": 1080,
+      "y": -320,
+      "parameters": [],
+      "parameterAttachments": [],
+      "stickyNoteText": "DATA + WORLD CONDITION\nBoolean AND combines Greater Than ($doubled > 5) with the native Is On Ground sensor. If/Else takes output 0 when both are true and output 1 when either is false.",
+      "stickyNoteWidth": 820,
+      "stickyNoteHeight": 150
+    },
+    {
+      "id": "tutorial-2-note-branches",
+      "type": "STICKY_NOTE",
+      "x": 2100,
+      "y": -390,
+      "parameters": [],
+      "parameterAttachments": [],
+      "stickyNoteText": "BRANCH ROUTINES\nThe true branch walks east and jumps. The false branch toggles Crouch twice with a Wait between, restoring the starting crouch state. Join Any provides one shared continuation after whichever branch ran. Change score to 2 to force the false branch.",
+      "stickyNoteWidth": 950,
+      "stickyNoteHeight": 150
+    }
+  ],
+  "connections": [
+    {
+      "outputNodeId": "tutorial-2-start",
+      "inputNodeId": "tutorial-2-set-score",
+      "outputSocket": 0,
+      "inputSocket": 0
+    },
+    {
+      "outputNodeId": "tutorial-2-set-score",
+      "inputNodeId": "tutorial-2-calculate",
+      "outputSocket": 0,
+      "inputSocket": 0
+    },
+    {
+      "outputNodeId": "tutorial-2-calculate",
+      "inputNodeId": "tutorial-2-report",
+      "outputSocket": 0,
+      "inputSocket": 0
+    },
+    {
+      "outputNodeId": "tutorial-2-report",
+      "inputNodeId": "tutorial-2-if-else",
+      "outputSocket": 0,
+      "inputSocket": 0
+    },
+    {
+      "outputNodeId": "tutorial-2-if-else",
+      "inputNodeId": "tutorial-2-true-message",
+      "outputSocket": 0,
+      "inputSocket": 0
+    },
+    {
+      "outputNodeId": "tutorial-2-true-message",
+      "inputNodeId": "tutorial-2-true-walk",
+      "outputSocket": 0,
+      "inputSocket": 0
+    },
+    {
+      "outputNodeId": "tutorial-2-true-walk",
+      "inputNodeId": "tutorial-2-true-jump",
+      "outputSocket": 0,
+      "inputSocket": 0
+    },
+    {
+      "outputNodeId": "tutorial-2-true-jump",
+      "inputNodeId": "tutorial-2-join-any",
+      "outputSocket": 0,
+      "inputSocket": 0
+    },
+    {
+      "outputNodeId": "tutorial-2-if-else",
+      "inputNodeId": "tutorial-2-false-message",
+      "outputSocket": 1,
+      "inputSocket": 0
+    },
+    {
+      "outputNodeId": "tutorial-2-false-message",
+      "inputNodeId": "tutorial-2-crouch-on",
+      "outputSocket": 0,
+      "inputSocket": 0
+    },
+    {
+      "outputNodeId": "tutorial-2-crouch-on",
+      "inputNodeId": "tutorial-2-false-wait",
+      "outputSocket": 0,
+      "inputSocket": 0
+    },
+    {
+      "outputNodeId": "tutorial-2-false-wait",
+      "inputNodeId": "tutorial-2-crouch-off",
+      "outputSocket": 0,
+      "inputSocket": 0
+    },
+    {
+      "outputNodeId": "tutorial-2-crouch-off",
+      "inputNodeId": "tutorial-2-join-any",
+      "outputSocket": 0,
+      "inputSocket": 1
+    },
+    {
+      "outputNodeId": "tutorial-2-join-any",
+      "inputNodeId": "tutorial-2-finish",
+      "outputSocket": 0,
+      "inputSocket": 0
+    }
+  ]
+}

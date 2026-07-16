@@ -524,7 +524,7 @@ public class PathmindVisualEditorScreen extends Screen {
             nodeDelayField = PathmindTextField.createInactive(this.font, 0, 0, 120, 20, Component.translatable("pathmind.field.delay"), 6);
             nodeDelayField.setTextColor(UITheme.TEXT_HEADER);
             nodeDelayField.setTextColorUneditable(UITheme.TEXT_HEADER);
-            nodeDelayField.setFilter(value -> value == null || value.isEmpty() || value.chars().allMatch(Character::isDigit));
+            ((PathmindTextField) nodeDelayField).setPathmindFilter(value -> value == null || value.isEmpty() || value.chars().allMatch(Character::isDigit));
             nodeDelayField.setResponder(value -> {
                 Integer parsed = parseDelayFieldValue(value);
                 if (parsed != null && parsed != nodeDelayMs) {
@@ -539,7 +539,7 @@ public class PathmindVisualEditorScreen extends Screen {
             createListRadiusField = PathmindTextField.createInactive(this.font, 0, 0, 120, 20, Component.translatable("pathmind.field.radius"), 6);
             createListRadiusField.setTextColor(UITheme.TEXT_HEADER);
             createListRadiusField.setTextColorUneditable(UITheme.TEXT_HEADER);
-            createListRadiusField.setFilter(value -> value == null || value.isEmpty() || value.chars().allMatch(Character::isDigit));
+            ((PathmindTextField) createListRadiusField).setPathmindFilter(value -> value == null || value.isEmpty() || value.chars().allMatch(Character::isDigit));
             createListRadiusField.setResponder(value -> {
                 Node targetNode = getEffectiveSettingsTargetNode();
                 Integer parsed = parseCreateListRadiusFieldValue(value);

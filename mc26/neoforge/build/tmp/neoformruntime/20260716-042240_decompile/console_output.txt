@@ -1,0 +1,26 @@
+--------------------------------------------------------------------------------
+
+Command-Line:
+ - /opt/homebrew/Cellar/openjdk@25/25.0.3/libexec/openjdk.jdk/Contents/Home/bin/java
+ - -Xmx4g
+ - -cp
+ - /Users/ryder/.gradle/caches/modules-2/files-2.1/org.vineflower/vineflower/1.12.0/85570609a0a5941a7d2918b6260b209de810f66f/vineflower-1.12.0.jar:/Users/ryder/.gradle/caches/modules-2/files-2.1/net.neoforged/vineflower-plugins/0.1.6/84857083964b98ac94f8d124f401c2b2d86839ab/vineflower-plugins-0.1.6.jar
+ - org.jetbrains.java.decompiler.main.decompiler.ConsoleDecompiler
+ - --decompile-inner
+ - --remove-bridge
+ - --decompile-generics
+ - --ascii-strings
+ - --remove-synthetic
+ - --include-classpath
+ - --ignore-invalid-bytecode
+ - --bytecode-source-mapping
+ - --dump-code-lines
+ - --indent-string=    
+ - --log-level=WARN
+ - -cfg=./libraries.txt
+ - /Users/ryder/.gradle/caches/neoformruntime/intermediate_results/preProcessJar_dad447fdce426e4e05a84a2eff47da4c9f24f251_output.jar
+ - ./output.jar
+--------------------------------------------------------------------------------
+
+WARN:  Loading Minecraft-Dist manifest data from archive /Users/ryder/.gradle/caches/neoformruntime/intermediate_results/preProcessJar_dad447fdce426e4e05a84a2eff47da4c9f24f251_output.jar
+WARN:  net/minecraft/world/level/chunk/CarvingMask.{net/minecraft/world/level/chunk/CarvingMask: lambda$new$0} processed twice

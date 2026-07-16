@@ -70,8 +70,8 @@ compat/
     mc-1.21.0-1.21.8/
     mc-1.21.9-1.21.10/
     mc-1.21.11/
-    mc-26.1/
-    mc-26.2/
+    mc-26.1-26.2/            # shared API contract where 26.x agrees
+    api/mc-26.2/             # narrow release-specific deltas only
 fabric/                       Fabric-only bootstrap and event wiring
 neoforge/                     NeoForge-only bootstrap and event wiring
 build-logic/                  Version catalog and build-generation conventions
@@ -231,6 +231,8 @@ Adding a synthetic compatibility family should require registering a family and 
 
 ## Pass 5: Implement Minecraft 26.1 across Fabric and NeoForge
 
+**Status:** Build implementation complete July 16, 2026. The verified `26.1` dependency pins, Java 25 manifest row, isolated unobfuscated builds, normal-jar packaging, metadata, shared source families, and root task delegation are implemented. Fabric and NeoForge production jars compile successfully, including the extraction-rendering and data-driven villager-trade boundaries. Interactive runtime smoke checks remain release-validation work.
+
 ### Goal
 
 Add production-quality `26.1` support on both loaders using the new unobfuscated build generation and compatibility architecture.
@@ -262,6 +264,8 @@ Add production-quality `26.1` support on both loaders using the new unobfuscated
 - `26.1` artifacts contain correct Java, Minecraft, loader, and Architectury metadata.
 
 ## Pass 6: Implement Minecraft 26.2 and harden the rendering boundary
+
+**Status:** In progress July 16, 2026. The verified `26.2` Fabric/NeoForge pins, Gradle 9.5.1 and Loom 1.17 toolchain, manifest/build routing, shared `mc-26.1-26.2` families, version-scoped GUI ownership transform, and structural raw-OpenGL guard are implemented. Fabric compilation is the next checkpoint before porting any additional concrete API deltas.
 
 ### Goal
 

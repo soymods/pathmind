@@ -1,0 +1,650 @@
+{
+  "nodes": [
+    {
+      "id": "tutorial-3-start",
+      "type": "START",
+      "x": 0,
+      "y": 80,
+      "parameters": [],
+      "parameterAttachments": [],
+      "startNodeNumber": 1,
+      "startLaunchMode": "manual"
+    },
+    {
+      "id": "tutorial-3-create-team",
+      "type": "CREATE_LIST",
+      "x": 190,
+      "y": 80,
+      "parameters": [
+        {
+          "id": "list",
+          "name": "List",
+          "value": "team",
+          "type": "STRING",
+          "userEdited": true
+        },
+        {
+          "id": "create_list_use_radius",
+          "name": "UseRadius",
+          "value": "false",
+          "type": "BOOLEAN",
+          "userEdited": false
+        },
+        {
+          "id": "create_list_radius",
+          "name": "Radius",
+          "value": "64",
+          "type": "DOUBLE",
+          "userEdited": false
+        },
+        {
+          "id": "create_list_use_block_cap",
+          "name": "UseBlockCap",
+          "value": "false",
+          "type": "BOOLEAN",
+          "userEdited": false
+        },
+        {
+          "id": "create_list_max_blocks",
+          "name": "MaxBlocks",
+          "value": "256",
+          "type": "INTEGER",
+          "userEdited": false
+        }
+      ],
+      "attachedParameterId": "tutorial-3-team-first-member",
+      "parameterAttachments": [
+        {
+          "slotIndex": 0,
+          "parameterNodeId": "tutorial-3-team-first-member"
+        }
+      ]
+    },
+    {
+      "id": "tutorial-3-team-first-member",
+      "type": "PARAM_PLAYER",
+      "x": 200,
+      "y": 140,
+      "parameters": [
+        {
+          "id": "player",
+          "name": "Player",
+          "value": "Self",
+          "type": "STRING",
+          "userEdited": true
+        }
+      ],
+      "parentParameterHostId": "tutorial-3-create-team",
+      "parameterAttachments": []
+    },
+    {
+      "id": "tutorial-3-add-team-member",
+      "type": "ADD_TO_LIST",
+      "x": 450,
+      "y": 80,
+      "parameters": [
+        {
+          "id": "list",
+          "name": "List",
+          "value": "team",
+          "type": "STRING",
+          "userEdited": true
+        }
+      ],
+      "attachedParameterId": "tutorial-3-team-second-member",
+      "parameterAttachments": [
+        {
+          "slotIndex": 0,
+          "parameterNodeId": "tutorial-3-team-second-member"
+        }
+      ]
+    },
+    {
+      "id": "tutorial-3-team-second-member",
+      "type": "PARAM_PLAYER",
+      "x": 460,
+      "y": 140,
+      "parameters": [
+        {
+          "id": "player",
+          "name": "Player",
+          "value": "Self",
+          "type": "STRING",
+          "userEdited": true
+        }
+      ],
+      "parentParameterHostId": "tutorial-3-add-team-member",
+      "parameterAttachments": []
+    },
+    {
+      "id": "tutorial-3-set-member-count",
+      "type": "SET_VARIABLE",
+      "x": 710,
+      "y": 80,
+      "parameters": [],
+      "attachedParameterId": "tutorial-3-member-count-target",
+      "parameterAttachments": [
+        {
+          "slotIndex": 0,
+          "parameterNodeId": "tutorial-3-member-count-target"
+        },
+        {
+          "slotIndex": 1,
+          "parameterNodeId": "tutorial-3-team-length"
+        }
+      ]
+    },
+    {
+      "id": "tutorial-3-member-count-target",
+      "type": "VARIABLE",
+      "x": 720,
+      "y": 140,
+      "parameters": [
+        {
+          "id": "variable",
+          "name": "Variable",
+          "value": "memberCount",
+          "type": "STRING",
+          "userEdited": true
+        }
+      ],
+      "parentParameterHostId": "tutorial-3-set-member-count",
+      "parameterAttachments": []
+    },
+    {
+      "id": "tutorial-3-team-length",
+      "type": "LIST_LENGTH",
+      "x": 720,
+      "y": 200,
+      "parameters": [
+        {
+          "id": "list",
+          "name": "List",
+          "value": "team",
+          "type": "STRING",
+          "userEdited": true
+        }
+      ],
+      "parentParameterHostId": "tutorial-3-set-member-count",
+      "parameterAttachments": []
+    },
+    {
+      "id": "tutorial-3-plan-math",
+      "type": "CHANGE_VARIABLE",
+      "x": 990,
+      "y": 80,
+      "parameters": [
+        {
+          "id": "change_variable_amount",
+          "name": "Amount",
+          "value": "1",
+          "type": "INTEGER",
+          "userEdited": false
+        },
+        {
+          "id": "change_variable_operation",
+          "name": "Operation",
+          "value": "+",
+          "type": "STRING",
+          "userEdited": false
+        }
+      ],
+      "parameterAttachments": [],
+      "messageLines": [
+        "workUnits = $memberCount * 3",
+        "target = $workUnits + 1"
+      ]
+    },
+    {
+      "id": "tutorial-3-call-announce",
+      "type": "EVENT_CALL",
+      "x": 1270,
+      "y": 80,
+      "parameters": [
+        {
+          "id": "name",
+          "name": "Name",
+          "value": "announce_plan",
+          "type": "STRING",
+          "userEdited": true
+        }
+      ],
+      "parameterAttachments": []
+    },
+    {
+      "id": "tutorial-3-fork",
+      "type": "CONTROL_FORK",
+      "x": 1500,
+      "y": 80,
+      "parameters": [],
+      "parameterAttachments": []
+    },
+    {
+      "id": "tutorial-3-fast-wait",
+      "type": "WAIT",
+      "mode": "WAIT_SECONDS",
+      "x": 1730,
+      "y": -70,
+      "parameters": [
+        {
+          "id": "duration",
+          "name": "Duration",
+          "value": "0.25",
+          "type": "DOUBLE",
+          "userEdited": true
+        }
+      ],
+      "parameterAttachments": []
+    },
+    {
+      "id": "tutorial-3-fast-message",
+      "type": "MESSAGE",
+      "x": 1940,
+      "y": -70,
+      "parameters": [],
+      "parameterAttachments": [],
+      "messageLines": [
+        "Parallel branch A finished after 0.25 seconds."
+      ],
+      "messageClientSide": true
+    },
+    {
+      "id": "tutorial-3-slow-wait",
+      "type": "WAIT",
+      "mode": "WAIT_SECONDS",
+      "x": 1730,
+      "y": 240,
+      "parameters": [
+        {
+          "id": "duration",
+          "name": "Duration",
+          "value": "0.75",
+          "type": "DOUBLE",
+          "userEdited": true
+        }
+      ],
+      "parameterAttachments": []
+    },
+    {
+      "id": "tutorial-3-slow-message",
+      "type": "MESSAGE",
+      "x": 1940,
+      "y": 240,
+      "parameters": [],
+      "parameterAttachments": [],
+      "messageLines": [
+        "Parallel branch B finished after 0.75 seconds."
+      ],
+      "messageClientSide": true
+    },
+    {
+      "id": "tutorial-3-join-all",
+      "type": "CONTROL_JOIN_ALL",
+      "x": 2250,
+      "y": 80,
+      "parameters": [],
+      "parameterAttachments": []
+    },
+    {
+      "id": "tutorial-3-score-math",
+      "type": "CHANGE_VARIABLE",
+      "x": 2490,
+      "y": 80,
+      "parameters": [
+        {
+          "id": "change_variable_amount",
+          "name": "Amount",
+          "value": "1",
+          "type": "INTEGER",
+          "userEdited": false
+        },
+        {
+          "id": "change_variable_operation",
+          "name": "Operation",
+          "value": "+",
+          "type": "STRING",
+          "userEdited": false
+        }
+      ],
+      "parameterAttachments": [],
+      "messageLines": [
+        "score = $workUnits + $target"
+      ]
+    },
+    {
+      "id": "tutorial-3-if-else",
+      "type": "CONTROL_IF_ELSE",
+      "x": 2760,
+      "y": 80,
+      "parameters": [],
+      "attachedSensorId": "tutorial-3-score-check",
+      "parameterAttachments": []
+    },
+    {
+      "id": "tutorial-3-score-check",
+      "type": "OPERATOR_GREATER",
+      "x": 2770,
+      "y": 140,
+      "parameters": [
+        {
+          "id": "inclusive",
+          "name": "Inclusive",
+          "value": "false",
+          "type": "BOOLEAN",
+          "userEdited": false
+        }
+      ],
+      "parentControlId": "tutorial-3-if-else",
+      "attachedParameterId": "tutorial-3-score-read",
+      "parameterAttachments": [
+        {
+          "slotIndex": 0,
+          "parameterNodeId": "tutorial-3-score-read"
+        },
+        {
+          "slotIndex": 1,
+          "parameterNodeId": "tutorial-3-score-threshold"
+        }
+      ]
+    },
+    {
+      "id": "tutorial-3-score-read",
+      "type": "VARIABLE",
+      "x": 2780,
+      "y": 200,
+      "parameters": [
+        {
+          "id": "variable",
+          "name": "Variable",
+          "value": "score",
+          "type": "STRING",
+          "userEdited": true
+        }
+      ],
+      "parentParameterHostId": "tutorial-3-score-check",
+      "parameterAttachments": []
+    },
+    {
+      "id": "tutorial-3-score-threshold",
+      "type": "PARAM_AMOUNT",
+      "x": 2780,
+      "y": 260,
+      "parameters": [
+        {
+          "id": "amount",
+          "name": "Amount",
+          "value": "10",
+          "type": "DOUBLE",
+          "userEdited": true
+        }
+      ],
+      "parentParameterHostId": "tutorial-3-score-check",
+      "parameterAttachments": []
+    },
+    {
+      "id": "tutorial-3-call-success",
+      "type": "EVENT_CALL",
+      "x": 3090,
+      "y": -40,
+      "parameters": [
+        {
+          "id": "name",
+          "name": "Name",
+          "value": "success",
+          "type": "STRING",
+          "userEdited": true
+        }
+      ],
+      "parameterAttachments": []
+    },
+    {
+      "id": "tutorial-3-call-fallback",
+      "type": "EVENT_CALL",
+      "x": 3090,
+      "y": 230,
+      "parameters": [
+        {
+          "id": "name",
+          "name": "Name",
+          "value": "fallback",
+          "type": "STRING",
+          "userEdited": true
+        }
+      ],
+      "parameterAttachments": []
+    },
+    {
+      "id": "tutorial-3-function-announce",
+      "type": "EVENT_FUNCTION",
+      "x": 1140,
+      "y": 520,
+      "parameters": [
+        {
+          "id": "name",
+          "name": "Name",
+          "value": "announce_plan",
+          "type": "STRING",
+          "userEdited": true
+        }
+      ],
+      "parameterAttachments": []
+    },
+    {
+      "id": "tutorial-3-function-announce-message",
+      "type": "MESSAGE",
+      "x": 1400,
+      "y": 520,
+      "parameters": [],
+      "parameterAttachments": [],
+      "messageLines": [
+        "Function announce_plan: $memberCount list entries create $workUnits work units and a target of $target."
+      ],
+      "messageClientSide": true
+    },
+    {
+      "id": "tutorial-3-function-success",
+      "type": "EVENT_FUNCTION",
+      "x": 2500,
+      "y": 520,
+      "parameters": [
+        {
+          "id": "name",
+          "name": "Name",
+          "value": "success",
+          "type": "STRING",
+          "userEdited": true
+        }
+      ],
+      "parameterAttachments": []
+    },
+    {
+      "id": "tutorial-3-function-success-message",
+      "type": "MESSAGE",
+      "x": 2740,
+      "y": 520,
+      "parameters": [],
+      "parameterAttachments": [],
+      "messageLines": [
+        "SUCCESS function: both branches joined and score $score passed the threshold."
+      ],
+      "messageClientSide": true
+    },
+    {
+      "id": "tutorial-3-function-fallback",
+      "type": "EVENT_FUNCTION",
+      "x": 2500,
+      "y": 700,
+      "parameters": [
+        {
+          "id": "name",
+          "name": "Name",
+          "value": "fallback",
+          "type": "STRING",
+          "userEdited": true
+        }
+      ],
+      "parameterAttachments": []
+    },
+    {
+      "id": "tutorial-3-function-fallback-message",
+      "type": "MESSAGE",
+      "x": 2740,
+      "y": 700,
+      "parameters": [],
+      "parameterAttachments": [],
+      "messageLines": [
+        "FALLBACK function: score $score did not pass the threshold."
+      ],
+      "messageClientSide": true
+    },
+    {
+      "id": "tutorial-3-note-data",
+      "type": "STICKY_NOTE",
+      "x": 160,
+      "y": -210,
+      "parameters": [],
+      "parameterAttachments": [],
+      "stickyNoteText": "DATA PIPELINE\nCreate List starts a runtime list named team with Self, Add to List appends another entry, and List Length is saved as memberCount. Calculate can create several named outputs in order, so later expressions can use earlier ones.",
+      "stickyNoteWidth": 1090,
+      "stickyNoteHeight": 130
+    },
+    {
+      "id": "tutorial-3-note-parallel",
+      "type": "STICKY_NOTE",
+      "x": 1450,
+      "y": -250,
+      "parameters": [],
+      "parameterAttachments": [],
+      "stickyNoteText": "PARALLEL PIPELINE\nFork launches both outputs concurrently. Each branch arrives at a different Join All input. Execution after Join All waits until both inputs have arrived, so the slower 0.75-second branch controls when the graph continues.",
+      "stickyNoteWidth": 1030,
+      "stickyNoteHeight": 125
+    },
+    {
+      "id": "tutorial-3-note-functions",
+      "type": "STICKY_NOTE",
+      "x": 1110,
+      "y": 390,
+      "parameters": [],
+      "parameterAttachments": [],
+      "stickyNoteText": "FUNCTIONS\nEvent Call runs the matching Event Function branch and waits for it to finish. Functions share this execution scope, so their messages can read memberCount, workUnits, target, and score with $variable syntax.",
+      "stickyNoteWidth": 1940,
+      "stickyNoteHeight": 105
+    }
+  ],
+  "connections": [
+    {
+      "outputNodeId": "tutorial-3-start",
+      "inputNodeId": "tutorial-3-create-team",
+      "outputSocket": 0,
+      "inputSocket": 0
+    },
+    {
+      "outputNodeId": "tutorial-3-create-team",
+      "inputNodeId": "tutorial-3-add-team-member",
+      "outputSocket": 0,
+      "inputSocket": 0
+    },
+    {
+      "outputNodeId": "tutorial-3-add-team-member",
+      "inputNodeId": "tutorial-3-set-member-count",
+      "outputSocket": 0,
+      "inputSocket": 0
+    },
+    {
+      "outputNodeId": "tutorial-3-set-member-count",
+      "inputNodeId": "tutorial-3-plan-math",
+      "outputSocket": 0,
+      "inputSocket": 0
+    },
+    {
+      "outputNodeId": "tutorial-3-plan-math",
+      "inputNodeId": "tutorial-3-call-announce",
+      "outputSocket": 0,
+      "inputSocket": 0
+    },
+    {
+      "outputNodeId": "tutorial-3-call-announce",
+      "inputNodeId": "tutorial-3-fork",
+      "outputSocket": 0,
+      "inputSocket": 0
+    },
+    {
+      "outputNodeId": "tutorial-3-fork",
+      "inputNodeId": "tutorial-3-fast-wait",
+      "outputSocket": 0,
+      "inputSocket": 0
+    },
+    {
+      "outputNodeId": "tutorial-3-fork",
+      "inputNodeId": "tutorial-3-slow-wait",
+      "outputSocket": 1,
+      "inputSocket": 0
+    },
+    {
+      "outputNodeId": "tutorial-3-fast-wait",
+      "inputNodeId": "tutorial-3-fast-message",
+      "outputSocket": 0,
+      "inputSocket": 0
+    },
+    {
+      "outputNodeId": "tutorial-3-fast-message",
+      "inputNodeId": "tutorial-3-join-all",
+      "outputSocket": 0,
+      "inputSocket": 0
+    },
+    {
+      "outputNodeId": "tutorial-3-slow-wait",
+      "inputNodeId": "tutorial-3-slow-message",
+      "outputSocket": 0,
+      "inputSocket": 0
+    },
+    {
+      "outputNodeId": "tutorial-3-slow-message",
+      "inputNodeId": "tutorial-3-join-all",
+      "outputSocket": 0,
+      "inputSocket": 1
+    },
+    {
+      "outputNodeId": "tutorial-3-join-all",
+      "inputNodeId": "tutorial-3-score-math",
+      "outputSocket": 0,
+      "inputSocket": 0
+    },
+    {
+      "outputNodeId": "tutorial-3-score-math",
+      "inputNodeId": "tutorial-3-if-else",
+      "outputSocket": 0,
+      "inputSocket": 0
+    },
+    {
+      "outputNodeId": "tutorial-3-if-else",
+      "inputNodeId": "tutorial-3-call-success",
+      "outputSocket": 0,
+      "inputSocket": 0
+    },
+    {
+      "outputNodeId": "tutorial-3-if-else",
+      "inputNodeId": "tutorial-3-call-fallback",
+      "outputSocket": 1,
+      "inputSocket": 0
+    },
+    {
+      "outputNodeId": "tutorial-3-function-announce",
+      "inputNodeId": "tutorial-3-function-announce-message",
+      "outputSocket": 0,
+      "inputSocket": 0
+    },
+    {
+      "outputNodeId": "tutorial-3-function-success",
+      "inputNodeId": "tutorial-3-function-success-message",
+      "outputSocket": 0,
+      "inputSocket": 0
+    },
+    {
+      "outputNodeId": "tutorial-3-function-fallback",
+      "inputNodeId": "tutorial-3-function-fallback-message",
+      "outputSocket": 0,
+      "inputSocket": 0
+    }
+  ]
+}

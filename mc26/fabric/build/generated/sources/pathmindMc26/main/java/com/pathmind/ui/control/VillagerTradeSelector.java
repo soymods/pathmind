@@ -1,0 +1,1201 @@
+package com.pathmind.ui.control;
+
+import com.pathmind.compat.VillagerTradeCatalog;
+import com.pathmind.ui.animation.AnimatedValue;
+import com.pathmind.ui.animation.AnimationHelper;
+import com.pathmind.ui.theme.UITheme;
+import com.pathmind.ui.theme.UIStyleHelper;
+import com.pathmind.util.DrawContextBridge;
+import com.pathmind.util.InputCompatibilityBridge;
+import com.pathmind.util.DropdownLayoutHelper;
+import com.pathmind.util.TextRenderUtil;
+import org.lwjgl.glfw.GLFW;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.core.Holder;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.util.Mth;
+import net.minecraft.world.entity.npc.villager.VillagerProfession;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.trading.MerchantOffer;
+import net.minecraft.world.item.trading.MerchantOffers;
+
+/**
+ * Helper widget for selecting villager trades by profession with search filtering.
+ */
+public class VillagerTradeSelector {
+    private static final String OPEN_GUI_PROFESSION_ID = "open_gui";
+    private static final int DROPDOWN_HEIGHT = 20;
+    private static final int SEARCH_HEIGHT = 20;
+    private static final int LIST_ROW_HEIGHT = 18;
+    private static final int LIST_VISIBLE_ROWS = 8;
+    private static final int SECTION_SPACING = 8;
+    private static final int TEXT_PADDING = 6;
+    private static final int LIST_PADDING = 4;
+    private static final int DROPDOWN_OPTION_HEIGHT = 18;
+    private static final int DROPDOWN_MAX_VISIBLE = 8;
+    public interface Listener {
+        void onProfessionChanged(String professionId);
+        void onTradeChanged(String tradeItemId);
+        void requestLayoutRefresh();
+    }
+
+    private final Listener listener;
+    private final List<ProfessionOption> professions = new ArrayList<>();
+    private final List<TradeEntry> trades = new ArrayList<>();
+    private final List<TradeEntry> filteredTrades = new ArrayList<>();
+
+    private ProfessionOption selectedProfession;
+    private String searchQuery = "";
+    private String selectedTradeKey = "";
+    private boolean searchFocused = false;
+    private int searchCaretPosition = 0;
+    private int searchSelectionStart = -1;
+    private int searchSelectionEnd = -1;
+    private int searchSelectionAnchor = -1;
+    private long searchCaretBlinkLastToggle = 0L;
+    private boolean searchCaretVisible = true;
+    private Font lastTextRenderer;
+
+    private int renderX;
+    private int renderY;
+    private int renderWidth;
+    private int lastRenderHeight;
+
+    private boolean dropdownOpen = false;
+    private final AnimatedValue dropdownAnimation = AnimatedValue.forHover();
+    private final DropdownLayoutHelper.SmoothScrollState dropdownSmoothScroll = new DropdownLayoutHelper.SmoothScrollState();
+    private int dropdownScrollIndex = 0;
+    private int dropdownHoverIndex = -1;
+
+    private int listScrollIndex = 0;
+
+    private int dropdownX;
+    private int dropdownY;
+    private int dropdownWidth;
+    private int dropdownHeight;
+    private int searchX;
+    private int searchY;
+    private int searchWidth;
+    private int searchHeight;
+    private int listX;
+    private int listY;
+    private int listWidth;
+    private int listHeight;
+
+    public VillagerTradeSelector(Listener listener) {
+        this.listener = listener;
+        loadProfessionOptions();
+        if (!professions.isEmpty()) {
+            selectedProfession = professions.get(0);
+        }
+        rebuildTrades();
+    }
+
+    public void setProfessionById(String professionId) {
+        ProfessionOption match = null;
+        if (professionId != null && !professionId.isEmpty()) {
+            String normalized = normalizeId(professionId);
+            for (ProfessionOption option : professions) {
+                if (option.id.equals(normalized)) {
+                    match = option;
+                    break;
+                }
+            }
+        }
+        if (match == null && !professions.isEmpty()) {
+            match = professions.get(0);
+        }
+        if (!Objects.equals(selectedProfession, match)) {
+            selectedProfession = match;
+            if (listener != null && selectedProfession != null) {
+                listener.onProfessionChanged(selectedProfession.id);
+            }
+            rebuildTrades();
+            if (listener != null) {
+                listener.requestLayoutRefresh();
+            }
+        }
+    }
+
+    public String getProfessionId() {
+        return selectedProfession != null ? selectedProfession.id : "";
+    }
+
+    public void setSelectedTradeKey(String tradeKey) {
+        selectedTradeKey = tradeKey != null ? tradeKey : "";
+        if (!selectedTradeKey.isEmpty() && !matchesAnyTradeKey(selectedTradeKey)) {
+            String fallbackKey = findTradeKeyBySellItem(selectedTradeKey);
+            selectedTradeKey = fallbackKey != null ? fallbackKey : "";
+        }
+        if (selectedTradeKey.isEmpty()) {
+            selectFirstTrade();
+        }
+    }
+
+    public String getSelectedTradeKey() {
+        return selectedTradeKey;
+    }
+
+    public boolean hasFocusedInput() {
+        return searchFocused;
+    }
+
+    public int render(GuiGraphicsExtractor context, Font textRenderer, int x, int y, int width, int mouseX, int mouseY, float alpha) {
+        this.lastTextRenderer = textRenderer;
+        this.renderX = x;
+        this.renderY = y;
+        this.renderWidth = width;
+
+        int sectionY = y;
+        context.text(
+            textRenderer,
+            Component.translatable("pathmind.villagerTrade.profession"),
+            x,
+            sectionY,
+            AnimationHelper.multiplyAlpha(UITheme.TEXT_PRIMARY, alpha)
+        );
+        sectionY += textRenderer.lineHeight + 4;
+
+        dropdownX = x;
+        dropdownY = sectionY;
+        dropdownWidth = width;
+        dropdownHeight = DROPDOWN_HEIGHT;
+
+        boolean hoverButton = mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&
+                              mouseY >= dropdownY && mouseY <= dropdownY + dropdownHeight;
+        int buttonBg = hoverButton ? UITheme.BUTTON_DEFAULT_BG : UITheme.BACKGROUND_SECONDARY;
+        int borderColor = dropdownOpen ? UITheme.ACCENT_DEFAULT : (hoverButton ? UITheme.TEXT_SECONDARY : UITheme.BORDER_SUBTLE);
+        context.fill(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + dropdownHeight, AnimationHelper.multiplyAlpha(buttonBg, alpha));
+        DrawContextBridge.drawBorder(context, dropdownX, dropdownY, dropdownWidth, dropdownHeight, AnimationHelper.multiplyAlpha(borderColor, alpha));
+        String professionLabel = selectedProfession != null
+            ? selectedProfession.displayName
+            : Component.translatable("pathmind.option.none").getString();
+        context.text(
+            textRenderer,
+            Component.literal(professionLabel),
+            dropdownX + TEXT_PADDING,
+            dropdownY + 6,
+            AnimationHelper.multiplyAlpha(UITheme.TEXT_PRIMARY, alpha)
+        );
+        context.text(
+            textRenderer,
+            Component.literal("▼"),
+            dropdownX + dropdownWidth - 12,
+            dropdownY + 6,
+            AnimationHelper.multiplyAlpha(UITheme.TEXT_PRIMARY, alpha)
+        );
+        sectionY += DROPDOWN_HEIGHT + SECTION_SPACING;
+
+        searchX = x;
+        searchY = sectionY;
+        searchWidth = width;
+        searchHeight = SEARCH_HEIGHT;
+
+        boolean isSearchFocused = searchFocused;
+        int searchBg = isSearchFocused ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_SIDEBAR;
+        int searchBorder = isSearchFocused ? UITheme.ACCENT_DEFAULT : UITheme.BORDER_SUBTLE;
+        context.fill(searchX, searchY, searchX + searchWidth, searchY + searchHeight, AnimationHelper.multiplyAlpha(searchBg, alpha));
+        DrawContextBridge.drawBorder(context, searchX, searchY, searchWidth, searchHeight, AnimationHelper.multiplyAlpha(searchBorder, alpha));
+        String displayText = searchQuery;
+        boolean showPlaceholder = displayText == null || displayText.isEmpty();
+        int textY = searchY + (searchHeight - textRenderer.lineHeight) / 2 + 1;
+        if (showPlaceholder) {
+            context.text(
+                textRenderer,
+                Component.translatable("pathmind.villagerTrade.searchTrades"),
+                searchX + TEXT_PADDING,
+                textY,
+                AnimationHelper.multiplyAlpha(UITheme.TEXT_TERTIARY, alpha)
+            );
+        } else {
+            String trimmed = searchFocused
+                ? displayText
+                : trimDisplayString(textRenderer, displayText, searchWidth - TEXT_PADDING * 2);
+            if (searchFocused && hasSearchSelection()) {
+                int start = Mth.clamp(searchSelectionStart, 0, displayText.length());
+                int end = Mth.clamp(searchSelectionEnd, 0, displayText.length());
+                if (start != end) {
+                    int selStartX = searchX + TEXT_PADDING + textRenderer.width(displayText.substring(0, Math.min(start, end)));
+                    int selEndX = searchX + TEXT_PADDING + textRenderer.width(displayText.substring(0, Math.max(start, end)));
+                    selStartX = Mth.clamp(selStartX, searchX + 2, searchX + searchWidth - 2);
+                    selEndX = Mth.clamp(selEndX, searchX + 2, searchX + searchWidth - 2);
+                    context.fill(selStartX, searchY + 3, selEndX, searchY + searchHeight - 3,
+                        AnimationHelper.multiplyAlpha(UITheme.TEXT_SELECTION_BG, alpha));
+                }
+            }
+            context.text(
+                textRenderer,
+                Component.literal(trimmed),
+                searchX + TEXT_PADDING,
+                textY,
+                AnimationHelper.multiplyAlpha(UITheme.TEXT_PRIMARY, alpha)
+            );
+        }
+
+        if (searchFocused) {
+            updateSearchCaretBlink();
+            if (searchCaretVisible) {
+                int caretIndex = Mth.clamp(searchCaretPosition, 0, displayText.length());
+                int caretX = searchX + TEXT_PADDING + textRenderer.width(displayText.substring(0, caretIndex));
+                caretX = Math.min(caretX, searchX + searchWidth - 2);
+                int caretTopY = searchY + 3;
+                int caretBottomY = searchY + searchHeight - 3;
+                UIStyleHelper.drawTextCaret(
+                    context,
+                    caretX,
+                    caretTopY,
+                    caretBottomY,
+                    searchX + searchWidth - 2,
+                    AnimationHelper.multiplyAlpha(UITheme.CARET_COLOR, alpha)
+                );
+            }
+        }
+        sectionY += SEARCH_HEIGHT + SECTION_SPACING;
+
+        listX = x;
+        listY = sectionY;
+        listWidth = width;
+        listHeight = LIST_ROW_HEIGHT * LIST_VISIBLE_ROWS + LIST_PADDING * 2;
+
+        context.fill(listX, listY, listX + listWidth, listY + listHeight, AnimationHelper.multiplyAlpha(UITheme.BACKGROUND_SIDEBAR, alpha));
+        DrawContextBridge.drawBorder(context, listX, listY, listWidth, listHeight, AnimationHelper.multiplyAlpha(UITheme.BORDER_DEFAULT, alpha));
+
+        int visibleRows = LIST_VISIBLE_ROWS;
+        int maxScroll = Math.max(0, filteredTrades.size() - visibleRows);
+        listScrollIndex = Mth.clamp(listScrollIndex, 0, maxScroll);
+
+        int rowTop = listY + LIST_PADDING;
+        for (int i = 0; i < visibleRows; i++) {
+            int tradeIndex = listScrollIndex + i;
+            if (tradeIndex >= filteredTrades.size()) {
+                break;
+            }
+            TradeEntry entry = filteredTrades.get(tradeIndex);
+            int rowY = rowTop + i * LIST_ROW_HEIGHT;
+            boolean hovered = mouseX >= listX && mouseX <= listX + listWidth &&
+                              mouseY >= rowY && mouseY <= rowY + LIST_ROW_HEIGHT;
+            boolean selected = entry.tradeKey.equals(selectedTradeKey);
+            int rowBg = selected ? UITheme.BACKGROUND_TERTIARY : UITheme.BACKGROUND_SIDEBAR;
+            if (hovered) {
+                rowBg = adjustColor(rowBg, 1.15f);
+            }
+            context.fill(listX + 1, rowY, listX + listWidth - 1, rowY + LIST_ROW_HEIGHT, AnimationHelper.multiplyAlpha(rowBg, alpha));
+            String rowText = trimDisplayString(textRenderer, entry.displayText, listWidth - TEXT_PADDING * 2);
+            context.text(
+                textRenderer,
+                Component.literal(rowText),
+                listX + TEXT_PADDING,
+                rowY + 5,
+                AnimationHelper.multiplyAlpha(UITheme.TEXT_PRIMARY, alpha)
+            );
+        }
+
+        if (filteredTrades.isEmpty()) {
+            String emptyMessage = Component.translatable("pathmind.villagerTrade.noTradesFound").getString();
+            if (selectedProfession != null && "open_gui".equals(selectedProfession.id)) {
+                emptyMessage = Component.translatable("pathmind.villagerTrade.openTradeScreen").getString();
+            }
+            int maxTextWidth = Math.max(0, listWidth - TEXT_PADDING * 2);
+            int emptyTextX = listX + TEXT_PADDING;
+            int emptyTextY = listY + LIST_PADDING + 4;
+            renderWrappedText(context, textRenderer, emptyMessage, emptyTextX, emptyTextY, maxTextWidth,
+                AnimationHelper.multiplyAlpha(UITheme.TEXT_TERTIARY, alpha));
+        }
+
+        DropdownLayoutHelper.drawScrollBar(
+            context,
+            listX,
+            listY,
+            listWidth,
+            listHeight,
+            filteredTrades.size(),
+            visibleRows,
+            listScrollIndex,
+            maxScroll,
+            AnimationHelper.multiplyAlpha(UITheme.BORDER_DEFAULT, alpha),
+            AnimationHelper.multiplyAlpha(UITheme.BORDER_HIGHLIGHT, alpha)
+        );
+
+        sectionY += listHeight + SECTION_SPACING;
+
+        String selectedText = buildSelectedTradeText();
+        context.text(
+            textRenderer,
+            Component.literal(selectedText),
+            x,
+            sectionY,
+            AnimationHelper.multiplyAlpha(UITheme.TEXT_SECONDARY, alpha)
+        );
+        sectionY += textRenderer.lineHeight;
+
+        if (dropdownOpen || dropdownAnimation.getValue() > 0.001f || dropdownAnimation.isAnimating()) {
+            renderDropdown(context, textRenderer, mouseX, mouseY, alpha);
+        }
+
+        lastRenderHeight = sectionY - y;
+        return lastRenderHeight;
+    }
+
+    public int getEstimatedHeight(int textHeight) {
+        int header = textHeight + 4 + DROPDOWN_HEIGHT + SECTION_SPACING;
+        int search = SEARCH_HEIGHT + SECTION_SPACING;
+        int list = LIST_ROW_HEIGHT * LIST_VISIBLE_ROWS + LIST_PADDING * 2 + SECTION_SPACING;
+        int footer = textHeight;
+        return header + search + list + footer;
+    }
+
+    public boolean mouseClicked(double mouseX, double mouseY) {
+        boolean buttonPressed = mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&
+                                mouseY >= dropdownY && mouseY <= dropdownY + dropdownHeight;
+        if (buttonPressed) {
+            dropdownOpen = !dropdownOpen;
+            if (dropdownOpen) {
+                dropdownScrollIndex = 0;
+            }
+            return true;
+        }
+
+        if (dropdownOpen) {
+            if (handleDropdownClick(mouseX, mouseY)) {
+                return true;
+            }
+            dropdownOpen = false;
+        }
+
+        boolean searchPressed = mouseX >= searchX && mouseX <= searchX + searchWidth &&
+                                mouseY >= searchY && mouseY <= searchY + searchHeight;
+        if (searchPressed) {
+            searchFocused = true;
+            updateSearchCaretFromClick(mouseX);
+            resetSearchCaretBlink();
+            return true;
+        }
+        searchFocused = false;
+
+        if (mouseX >= listX && mouseX <= listX + listWidth &&
+            mouseY >= listY && mouseY <= listY + listHeight) {
+            int relativeY = (int) (mouseY - (listY + LIST_PADDING));
+            int rowIndex = relativeY / LIST_ROW_HEIGHT;
+            int tradeIndex = listScrollIndex + rowIndex;
+            if (rowIndex >= 0 && rowIndex < LIST_VISIBLE_ROWS && tradeIndex >= 0 && tradeIndex < filteredTrades.size()) {
+                TradeEntry entry = filteredTrades.get(tradeIndex);
+                selectedTradeKey = entry.tradeKey;
+                if (listener != null) {
+                    listener.onTradeChanged(selectedTradeKey);
+                }
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public boolean mouseScrolled(double mouseX, double mouseY, double amount) {
+        if (dropdownOpen) {
+            if (handleDropdownScroll(mouseX, mouseY, amount)) {
+                return true;
+            }
+        }
+        boolean insideList = mouseX >= listX && mouseX <= listX + listWidth &&
+                             mouseY >= listY && mouseY <= listY + listHeight;
+        if (!insideList) {
+            return false;
+        }
+        int visibleRows = LIST_VISIBLE_ROWS;
+        int maxScroll = Math.max(0, filteredTrades.size() - visibleRows);
+        if (maxScroll == 0) {
+            return false;
+        }
+        listScrollIndex -= (int) Math.signum(amount);
+        listScrollIndex = Mth.clamp(listScrollIndex, 0, maxScroll);
+        return true;
+    }
+
+    public boolean keyPressed(int keyCode, int modifiers) {
+        if (!searchFocused) {
+            return false;
+        }
+        boolean shiftHeld = (modifiers & GLFW.GLFW_MOD_SHIFT) != 0;
+        boolean controlHeld = InputCompatibilityBridge.hasControlDown()
+            || (modifiers & (GLFW.GLFW_MOD_CONTROL | GLFW.GLFW_MOD_SUPER)) != 0;
+        switch (keyCode) {
+            case GLFW.GLFW_KEY_BACKSPACE:
+                if (!deleteSearchSelection()) {
+                    deleteCharBeforeCaret();
+                }
+                return true;
+            case GLFW.GLFW_KEY_DELETE:
+                if (!deleteSearchSelection()) {
+                    deleteCharAfterCaret();
+                }
+                return true;
+            case GLFW.GLFW_KEY_LEFT:
+                moveSearchCaret(searchCaretPosition - 1, shiftHeld);
+                return true;
+            case GLFW.GLFW_KEY_RIGHT:
+                moveSearchCaret(searchCaretPosition + 1, shiftHeld);
+                return true;
+            case GLFW.GLFW_KEY_HOME:
+                moveSearchCaret(0, shiftHeld);
+                return true;
+            case GLFW.GLFW_KEY_END:
+                moveSearchCaret(searchQuery.length(), shiftHeld);
+                return true;
+            case GLFW.GLFW_KEY_A:
+                if (controlHeld) {
+                    selectAllSearchText();
+                    return true;
+                }
+                break;
+            case GLFW.GLFW_KEY_C:
+                if (controlHeld) {
+                    copySearchSelection();
+                    return true;
+                }
+                break;
+            case GLFW.GLFW_KEY_X:
+                if (controlHeld) {
+                    copySearchSelection();
+                    deleteSearchSelection();
+                    return true;
+                }
+                break;
+            case GLFW.GLFW_KEY_V:
+                if (controlHeld) {
+                    String clip = getClipboardText();
+                    if (clip != null && !clip.isEmpty()) {
+                        insertSearchText(clip);
+                    }
+                    return true;
+                }
+                break;
+            default:
+                break;
+        }
+        return false;
+    }
+
+    public boolean charTyped(char chr, int modifiers) {
+        if (!searchFocused) {
+            return false;
+        }
+        if (chr >= 32 && chr != 127) {
+            insertSearchText(String.valueOf(chr));
+            return true;
+        }
+        return false;
+    }
+
+    public void closeDropdown() {
+        dropdownOpen = false;
+    }
+
+    public boolean isDropdownOpen() {
+        return dropdownOpen;
+    }
+
+    public int getLastRenderHeight() {
+        return lastRenderHeight;
+    }
+
+    private void loadProfessionOptions() {
+        professions.clear();
+        List<ProfessionOption> options = new ArrayList<>();
+        options.add(new ProfessionOption(OPEN_GUI_PROFESSION_ID, "Open Villager GUI", null, null));
+        for (Identifier id : BuiltInRegistries.VILLAGER_PROFESSION.keySet()) {
+            if (id == null) {
+                continue;
+            }
+            String path = id.getPath();
+            if ("none".equals(path)) {
+                continue;
+            }
+            String display = titleCase(path);
+            ResourceKey<VillagerProfession> key = ResourceKey.create(Registries.VILLAGER_PROFESSION, id);
+            VillagerProfession profession = BuiltInRegistries.VILLAGER_PROFESSION.getOptional(id).orElse(null);
+            Holder<VillagerProfession> entry = profession == null
+                ? null
+                : BuiltInRegistries.VILLAGER_PROFESSION.wrapAsHolder(profession);
+            if (entry == null) {
+                continue;
+            }
+            ResourceKey<VillagerProfession> resolvedKey = entry.unwrapKey().orElse(key);
+            options.add(new ProfessionOption(path, display, resolvedKey, entry));
+        }
+        options.sort(Comparator.comparing(option -> option.id, String.CASE_INSENSITIVE_ORDER));
+        options.sort((a, b) -> {
+            if (OPEN_GUI_PROFESSION_ID.equals(a.id)) {
+                return -1;
+            }
+            if (OPEN_GUI_PROFESSION_ID.equals(b.id)) {
+                return 1;
+            }
+            if ("librarian".equals(a.id)) {
+                return -1;
+            }
+            if ("librarian".equals(b.id)) {
+                return 1;
+            }
+            return 0;
+        });
+        professions.addAll(options);
+        if (!professions.isEmpty()) {
+            selectedProfession = professions.get(0);
+        }
+    }
+
+    private void rebuildTrades() {
+        trades.clear();
+        filteredTrades.clear();
+        listScrollIndex = 0;
+
+        if (selectedProfession == null || selectedProfession.entry == null) {
+            if (selectedProfession != null && OPEN_GUI_PROFESSION_ID.equals(selectedProfession.id)) {
+                if (loadTradesFromOpenMerchantScreen()) {
+                    updateFilteredTrades();
+                    if (!selectedTradeKey.isEmpty() && !matchesAnyTradeKey(selectedTradeKey)) {
+                        String fallbackKey = findTradeKeyBySellItem(selectedTradeKey);
+                        selectedTradeKey = fallbackKey != null ? fallbackKey : "";
+                    }
+                    if (selectedTradeKey.isEmpty()) {
+                        selectFirstTrade();
+                    }
+                }
+            }
+            return;
+        }
+
+        Minecraft client = Minecraft.getInstance();
+        if (client == null) {
+            return;
+        }
+        net.minecraft.server.level.ServerLevel serverWorld = client.getSingleplayerServer() != null
+            ? client.getSingleplayerServer().overworld()
+            : null;
+        for (VillagerTradeCatalog.Offer offer : VillagerTradeCatalog.load(
+            selectedProfession.id,
+            selectedProfession.key,
+            selectedProfession.entry,
+            serverWorld,
+            client.level
+        )) {
+            trades.add(TradeEntry.fromOffer(offer.level(), offer.firstBuy(), offer.secondBuy(), offer.sell()));
+        }
+
+        trades.sort(Comparator
+            .comparingInt((TradeEntry entry) -> entry.level)
+            .thenComparing(entry -> entry.displayText, String.CASE_INSENSITIVE_ORDER));
+
+        updateFilteredTrades();
+        if (!selectedTradeKey.isEmpty() && !matchesAnyTradeKey(selectedTradeKey)) {
+            String fallbackKey = findTradeKeyBySellItem(selectedTradeKey);
+            selectedTradeKey = fallbackKey != null ? fallbackKey : "";
+        }
+        if (selectedTradeKey.isEmpty()) {
+            selectFirstTrade();
+        }
+    }
+
+    private void updateSearchCaretBlink() {
+        long now = System.currentTimeMillis();
+        if (now - searchCaretBlinkLastToggle >= 500) {
+            searchCaretVisible = !searchCaretVisible;
+            searchCaretBlinkLastToggle = now;
+        }
+    }
+
+    private void resetSearchCaretBlink() {
+        searchCaretVisible = true;
+        searchCaretBlinkLastToggle = System.currentTimeMillis();
+    }
+
+    private void updateSearchCaretFromClick(double mouseX) {
+        if (lastTextRenderer == null) {
+            searchCaretPosition = searchQuery.length();
+            return;
+        }
+        int textX = searchX + TEXT_PADDING;
+        int relativeX = (int) mouseX - textX;
+        String value = searchQuery != null ? searchQuery : "";
+        if (relativeX <= 0) {
+            searchCaretPosition = 0;
+            clearSearchSelection();
+            return;
+        }
+        int totalWidth = lastTextRenderer.width(value);
+        if (relativeX >= totalWidth) {
+            searchCaretPosition = value.length();
+            clearSearchSelection();
+            return;
+        }
+        int bestIndex = 0;
+        int bestDiff = Integer.MAX_VALUE;
+        for (int i = 1; i <= value.length(); i++) {
+            int width = lastTextRenderer.width(value.substring(0, i));
+            int diff = Math.abs(relativeX - width);
+            if (diff < bestDiff) {
+                bestDiff = diff;
+                bestIndex = i;
+            }
+        }
+        searchCaretPosition = bestIndex;
+        clearSearchSelection();
+    }
+
+    private void moveSearchCaret(int newPosition, boolean shiftHeld) {
+        int clamped = Mth.clamp(newPosition, 0, searchQuery.length());
+        if (shiftHeld) {
+            if (!hasSearchSelection()) {
+                searchSelectionAnchor = searchCaretPosition;
+            }
+            searchSelectionStart = Math.min(searchSelectionAnchor, clamped);
+            searchSelectionEnd = Math.max(searchSelectionAnchor, clamped);
+        } else {
+            clearSearchSelection();
+        }
+        searchCaretPosition = clamped;
+        resetSearchCaretBlink();
+    }
+
+    private void selectAllSearchText() {
+        searchSelectionStart = 0;
+        searchSelectionEnd = searchQuery.length();
+        searchSelectionAnchor = 0;
+        searchCaretPosition = searchQuery.length();
+        resetSearchCaretBlink();
+    }
+
+    private boolean hasSearchSelection() {
+        return searchSelectionStart >= 0 && searchSelectionEnd >= 0 && searchSelectionStart != searchSelectionEnd;
+    }
+
+    private void clearSearchSelection() {
+        searchSelectionStart = -1;
+        searchSelectionEnd = -1;
+        searchSelectionAnchor = -1;
+    }
+
+    private boolean deleteSearchSelection() {
+        if (!hasSearchSelection()) {
+            return false;
+        }
+        int start = Math.min(searchSelectionStart, searchSelectionEnd);
+        int end = Math.max(searchSelectionStart, searchSelectionEnd);
+        String value = searchQuery != null ? searchQuery : "";
+        setSearchQuery(value.substring(0, start) + value.substring(end));
+        searchCaretPosition = start;
+        clearSearchSelection();
+        return true;
+    }
+
+    private void copySearchSelection() {
+        if (!hasSearchSelection()) {
+            return;
+        }
+        int start = Math.min(searchSelectionStart, searchSelectionEnd);
+        int end = Math.max(searchSelectionStart, searchSelectionEnd);
+        String value = searchQuery != null ? searchQuery : "";
+        if (start >= 0 && end <= value.length()) {
+            setClipboardText(value.substring(start, end));
+        }
+    }
+
+    private void deleteCharBeforeCaret() {
+        if (searchCaretPosition <= 0) {
+            return;
+        }
+        String value = searchQuery != null ? searchQuery : "";
+        int caret = Mth.clamp(searchCaretPosition, 0, value.length());
+        setSearchQuery(value.substring(0, caret - 1) + value.substring(caret));
+        searchCaretPosition = caret - 1;
+    }
+
+    private void deleteCharAfterCaret() {
+        String value = searchQuery != null ? searchQuery : "";
+        int caret = Mth.clamp(searchCaretPosition, 0, value.length());
+        if (caret >= value.length()) {
+            return;
+        }
+        setSearchQuery(value.substring(0, caret) + value.substring(caret + 1));
+    }
+
+    private void insertSearchText(String text) {
+        if (text == null || text.isEmpty()) {
+            return;
+        }
+        if (deleteSearchSelection()) {
+            // selection cleared in deleteSearchSelection
+        }
+        String value = searchQuery != null ? searchQuery : "";
+        int caret = Mth.clamp(searchCaretPosition, 0, value.length());
+        setSearchQuery(value.substring(0, caret) + text + value.substring(caret));
+        searchCaretPosition = caret + text.length();
+    }
+
+    private void setSearchQuery(String value) {
+        searchQuery = value != null ? value : "";
+        searchCaretPosition = Mth.clamp(searchCaretPosition, 0, searchQuery.length());
+        updateFilteredTrades();
+    }
+
+    private String getClipboardText() {
+        Minecraft client = Minecraft.getInstance();
+        if (client != null && client.keyboardHandler != null) {
+            return client.keyboardHandler.getClipboard();
+        }
+        return "";
+    }
+
+    private void setClipboardText(String text) {
+        Minecraft client = Minecraft.getInstance();
+        if (client != null && client.keyboardHandler != null) {
+            client.keyboardHandler.setClipboard(text == null ? "" : text);
+        }
+    }
+
+    private boolean loadTradesFromOpenMerchantScreen() {
+        List<TradeEntry> extracted = extractTradesFromOpenMerchantScreen();
+        if (extracted.isEmpty()) {
+            return false;
+        }
+        trades.clear();
+        trades.addAll(extracted);
+        return true;
+    }
+
+    private static List<TradeEntry> extractTradesFromOpenMerchantScreen() {
+        Minecraft client = Minecraft.getInstance();
+        if (client == null) {
+            return List.of();
+        }
+        if (!(client.gui.screen() instanceof net.minecraft.client.gui.screens.inventory.MerchantScreen merchantScreen)) {
+            return List.of();
+        }
+        net.minecraft.world.inventory.MerchantMenu screenHandler = merchantScreen.getMenu();
+        if (screenHandler == null) {
+            return List.of();
+        }
+        net.minecraft.world.item.trading.MerchantOffers offers = screenHandler.getOffers();
+        if (offers == null || offers.isEmpty()) {
+            return List.of();
+        }
+        List<TradeEntry> extracted = new ArrayList<>();
+        for (net.minecraft.world.item.trading.MerchantOffer offer : offers) {
+            if (offer == null) {
+                continue;
+            }
+            ItemStack sell = offer.getResult();
+            if (sell == null || sell.isEmpty()) {
+                continue;
+            }
+            ItemStack buyFirst = offer.getCostA();
+            ItemStack buySecond = offer.getCostB();
+            extracted.add(TradeEntry.fromOffer(1, buyFirst, buySecond, sell));
+        }
+        return extracted;
+    }
+
+    private void updateFilteredTrades() {
+        filteredTrades.clear();
+        String query = searchQuery.trim().toLowerCase(Locale.ROOT);
+        if (query.isEmpty()) {
+            filteredTrades.addAll(trades);
+        } else {
+            for (TradeEntry entry : trades) {
+                if (entry.searchText.contains(query)) {
+                    filteredTrades.add(entry);
+                }
+            }
+        }
+        listScrollIndex = 0;
+    }
+
+    private boolean matchesAnyTradeKey(String tradeKey) {
+        if (tradeKey == null || tradeKey.isEmpty()) {
+            return false;
+        }
+        for (TradeEntry entry : trades) {
+            if (entry.tradeKey.equals(tradeKey)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void selectFirstTrade() {
+        if (!trades.isEmpty()) {
+            selectedTradeKey = trades.get(0).tradeKey;
+            if (listener != null) {
+                listener.onTradeChanged(selectedTradeKey);
+            }
+        }
+    }
+
+    private String findTradeKeyBySellItem(String sellItemId) {
+        if (sellItemId == null || sellItemId.isEmpty()) {
+            return null;
+        }
+        for (TradeEntry entry : trades) {
+            if (entry.sellItemId.equals(sellItemId)) {
+                return entry.tradeKey;
+            }
+        }
+        return null;
+    }
+
+    private void renderDropdown(GuiGraphicsExtractor context, Font textRenderer, int mouseX, int mouseY, float alpha) {
+        float animProgress = DropdownLayoutHelper.updateOpenAnimation(dropdownAnimation, dropdownOpen);
+        if (animProgress <= 0.001f) {
+            return;
+        }
+        int dropdownX = this.dropdownX;
+        int dropdownY = this.dropdownY + dropdownHeight;
+        int dropdownWidth = this.dropdownWidth;
+        int totalOptions = professions.size();
+        int screenHeight = Minecraft.getInstance().getWindow().getGuiScaledHeight();
+        DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
+            totalOptions,
+            DROPDOWN_OPTION_HEIGHT,
+            DROPDOWN_MAX_VISIBLE,
+            dropdownY,
+            screenHeight
+        );
+        int visibleCount = layout.visibleCount;
+        dropdownScrollIndex = Math.max(0, Math.min(dropdownScrollIndex, layout.maxScrollOffset));
+        int dropdownHeight = layout.height;
+
+        DropdownLayoutHelper.enableRevealScissor(context, dropdownX, dropdownY, dropdownWidth, dropdownHeight, animProgress, 1);
+        float dropdownAlpha = alpha * animProgress;
+        context.fill(dropdownX, dropdownY, dropdownX + dropdownWidth, dropdownY + dropdownHeight, AnimationHelper.multiplyAlpha(UITheme.BACKGROUND_SIDEBAR, dropdownAlpha));
+        DrawContextBridge.drawBorder(context, dropdownX, dropdownY, dropdownWidth, dropdownHeight, AnimationHelper.multiplyAlpha(UITheme.BORDER_DEFAULT, dropdownAlpha));
+        context.horizontalLine(dropdownX, dropdownX + dropdownWidth, dropdownY + dropdownHeight, AnimationHelper.multiplyAlpha(UITheme.BORDER_DEFAULT, dropdownAlpha));
+
+        float smoothScrollOffset = DropdownLayoutHelper.updateSmoothScroll(dropdownSmoothScroll, dropdownScrollIndex, layout.maxScrollOffset);
+        DropdownLayoutHelper.ScrollWindow scrollWindow = DropdownLayoutHelper.getSmoothScrollWindow(
+            smoothScrollOffset,
+            visibleCount,
+            totalOptions,
+            DROPDOWN_OPTION_HEIGHT
+        );
+
+        dropdownHoverIndex = -1;
+        int rowRight = DropdownLayoutHelper.getScrollbarHitLeft(dropdownX, dropdownWidth, layout.maxScrollOffset);
+        for (int optionIndex = scrollWindow.firstIndex; optionIndex < scrollWindow.endIndex; optionIndex++) {
+            ProfessionOption option = professions.get(optionIndex);
+            int optionTop = dropdownY + (optionIndex - scrollWindow.firstIndex) * DROPDOWN_OPTION_HEIGHT + scrollWindow.pixelOffset;
+            boolean hovered = animProgress >= 1f &&
+                              mouseX >= dropdownX && mouseX < rowRight &&
+                              mouseY >= optionTop && mouseY <= optionTop + DROPDOWN_OPTION_HEIGHT;
+            if (hovered) {
+                dropdownHoverIndex = optionIndex;
+            }
+            int bg = option == selectedProfession ? UITheme.BACKGROUND_TERTIARY : UITheme.BACKGROUND_SIDEBAR;
+            if (hovered) {
+                bg = adjustColor(bg, 1.2f);
+            }
+            context.fill(dropdownX + 1, optionTop, dropdownX + dropdownWidth - 1, optionTop + DROPDOWN_OPTION_HEIGHT, AnimationHelper.multiplyAlpha(bg, dropdownAlpha));
+            context.text(
+                textRenderer,
+                Component.literal(option.displayName),
+                dropdownX + TEXT_PADDING,
+                optionTop + 5,
+                AnimationHelper.multiplyAlpha(UITheme.TEXT_PRIMARY, dropdownAlpha)
+            );
+        }
+
+        DropdownLayoutHelper.drawScrollBar(
+            context,
+            dropdownX,
+            dropdownY,
+            dropdownWidth,
+            dropdownHeight,
+            totalOptions,
+            layout.visibleCount,
+            Math.round(smoothScrollOffset),
+            layout.maxScrollOffset,
+            AnimationHelper.multiplyAlpha(UITheme.BORDER_DEFAULT, dropdownAlpha),
+            AnimationHelper.multiplyAlpha(UITheme.BORDER_HIGHLIGHT, dropdownAlpha)
+        );
+        DropdownLayoutHelper.drawOutline(
+            context,
+            dropdownX,
+            dropdownY,
+            dropdownWidth,
+            dropdownHeight,
+            AnimationHelper.multiplyAlpha(UITheme.BORDER_DEFAULT, dropdownAlpha)
+        );
+        context.disableScissor();
+    }
+
+    private boolean handleDropdownClick(double mouseX, double mouseY) {
+        int dropdownX = this.dropdownX;
+        int dropdownY = this.dropdownY + dropdownHeight;
+        int dropdownWidth = this.dropdownWidth;
+        int totalOptions = professions.size();
+        int screenHeight = Minecraft.getInstance().getWindow().getGuiScaledHeight();
+        DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
+            totalOptions,
+            DROPDOWN_OPTION_HEIGHT,
+            DROPDOWN_MAX_VISIBLE,
+            dropdownY,
+            screenHeight
+        );
+        int visibleCount = layout.visibleCount;
+        int dropdownHeight = layout.height;
+
+        boolean inside = mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&
+                         mouseY >= dropdownY && mouseY <= dropdownY + dropdownHeight;
+        if (!inside) {
+            dropdownOpen = false;
+            return false;
+        }
+
+        if (DropdownLayoutHelper.isScrollbarHit(mouseX, mouseY, dropdownX, dropdownY, dropdownWidth,
+            dropdownHeight, layout.maxScrollOffset)) {
+            dropdownScrollIndex = DropdownLayoutHelper.scrollOffsetFromMouseY(mouseY, dropdownY, dropdownHeight,
+                layout.visibleCount, totalOptions, layout.maxScrollOffset);
+            return true;
+        }
+
+        int rowRight = DropdownLayoutHelper.getScrollbarHitLeft(dropdownX, dropdownWidth, layout.maxScrollOffset);
+        if (mouseX >= rowRight) {
+            return true;
+        }
+
+        int optionIndex = (int) ((mouseY - dropdownY) / DROPDOWN_OPTION_HEIGHT);
+        int actualIndex = dropdownScrollIndex + optionIndex;
+        if (actualIndex >= 0 && actualIndex < professions.size()) {
+            ProfessionOption selected = professions.get(actualIndex);
+            if (selected != selectedProfession) {
+                selectedProfession = selected;
+                if (listener != null) {
+                    listener.onProfessionChanged(selected.id);
+                }
+                rebuildTrades();
+                if (listener != null) {
+                    listener.requestLayoutRefresh();
+                }
+            }
+        }
+        dropdownOpen = false;
+        return true;
+    }
+
+    private boolean handleDropdownScroll(double mouseX, double mouseY, double amount) {
+        int dropdownX = this.dropdownX;
+        int dropdownY = this.dropdownY + dropdownHeight;
+        int dropdownWidth = this.dropdownWidth;
+        int totalOptions = professions.size();
+        int screenHeight = Minecraft.getInstance().getWindow().getGuiScaledHeight();
+        DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
+            totalOptions,
+            DROPDOWN_OPTION_HEIGHT,
+            DROPDOWN_MAX_VISIBLE,
+            dropdownY,
+            screenHeight
+        );
+        int dropdownHeight = layout.height;
+        boolean inside = mouseX >= dropdownX && mouseX <= dropdownX + dropdownWidth &&
+                         mouseY >= dropdownY && mouseY <= dropdownY + dropdownHeight;
+        if (!inside) {
+            return false;
+        }
+        int maxIndex = layout.maxScrollOffset;
+        if (maxIndex == 0) {
+            return false;
+        }
+        dropdownScrollIndex -= (int) Math.signum(amount);
+        dropdownScrollIndex = Math.max(0, Math.min(maxIndex, dropdownScrollIndex));
+        return true;
+    }
+
+    private String buildSelectedTradeText() {
+        if (selectedTradeKey == null || selectedTradeKey.isEmpty()) {
+            return "Selected: none";
+        }
+        for (TradeEntry entry : trades) {
+            if (entry.tradeKey.equals(selectedTradeKey)) {
+                return "Selected: " + entry.sellDisplayName;
+            }
+        }
+        return "Selected: " + selectedTradeKey;
+    }
+
+    private String trimDisplayString(Font renderer, String text, int availableWidth) {
+        return TextRenderUtil.trimWithEllipsis(renderer, text, availableWidth);
+    }
+
+    private void renderWrappedText(GuiGraphicsExtractor context, Font textRenderer, String message,
+                                   int x, int y, int maxWidth, int color) {
+        if (message == null || message.isEmpty() || maxWidth <= 0) {
+            return;
+        }
+        List<net.minecraft.util.FormattedCharSequence> lines = textRenderer.split(Component.literal(message), maxWidth);
+        if (lines == null || lines.isEmpty()) {
+            return;
+        }
+        int lineY = y;
+        for (int i = 0; i < lines.size(); i++) {
+            context.text(textRenderer, lines.get(i), x, lineY, color);
+            lineY += textRenderer.lineHeight + 2;
+        }
+    }
+
+    private String normalizeId(String raw) {
+        if (raw == null || raw.isEmpty()) {
+            return "";
+        }
+        String trimmed = raw.trim().toLowerCase(Locale.ROOT);
+        if (trimmed.contains(":")) {
+            Identifier id = Identifier.tryParse(trimmed);
+            if (id != null) {
+                return id.getPath();
+            }
+        }
+        return trimmed;
+    }
+
+    private String titleCase(String value) {
+        if (value == null || value.isEmpty()) {
+            return "";
+        }
+        String[] parts = value.split("_");
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < parts.length; i++) {
+            String part = parts[i];
+            if (part.isEmpty()) {
+                continue;
+            }
+            if (builder.length() > 0) {
+                builder.append(' ');
+            }
+            builder.append(Character.toUpperCase(part.charAt(0)));
+            if (part.length() > 1) {
+                builder.append(part.substring(1));
+            }
+        }
+        return builder.toString();
+    }
+
+    private int adjustColor(int color, float factor) {
+        int a = (color >> 24) & 0xFF;
+        int r = (color >> 16) & 0xFF;
+        int g = (color >> 8) & 0xFF;
+        int b = color & 0xFF;
+        r = Math.min(255, (int) (r * factor));
+        g = Math.min(255, (int) (g * factor));
+        b = Math.min(255, (int) (b * factor));
+        return (a << 24) | (r << 16) | (g << 8) | b;
+    }
+
+    private static final class ProfessionOption {
+        private final String id;
+        private final String displayName;
+        private final ResourceKey<VillagerProfession> key;
+        private final Holder<VillagerProfession> entry;
+
+        private ProfessionOption(String id, String displayName, ResourceKey<VillagerProfession> key,
+                                 Holder<VillagerProfession> entry) {
+            this.id = id;
+            this.displayName = displayName;
+            this.key = key;
+            this.entry = entry;
+        }
+    }
+
+    private static final class TradeEntry {
+        private final int level;
+        private final String displayText;
+        private final String searchText;
+        private final String tradeKey;
+        private final String sellItemId;
+        private final String sellDisplayName;
+
+        private TradeEntry(int level, String displayText, String searchText, String tradeKey,
+                           String sellItemId, String sellDisplayName) {
+            this.level = level;
+            this.displayText = displayText;
+            this.searchText = searchText;
+            this.tradeKey = tradeKey;
+            this.sellItemId = sellItemId;
+            this.sellDisplayName = sellDisplayName;
+        }
+
+        private static TradeEntry fromOffer(int level, ItemStack firstBuy, ItemStack secondBuy, ItemStack sell) {
+            String firstText = formatStack(firstBuy);
+            String secondText = formatStack(secondBuy);
+            String sellText = formatStack(sell);
+            String display = "Lvl " + level + ": " + firstText;
+            if (!secondText.isEmpty()) {
+                display += " + " + secondText;
+            }
+            display += " -> " + sellText;
+            String search = buildSearch(firstBuy) + " " + buildSearch(secondBuy) + " " + buildSearch(sell);
+            String sellId = getItemId(sell);
+            String sellName = sell != null ? sell.getHoverName().getString() : sellId;
+            String tradeKey = buildTradeKey(firstBuy, secondBuy, sell);
+            return new TradeEntry(level, display, search.toLowerCase(Locale.ROOT), tradeKey, sellId, sellName);
+        }
+
+        private static String formatStack(ItemStack stack) {
+            if (stack == null || stack.isEmpty()) {
+                return "";
+            }
+            String name = stack.getHoverName().getString();
+            int count = stack.getCount();
+            if (count > 1) {
+                return count + "x " + name;
+            }
+            return name;
+        }
+
+        private static String buildSearch(ItemStack stack) {
+            if (stack == null || stack.isEmpty()) {
+                return "";
+            }
+            StringBuilder builder = new StringBuilder();
+            builder.append(stack.getHoverName().getString());
+            String id = getItemId(stack);
+            if (!id.isEmpty()) {
+                builder.append(' ').append(id);
+            }
+            return builder.toString();
+        }
+
+        private static String getItemId(ItemStack stack) {
+            if (stack == null || stack.isEmpty()) {
+                return "";
+            }
+            Identifier id = BuiltInRegistries.ITEM.getKey(stack.getItem());
+            return id != null ? id.toString() : "";
+        }
+
+        private static String buildTradeKey(ItemStack firstBuy, ItemStack secondBuy, ItemStack sell) {
+            String first = buildKeyPart(firstBuy);
+            String second = buildKeyPart(secondBuy);
+            String sellPart = buildKeyPart(sell);
+            return first + "|" + second + "|" + sellPart;
+        }
+
+        private static String buildKeyPart(ItemStack stack) {
+            if (stack == null || stack.isEmpty()) {
+                return "none@0";
+            }
+            Identifier id = BuiltInRegistries.ITEM.getKey(stack.getItem());
+            String itemId = id != null ? id.toString() : "unknown";
+            return itemId + "@" + stack.getCount();
+        }
+    }
+}

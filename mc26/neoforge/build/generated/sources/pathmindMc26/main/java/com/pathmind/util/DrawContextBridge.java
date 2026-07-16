@@ -1,0 +1,142 @@
+package com.pathmind.util;
+
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+
+/**
+ * Compatibility helpers for DrawContext border rendering across 1.21.x.
+ */
+public final class DrawContextBridge {
+    private static final java.lang.reflect.Method CREATE_NEW_ROOT_LAYER = resolveNoArgMethod("createNewRootLayer");
+    private static final java.lang.reflect.Method FLUSH_DRAW = resolveNoArgMethod("draw");
+    private static final Object GUI_OVERLAY_LAYER = resolveGuiOverlayLayer();
+    private static final java.lang.reflect.Method FILL_LAYER = resolveFillLayerMethod();
+
+    private DrawContextBridge() {
+    }
+
+    public static void drawBorder(GuiGraphicsExtractor context, int x, int y, int width, int height, int color) {
+        if (context == null || width <= 0 || height <= 0) {
+            return;
+        }
+        drawBorderInLayer(context, x, y, width, height, color);
+    }
+
+    public static void drawBorderInLayer(GuiGraphicsExtractor context, int x, int y, int width, int height, int color) {
+        if (context == null || width <= 0 || height <= 0) {
+            return;
+        }
+
+        int right = x + width - 1;
+        int bottom = y + height - 1;
+        context.horizontalLine(x, right, y, color);
+        context.horizontalLine(x, right, bottom, color);
+        context.verticalLine(x, y, bottom, color);
+        context.verticalLine(right, y, bottom, color);
+    }
+
+    public static void fillOverlay(GuiGraphicsExtractor context, int x1, int y1, int x2, int y2, int color) {
+        if (context == null) {
+            return;
+        }
+        if (FILL_LAYER != null && GUI_OVERLAY_LAYER != null) {
+            try {
+                FILL_LAYER.invoke(context, GUI_OVERLAY_LAYER, x1, y1, x2, y2, color);
+                return;
+            } catch (ReflectiveOperationException | RuntimeException ignored) {
+                // Fall back to the default fill below.
+            }
+        }
+        context.fill(x1, y1, x2, y2, color);
+    }
+
+    public static void startNewRootLayer(GuiGraphicsExtractor context) {
+        if (context == null) {
+            return;
+        }
+        if (CREATE_NEW_ROOT_LAYER != null) {
+            try {
+                CREATE_NEW_ROOT_LAYER.invoke(context);
+                return;
+            } catch (ReflectiveOperationException | RuntimeException ignored) {
+            }
+        }
+        flush(context);
+    }
+
+    public static void flush(GuiGraphicsExtractor context) {
+        if (context == null || FLUSH_DRAW == null) {
+            return;
+        }
+        try {
+            FLUSH_DRAW.invoke(context);
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+        }
+    }
+
+    /** Ends a scissor region after submitting any buffered GUI work that belongs inside it. */
+    public static void disableScissor(GuiGraphicsExtractor context) {
+        if (context == null) {
+            return;
+        }
+        flush(context);
+        context.disableScissor();
+    }
+
+    private static java.lang.reflect.Method resolveNoArgMethod(String name) {
+        try {
+            java.lang.reflect.Method method = GuiGraphicsExtractor.class.getMethod(name);
+            method.setAccessible(true);
+            return method;
+        } catch (NoSuchMethodException ignored) {
+            return null;
+        }
+    }
+
+    private static java.lang.reflect.Method resolveFillLayerMethod() {
+        Class<?> renderLayerClass = tryLoadClass("net.minecraft.client.render.RenderLayer", "net.minecraft.class_1921");
+        if (renderLayerClass == null) {
+            return null;
+        }
+        for (java.lang.reflect.Method method : GuiGraphicsExtractor.class.getMethods()) {
+            if (!"fill".equals(method.getName())) {
+                continue;
+            }
+            Class<?>[] params = method.getParameterTypes();
+            if (params.length == 6 && params[0].isAssignableFrom(renderLayerClass)) {
+                method.setAccessible(true);
+                return method;
+            }
+        }
+        return null;
+    }
+
+    private static Object resolveGuiOverlayLayer() {
+        Class<?> renderLayerClass = tryLoadClass("net.minecraft.client.render.RenderLayer", "net.minecraft.class_1921");
+        if (renderLayerClass == null) {
+            return null;
+        }
+        String[] candidateNames = {"getGuiOverlay", "getGui"};
+        for (String name : candidateNames) {
+            try {
+                java.lang.reflect.Method method = renderLayerClass.getMethod(name);
+                if (!renderLayerClass.isAssignableFrom(method.getReturnType())) {
+                    continue;
+                }
+                method.setAccessible(true);
+                return method.invoke(null);
+            } catch (ReflectiveOperationException ignored) {
+            }
+        }
+        return null;
+    }
+
+    private static Class<?> tryLoadClass(String... names) {
+        for (String name : names) {
+            try {
+                return Class.forName(name);
+            } catch (ClassNotFoundException ignored) {
+            }
+        }
+        return null;
+    }
+}

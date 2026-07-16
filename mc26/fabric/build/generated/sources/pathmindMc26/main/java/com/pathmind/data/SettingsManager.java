@@ -1,0 +1,277 @@
+package com.pathmind.data;
+
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.pathmind.util.LoaderMetadata;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import net.minecraft.client.Minecraft;
+
+/**
+ * Utility class that manages Pathmind user settings.
+ * Settings are persisted to ~/.minecraft/pathmind/settings.json
+ */
+public final class SettingsManager {
+    private static final String BASE_DIRECTORY_NAME = "pathmind";
+    private static final String SETTINGS_FILE_NAME = "settings.json";
+    private static final int NODE_DELAY_MIN_MS = 1;
+    private static final int NODE_DELAY_MAX_MS = 500;
+    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+    private static volatile Settings cachedSettings;
+
+    private SettingsManager() {
+    }
+
+    /**
+     * Settings data class containing all user preferences.
+     */
+    public static class Settings {
+        public String language = "en_us";
+        public String accentColor = "sky";
+        public Boolean showGrid = true;
+        public Boolean lowDetailMode = false;
+        public Boolean renderConnectionsOnTop = false;
+        public Boolean showTooltips = true;
+        public Boolean showChatErrors = true;
+        public Boolean showHudOverlays = true;
+        public Boolean showProfilerOverlay = false;
+        public Boolean skipPresetDeleteConfirm = false;
+        public Boolean skipMarketplaceDeleteConfirm = false;
+        public Boolean skipMarketplaceUpdateConfirm = false;
+        public Boolean firstRunTutorialCompleted = false;
+        public Integer nodeDelayMs = 150;
+        public Boolean gotoAllowBreakWhileExecuting = false;
+        public Boolean gotoAllowPlaceWhileExecuting = false;
+        public Boolean keyPressedActivatesInGuis = true;
+        public Boolean createListUseCustomRadius = false;
+        public Integer createListRadius = 64;
+        public Map<String, String> presetGroupColors = new LinkedHashMap<>();
+        public Map<String, Boolean> presetGroupsExpanded = new LinkedHashMap<>();
+        public java.util.List<String> presetGroupOrder = new java.util.ArrayList<>();
+
+        public Settings() {
+        }
+
+        public Settings(String language, String accentColor, boolean showGrid, boolean showTooltips) {
+            this.language = language;
+            this.accentColor = accentColor;
+            this.showGrid = showGrid;
+            this.showTooltips = showTooltips;
+        }
+
+        public Settings(String language, String accentColor, boolean showGrid, boolean showTooltips,
+                        boolean showChatErrors, int nodeDelayMs) {
+            this.language = language;
+            this.accentColor = accentColor;
+            this.showGrid = showGrid;
+            this.showTooltips = showTooltips;
+            this.showChatErrors = showChatErrors;
+            this.nodeDelayMs = nodeDelayMs;
+        }
+    }
+
+    /**
+     * Ensure the base directory exists.
+     */
+    public static void initialize() {
+        try {
+            ensureDirectoryExists(getBaseDirectory());
+        } catch (IOException e) {
+            System.err.println("Failed to initialize settings directory: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Load settings from disk. If the file doesn't exist, returns default settings.
+     */
+    public static Settings load() {
+        initialize();
+        Path settingsFile = getSettingsPath();
+
+        if (Files.exists(settingsFile)) {
+            try {
+                String json = Files.readString(settingsFile, StandardCharsets.UTF_8);
+                Settings settings = GSON.fromJson(json, Settings.class);
+                if (settings != null) {
+                    cachedSettings = normalizeSettings(settings);
+                    return cachedSettings;
+                }
+            } catch (IOException e) {
+                System.err.println("Failed to read settings file: " + e.getMessage());
+            } catch (Exception e) {
+                System.err.println("Failed to parse settings file: " + e.getMessage());
+            }
+        }
+
+        // Return default settings if file doesn't exist or failed to load
+        cachedSettings = normalizeSettings(new Settings());
+        return cachedSettings;
+    }
+
+    /**
+     * Save settings to disk.
+     */
+    public static void save(Settings settings) {
+        if (settings == null) {
+            return;
+        }
+
+        initialize();
+        try {
+            Settings normalized = normalizeSettings(settings);
+            cachedSettings = normalized;
+            String json = GSON.toJson(normalized);
+            Files.writeString(getSettingsPath(), json, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            System.err.println("Failed to save settings: " + e.getMessage());
+        }
+    }
+
+    public static Settings getCurrent() {
+        Settings cached = cachedSettings;
+        if (cached != null) {
+            return cached;
+        }
+        return load();
+    }
+
+    public static boolean shouldShowChatErrors() {
+        Settings settings = getCurrent();
+        return settings.showChatErrors == null || settings.showChatErrors;
+    }
+
+    public static long getNodeDelayMs() {
+        Settings settings = getCurrent();
+        int delay = settings.nodeDelayMs == null ? 150 : settings.nodeDelayMs;
+        if (delay < NODE_DELAY_MIN_MS) {
+            delay = NODE_DELAY_MIN_MS;
+        }
+        if (delay > NODE_DELAY_MAX_MS) {
+            delay = NODE_DELAY_MAX_MS;
+        }
+        return delay;
+    }
+
+    /**
+     * Get the path to the settings file.
+     */
+    private static Path getSettingsPath() {
+        return getBaseDirectory().resolve(SETTINGS_FILE_NAME);
+    }
+
+    /**
+     * Ensure the Pathmind directory exists inside the Minecraft directory.
+     */
+    private static Path getBaseDirectory() {
+        Path minecraftDirectory = getMinecraftDirectory();
+        return minecraftDirectory.resolve(BASE_DIRECTORY_NAME);
+    }
+
+    private static Path getMinecraftDirectory() {
+        Minecraft client = Minecraft.getInstance();
+        if (client != null && client.gameDirectory != null) {
+            return client.gameDirectory.toPath();
+        }
+        try {
+            Path gameFolder = LoaderMetadata.getGameFolder();
+            if (gameFolder != null) {
+                return gameFolder;
+            }
+        } catch (Throwable ignored) {
+            // Unit tests can exercise settings-backed node initialization before the platform is ready.
+        }
+        return Paths.get(System.getProperty("user.home"), ".minecraft");
+    }
+
+    private static void ensureDirectoryExists(Path directory) throws IOException {
+        if (!Files.exists(directory)) {
+            Files.createDirectories(directory);
+        }
+    }
+
+    private static Settings normalizeSettings(Settings settings) {
+        if (settings == null) {
+            return new Settings();
+        }
+        if (settings.language == null || settings.language.isEmpty()) {
+            settings.language = "en_us";
+        }
+        if (settings.accentColor == null || settings.accentColor.isEmpty()) {
+            settings.accentColor = "sky";
+        }
+        if (settings.showGrid == null) {
+            settings.showGrid = true;
+        }
+        if (settings.lowDetailMode == null) {
+            settings.lowDetailMode = false;
+        }
+        if (settings.renderConnectionsOnTop == null) {
+            settings.renderConnectionsOnTop = false;
+        }
+        if (settings.showTooltips == null) {
+            settings.showTooltips = true;
+        }
+        if (settings.showChatErrors == null) {
+            settings.showChatErrors = true;
+        }
+        if (settings.showHudOverlays == null) {
+            settings.showHudOverlays = true;
+        }
+        if (settings.showProfilerOverlay == null) {
+            settings.showProfilerOverlay = false;
+        }
+        if (settings.skipPresetDeleteConfirm == null) {
+            settings.skipPresetDeleteConfirm = false;
+        }
+        if (settings.skipMarketplaceDeleteConfirm == null) {
+            settings.skipMarketplaceDeleteConfirm = false;
+        }
+        if (settings.skipMarketplaceUpdateConfirm == null) {
+            settings.skipMarketplaceUpdateConfirm = false;
+        }
+        if (settings.firstRunTutorialCompleted == null) {
+            settings.firstRunTutorialCompleted = false;
+        }
+        if (settings.nodeDelayMs == null) {
+            settings.nodeDelayMs = 150;
+        } else if (settings.nodeDelayMs < NODE_DELAY_MIN_MS) {
+            settings.nodeDelayMs = NODE_DELAY_MIN_MS;
+        } else if (settings.nodeDelayMs > NODE_DELAY_MAX_MS) {
+            settings.nodeDelayMs = NODE_DELAY_MAX_MS;
+        }
+        if (settings.gotoAllowBreakWhileExecuting == null) {
+            settings.gotoAllowBreakWhileExecuting = false;
+        }
+        if (settings.gotoAllowPlaceWhileExecuting == null) {
+            settings.gotoAllowPlaceWhileExecuting = false;
+        }
+        if (settings.keyPressedActivatesInGuis == null) {
+            settings.keyPressedActivatesInGuis = true;
+        }
+        if (settings.createListUseCustomRadius == null) {
+            settings.createListUseCustomRadius = false;
+        }
+        if (settings.createListRadius == null) {
+            settings.createListRadius = 64;
+        } else if (settings.createListRadius < 1) {
+            settings.createListRadius = 1;
+        } else if (settings.createListRadius > 512) {
+            settings.createListRadius = 512;
+        }
+        if (settings.presetGroupColors == null) {
+            settings.presetGroupColors = new LinkedHashMap<>();
+        }
+        if (settings.presetGroupsExpanded == null) {
+            settings.presetGroupsExpanded = new LinkedHashMap<>();
+        }
+        if (settings.presetGroupOrder == null) {
+            settings.presetGroupOrder = new java.util.ArrayList<>();
+        }
+        return settings;
+    }
+}

@@ -1,0 +1,26 @@
+--------------------------------------------------------------------------------
+
+Command-Line:
+ - /opt/homebrew/Cellar/openjdk@25/25.0.3/libexec/openjdk.jdk/Contents/Home/bin/java
+ - -jar
+ - /Users/ryder/.gradle/caches/modules-2/files-2.1/net.neoforged.installertools/installertools/4.0.16/a1c5664a32c3ada2a94870f81d446d27788a488c/installertools-4.0.16-fatjar.jar
+ - --task
+ - PROCESS_MINECRAFT_JAR
+ - --input
+ - /Users/ryder/.gradle/caches/neoformruntime/artifacts/minecraft_26.2_client.jar
+ - --input
+ - /Users/ryder/.gradle/caches/neoformruntime/artifacts/minecraft_26.2_server.jar
+ - --output
+ - ./output.jar
+ - --no-mod-manifest
+ - --no-dist-annotations
+--------------------------------------------------------------------------------
+
+Task: PROCESS_MINECRAFT_JAR
+Using common thread-pool with parallelism 9
+load minecraft_26.2_client.jar [359ms]
+load minecraft_26.2_server.jar [434ms]
+Merged 30451 entries (14473 client-only, 0 server-only)
+merge jars [8ms]
+write output file [1465ms]
+overall work [1930ms]

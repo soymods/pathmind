@@ -1,0 +1,560 @@
+package com.pathmind.screen;
+
+import com.pathmind.PathmindCommon;
+import com.pathmind.util.RenderStateBridge;
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Function;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.resources.Identifier;
+
+/**
+ * Draws un-atlased GUI textures across the wildly different 1.21.x renderer APIs.
+ */
+final class GuiTextureRenderer {
+    private static final RendererBackend BACKEND = detectBackend();
+    private static final AtomicBoolean FAILED_ONCE = new AtomicBoolean(false);
+
+    private GuiTextureRenderer() {
+    }
+
+    static boolean isAvailable() {
+        return BACKEND != RendererBackend.NO_OP;
+    }
+
+    static void drawIcon(GuiGraphicsExtractor context, Identifier texture, int x, int y, int size, int color) {
+        drawTexture(context, List.of(texture), x, y, size, size, color);
+    }
+
+    static boolean tryDrawIcon(GuiGraphicsExtractor context, Identifier texture, int x, int y, int size, int color) {
+        return tryDrawTexture(context, List.of(texture), x, y, size, size, color);
+    }
+
+    static void drawIcon(GuiGraphicsExtractor context, List<Identifier> textures, int x, int y, int size, int color) {
+        drawTexture(context, textures, x, y, size, size, color);
+    }
+
+    static void drawTexture(GuiGraphicsExtractor context, Identifier texture, int x, int y, int width, int height, int color) {
+        drawTexture(context, List.of(texture), x, y, width, height, color);
+    }
+
+    static void drawTexture(GuiGraphicsExtractor context, List<Identifier> textures, int x, int y, int width, int height, int color) {
+        tryDrawTexture(context, textures, x, y, width, height, color);
+    }
+
+    static boolean tryDrawTexture(GuiGraphicsExtractor context, List<Identifier> textures, int x, int y, int width, int height, int color) {
+        try {
+            RuntimeException lastException = null;
+            for (Identifier texture : textures) {
+                try {
+                    BACKEND.draw(context, texture, x, y, width, height, color);
+                    return BACKEND != RendererBackend.NO_OP;
+                } catch (RuntimeException exception) {
+                    lastException = exception;
+                }
+            }
+            if (lastException != null) {
+                throw lastException;
+            }
+        } catch (RuntimeException exception) {
+            if (FAILED_ONCE.compareAndSet(false, true)) {
+                PathmindCommon.LOGGER.error("Failed to render Pathmind icon. Rendering will be skipped.", exception);
+            }
+        }
+        return false;
+    }
+
+    private static RendererBackend detectBackend() {
+        RendererBackend backend = DirectBackend.tryCreate();
+        if (backend != null) {
+            PathmindCommon.LOGGER.debug("Using direct DrawContext GUI renderer.");
+            return backend;
+        }
+
+        backend = LegacyBackend.tryCreate();
+        if (backend != null) {
+            PathmindCommon.LOGGER.debug("Using legacy RenderLayer GUI renderer.");
+            return backend;
+        }
+
+        backend = PipelineBackend.tryCreate();
+        if (backend != null) {
+            PathmindCommon.LOGGER.debug("Using RenderPipeline GUI renderer.");
+            return backend;
+        }
+
+        PathmindCommon.LOGGER.warn("Could not initialize a GUI texture renderer. The Pathmind menu icon will not render.");
+        return RendererBackend.NO_OP;
+    }
+
+    private static Class<?> tryLoadClass(String... names) {
+        for (String name : names) {
+            try {
+                return Class.forName(name);
+            } catch (ClassNotFoundException ignored) {
+            }
+        }
+        return null;
+    }
+
+    private interface RendererBackend {
+        void draw(GuiGraphicsExtractor context, Identifier texture, int x, int y, int width, int height, int color);
+
+        RendererBackend NO_OP = (context, texture, x, y, width, height, color) -> {
+        };
+    }
+
+    private static final class DirectBackend implements RendererBackend {
+        private final Method drawGuiTextureMethod;
+        private final Method drawTextureMethod;
+
+        private DirectBackend(Method drawGuiTextureMethod, Method drawTextureMethod) {
+            this.drawGuiTextureMethod = drawGuiTextureMethod;
+            this.drawTextureMethod = drawTextureMethod;
+        }
+
+        static RendererBackend tryCreate() {
+            Method drawGuiTextureMethod = findDrawGuiTextureMethod();
+            Method drawTextureMethod = findDrawTextureMethod();
+            if (drawGuiTextureMethod == null && drawTextureMethod == null) {
+                return null;
+            }
+            return new DirectBackend(drawGuiTextureMethod, drawTextureMethod);
+        }
+
+        private static Method findDrawGuiTextureMethod() {
+            for (Method method : GuiGraphicsExtractor.class.getMethods()) {
+                if (!"drawGuiTexture".equals(method.getName())) {
+                    continue;
+                }
+                Class<?>[] parameters = method.getParameterTypes();
+                if (parameters.length != 5) {
+                    continue;
+                }
+                if (!Identifier.class.isAssignableFrom(parameters[0])) {
+                    continue;
+                }
+                boolean allInts = true;
+                for (int index = 1; index < parameters.length; index++) {
+                    if (parameters[index] != int.class) {
+                        allInts = false;
+                        break;
+                    }
+                }
+                if (!allInts) {
+                    continue;
+                }
+                method.setAccessible(true);
+                return method;
+            }
+            return null;
+        }
+
+        private static Method findDrawTextureMethod() {
+            for (Method method : GuiGraphicsExtractor.class.getMethods()) {
+                if (!"drawTexture".equals(method.getName())) {
+                    continue;
+                }
+                Class<?>[] parameters = method.getParameterTypes();
+                if (parameters.length != 9) {
+                    continue;
+                }
+                if (!Identifier.class.isAssignableFrom(parameters[0])) {
+                    continue;
+                }
+                if (parameters[1] != int.class || parameters[2] != int.class) {
+                    continue;
+                }
+                if (parameters[3] != float.class || parameters[4] != float.class) {
+                    continue;
+                }
+                if (parameters[5] != int.class || parameters[6] != int.class || parameters[7] != int.class || parameters[8] != int.class) {
+                    continue;
+                }
+                method.setAccessible(true);
+                return method;
+            }
+            return null;
+        }
+
+        @Override
+        public void draw(GuiGraphicsExtractor context, Identifier texture, int x, int y, int width, int height, int color) {
+            float alpha = ((color >>> 24) & 0xFF) / 255.0f;
+            float red = ((color >>> 16) & 0xFF) / 255.0f;
+            float green = ((color >>> 8) & 0xFF) / 255.0f;
+            float blue = (color & 0xFF) / 255.0f;
+            RenderStateBridge.setShaderColor(red, green, blue, alpha);
+            try {
+                if (drawTextureMethod != null) {
+                    drawTextureMethod.invoke(context, texture, x, y, 0.0f, 0.0f, width, height, width, height);
+                    return;
+                }
+                if (drawGuiTextureMethod != null) {
+                    drawGuiTextureMethod.invoke(context, texture, x, y, width, height);
+                    return;
+                }
+                throw new IllegalStateException("No direct DrawContext texture method available");
+            } catch (IllegalAccessException | InvocationTargetException exception) {
+                throw new RuntimeException("Direct DrawContext backend failed", exception);
+            } finally {
+                RenderStateBridge.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
+            }
+        }
+    }
+
+    private static final class PipelineBackend implements RendererBackend {
+        private final Object pipelineInstance;
+        private final Method drawGuiTextureMethod;
+        private final Method drawTextureMethod;
+        private final boolean guiTextureSupportsTint;
+        private final boolean supportsTint;
+
+        private PipelineBackend(Object pipelineInstance, Method drawGuiTextureMethod, Method drawTextureMethod) {
+            this.pipelineInstance = pipelineInstance;
+            this.drawGuiTextureMethod = drawGuiTextureMethod;
+            this.drawTextureMethod = drawTextureMethod;
+            this.guiTextureSupportsTint = drawGuiTextureMethod != null && drawGuiTextureMethod.getParameterCount() == 7;
+            this.supportsTint = drawTextureMethod != null && drawTextureMethod.getParameterCount() == 11;
+        }
+
+        static RendererBackend tryCreate() {
+            Class<?> pipelineClass = tryLoadClass("com.mojang.blaze3d.pipeline.RenderPipeline");
+            if (pipelineClass == null) {
+                return null;
+            }
+            Class<?> pipelinesClass = tryLoadClass(
+                "net.minecraft.client.gl.RenderPipelines",
+                "net.minecraft.client.renderer.RenderPipelines",
+                "net.minecraft.class_10799"
+            );
+            if (pipelinesClass == null) {
+                return null;
+            }
+            try {
+                Object pipeline = locateGuiPipeline(pipelinesClass, pipelineClass);
+                if (pipeline == null) {
+                    return null;
+                }
+                Method drawTextureMethod = findDrawTextureMethod(pipelineClass);
+                Method drawGuiTextureMethod = findDrawGuiTextureMethod(pipelineClass);
+                if (drawTextureMethod == null && drawGuiTextureMethod == null) {
+                    return null;
+                }
+                return new PipelineBackend(pipeline, drawGuiTextureMethod, drawTextureMethod);
+            } catch (IllegalAccessException exception) {
+                return null;
+            }
+        }
+
+        private static Object locateGuiPipeline(Class<?> pipelinesClass, Class<?> pipelineClass) throws IllegalAccessException {
+            try {
+                Method getLocationMethod = pipelineClass.getMethod("getLocation");
+                Object fallback = null;
+                for (Field field : pipelinesClass.getFields()) {
+                    if (!pipelineClass.isAssignableFrom(field.getType())) {
+                        continue;
+                    }
+                    Object candidate = field.get(null);
+                    if (candidate == null) {
+                        continue;
+                    }
+                    Object location = getLocationMethod.invoke(candidate);
+                    if (location instanceof Identifier identifier) {
+                        String path = identifier.getPath();
+                        if (path.endsWith("gui_textured")) {
+                            return candidate;
+                        }
+                        if (fallback == null && path.contains("gui")) {
+                            fallback = candidate;
+                        }
+                    }
+                }
+                return fallback;
+            } catch (InvocationTargetException | NoSuchMethodException exception) {
+                PathmindCommon.LOGGER.debug("Failed to scan RenderPipelines fields", exception);
+                return null;
+            }
+        }
+
+        private static Method findDrawTextureMethod(Class<?> pipelineClass) {
+            for (Method method : GuiGraphicsExtractor.class.getMethods()) {
+                Class<?>[] parameters = method.getParameterTypes();
+                if (!matchesCommonParameters(parameters, pipelineClass)) {
+                    continue;
+                }
+                method.setAccessible(true);
+                return method;
+            }
+            return null;
+        }
+
+        private static Method findDrawGuiTextureMethod(Class<?> pipelineClass) {
+            for (Method method : GuiGraphicsExtractor.class.getMethods()) {
+                Class<?>[] parameters = method.getParameterTypes();
+                if (!matchesGuiTextureParameters(parameters, pipelineClass)) {
+                    continue;
+                }
+                method.setAccessible(true);
+                return method;
+            }
+            return null;
+        }
+
+        @Override
+        public void draw(GuiGraphicsExtractor context, Identifier texture, int x, int y, int width, int height, int color) {
+            boolean needsShaderTint = (drawGuiTextureMethod != null && !guiTextureSupportsTint && !texture.getPath().startsWith("textures/"))
+                || (drawTextureMethod != null && !supportsTint);
+            if (needsShaderTint) {
+                applyShaderColor(color);
+            }
+            try {
+                if (drawGuiTextureMethod != null && !texture.getPath().startsWith("textures/")) {
+                    drawGuiTextureMethod.invoke(context, createGuiTextureParameters(pipelineInstance, texture, x, y, width, height, guiTextureSupportsTint, color));
+                    return;
+                }
+                if (drawTextureMethod == null) {
+                    throw new IllegalStateException("No drawTexture method available for direct texture path");
+                }
+                Object[] parameters = createCommonParameters(pipelineInstance, texture, x, y, width, height, supportsTint, color);
+                drawTextureMethod.invoke(context, parameters);
+            } catch (IllegalAccessException | InvocationTargetException exception) {
+                throw new RuntimeException("RenderPipeline backend failed", exception);
+            } finally {
+                if (needsShaderTint) {
+                    resetShaderColor();
+                }
+            }
+        }
+    }
+
+    private static final class LegacyBackend implements RendererBackend {
+        private final Method drawGuiTextureMethod;
+        private final Method drawTextureMethod;
+        private final Function<Identifier, Object> renderLayerFactory;
+        private final boolean guiTextureSupportsTint;
+        private final boolean supportsTint;
+
+        private LegacyBackend(Method drawGuiTextureMethod, Method drawTextureMethod, Function<Identifier, Object> renderLayerFactory) {
+            this.drawGuiTextureMethod = drawGuiTextureMethod;
+            this.drawTextureMethod = drawTextureMethod;
+            this.renderLayerFactory = renderLayerFactory;
+            this.guiTextureSupportsTint = drawGuiTextureMethod != null && drawGuiTextureMethod.getParameterCount() == 7;
+            this.supportsTint = drawTextureMethod != null && drawTextureMethod.getParameterCount() == 11;
+        }
+
+        static RendererBackend tryCreate() {
+            try {
+                Method drawTextureMethod = findDrawTextureMethod();
+                Method drawGuiTextureMethod = findDrawGuiTextureMethod();
+                if (drawTextureMethod == null && drawGuiTextureMethod == null) {
+                    return null;
+                }
+                Function<Identifier, Object> factory = locateRenderLayerFactory();
+                if (factory == null) {
+                    return null;
+                }
+                return new LegacyBackend(drawGuiTextureMethod, drawTextureMethod, factory);
+            } catch (Exception exception) {
+                return null;
+            }
+        }
+
+        private static Method findDrawTextureMethod() {
+            for (Method method : GuiGraphicsExtractor.class.getMethods()) {
+                Class<?>[] parameters = method.getParameterTypes();
+                if (!matchesCommonParameters(parameters, Function.class)) {
+                    continue;
+                }
+                method.setAccessible(true);
+                return method;
+            }
+            return null;
+        }
+
+        private static Method findDrawGuiTextureMethod() {
+            for (Method method : GuiGraphicsExtractor.class.getMethods()) {
+                Class<?>[] parameters = method.getParameterTypes();
+                if (!matchesGuiTextureParameters(parameters, Function.class)) {
+                    continue;
+                }
+                method.setAccessible(true);
+                return method;
+            }
+            return null;
+        }
+
+        private static Function<Identifier, Object> locateRenderLayerFactory() {
+            Class<?> renderLayerClass = tryLoadClass(
+                "net.minecraft.client.render.RenderLayer",
+                "net.minecraft.class_1921"
+            );
+            if (renderLayerClass == null) {
+                return null;
+            }
+            Method method = findGuiTexturedMethod(renderLayerClass);
+            if (method == null) {
+                return null;
+            }
+            return identifier -> {
+                try {
+                    return method.invoke(null, identifier);
+                } catch (IllegalAccessException | InvocationTargetException exception) {
+                    throw new RuntimeException(exception);
+                }
+            };
+        }
+
+        private static Method findGuiTexturedMethod(Class<?> renderLayerClass) {
+            String[] candidateNames = {
+                "getGuiTextured",
+                "method_62277"
+            };
+            for (String name : candidateNames) {
+                try {
+                    Method method = renderLayerClass.getMethod(name, Identifier.class);
+                    if (!renderLayerClass.isAssignableFrom(method.getReturnType())) {
+                        continue;
+                    }
+                    method.setAccessible(true);
+                    return method;
+                } catch (NoSuchMethodException ignored) {
+                }
+            }
+            return null;
+        }
+
+        @Override
+        public void draw(GuiGraphicsExtractor context, Identifier texture, int x, int y, int width, int height, int color) {
+            boolean needsShaderTint = (drawGuiTextureMethod != null && !guiTextureSupportsTint && !texture.getPath().startsWith("textures/"))
+                || (drawTextureMethod != null && !supportsTint);
+            if (needsShaderTint) {
+                applyShaderColor(color);
+            }
+            try {
+                if (drawGuiTextureMethod != null && !texture.getPath().startsWith("textures/")) {
+                    drawGuiTextureMethod.invoke(context, createGuiTextureParameters(renderLayerFactory, texture, x, y, width, height, guiTextureSupportsTint, color));
+                    return;
+                }
+                if (drawTextureMethod == null) {
+                    throw new IllegalStateException("No drawTexture method available for direct texture path");
+                }
+                Object[] parameters = createCommonParameters(renderLayerFactory, texture, x, y, width, height, supportsTint, color);
+                drawTextureMethod.invoke(context, parameters);
+            } catch (IllegalAccessException | InvocationTargetException exception) {
+                throw new RuntimeException("Legacy RenderLayer backend failed", exception);
+            } finally {
+                if (needsShaderTint) {
+                    resetShaderColor();
+                }
+            }
+        }
+    }
+
+    private static void applyShaderColor(int color) {
+        float alpha = ((color >>> 24) & 0xFF) / 255.0f;
+        float red = ((color >>> 16) & 0xFF) / 255.0f;
+        float green = ((color >>> 8) & 0xFF) / 255.0f;
+        float blue = (color & 0xFF) / 255.0f;
+        RenderStateBridge.setShaderColor(red, green, blue, alpha);
+    }
+
+    private static void resetShaderColor() {
+        RenderStateBridge.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
+    }
+
+    private static boolean matchesCommonParameters(Class<?>[] parameters, Class<?> firstParameterType) {
+        if (parameters.length != 10 && parameters.length != 11) {
+            return false;
+        }
+        if (!firstParameterType.isAssignableFrom(parameters[0])) {
+            return false;
+        }
+        if (!Identifier.class.isAssignableFrom(parameters[1])) {
+            return false;
+        }
+        if (parameters[2] != int.class || parameters[3] != int.class) {
+            return false;
+        }
+        if (parameters[4] != float.class || parameters[5] != float.class) {
+            return false;
+        }
+        if (parameters[6] != int.class || parameters[7] != int.class || parameters[8] != int.class || parameters[9] != int.class) {
+            return false;
+        }
+        if (parameters.length == 11 && parameters[10] != int.class) {
+            return false;
+        }
+        return true;
+    }
+
+    private static boolean matchesGuiTextureParameters(Class<?>[] parameters, Class<?> firstParameterType) {
+        if (parameters.length != 6 && parameters.length != 7) {
+            return false;
+        }
+        if (!firstParameterType.isAssignableFrom(parameters[0])) {
+            return false;
+        }
+        if (!Identifier.class.isAssignableFrom(parameters[1])) {
+            return false;
+        }
+        for (int index = 2; index < parameters.length; index++) {
+            if (parameters[index] != int.class) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static Object[] createCommonParameters(
+        Object firstParameter,
+        Identifier texture,
+        int x,
+        int y,
+        int width,
+        int height,
+        boolean includeTint,
+        int color
+    ) {
+        Object[] parameters = new Object[includeTint ? 11 : 10];
+        parameters[0] = firstParameter;
+        parameters[1] = texture;
+        parameters[2] = x;
+        parameters[3] = y;
+        parameters[4] = 0.0F;
+        parameters[5] = 0.0F;
+        parameters[6] = width;
+        parameters[7] = height;
+        parameters[8] = width;
+        parameters[9] = height;
+        if (includeTint) {
+            parameters[10] = color;
+        }
+        return parameters;
+    }
+
+    private static Object[] createGuiTextureParameters(
+        Object firstParameter,
+        Identifier texture,
+        int x,
+        int y,
+        int width,
+        int height,
+        boolean includeTint,
+        int color
+    ) {
+        Object[] parameters = new Object[includeTint ? 7 : 6];
+        parameters[0] = firstParameter;
+        parameters[1] = texture;
+        parameters[2] = x;
+        parameters[3] = y;
+        parameters[4] = width;
+        parameters[5] = height;
+        if (includeTint) {
+            parameters[6] = color;
+        }
+        return parameters;
+    }
+}

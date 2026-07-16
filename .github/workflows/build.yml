@@ -117,16 +117,17 @@ jobs:
         shell: bash
         run: |
           mkdir -p staging
-          find fabric/build/libs neoforge/build/libs \
-            -maxdepth 1 -type f -name '*.jar' \
-            | grep -Ev '(-sources|-dev|-shadow|-all|-javadoc)\.jar$' \
-            | xargs -I{} cp {} staging/
+          for output_dir in fabric/build/libs neoforge/build/libs mc26/fabric/build/libs mc26/neoforge/build/libs; do
+            if [ -d "$output_dir" ]; then
+              find "$output_dir" -maxdepth 1 -type f -name '*.jar'
+            fi
+          done | grep -Ev '(-sources|-dev|-shadow|-all|-javadoc)\.jar$' | xargs -I{} cp {} staging/
 
           echo "Staged jars for Minecraft ${{ matrix.minecraft_version }}:"
           ls staging/
           if [ -z "$(ls -A staging/)" ]; then
             echo "No suitable jars found."
-            find fabric/build/libs neoforge/build/libs -maxdepth 1 -type f | sort || true
+            find fabric/build/libs neoforge/build/libs mc26/fabric/build/libs mc26/neoforge/build/libs -maxdepth 1 -type f 2>/dev/null | sort || true
             exit 1
           fi
 

@@ -1,0 +1,554 @@
+package com.pathmind.validation;
+
+import static com.pathmind.util.PathmindI18n.tr;
+
+import com.pathmind.data.PresetManager;
+import com.pathmind.data.NodeGraphData;
+import com.pathmind.data.NodeGraphPersistence;
+import com.pathmind.nodes.Node;
+import com.pathmind.nodes.NodeCompatibility;
+import com.pathmind.nodes.NodeConnection;
+import com.pathmind.nodes.NodeParameter;
+import com.pathmind.nodes.NodeCatalog;
+import com.pathmind.nodes.NodeTraitRegistry;
+import com.pathmind.nodes.NodeType;
+import com.pathmind.nodes.RuntimeValueScope;
+
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Comparator;
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+
+public final class GraphValidator {
+    private GraphValidator() {
+    }
+
+    public static GraphValidationResult validate(Collection<Node> nodes, Collection<NodeConnection> connections, String activePreset,
+                                                 boolean baritoneAvailable, boolean uiUtilsAvailable) {
+        return validate(nodes, connections, activePreset, baritoneAvailable, uiUtilsAvailable, List.of(), "");
+    }
+
+    public static GraphValidationResult validate(Collection<Node> nodes, Collection<NodeConnection> connections, String activePreset,
+                                                 boolean baritoneAvailable, boolean uiUtilsAvailable,
+                                                 List<NodeGraphData.RoutineDefinitionData> routines, String activeRoutineId) {
+        List<Node> safeNodes = nodes == null ? List.of() : new ArrayList<>(nodes);
+        List<NodeConnection> safeConnections = connections == null ? List.of() : new ArrayList<>(connections);
+        List<NodeGraphData.RoutineDefinitionData> safeRoutines = routines == null ? List.of() : routines;
+        String activeRoutine = activeRoutineId == null ? "" : activeRoutineId;
+        List<GraphValidationIssue> issues = new ArrayList<>();
+
+        Map<String, Node> nodeById = new LinkedHashMap<>();
+        Map<String, List<NodeConnection>> outgoingById = new HashMap<>();
+        Map<String, Integer> inputOccupancy = new HashMap<>();
+        List<Node> startNodes = new ArrayList<>();
+        Map<String, List<Node>> functionNodesByName = new LinkedHashMap<>();
+        Map<String, Set<NodeType>> inferredVariableTypes = new LinkedHashMap<>();
+        List<String> availablePresets = PresetManager.getAvailablePresets();
+
+        for (Node node : safeNodes) {
+            if (node == null) {
+                continue;
+            }
+            nodeById.put(node.getId(), node);
+            outgoingById.computeIfAbsent(node.getId(), ignored -> new ArrayList<>());
+            if (node.getType() == NodeType.START || (!activeRoutine.isBlank() && node.getType() == NodeType.ROUTINE_ENTRY)) {
+                startNodes.add(node);
+            }
+            if (node.getType() == NodeType.EVENT_FUNCTION) {
+                String name = normalize(getParameterValue(node, "Name"));
+                if (!name.isEmpty()) {
+                    functionNodesByName.computeIfAbsent(name, ignored -> new ArrayList<>()).add(node);
+                }
+            }
+            collectVariableAssignments(node, inferredVariableTypes);
+        }
+
+        for (NodeConnection connection : safeConnections) {
+            if (connection == null || connection.getOutputNode() == null || connection.getInputNode() == null) {
+                continue;
+            }
+            outgoingById.computeIfAbsent(connection.getOutputNode().getId(), ignored -> new ArrayList<>()).add(connection);
+            String inputKey = connection.getInputNode().getId() + "#" + connection.getInputSocket();
+            inputOccupancy.put(inputKey, inputOccupancy.getOrDefault(inputKey, 0) + 1);
+        }
+
+        if (startNodes.isEmpty() && activeRoutine.isBlank()) {
+            issues.add(new GraphValidationIssue(
+                GraphValidationSeverity.ERROR,
+                "missing_start",
+                tr("pathmind.validation.missingStart"),
+                null
+            ));
+        }
+
+        if (startNodes.isEmpty() && !activeRoutine.isBlank()) {
+            issues.add(new GraphValidationIssue(GraphValidationSeverity.ERROR, "missing_routine_entry",
+                tr("pathmind.validation.missingRoutineEntry"), null, activeRoutine));
+        }
+
+        Set<String> reachableNodeIds = collectReachableNodeIds(startNodes, outgoingById, functionNodesByName);
+
+        for (Node node : safeNodes) {
+            if (node == null) {
+                continue;
+            }
+            NodeType type = node.getType();
+
+            if (type.requiresUiUtils() && !uiUtilsAvailable) {
+                issues.add(issue(GraphValidationSeverity.ERROR, "missing_ui_utils",
+                    tr("pathmind.validation.missingUiUtils", type.getDisplayName()), node));
+            }
+
+            if ((type == NodeType.START || type == NodeType.EVENT_FUNCTION)
+                && outgoingById.getOrDefault(node.getId(), List.of()).isEmpty()) {
+                issues.add(issue(GraphValidationSeverity.WARNING, "dead_entry",
+                    tr("pathmind.validation.deadEntry", type.getDisplayName()), node));
+            }
+
+            if (!isEntryOrAttached(node) && !isReachabilityExempt(node) && !reachableNodeIds.contains(node.getId())) {
+                issues.add(issue(GraphValidationSeverity.WARNING, "unreachable_node",
+                    tr("pathmind.validation.unreachableNode", type.getDisplayName()), node));
+            }
+
+            validateInputConnections(node, inputOccupancy, issues);
+            validateRequiredParameterSlots(node, issues);
+            validateNamedNodes(node, functionNodesByName, availablePresets, activePreset, issues);
+            validateVariableParameterWarnings(node, inferredVariableTypes, issues);
+            validateRoutineNode(node, safeRoutines, activeRoutine, issues);
+        }
+
+        validateRoutineDefinitions(safeRoutines, issues);
+
+        for (Map.Entry<String, List<Node>> entry : functionNodesByName.entrySet()) {
+            if (entry.getValue().size() < 2) {
+                continue;
+            }
+            for (Node node : entry.getValue()) {
+                issues.add(issue(GraphValidationSeverity.ERROR, "duplicate_event_function",
+                    tr("pathmind.validation.duplicateEventFunction", displayValue(entry.getKey())), node));
+            }
+        }
+
+        issues.sort(
+            Comparator.comparing((GraphValidationIssue issue) -> issue.getSeverity() == GraphValidationSeverity.ERROR ? 0 : 1)
+                .thenComparing(GraphValidationIssue::getMessage, String.CASE_INSENSITIVE_ORDER)
+        );
+        return new GraphValidationResult(issues);
+    }
+
+    private static void validateRoutineNode(Node node, List<NodeGraphData.RoutineDefinitionData> routines,
+                                            String activeRoutineId, List<GraphValidationIssue> issues) {
+        if (node.getType() == NodeType.ROUTINE_CALL) {
+            boolean found = routines.stream().filter(java.util.Objects::nonNull)
+                .anyMatch(routine -> node.getRoutineId().equals(routine.getId()));
+            if (node.getRoutineId().isBlank() || !found) {
+                issues.add(new GraphValidationIssue(GraphValidationSeverity.ERROR, "missing_routine_definition",
+                    tr("pathmind.validation.missingRoutineDefinition", node.getDisplayName().getString()), node.getId(), activeRoutineId));
+            }
+            return;
+        }
+        if (node.getType() != NodeType.ROUTINE_INPUT) return;
+        NodeGraphData.RoutineDefinitionData owner = routines.stream().filter(java.util.Objects::nonNull)
+            .filter(routine -> node.getRoutineId().equals(routine.getId())).findFirst().orElse(null);
+        boolean validInput = owner != null && owner.getInputs().stream().filter(java.util.Objects::nonNull)
+            .anyMatch(input -> node.getRoutineInputId().equals(input.getId()));
+        if (activeRoutineId.isBlank() || !activeRoutineId.equals(node.getRoutineId()) || !validInput) {
+            issues.add(new GraphValidationIssue(GraphValidationSeverity.ERROR, "invalid_routine_reporter",
+                tr("pathmind.validation.invalidRoutineReporter"), node.getId(), activeRoutineId));
+        }
+    }
+
+    private static void validateRoutineDefinitions(List<NodeGraphData.RoutineDefinitionData> routines,
+                                                   List<GraphValidationIssue> issues) {
+        Map<String, List<NodeGraphData.RoutineDefinitionData>> byId = new LinkedHashMap<>();
+        Map<String, Set<String>> calls = new LinkedHashMap<>();
+        Map<String, String> firstCallNode = new HashMap<>();
+        for (NodeGraphData.RoutineDefinitionData routine : routines) {
+            if (routine == null) continue;
+            String id = trimToEmpty(routine.getId());
+            byId.computeIfAbsent(id, ignored -> new ArrayList<>()).add(routine);
+            boolean hasEntry = routine.getGraph() != null && routine.getGraph().getNodes().stream()
+                .anyMatch(node -> node != null && node.getType() == NodeType.ROUTINE_ENTRY && id.equals(node.getRoutineId()));
+            if (!hasEntry) {
+                issues.add(new GraphValidationIssue(GraphValidationSeverity.ERROR, "missing_routine_entry",
+                    tr("pathmind.validation.missingRoutineEntryNamed", displayValue(routine.getName())), null, id));
+            }
+            Set<String> targets = calls.computeIfAbsent(id, ignored -> new LinkedHashSet<>());
+            if (routine.getGraph() != null) {
+                for (NodeGraphData.NodeData node : routine.getGraph().getNodes()) {
+                    if (node != null && node.getType() == NodeType.ROUTINE_CALL && node.getRoutineId() != null) {
+                        targets.add(node.getRoutineId());
+                        firstCallNode.putIfAbsent(id + "\u0000" + node.getRoutineId(), node.getId());
+                    }
+                }
+            }
+        }
+        for (Map.Entry<String, List<NodeGraphData.RoutineDefinitionData>> entry : byId.entrySet()) {
+            if (entry.getKey().isBlank() || entry.getValue().size() > 1) {
+                for (NodeGraphData.RoutineDefinitionData routine : entry.getValue()) {
+                    issues.add(new GraphValidationIssue(GraphValidationSeverity.ERROR, "duplicate_routine_id",
+                        tr("pathmind.validation.duplicateRoutineId", displayValue(routine.getName())), null, entry.getKey()));
+                }
+            }
+        }
+        for (NodeGraphData.RoutineDefinitionData routine : routines) {
+            if (routine == null || trimToEmpty(routine.getId()).isBlank()) continue;
+            String id = routine.getId();
+            if (reaches(id, id, calls, new HashSet<>())) {
+                String nodeId = calls.getOrDefault(id, Set.of()).stream()
+                    .filter(target -> reaches(target, id, calls, new HashSet<>()))
+                    .map(target -> firstCallNode.get(id + "\u0000" + target)).filter(java.util.Objects::nonNull)
+                    .findFirst().orElse(null);
+                issues.add(new GraphValidationIssue(GraphValidationSeverity.WARNING, "recursive_routine",
+                    tr("pathmind.validation.recursiveRoutine", displayValue(routine.getName())), nodeId, id));
+            }
+        }
+    }
+
+    private static boolean reaches(String current, String target, Map<String, Set<String>> calls, Set<String> visited) {
+        if (!visited.add(current)) return false;
+        for (String next : calls.getOrDefault(current, Set.of())) {
+            if (target.equals(next) || reaches(next, target, calls, visited)) return true;
+        }
+        return false;
+    }
+
+    private static void validateInputConnections(Node node, Map<String, Integer> inputOccupancy, List<GraphValidationIssue> issues) {
+        if (node.getInputSocketCount() <= 0) {
+            return;
+        }
+        for (int socketIndex = 0; socketIndex < node.getInputSocketCount(); socketIndex++) {
+            String key = node.getId() + "#" + socketIndex;
+            int count = inputOccupancy.getOrDefault(key, 0);
+            if (count > 1) {
+                issues.add(issue(GraphValidationSeverity.ERROR, "multiple_inputs",
+                    tr("pathmind.validation.multipleInputs", node.getType().getDisplayName()), node));
+            }
+        }
+    }
+
+    private static void validateRequiredParameterSlots(Node node, List<GraphValidationIssue> issues) {
+        if (!node.canAcceptParameter()) {
+            return;
+        }
+        int slotCount = node.getParameterSlotCount();
+        for (int slotIndex = 0; slotIndex < slotCount; slotIndex++) {
+            if (!node.isParameterSlotRequired(slotIndex)) {
+                continue;
+            }
+            if (node.getAttachedParameter(slotIndex) != null) {
+                continue;
+            }
+            issues.add(issue(GraphValidationSeverity.ERROR, "missing_parameter_slot",
+                tr("pathmind.validation.missingParameterSlot", node.getType().getDisplayName()), node));
+        }
+        if (node.getType() == NodeType.ROUTINE_CALL) {
+            for (int slotIndex = 0; slotIndex < slotCount; slotIndex++) {
+                Node attached = node.getAttachedParameter(slotIndex);
+                if (node.isRoutineArgumentOrphaned(slotIndex)) {
+                    issues.add(issue(GraphValidationSeverity.WARNING, "orphan_routine_argument",
+                        tr("pathmind.validation.orphanRoutineArgument", node.getParameterSlotLabel(slotIndex)), node));
+                } else if (attached != null && !node.canAcceptParameterNode(attached, slotIndex)) {
+                    issues.add(issue(GraphValidationSeverity.ERROR, "incompatible_routine_argument",
+                        tr("pathmind.validation.incompatibleRoutineArgument", node.getParameterSlotLabel(slotIndex)), node));
+                }
+            }
+        }
+    }
+
+    private static void validateNamedNodes(Node node, Map<String, List<Node>> functionNodesByName, List<String> availablePresets,
+                                           String activePreset, List<GraphValidationIssue> issues) {
+        NodeType type = node.getType();
+        if (type == NodeType.EVENT_FUNCTION) {
+            String name = normalize(getParameterValue(node, "Name"));
+            if (name.isEmpty()) {
+                issues.add(issue(GraphValidationSeverity.ERROR, "missing_event_function_name",
+                    tr("pathmind.validation.missingEventFunctionName"), node));
+            }
+            return;
+        }
+
+        if (type == NodeType.EVENT_CALL) {
+            String name = normalize(getParameterValue(node, "Name"));
+            if (name.isEmpty()) {
+                issues.add(issue(GraphValidationSeverity.ERROR, "missing_event_call_name",
+                    tr("pathmind.validation.missingEventCallName"), node));
+            } else if (!functionNodesByName.containsKey(name)) {
+                issues.add(issue(GraphValidationSeverity.ERROR, "missing_event_target",
+                    tr("pathmind.validation.missingEventTarget", displayValue(name)), node));
+            }
+            return;
+        }
+
+        if (type == NodeType.RUN_PRESET) {
+            String preset = normalize(getParameterValue(node, "Preset"));
+            if (preset.isEmpty()) {
+                issues.add(issue(GraphValidationSeverity.ERROR, "missing_preset_target",
+                    tr("pathmind.validation.missingPresetTarget"), node));
+            } else if (!containsIgnoreCase(availablePresets, preset)) {
+                issues.add(issue(GraphValidationSeverity.ERROR, "missing_preset",
+                    tr("pathmind.validation.missingPreset", displayValue(preset)), node));
+            } else {
+                String resolved = findIgnoreCase(availablePresets, preset);
+                if (createsPresetCycle(activePreset, resolved, availablePresets)) {
+                    issues.add(issue(GraphValidationSeverity.ERROR, "recursive_preset",
+                        tr("pathmind.validation.recursivePreset", displayValue(resolved)), node));
+                }
+            }
+            return;
+        }
+
+        if (type == NodeType.TEMPLATE) {
+            String preset = trimToEmpty(getParameterValue(node, "Preset"));
+            String targetPreset = preset.isEmpty() ? trimToEmpty(activePreset) : preset;
+            String resolvedPreset = findIgnoreCase(availablePresets, targetPreset);
+            String loadPreset = resolvedPreset != null ? resolvedPreset : targetPreset;
+            if (!targetPreset.isEmpty() && resolvedPreset == null) {
+                issues.add(issue(GraphValidationSeverity.ERROR, "missing_template_preset",
+                    tr("pathmind.validation.missingTemplatePreset", tr("pathmind.node.type.template"), displayValue(targetPreset)), node));
+            }
+            NodeGraphData resolvedGraph = node.getTemplateGraphData();
+            if (resolvedGraph == null && !targetPreset.isEmpty()) {
+                resolvedGraph = NodeGraphPersistence.loadNodeGraphForPreset(loadPreset);
+            }
+            if (resolvedGraph == null) {
+                issues.add(issue(GraphValidationSeverity.WARNING, "missing_template_graph",
+                    tr("pathmind.validation.missingTemplateGraph", tr("pathmind.node.type.template")), node));
+            } else {
+                NodeGraphData.CustomNodeDefinition definition = NodeGraphPersistence.resolveCustomNodeDefinition(loadPreset, resolvedGraph);
+                int instanceVersion = node.getTemplateVersion();
+                int definitionVersion = definition != null && definition.getVersion() != null ? definition.getVersion() : 0;
+                if (instanceVersion > 0 && definitionVersion > instanceVersion) {
+                    issues.add(issue(GraphValidationSeverity.WARNING, "outdated_custom_node_version",
+                        tr("pathmind.validation.outdatedCustomNodeVersion", tr("pathmind.node.type.template"),
+                            instanceVersion, displayValue(targetPreset), definitionVersion), node));
+                }
+            }
+            return;
+        }
+
+        if (type == NodeType.START_CHAIN) {
+            String target = normalize(getParameterValue(node, "StartNumber"));
+            if (target.isEmpty()) {
+                issues.add(issue(GraphValidationSeverity.ERROR, "missing_start_target",
+                    tr("pathmind.validation.missingStartTarget", type.getDisplayName()), node));
+            }
+        }
+    }
+
+    private static void collectVariableAssignments(Node node, Map<String, Set<NodeType>> inferredVariableTypes) {
+        if (node == null || node.getType() != NodeType.SET_VARIABLE) {
+            return;
+        }
+        Node variableNode = node.getAttachedParameter(0);
+        Node valueNode = node.getAttachedParameter(1);
+        if (variableNode == null || valueNode == null || variableNode.getType() != NodeType.VARIABLE) {
+            return;
+        }
+        String variableName = normalize(getParameterValue(variableNode, "Variable"));
+        if (variableName.isEmpty()) {
+            return;
+        }
+        NodeType valueType = inferAssignedVariableType(valueNode);
+        if (valueType == null) {
+            return;
+        }
+        inferredVariableTypes.computeIfAbsent(variableScopeKey(variableNode, variableName), ignored -> new LinkedHashSet<>()).add(valueType);
+    }
+
+    private static NodeType inferAssignedVariableType(Node valueNode) {
+        if (valueNode == null) {
+            return null;
+        }
+        if (valueNode.isSensorNode() && NodeCatalog.isBooleanSensor(valueNode.getType())) {
+            return NodeType.PARAM_BOOLEAN;
+        }
+        NodeType resolved = valueNode.getResolvedValueType();
+        return resolved != null && resolved != NodeType.VARIABLE ? resolved : null;
+    }
+
+    private static void validateVariableParameterWarnings(Node node, Map<String, Set<NodeType>> inferredVariableTypes,
+                                                          List<GraphValidationIssue> issues) {
+        if (node == null || !node.canAcceptParameter()) {
+            return;
+        }
+        int slotCount = node.getParameterSlotCount();
+        for (int slotIndex = 0; slotIndex < slotCount; slotIndex++) {
+            Node attached = node.getAttachedParameter(slotIndex);
+            if (attached == null || attached.getType() != NodeType.VARIABLE) {
+                continue;
+            }
+            if (NodeTraitRegistry.getAcceptedTraits(node.getType(), slotIndex).contains(com.pathmind.nodes.NodeValueTrait.VARIABLE)) {
+                continue;
+            }
+            String variableName = normalize(getParameterValue(attached, "Variable"));
+            if (variableName.isEmpty()) {
+                continue;
+            }
+            Set<NodeType> types = inferredVariableTypes.get(variableScopeKey(attached, variableName));
+            if (types == null || types.isEmpty()) {
+                continue;
+            }
+            List<String> incompatibleNames = new ArrayList<>();
+            boolean hasCompatible = false;
+            for (NodeType type : types) {
+                if (NodeCompatibility.canAttachResolvedType(node.getType(), type, slotIndex)) {
+                    hasCompatible = true;
+                } else {
+                    incompatibleNames.add(type.getDisplayName());
+                }
+            }
+            if (incompatibleNames.isEmpty()) {
+                continue;
+            }
+            String message = hasCompatible
+                ? tr("pathmind.validation.variableSomeTypesIncompatible", displayValue(variableName), node.getType().getDisplayName(), String.join(", ", incompatibleNames))
+                : tr("pathmind.validation.variableOnlyTypesIncompatible", displayValue(variableName), node.getType().getDisplayName(), String.join(", ", incompatibleNames));
+            issues.add(issue(GraphValidationSeverity.WARNING, "variable_type_mismatch", message, node));
+        }
+    }
+
+    private static String variableScopeKey(Node variableNode, String variableName) {
+        RuntimeValueScope scope = variableNode == null
+            ? RuntimeValueScope.GLOBAL
+            : variableNode.getRuntimeValueScope();
+        return scope.name() + "\u0000" + variableName;
+    }
+
+    private static Set<String> collectReachableNodeIds(List<Node> startNodes, Map<String, List<NodeConnection>> outgoingById,
+                                                       Map<String, List<Node>> functionNodesByName) {
+        Set<String> visited = new HashSet<>();
+        Deque<Node> queue = new ArrayDeque<>(startNodes);
+        while (!queue.isEmpty()) {
+            Node node = queue.removeFirst();
+            if (node == null || !visited.add(node.getId())) {
+                continue;
+            }
+            if (node.getAttachedSensor() != null) {
+                queue.addLast(node.getAttachedSensor());
+            }
+            if (node.getAttachedActionNode() != null) {
+                queue.addLast(node.getAttachedActionNode());
+            }
+            for (Node parameterNode : node.getAttachedParameters().values()) {
+                if (parameterNode != null) {
+                    queue.addLast(parameterNode);
+                }
+            }
+            for (NodeConnection connection : outgoingById.getOrDefault(node.getId(), List.of())) {
+                if (connection != null) {
+                    queue.addLast(connection.getInputNode());
+                }
+            }
+            if (node.getType() == NodeType.EVENT_CALL) {
+                String functionName = normalize(getParameterValue(node, "Name"));
+                if (!functionName.isEmpty()) {
+                    for (Node functionNode : functionNodesByName.getOrDefault(functionName, List.of())) {
+                        if (functionNode != null) {
+                            queue.addLast(functionNode);
+                        }
+                    }
+                }
+            }
+        }
+        return visited;
+    }
+
+    private static boolean isEntryOrAttached(Node node) {
+        if (node == null) {
+            return true;
+        }
+        return node.getType() == NodeType.START
+            || node.getType() == NodeType.EVENT_FUNCTION
+            || node.getParentControl() != null
+            || node.getParentActionControl() != null
+            || node.getParentParameterHost() != null;
+    }
+
+    private static boolean isReachabilityExempt(Node node) {
+        return node != null && node.getType() == NodeType.STICKY_NOTE;
+    }
+
+    private static String getParameterValue(Node node, String parameterName) {
+        if (node == null || parameterName == null) {
+            return "";
+        }
+        NodeParameter parameter = node.getParameter(parameterName);
+        return parameter == null ? "" : parameter.getStringValue();
+    }
+
+    private static boolean createsPresetCycle(String sourcePreset, String targetPreset, List<String> availablePresets) {
+        if (sourcePreset == null || sourcePreset.isBlank() || targetPreset == null || targetPreset.isBlank()) return false;
+        Set<String> visiting = new HashSet<>();
+        visiting.add(normalize(sourcePreset));
+        return visitsPresetCycle(targetPreset, availablePresets, visiting, new HashSet<>());
+    }
+
+    private static boolean visitsPresetCycle(String presetName, List<String> availablePresets,
+                                             Set<String> visiting, Set<String> complete) {
+        String normalized = normalize(presetName);
+        if (visiting.contains(normalized)) return true;
+        if (!complete.add(normalized)) return false;
+        String resolved = findIgnoreCase(availablePresets, presetName);
+        if (resolved == null) return false;
+        NodeGraphData data = NodeGraphPersistence.loadNodeGraphForPreset(resolved);
+        if (data == null || data.getNodes() == null) return false;
+        visiting.add(normalized);
+        for (NodeGraphData.NodeData node : data.getNodes()) {
+            if (node == null || node.getType() != NodeType.RUN_PRESET) continue;
+            String target = getSerializedParameterValue(node, "Preset");
+            if (!target.isBlank() && visitsPresetCycle(target, availablePresets, visiting, complete)) return true;
+        }
+        visiting.remove(normalized);
+        return false;
+    }
+
+    private static String getSerializedParameterValue(NodeGraphData.NodeData node, String parameterName) {
+        if (node == null || node.getParameters() == null) return "";
+        String parameterId = NodeParameter.createDefaultId(parameterName);
+        return node.getParameters().stream().filter(parameter -> parameter != null
+            && (parameterName.equals(parameter.getName()) || parameterId.equals(parameter.getId())))
+            .map(NodeGraphData.ParameterData::getValue).filter(java.util.Objects::nonNull).findFirst().orElse("");
+    }
+
+    private static GraphValidationIssue issue(GraphValidationSeverity severity, String code, String message, Node node) {
+        return new GraphValidationIssue(severity, code, message, node != null ? node.getId() : null);
+    }
+
+    private static String normalize(String value) {
+        return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private static String trimToEmpty(String value) {
+        return value == null ? "" : value.trim();
+    }
+
+    private static String displayValue(String value) {
+        return value == null ? "" : value.trim();
+    }
+
+    private static boolean containsIgnoreCase(List<String> values, String candidate) {
+        return findIgnoreCase(values, candidate) != null;
+    }
+
+    private static String findIgnoreCase(List<String> values, String candidate) {
+        if (candidate == null || candidate.isBlank()) {
+            return null;
+        }
+        for (String value : values) {
+            if (value != null && value.trim().equalsIgnoreCase(candidate.trim())) {
+                return value.trim();
+            }
+        }
+        return null;
+    }
+}

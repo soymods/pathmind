@@ -2,7 +2,7 @@
 
 # Pathmind
 
-[![Minecraft](https://img.shields.io/badge/Minecraft-1.21--1.21.11-00AA00?style=for-the-badge&logo=minecraft)](https://minecraft.net)
+[![Minecraft](https://img.shields.io/badge/Minecraft-1.21.x%20%7C%2026.1--26.2-00AA00?style=for-the-badge&logo=minecraft)](https://minecraft.net)
 [![Fabric](https://img.shields.io/badge/Fabric-0.17.3%2B-CC6E3E?style=for-the-badge&logo=modrinth)](https://fabricmc.net)
 [![NeoForge](https://img.shields.io/badge/NeoForge-21.0%2B-E04E14?style=for-the-badge)](https://neoforged.net)
 [![Java](https://img.shields.io/badge/Java-21+-FF6B6B?style=for-the-badge&logo=openjdk)](https://openjdk.java.net)
@@ -97,8 +97,8 @@ Pathmind also adds main-menu integration so the editor is reachable before joini
 
 ### Required
 
-- Minecraft `1.21` through `1.21.11`
-- Java `21+`
+- Minecraft `1.21` through `1.21.11`, or `26.1` through `26.2`
+- Java `21` for Minecraft 1.21.x; Java `25` for Minecraft 26.x
 - **Fabric:** Fabric Loader `0.17.3` or newer + matching Fabric API
 - **NeoForge:** NeoForge `21.0.166` or newer
 
@@ -139,7 +139,7 @@ Imported marketplace presets and exported graphs also flow through this preset s
 ## Compatibility
 
 - Release jars are versioned as `pathmind-{fabric|neoforge}-<modVersion>+mc<gameVersion>.jar`.
-- The same codebase is built for Fabric and NeoForge across every supported Minecraft target from `1.21` through `1.21.11`.
+- The same codebase is built for Fabric and NeoForge across every supported Minecraft target from `1.21` through `1.21.11` and `26.1` through `26.2`.
 - Multiple language files are included.
 - Marketplace listings include version compatibility metadata.
 
@@ -197,30 +197,30 @@ Unqualified `runClient` and `runServer` default to Fabric because Fabric is the 
 Convenience tasks:
 
 - `./gradlew buildMc1_21_11` - builds both platforms for 1.21.11
-- `./gradlew buildAllTargets` - builds all 12 MC versions
+- `./gradlew buildAllTargets` - builds all 13 declared MC targets
 
 Compatibility tasks:
 
 - `./gradlew compatibilityReport` - prints dependency, Java, loader, and source-family selection for every target
 - `./gradlew verifyCompatibilityManifest` - checks the manifest against runtime support, metadata, docs, and CI
 - `./gradlew verifyCompatibilityStructure` - rejects ambiguous family names and loader-level product mirrors
-- `./gradlew configureMc26BuildGeneration` - validates the Java 25, mapping-free 26.x placeholder without claiming runtime support
+- `./gradlew configureMc26BuildGeneration` - validates the Java 25, mapping-free 26.x generation contract
 
 The machine-readable version source of truth is [`gradle/minecraft-versions.properties`](gradle/minecraft-versions.properties).
 
 ### Supported Build Targets
 
-`1.21`, `1.21.1`, `1.21.2`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.6`, `1.21.7`, `1.21.8`, `1.21.9`, `1.21.10`, `1.21.11`
+`1.21`, `1.21.1`, `1.21.2`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.6`, `1.21.7`, `1.21.8`, `1.21.9`, `1.21.10`, `1.21.11`, `26.1`, `26.2`
 
 ## Version Information
 
 | Component | Version |
 |-----------|---------|
 | Mod Version | `1.1.5` |
-| Supported Minecraft Versions | `1.21 - 1.21.11` |
+| Supported Minecraft Versions | `1.21 - 1.21.11`, `26.1 - 26.2` |
 | Fabric Loader | `0.17.3+` |
 | NeoForge | `21.0.166+` |
-| Java | `21+` |
+| Java | `21` for 1.21.x; `25` for 26.x |
 
 ## License
 

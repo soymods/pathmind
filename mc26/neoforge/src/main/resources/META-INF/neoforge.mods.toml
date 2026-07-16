@@ -1,0 +1,25 @@
+license = "All Rights Reserved"
+
+[[mods]]
+modId = "pathmind"
+version = "${version}"
+displayName = "Pathmind"
+description = "A visual node editor for building workflows and automation logic in Minecraft."
+logoFile = "assets/pathmind/logo.png"
+
+[[dependencies.pathmind]]
+modId = "neoforge"
+type = "required"
+versionRange = "[${neoforge_version},)"
+ordering = "NONE"
+side = "CLIENT"
+
+[[dependencies.pathmind]]
+modId = "minecraft"
+type = "required"
+versionRange = "[${minecraft_version}]"
+ordering = "NONE"
+side = "CLIENT"
+
+[[mixins]]
+config = "pathmind.mixins.json"

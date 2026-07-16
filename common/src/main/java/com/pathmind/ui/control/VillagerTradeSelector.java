@@ -1,5 +1,6 @@
 package com.pathmind.ui.control;
 
+import com.pathmind.compat.VillagerTradeCatalog;
 import com.pathmind.ui.animation.AnimatedValue;
 import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.theme.UITheme;
@@ -8,14 +9,12 @@ import com.pathmind.util.DrawContextBridge;
 import com.pathmind.util.InputCompatibilityBridge;
 import com.pathmind.util.DropdownLayoutHelper;
 import com.pathmind.util.TextRenderUtil;
-import com.pathmind.util.VillagerDataCompatibilityBridge;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Objects;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -27,24 +26,15 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.util.Mth;
-import net.minecraft.util.RandomSource;
-import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.npc.villager.Villager;
-import net.minecraft.world.entity.npc.villager.VillagerData;
 import net.minecraft.world.entity.npc.villager.VillagerProfession;
-import net.minecraft.world.entity.npc.villager.VillagerTrades;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.trading.MerchantOffer;
 import net.minecraft.world.item.trading.MerchantOffers;
-import net.minecraft.world.level.Level;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 
 /**
  * Helper widget for selecting villager trades by profession with search filtering.
  */
 public class VillagerTradeSelector {
-    private static final Method VILLAGERDATA_WITH_PROFESSION = resolveWithProfessionMethod();
     private static final String OPEN_GUI_PROFESSION_ID = "open_gui";
     private static final int DROPDOWN_HEIGHT = 20;
     private static final int SEARCH_HEIGHT = 20;
@@ -587,19 +577,6 @@ public class VillagerTradeSelector {
             return;
         }
 
-        Map<?, it.unimi.dsi.fastutil.ints.Int2ObjectMap<VillagerTrades.ItemListing[]>> primary =
-            VillagerTrades.TRADES;
-        Map<?, it.unimi.dsi.fastutil.ints.Int2ObjectMap<VillagerTrades.ItemListing[]>> secondary =
-            VillagerTrades.EXPERIMENTAL_TRADES;
-        it.unimi.dsi.fastutil.ints.Int2ObjectMap<VillagerTrades.ItemListing[]> levelMap =
-            resolveTradeLevels(primary, selectedProfession);
-        if ((levelMap == null || levelMap.isEmpty()) && secondary != null && !secondary.isEmpty()) {
-            levelMap = resolveTradeLevels(secondary, selectedProfession);
-        }
-        if (levelMap == null || levelMap.isEmpty()) {
-            return;
-        }
-
         Minecraft client = Minecraft.getInstance();
         if (client == null) {
             return;
@@ -607,71 +584,14 @@ public class VillagerTradeSelector {
         net.minecraft.server.level.ServerLevel serverWorld = client.getSingleplayerServer() != null
             ? client.getSingleplayerServer().overworld()
             : null;
-        Level fallbackWorld = client.level;
-        Level activeWorld = serverWorld != null ? serverWorld : fallbackWorld;
-        if (activeWorld == null) {
-            return;
-        }
-        Villager villager = new Villager(EntityType.VILLAGER, activeWorld);
-        if (villager == null) {
-            return;
-        }
-
-        RandomSource random = RandomSource.create();
-        for (it.unimi.dsi.fastutil.ints.Int2ObjectMap.Entry<VillagerTrades.ItemListing[]> entry : levelMap.int2ObjectEntrySet()) {
-            int level = entry.getIntKey();
-            VillagerTrades.ItemListing[] factories = entry.getValue();
-            if (factories == null) {
-                continue;
-            }
-            VillagerData data = applyProfession(villager.getVillagerData(), selectedProfession);
-            if (data == null) {
-                continue;
-            }
-            data = data.withLevel(level);
-            villager.setVillagerData(data);
-
-            boolean levelHasOffers = false;
-            for (VillagerTrades.ItemListing factory : factories) {
-                if (factory == null) {
-                    continue;
-                }
-                MerchantOffer offer = createOffer(factory, serverWorld, fallbackWorld, villager, random);
-                if (offer == null) {
-                    continue;
-                }
-                ItemStack sell = offer.getResult();
-                if (sell == null || sell.isEmpty()) {
-                    continue;
-                }
-                ItemStack buyFirst = offer.getCostA();
-                ItemStack buySecond = offer.getCostB();
-                trades.add(TradeEntry.fromOffer(level, buyFirst, buySecond, sell));
-                levelHasOffers = true;
-            }
-
-            if (!levelHasOffers && serverWorld != null) {
-                MerchantOffers offers = villager.getOffers();
-                if (offers != null) {
-                    offers.clear();
-                }
-                invokeFillRecipes(villager, serverWorld);
-                offers = villager.getOffers();
-                if (offers != null) {
-                    for (MerchantOffer offer : offers) {
-                        if (offer == null) {
-                            continue;
-                        }
-                        ItemStack sell = offer.getResult();
-                        if (sell == null || sell.isEmpty()) {
-                            continue;
-                        }
-                        ItemStack buyFirst = offer.getCostA();
-                        ItemStack buySecond = offer.getCostB();
-                        trades.add(TradeEntry.fromOffer(level, buyFirst, buySecond, sell));
-                    }
-                }
-            }
+        for (VillagerTradeCatalog.Offer offer : VillagerTradeCatalog.load(
+            selectedProfession.id,
+            selectedProfession.key,
+            selectedProfession.entry,
+            serverWorld,
+            client.level
+        )) {
+            trades.add(TradeEntry.fromOffer(offer.level(), offer.firstBuy(), offer.secondBuy(), offer.sell()));
         }
 
         trades.sort(Comparator
@@ -685,116 +605,6 @@ public class VillagerTradeSelector {
         }
         if (selectedTradeKey.isEmpty()) {
             selectFirstTrade();
-        }
-    }
-
-    private it.unimi.dsi.fastutil.ints.Int2ObjectMap<VillagerTrades.ItemListing[]> resolveTradeLevels(
-        Map<?, it.unimi.dsi.fastutil.ints.Int2ObjectMap<VillagerTrades.ItemListing[]>> map,
-        ProfessionOption option
-    ) {
-        if (map == null || map.isEmpty() || option == null) {
-            return null;
-        }
-        it.unimi.dsi.fastutil.ints.Int2ObjectMap<VillagerTrades.ItemListing[]> levelMap = map.get(option.key);
-        if ((levelMap == null || levelMap.isEmpty()) && option.entry != null) {
-            ResourceKey<VillagerProfession> resolvedKey = option.entry.unwrapKey().orElse(null);
-            if (resolvedKey != null) {
-                levelMap = map.get(resolvedKey);
-            }
-            if ((levelMap == null || levelMap.isEmpty())) {
-                VillagerProfession profession = option.entry.value();
-                if (profession != null) {
-                    levelMap = map.get(profession);
-                }
-            }
-            if ((levelMap == null || levelMap.isEmpty())) {
-                levelMap = map.get(option.entry);
-            }
-        }
-        if (levelMap == null || levelMap.isEmpty()) {
-            for (Map.Entry<?, it.unimi.dsi.fastutil.ints.Int2ObjectMap<VillagerTrades.ItemListing[]>> entry : map.entrySet()) {
-                Object key = entry.getKey();
-                String keyPath = null;
-                if (key instanceof ResourceKey<?> registryKey) {
-                    Identifier id = registryKey.identifier();
-                    keyPath = id != null ? id.getPath() : null;
-                } else if (key instanceof Holder<?> registryEntry) {
-                    ResourceKey<?> registryKey = registryEntry.unwrapKey().orElse(null);
-                    if (registryKey != null) {
-                        Identifier id = registryKey.identifier();
-                        keyPath = id != null ? id.getPath() : null;
-                    } else {
-                        Object value = registryEntry.value();
-                        if (value instanceof VillagerProfession profession) {
-                            Identifier id = BuiltInRegistries.VILLAGER_PROFESSION.getKey(profession);
-                            keyPath = id != null ? id.getPath() : null;
-                        }
-                    }
-                } else if (key instanceof VillagerProfession profession) {
-                    Identifier id = BuiltInRegistries.VILLAGER_PROFESSION.getKey(profession);
-                    keyPath = id != null ? id.getPath() : null;
-                } else if (key instanceof Identifier id) {
-                    keyPath = id.getPath();
-                }
-                if (keyPath != null && keyPath.equals(option.id)) {
-                    return entry.getValue();
-                }
-            }
-        }
-        return levelMap;
-    }
-
-    private VillagerProfession resolveProfession(ProfessionOption option) {
-        if (option == null) {
-            return null;
-        }
-        if (option.entry != null) {
-            return option.entry.value();
-        }
-        if (option.key != null) {
-            return BuiltInRegistries.VILLAGER_PROFESSION.getOptional(option.key.identifier()).orElse(null);
-        }
-        return null;
-    }
-
-    private static Method resolveWithProfessionMethod() {
-        try {
-            Method method = VillagerData.class.getMethod("withProfession", VillagerProfession.class);
-            method.setAccessible(true);
-            return method;
-        } catch (NoSuchMethodException ignored) {
-        }
-        try {
-            Method method = VillagerData.class.getMethod("withProfession", Holder.class);
-            method.setAccessible(true);
-            return method;
-        } catch (NoSuchMethodException ignored) {
-            return null;
-        }
-    }
-
-    private VillagerData applyProfession(VillagerData data, ProfessionOption option) {
-        if (data == null || option == null) {
-            return data;
-        }
-        if (VILLAGERDATA_WITH_PROFESSION == null) {
-            return data;
-        }
-        Object argument = null;
-        Class<?> paramType = VILLAGERDATA_WITH_PROFESSION.getParameterTypes()[0];
-        if (paramType.isAssignableFrom(VillagerProfession.class)) {
-            argument = resolveProfession(option);
-        } else if (Holder.class.isAssignableFrom(paramType)) {
-            argument = option.entry;
-        }
-        if (argument == null) {
-            return data;
-        }
-        try {
-            Object result = VILLAGERDATA_WITH_PROFESSION.invoke(data, argument);
-            return result instanceof VillagerData villagerData ? villagerData : data;
-        } catch (IllegalAccessException | InvocationTargetException ignored) {
-            return data;
         }
     }
 
@@ -995,56 +805,6 @@ public class VillagerTradeSelector {
             extracted.add(TradeEntry.fromOffer(1, buyFirst, buySecond, sell));
         }
         return extracted;
-    }
-
-    private static MerchantOffer createOffer(VillagerTrades.ItemListing factory, net.minecraft.server.level.ServerLevel serverWorld,
-                                   Level fallbackWorld, Villager villager, RandomSource random) {
-        if (factory == null || villager == null) {
-            return null;
-        }
-        try {
-            for (Method method : factory.getClass().getMethods()) {
-                if (!"create".equals(method.getName())) {
-                    continue;
-                }
-                Class<?>[] params = method.getParameterTypes();
-                if (params.length == 3) {
-                    if (serverWorld != null && params[0].isInstance(serverWorld) && params[1].isInstance(villager)) {
-                        Object offer = method.invoke(factory, serverWorld, villager, random);
-                        if (offer instanceof MerchantOffer tradeOffer) {
-                            return tradeOffer;
-                        }
-                    }
-                    if (fallbackWorld != null && params[0].isInstance(fallbackWorld) && params[1].isInstance(villager)) {
-                        Object offer = method.invoke(factory, fallbackWorld, villager, random);
-                        if (offer instanceof MerchantOffer tradeOffer) {
-                            return tradeOffer;
-                        }
-                    }
-                } else if (params.length == 2 && params[0].isInstance(villager)) {
-                    Object offer = method.invoke(factory, villager, random);
-                    if (offer instanceof MerchantOffer tradeOffer) {
-                        return tradeOffer;
-                    }
-                }
-            }
-        } catch (ReflectiveOperationException ignored) {
-            return null;
-        }
-        return null;
-    }
-
-    private static void invokeFillRecipes(Villager villager, net.minecraft.server.level.ServerLevel serverWorld) {
-        if (villager == null || serverWorld == null) {
-            return;
-        }
-        try {
-            Method method = Villager.class.getDeclaredMethod("fillRecipes", net.minecraft.server.level.ServerLevel.class);
-            method.setAccessible(true);
-            method.invoke(villager, serverWorld);
-        } catch (ReflectiveOperationException ignored) {
-            // ignore if inaccessible in this version
-        }
     }
 
     private void updateFilteredTrades() {

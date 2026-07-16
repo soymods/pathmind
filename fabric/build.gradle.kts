@@ -18,9 +18,6 @@ val fabricBaseFamily = rootProject.extra["fabricBaseFamily"] as String
 val fabricUseItemFamily = rootProject.extra["fabricUseItemFamily"] as String
 val fabricRenderFamily = rootProject.extra["fabricRenderFamily"] as String
 val baritoneRuntimeSupported = rootProject.extra["baritoneRuntime"] as Boolean
-val architecturyApiVersion = providers.gradleProperty("architectury_api_version")
-    .orElse(provider { rootProject.extra["architecturyApiVersion"] as String })
-    .get()
 
 base {
     archivesName.set("${rootProject.property("archives_base_name") as String}-fabric")
@@ -54,7 +51,6 @@ dependencies {
     )
     modImplementation("net.fabricmc:fabric-loader:$fabricLoaderVersion")
 
-    modApi("dev.architectury:architectury-fabric:$architecturyApiVersion")
     modImplementation("net.fabricmc.fabric-api:fabric-api:$fabricApiVersion")
 
     common(project(":common", "namedElements")) { isTransitive = false }
@@ -120,8 +116,7 @@ tasks.processResources {
         "minecraft_version" to requestedMinecraftVersion,
         "loader_version" to fabricLoaderMinimumVersion,
         "java_version" to targetJavaVersion,
-        "fabric_api_version" to fabricApiVersion,
-        "architectury_api_version" to architecturyApiVersion
+        "fabric_api_version" to fabricApiVersion
     )
     inputs.properties(properties)
     filesMatching("fabric.mod.json") { expand(properties) }

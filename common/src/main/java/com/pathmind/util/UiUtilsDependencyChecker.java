@@ -1,7 +1,6 @@
 package com.pathmind.util;
 
 import com.pathmind.PathmindCommon;
-import dev.architectury.platform.Platform;
 
 /**
  * Lightweight runtime check for UI Utils availability.
@@ -28,8 +27,8 @@ public final class UiUtilsDependencyChecker {
         boolean legacyLoaded = false;
         boolean modernLoaded = false;
         try {
-            legacyLoaded = Platform.isModLoaded(LEGACY_MOD_ID);
-            modernLoaded = Platform.isModLoaded(MODERN_MOD_ID);
+            legacyLoaded = LoaderMetadata.isModLoaded(LEGACY_MOD_ID);
+            modernLoaded = LoaderMetadata.isModLoaded(MODERN_MOD_ID);
         } catch (Throwable ignored) {
             // Platform not initialized (e.g., unit tests) - treat as not loaded.
         }

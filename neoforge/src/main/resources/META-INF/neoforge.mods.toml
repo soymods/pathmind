@@ -23,12 +23,5 @@ versionRange = "[${minecraft_version}]"
 ordering = "NONE"
 side = "CLIENT"
 
-[[dependencies.pathmind]]
-modId = "architectury"
-type = "required"
-versionRange = "[${architectury_api_version},)"
-ordering = "AFTER"
-side = "CLIENT"
-
 [[mixins]]
 config = "pathmind.mixins.json"

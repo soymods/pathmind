@@ -2,7 +2,7 @@ package com.pathmind.data;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import dev.architectury.platform.Platform;
+import com.pathmind.util.LoaderMetadata;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -178,7 +178,7 @@ public final class SettingsManager {
             return client.gameDirectory.toPath();
         }
         try {
-            Path gameFolder = Platform.getGameFolder();
+            Path gameFolder = LoaderMetadata.getGameFolder();
             if (gameFolder != null) {
                 return gameFolder;
             }

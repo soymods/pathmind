@@ -96,7 +96,6 @@ Create a repeatable baseline for all current targets before changing mappings or
   - compatibility family;
   - Java version;
   - Fabric Loader and Fabric API versions;
-  - Architectury API version;
   - NeoForge version or an explicit unsupported marker;
   - packaging generation (`remapped` or `unobfuscated`).
 - Make the existing build tasks consume or validate against that manifest without changing the artifact format yet.

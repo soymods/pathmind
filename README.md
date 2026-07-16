@@ -99,7 +99,6 @@ Pathmind also adds main-menu integration so the editor is reachable before joini
 
 - Minecraft `1.21` through `1.21.11`
 - Java `21+`
-- Architectury API (matching your Minecraft version)
 - **Fabric:** Fabric Loader `0.17.3` or newer + matching Fabric API
 - **NeoForge:** NeoForge `21.0.166` or newer
 
@@ -114,18 +113,16 @@ Pathmind also adds main-menu integration so the editor is reachable before joini
 
 1. Install Fabric Loader for your target Minecraft version.
 2. Install the matching Fabric API release.
-3. Install the matching Architectury API release.
-4. Download the correct `pathmind-fabric-*+mc<version>.jar` from Modrinth.
-5. Place the Pathmind, Fabric API, and Architectury API jars in your `mods` folder.
-6. Launch the game and open Pathmind with the configured keybind.
+3. Download the correct `pathmind-fabric-*+mc<version>.jar` from Modrinth.
+4. Place the Pathmind and Fabric API jars in your `mods` folder.
+5. Launch the game and open Pathmind with the configured keybind.
 
 **NeoForge:**
 
 1. Install NeoForge for your target Minecraft version.
-2. Install the matching Architectury API release.
-3. Download the correct `pathmind-neoforge-*+mc<version>.jar` from Modrinth.
-4. Place the Pathmind and Architectury API jars in your `mods` folder.
-5. Launch the game and open Pathmind with the configured keybind.
+2. Download the correct `pathmind-neoforge-*+mc<version>.jar` from Modrinth.
+3. Place the Pathmind jar in your `mods` folder.
+4. Launch the game and open Pathmind with the configured keybind.
 
 ## Workspace Files
 
@@ -207,14 +204,6 @@ Compatibility tasks:
 - `./gradlew verifyCompatibilityManifest` - checks the manifest against runtime support, metadata, docs, and CI
 
 The machine-readable version source of truth is [`gradle/minecraft-versions.properties`](gradle/minecraft-versions.properties).
-
-### Check Architectury API Versions
-
-```bash
-./gradlew checkArchitecturyVersions
-```
-
-Queries Modrinth for the latest Architectury API version for each configured MC version and reports whether updates are available.
 
 ### Supported Build Targets
 

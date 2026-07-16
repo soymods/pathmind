@@ -10,7 +10,7 @@ This document records the compatibility state protected by Pass 1 of the [Minecr
 - compatibility and source-family selection;
 - target Java version and packaging generation;
 - release loaders;
-- Yarn, Fabric Loader, Fabric API, Architectury API, and NeoForge build pins;
+- Yarn, Fabric Loader, Fabric API, and NeoForge build pins;
 - minimum Fabric Loader metadata;
 - legacy Fabric use-item and render source selection;
 - NeoForge UI source selection;
@@ -32,20 +32,20 @@ Gradle's Java toolchain is always set from the selected manifest row. Compilatio
 
 All targets in this baseline use Java 21 and the `pre26-remapped` packaging generation. Fabric and NeoForge are release loaders for every row.
 
-| Minecraft | Compatibility family | Fabric API | Architectury API | NeoForge |
-| --- | --- | --- | --- | --- |
-| `1.21` | `mc-1.21.0-1.21.8` | `0.102.0+1.21` | `13.0.8` | `21.0.166` |
-| `1.21.1` | `mc-1.21.0-1.21.8` | `0.116.7+1.21.1` | `13.0.8` | `21.1.230` |
-| `1.21.2` | `mc-1.21.0-1.21.8` | `0.106.1+1.21.2` | `14.0.4` | `21.2.1-beta` |
-| `1.21.3` | `mc-1.21.0-1.21.8` | `0.114.1+1.21.3` | `14.0.4` | `21.3.96` |
-| `1.21.4` | `mc-1.21.0-1.21.8` | `0.119.4+1.21.4` | `15.0.3` | `21.4.157` |
-| `1.21.5` | `mc-1.21.0-1.21.8` | `0.128.2+1.21.5` | `16.1.4` | `21.5.97` |
-| `1.21.6` | `mc-1.21.0-1.21.8` | `0.128.2+1.21.6` | `17.0.6` | `21.6.20-beta` |
-| `1.21.7` | `mc-1.21.0-1.21.8` | `0.129.0+1.21.7` | `17.0.8` | `21.7.25-beta` |
-| `1.21.8` | `mc-1.21.0-1.21.8` | `0.133.4+1.21.8` | `17.0.8` | `21.8.53` |
-| `1.21.9` | `mc-1.21.9-1.21.10` | `0.134.1+1.21.9` | `18.0.5` | `21.9.16-beta` |
-| `1.21.10` | `mc-1.21.9-1.21.10` | `0.138.4+1.21.10` | `18.0.8` | `21.10.64` |
-| `1.21.11` | `mc-1.21.11` | `0.140.2+1.21.11` | `19.0.1` | `21.11.42` |
+| Minecraft | Compatibility family | Fabric API | NeoForge |
+| --- | --- | --- | --- |
+| `1.21` | `mc-1.21.0-1.21.8` | `0.102.0+1.21` | `21.0.166` |
+| `1.21.1` | `mc-1.21.0-1.21.8` | `0.116.7+1.21.1` | `21.1.230` |
+| `1.21.2` | `mc-1.21.0-1.21.8` | `0.106.1+1.21.2` | `21.2.1-beta` |
+| `1.21.3` | `mc-1.21.0-1.21.8` | `0.114.1+1.21.3` | `21.3.96` |
+| `1.21.4` | `mc-1.21.0-1.21.8` | `0.119.4+1.21.4` | `21.4.157` |
+| `1.21.5` | `mc-1.21.0-1.21.8` | `0.128.2+1.21.5` | `21.5.97` |
+| `1.21.6` | `mc-1.21.0-1.21.8` | `0.128.2+1.21.6` | `21.6.20-beta` |
+| `1.21.7` | `mc-1.21.0-1.21.8` | `0.129.0+1.21.7` | `21.7.25-beta` |
+| `1.21.8` | `mc-1.21.0-1.21.8` | `0.133.4+1.21.8` | `21.8.53` |
+| `1.21.9` | `mc-1.21.9-1.21.10` | `0.134.1+1.21.9` | `21.9.16-beta` |
+| `1.21.10` | `mc-1.21.9-1.21.10` | `0.138.4+1.21.10` | `21.10.64` |
+| `1.21.11` | `mc-1.21.11` | `0.140.2+1.21.11` | `21.11.42` |
 
 The Fabric build pin is `0.17.3` for every baseline target. Existing release metadata accepts Fabric Loader `0.17.2` or newer; both values are explicit in the manifest so packaging does not silently change during Pass 1.
 
@@ -85,7 +85,7 @@ pathmind-neoforge-1.1.5+mc1.21.11.jar
 
 The public jar must not have `-dev`, `-dev-shadow`, `-sources`, `-all`, or `-javadoc` in its name. Development and sources jars may exist beside it but are excluded from staging.
 
-Fabric metadata is client-only and declares exact Minecraft compatibility, Java 21+, Fabric Loader 0.17.2+, Fabric API, and the target's minimum Architectury API. NeoForge metadata is client-only and declares the exact Minecraft version plus the target's minimum NeoForge and Architectury versions.
+Fabric metadata is client-only and declares exact Minecraft compatibility, Java 21+, Fabric Loader 0.17.2+, and Fabric API. NeoForge metadata is client-only and declares the exact Minecraft version plus the target's minimum NeoForge version.
 
 ## Source duplication inventory
 

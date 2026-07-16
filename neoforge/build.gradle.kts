@@ -10,9 +10,6 @@ architectury {
 }
 
 val requestedMinecraftVersion = rootProject.extra["requestedMinecraftVersion"] as String
-val architecturyApiVersion = providers.gradleProperty("architectury_api_version")
-    .orElse(provider { rootProject.extra["architecturyApiVersion"] as String })
-    .get()
 val neoforgeVersion = rootProject.extra["neoforgeVersion"] as? String
     ?: throw GradleException(
         "NeoForge version not configured for Minecraft $requestedMinecraftVersion. " +
@@ -55,8 +52,6 @@ dependencies {
 
     "neoForge"("net.neoforged:neoforge:$neoforgeVersion")
 
-    modApi("dev.architectury:architectury-neoforge:$architecturyApiVersion")
-
     common(project(":common", "namedElements")) { isTransitive = false }
     runtimeCommon(project(":common", "transformProductionNeoForge")) { isTransitive = false }
     shadowCommon(project(":common", "transformProductionNeoForge")) { isTransitive = false }
@@ -80,8 +75,7 @@ tasks.processResources {
     val properties = mapOf(
         "version" to version,
         "minecraft_version" to requestedMinecraftVersion,
-        "neoforge_version" to neoforgeVersion,
-        "architectury_api_version" to architecturyApiVersion
+        "neoforge_version" to neoforgeVersion
     )
     inputs.properties(properties)
     filesMatching("META-INF/neoforge.mods.toml") { expand(properties) }

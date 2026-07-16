@@ -14,10 +14,6 @@ architectury {
 
 val requestedMinecraftVersion = rootProject.extra["requestedMinecraftVersion"] as String
 val commonSourceFamily = rootProject.extra["commonSourceFamily"] as String
-val architecturyApiVersion = providers.gradleProperty("architectury_api_version")
-    .orElse(provider { rootProject.extra["architecturyApiVersion"] as String })
-    .get()
-
 dependencies {
     minecraft("com.mojang:minecraft:$requestedMinecraftVersion")
     mappings(
@@ -28,8 +24,6 @@ dependencies {
         }
     )
     modImplementation("net.fabricmc:fabric-loader:${rootProject.extra["fabricLoaderVersion"] as String}")
-
-    modApi("dev.architectury:architectury:$architecturyApiVersion")
 
     implementation("com.google.code.gson:gson:2.10.1")
 

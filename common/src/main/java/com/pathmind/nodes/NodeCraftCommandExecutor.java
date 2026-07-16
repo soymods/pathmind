@@ -3,8 +3,8 @@ package com.pathmind.nodes;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.pathmind.util.EntityCompatibilityBridge;
+import com.pathmind.util.LoaderMetadata;
 import com.pathmind.util.RecipeCompatibilityBridge;
-import dev.architectury.platform.Platform;
 import net.minecraft.client.ClientRecipeBook;
 import net.minecraft.client.gui.screens.inventory.CraftingScreen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
@@ -2809,7 +2809,7 @@ final class NodeCraftCommandExecutor {
             minecraftDirectory = client.gameDirectory.toPath();
         } else {
             try {
-                minecraftDirectory = Platform.getGameFolder();
+                minecraftDirectory = LoaderMetadata.getGameFolder();
             } catch (Throwable ignored) {
                 // Unit tests run without a platform; fall through to the default .minecraft path.
             }

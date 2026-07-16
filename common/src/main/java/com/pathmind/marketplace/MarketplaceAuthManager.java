@@ -5,7 +5,7 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.pathmind.PathmindCommon;
-import dev.architectury.platform.Platform;
+import com.pathmind.util.LoaderMetadata;
 import net.minecraft.client.Minecraft;
 import net.minecraft.util.Util;
 
@@ -655,7 +655,7 @@ public final class MarketplaceAuthManager {
         if (client != null && client.gameDirectory != null) {
             return client.gameDirectory.toPath().resolve(BASE_DIRECTORY_NAME);
         }
-        return Platform.getGameFolder().resolve(BASE_DIRECTORY_NAME);
+        return LoaderMetadata.getGameFolder().resolve(BASE_DIRECTORY_NAME);
     }
 
     private static final class PendingLogin {

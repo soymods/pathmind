@@ -11,8 +11,6 @@ plugins {
 
 // ------------------------------------------------------------
 // Per-version configuration is loaded from gradle/minecraft-versions.properties.
-// Architectury API releases: https://api.modrinth.com/v2/project/lhGA9TYQ/version?game_versions=["1.21.x"]
-//   or run: ./gradlew checkArchitecturyVersions
 // NeoForge releases: https://maven.neoforged.net/releases/net/neoforged/neoforge/
 // ------------------------------------------------------------
 data class MinecraftVersionSpec(
@@ -24,7 +22,6 @@ data class MinecraftVersionSpec(
     val fabricLoaderVersion: String,
     val fabricLoaderMinimumVersion: String,
     val fabricApiVersion: String,
-    val architecturyApiVersion: String,
     val neoforgeVersion: String?,
     val commonSourceFamily: String,
     val fabricBaseFamily: String,
@@ -72,7 +69,6 @@ val supportedMinecraftVersions = linkedMapOf<String, MinecraftVersionSpec>().app
             fabricLoaderVersion = manifestValue(prefix + "fabric_loader"),
             fabricLoaderMinimumVersion = manifestValue(prefix + "fabric_loader_min"),
             fabricApiVersion = manifestValue(prefix + "fabric_api"),
-            architecturyApiVersion = manifestValue(prefix + "architectury_api"),
             neoforgeVersion = manifestValue(prefix + "neoforge").takeUnless { it == "unsupported" },
             commonSourceFamily = manifestValue(prefix + "common_source_family"),
             fabricBaseFamily = manifestValue(prefix + "fabric_base_family"),
@@ -107,7 +103,6 @@ extra["yarnMappings"] = requestedSpec.yarnMappings
 extra["fabricLoaderVersion"] = requestedSpec.fabricLoaderVersion
 extra["fabricLoaderMinimumVersion"] = requestedSpec.fabricLoaderMinimumVersion
 extra["fabricApiVersion"] = requestedSpec.fabricApiVersion
-extra["architecturyApiVersion"] = requestedSpec.architecturyApiVersion
 extra["neoforgeVersion"] = requestedSpec.neoforgeVersion
 extra["compatibilityFamily"] = requestedSpec.compatibilityFamily
 extra["packagingGeneration"] = requestedSpec.packagingGeneration
@@ -221,7 +216,6 @@ val compatibilityManifestFields = setOf(
     "fabric_loader",
     "fabric_loader_min",
     "fabric_api",
-    "architectury_api",
     "neoforge",
     "common_source_family",
     "fabric_base_family",
@@ -390,7 +384,7 @@ tasks.register("compatibilityReport") {
     group = "help"
     description = "Prints the configured Minecraft compatibility matrix"
     doLast {
-        println("Minecraft | Family | Java | Packaging | Loaders | Fabric Loader (build/min) | Fabric API | Architectury | NeoForge")
+        println("Minecraft | Family | Java | Packaging | Loaders | Fabric Loader (build/min) | Fabric API | NeoForge")
         println("-".repeat(132))
         supportedMinecraftVersions.forEach { (version, spec) ->
             println(listOf(
@@ -401,7 +395,6 @@ tasks.register("compatibilityReport") {
                 spec.releaseLoaders.joinToString(","),
                 "${spec.fabricLoaderVersion}/${spec.fabricLoaderMinimumVersion}",
                 spec.fabricApiVersion,
-                spec.architecturyApiVersion,
                 spec.neoforgeVersion ?: "unsupported"
             ).joinToString(" | "))
         }
@@ -453,46 +446,6 @@ supportedMinecraftVersionIds
         generateCanonicalMojangMappings.configure { dependsOn(task) }
     }
 
-// ------------------------------------------------------------
-// Check latest Architectury API versions from Modrinth
-// Usage: ./gradlew checkArchitecturyVersions
-// ------------------------------------------------------------
-tasks.register("checkArchitecturyVersions") {
-    group = "help"
-    description = "Queries Modrinth for the latest Architectury API version for each configured MC version"
-    doLast {
-        println("\nArchitectury API version check (source: Modrinth)")
-        println("-".repeat(70))
-        supportedMinecraftVersions.forEach { (mcVersion, spec) ->
-            try {
-                val encoded = java.net.URLEncoder.encode("[\"$mcVersion\"]", "UTF-8")
-                val url = java.net.URI("https://api.modrinth.com/v2/project/lhGA9TYQ/version?game_versions=$encoded&featured=true").toURL()
-                val connection = url.openConnection() as java.net.HttpURLConnection
-                connection.setRequestProperty("User-Agent", "pathmind-buildscript/1.0")
-                connection.connectTimeout = 5000
-                connection.readTimeout = 5000
-                connection.connect()
-                if (connection.responseCode == 200) {
-                    val json = connection.inputStream.bufferedReader().readText()
-                    val latest = Regex(""""version_number"\s*:\s*"([^+]+)""").find(json)
-                        ?.groupValues?.get(1) ?: "unknown"
-                    val current = spec.architecturyApiVersion
-                    val status = if (current == latest) "up to date" else "update to $latest"
-                    println("MC $mcVersion: $current  $status")
-                } else {
-                    println("MC $mcVersion: HTTP ${connection.responseCode}")
-                }
-                connection.disconnect()
-            } catch (e: Exception) {
-                println("MC $mcVersion: error - ${e.message}")
-            }
-        }
-        println("-".repeat(70))
-        println("Update architectury_api in gradle/minecraft-versions.properties.\n")
-    }
-}
-
-// ------------------------------------------------------------
 // Multi-version build tasks
 // ------------------------------------------------------------
 val cleanTask = tasks.named("clean")
@@ -596,7 +549,6 @@ val verifyBuiltCompatibilityArtifacts = tasks.register("verifyBuiltCompatibility
                         ?: throw GradleException("${jar.name} is missing $metadataPath")
                     val metadata = zip.getInputStream(entry).bufferedReader().use { it.readText() }
                     if (!metadata.contains(version)) throw GradleException("${jar.name} metadata does not mention Minecraft $version")
-                    if (!metadata.contains(spec.architecturyApiVersion)) throw GradleException("${jar.name} metadata does not mention Architectury ${spec.architecturyApiVersion}")
                     if (loader == "fabric") {
                         if (!metadata.contains("\"minecraft\": \"$version\"")) throw GradleException("${jar.name} does not require exact Minecraft $version")
                         if (!metadata.contains("\"java\": \">=${spec.javaVersion}\"")) throw GradleException("${jar.name} has stale Java metadata")

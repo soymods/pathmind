@@ -1,7 +1,5 @@
 package com.pathmind.util;
 
-import dev.architectury.platform.Platform;
-
 /**
  * Lightweight runtime check for Baritone API availability.
  * We only rely on the mod being loaded and the core API class resolving.
@@ -47,7 +45,7 @@ public final class BaritoneDependencyChecker {
             return cachedModResult;
         }
         try {
-            if (Platform.isModLoaded(BARITONE_MOD_ID)) {
+            if (LoaderMetadata.isModLoaded(BARITONE_MOD_ID)) {
                 cachedModResult = Boolean.TRUE;
                 return cachedModResult;
             }

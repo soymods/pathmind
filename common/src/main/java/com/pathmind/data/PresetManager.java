@@ -1,6 +1,6 @@
 package com.pathmind.data;
 
-import dev.architectury.platform.Platform;
+import com.pathmind.util.LoaderMetadata;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -449,7 +449,7 @@ public final class PresetManager {
             return client.gameDirectory.toPath();
         }
         try {
-            Path gameFolder = Platform.getGameFolder();
+            Path gameFolder = LoaderMetadata.getGameFolder();
             if (gameFolder != null) {
                 return gameFolder;
             }

@@ -41,7 +41,7 @@ jobs:
             TIER=fast
           fi
 
-          TARGETS="$(printf '%s' "$VERSIONS" | tr ',' '\n' | while read -r version; do
+          TARGETS="$(printf '%s\n' "$VERSIONS" | tr ',' '\n' | while read -r version; do
             java_version="$(awk -F= -v key="version.${version}.java_version" '$1 == key { print $2 }' "$MANIFEST")"
             generation="$(awk -F= -v key="version.${version}.packaging_generation" '$1 == key { print $2 }' "$MANIFEST")"
             jq -cn \

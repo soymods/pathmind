@@ -10,6 +10,8 @@
     "GameRendererMixin",
     "InGameHudMixin",
     "ItemRendererMixin",
+    "NavigatorCameraMixin",
+    "NavigatorMouseHandlerMixin",
     "TextFieldWidgetAccessor",
     "ScreenAccessor",
     "ScreenRenderSealMixin",

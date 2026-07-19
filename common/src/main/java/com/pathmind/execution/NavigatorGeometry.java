@@ -5,6 +5,8 @@ import java.util.OptionalDouble;
 import net.minecraft.world.phys.AABB;
 
 final class NavigatorGeometry {
+    private static final float MOUSE_TURN_SCALE = 0.15F;
+
     private NavigatorGeometry() {
     }
 
@@ -58,6 +60,33 @@ final class NavigatorGeometry {
             && Math.abs(playerY - targetFeetY) <= 0.70D;
     }
 
+    static boolean isExactGoalBlock(
+        int playerX,
+        int playerY,
+        int playerZ,
+        int targetX,
+        int targetY,
+        int targetZ
+    ) {
+        return playerX == targetX && playerY == targetY && playerZ == targetZ;
+    }
+
+    static float applyMouseYaw(float currentYaw, double yawDelta) {
+        return currentYaw + (float) yawDelta * MOUSE_TURN_SCALE;
+    }
+
+    static float applyMousePitch(float currentPitch, double pitchDelta) {
+        return Math.max(-90.0F, Math.min(90.0F, currentPitch + (float) pitchDelta * MOUSE_TURN_SCALE));
+    }
+
+    static float cameraYawForMode(float cameraYaw, boolean mirrored) {
+        return mirrored ? cameraYaw + 180.0F : cameraYaw;
+    }
+
+    static float cameraPitchForMode(float cameraPitch, boolean mirrored) {
+        return mirrored ? -cameraPitch : cameraPitch;
+    }
+
     static boolean shouldTurnInPlace(
         boolean groundSegment,
         boolean nearFinalGoal,
@@ -73,11 +102,48 @@ final class NavigatorGeometry {
             && yawError > turnThreshold;
     }
 
+    static boolean hasMinedAscentJumpClearance(
+        boolean originArcClear,
+        boolean landingFeetClear,
+        boolean landingHeadClear,
+        boolean waypointHeadClear
+    ) {
+        return originArcClear && landingFeetClear && landingHeadClear && waypointHeadClear;
+    }
+
     static double steeringLookaheadBlend(double waypointDistance, double lookaheadDistance) {
         if (!(lookaheadDistance > 0.0D)) {
             return 0.0D;
         }
         double proximity = Math.max(0.0D, Math.min(1.0D, 1.0D - waypointDistance / lookaheadDistance));
         return 0.30D + proximity * 0.45D;
+    }
+
+    static boolean hasPassedWaypoint(
+        double playerX,
+        double playerZ,
+        double previousX,
+        double previousZ,
+        double waypointX,
+        double waypointZ,
+        double maximumLateralDistance
+    ) {
+        double segmentX = waypointX - previousX;
+        double segmentZ = waypointZ - previousZ;
+        double segmentLengthSq = segmentX * segmentX + segmentZ * segmentZ;
+        if (segmentLengthSq < 0.0001D || maximumLateralDistance < 0.0D) {
+            return false;
+        }
+        double playerOffsetX = playerX - previousX;
+        double playerOffsetZ = playerZ - previousZ;
+        double progress = (playerOffsetX * segmentX + playerOffsetZ * segmentZ) / segmentLengthSq;
+        if (progress < 1.05D) {
+            return false;
+        }
+        double projectedX = previousX + progress * segmentX;
+        double projectedZ = previousZ + progress * segmentZ;
+        double lateralX = playerX - projectedX;
+        double lateralZ = playerZ - projectedZ;
+        return lateralX * lateralX + lateralZ * lateralZ <= maximumLateralDistance * maximumLateralDistance;
     }
 }

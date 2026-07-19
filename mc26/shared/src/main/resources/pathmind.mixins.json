@@ -10,6 +10,8 @@
     "Mc26HudProtectionMixin",
     "Mc26HudOverlayMixin",
     "ItemRendererMixin",
+    "NavigatorCameraMixin",
+    "NavigatorMouseHandlerMixin",
     "TextFieldWidgetAccessor",
     "ScreenAccessor",
     "ScreenRenderSealMixin",

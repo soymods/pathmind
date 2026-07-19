@@ -140,6 +140,7 @@ tasks.shadowJar {
         archiveClassifier.set("dev-shadow")
     }
     from(rootProject.file("LICENSE.txt")) { rename { "${it}_${base.archivesName.get()}" } }
+    from(rootProject.file("THIRD_PARTY_LICENSES")) { into("META-INF/licenses/pathmind") }
 }
 
 tasks.remapJar {
@@ -153,6 +154,7 @@ tasks.remapJar {
 tasks.jar {
     archiveClassifier.set("dev")
     from(rootProject.file("LICENSE.txt")) { rename { "${it}_${base.archivesName.get()}" } }
+    from(rootProject.file("THIRD_PARTY_LICENSES")) { into("META-INF/licenses/pathmind") }
 }
 
 tasks.sourcesJar {

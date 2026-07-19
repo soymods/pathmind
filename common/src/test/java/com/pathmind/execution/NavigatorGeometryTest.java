@@ -1,6 +1,11 @@
 package com.pathmind.execution;
 
 import java.util.List;
+import net.minecraft.SharedConstants;
+import net.minecraft.core.BlockPos;
+import net.minecraft.server.Bootstrap;
+import net.minecraft.world.level.EmptyBlockGetter;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.AABB;
 import org.junit.jupiter.api.Test;
 
@@ -9,6 +14,16 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NavigatorGeometryTest {
+    @Test
+    void vanillaGrassAndFernsHaveNoTraversalCollision() {
+        SharedConstants.tryDetectVersion();
+        Bootstrap.bootStrap();
+        assertTrue(Blocks.SHORT_GRASS.defaultBlockState().getCollisionShape(EmptyBlockGetter.INSTANCE, BlockPos.ZERO).isEmpty());
+        assertTrue(Blocks.TALL_GRASS.defaultBlockState().getCollisionShape(EmptyBlockGetter.INSTANCE, BlockPos.ZERO).isEmpty());
+        assertTrue(Blocks.FERN.defaultBlockState().getCollisionShape(EmptyBlockGetter.INSTANCE, BlockPos.ZERO).isEmpty());
+        assertTrue(Blocks.LARGE_FERN.defaultBlockState().getCollisionShape(EmptyBlockGetter.INSTANCE, BlockPos.ZERO).isEmpty());
+    }
+
     @Test
     void partialBlockTopIsAcceptedAsAStandingSurface() {
         AABB bottomSlab = new AABB(0.0D, 64.0D, 0.0D, 1.0D, 64.5D, 1.0D);
@@ -44,10 +59,49 @@ class NavigatorGeometryTest {
     }
 
     @Test
+    void exactGoalCompletionRejectsEveryNeighboringBlock() {
+        assertTrue(NavigatorGeometry.isExactGoalBlock(10, 64, 20, 10, 64, 20));
+        assertFalse(NavigatorGeometry.isExactGoalBlock(11, 64, 20, 10, 64, 20));
+        assertFalse(NavigatorGeometry.isExactGoalBlock(10, 65, 20, 10, 64, 20));
+        assertFalse(NavigatorGeometry.isExactGoalBlock(10, 64, 19, 10, 64, 20));
+    }
+
+    @Test
+    void independentCameraUsesVanillaMouseScalingAndPitchLimits() {
+        assertEquals(13.0F, NavigatorGeometry.applyMouseYaw(10.0F, 20.0D));
+        assertEquals(90.0F, NavigatorGeometry.applyMousePitch(89.0F, 20.0D));
+        assertEquals(-90.0F, NavigatorGeometry.applyMousePitch(-89.0F, -20.0D));
+    }
+
+    @Test
+    void frontAndBackThirdPersonViewsOrbitFromTheFreeCameraAngle() {
+        assertEquals(30.0F, NavigatorGeometry.cameraYawForMode(30.0F, false));
+        assertEquals(12.0F, NavigatorGeometry.cameraPitchForMode(12.0F, false));
+        assertEquals(210.0F, NavigatorGeometry.cameraYawForMode(30.0F, true));
+        assertEquals(-12.0F, NavigatorGeometry.cameraPitchForMode(12.0F, true));
+    }
+
+    @Test
     void sharpTurnsPauseForwardMovementUntilAligned() {
         assertTrue(NavigatorGeometry.shouldTurnInPlace(true, false, false, 1.0D, 80.0F, 52.0F));
         assertFalse(NavigatorGeometry.shouldTurnInPlace(true, false, false, 1.0D, 20.0F, 52.0F));
         assertFalse(NavigatorGeometry.shouldTurnInPlace(true, true, false, 1.0D, 80.0F, 52.0F));
+    }
+
+    @Test
+    void minedAscentRequiresOnlyTheJumpArcAndNotOpenSideWalls() {
+        assertTrue(NavigatorGeometry.hasMinedAscentJumpClearance(true, true, true, true));
+        assertFalse(NavigatorGeometry.hasMinedAscentJumpClearance(false, true, true, true));
+        assertFalse(NavigatorGeometry.hasMinedAscentJumpClearance(true, false, true, true));
+        assertFalse(NavigatorGeometry.hasMinedAscentJumpClearance(true, true, false, true));
+        assertFalse(NavigatorGeometry.hasMinedAscentJumpClearance(true, true, true, false));
+    }
+
+    @Test
+    void passedWaypointDetectionPreventsOrbitingBackToSimpleStep() {
+        assertTrue(NavigatorGeometry.hasPassedWaypoint(1.65D, 0.65D, 0.5D, 0.5D, 1.5D, 0.5D, 1.15D));
+        assertFalse(NavigatorGeometry.hasPassedWaypoint(1.25D, 0.65D, 0.5D, 0.5D, 1.5D, 0.5D, 1.15D));
+        assertFalse(NavigatorGeometry.hasPassedWaypoint(1.65D, 2.0D, 0.5D, 0.5D, 1.5D, 0.5D, 1.15D));
     }
 
     @Test

@@ -250,4 +250,5 @@ In short:
 - FabricMC for the Fabric modding framework
 - NeoForged for the NeoForge modding framework
 - Architectury for the cross-platform mod toolchain
+- [Baritone](https://github.com/cabaletta/baritone) as an architectural reference for Pathmind's native navigator; Baritone is licensed under the [GNU LGPL v3 or later](THIRD_PARTY_LICENSES/BARITONE-LGPL-3.0.txt)
 - Blender and Scratch for helping inspire the node-based workflow direction

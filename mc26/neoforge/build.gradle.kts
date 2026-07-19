@@ -98,6 +98,9 @@ tasks.jar {
     from(repositoryRoot.resolve("LICENSE.txt")) {
         rename { "${it}_pathmind-neoforge" }
     }
+    from(repositoryRoot.resolve("THIRD_PARTY_LICENSES")) {
+        into("META-INF/licenses/pathmind")
+    }
 }
 
 tasks.withType<JavaCompile>().configureEach {

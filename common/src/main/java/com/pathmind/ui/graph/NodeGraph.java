@@ -4862,22 +4862,7 @@ public class NodeGraph {
 
     private List<String> getStickyNoteDisplayLines(Node node, Font textRenderer, int maxLines) {
         String source = stickyNoteEditingNode == node ? stickyNoteEditBuffer : node.getStickyNoteText();
-        return getStickyNoteDisplayLines(source, textRenderer, Math.max(1, node.getStickyNoteBodyWidth()), maxLines);
-    }
-
-    private List<String> getStickyNoteDisplayLines(String source, Font textRenderer, int maxWidth, int maxLines) {
-        List<String> lines = new ArrayList<>();
-        String[] rawLines = (source == null ? "" : source).split("\\n", -1);
-        for (String rawLine : rawLines) {
-            appendWrappedStickyNoteDisplayLine(lines, rawLine == null ? "" : rawLine, textRenderer, Math.max(1, maxWidth));
-            if (lines.size() >= maxLines) {
-                return new ArrayList<>(lines.subList(0, maxLines));
-            }
-        }
-        if (lines.isEmpty()) {
-            lines.add("");
-        }
-        return lines;
+        return StickyNoteTextLayout.wrapLines(source, textRenderer, Math.max(1, node.getStickyNoteBodyWidth()), maxLines);
     }
 
     private StickyNoteCaretRenderPosition getStickyNoteCaretRenderPosition(Node node, Font textRenderer, int maxLines) {
@@ -4886,7 +4871,7 @@ public class NodeGraph {
         }
         int caretOffset = Mth.clamp(stickyNoteCaretPosition, 0, stickyNoteEditBuffer.length());
         String textBeforeCaret = stickyNoteEditBuffer.substring(0, caretOffset);
-        List<String> wrappedBeforeCaret = getStickyNoteDisplayLines(
+        List<String> wrappedBeforeCaret = StickyNoteTextLayout.wrapLines(
             textBeforeCaret,
             textRenderer,
             Math.max(1, node.getStickyNoteBodyWidth()),
@@ -4899,56 +4884,6 @@ public class NodeGraph {
             return null;
         }
         return new StickyNoteCaretRenderPosition(lineIndex, wrappedBeforeCaret.get(lineIndex));
-    }
-
-    private void appendWrappedStickyNoteDisplayLine(List<String> lines, String rawLine, Font textRenderer, int maxWidth) {
-        if (rawLine.isEmpty()) {
-            lines.add("");
-            return;
-        }
-
-        StringBuilder current = new StringBuilder();
-        for (String word : rawLine.split(" ", -1)) {
-            if (word.isEmpty()) {
-                appendStickyNoteDisplayWhitespace(lines, current, textRenderer, maxWidth);
-                continue;
-            }
-
-            String candidate = current.length() == 0 ? word : current + " " + word;
-            if (textRenderer.width(candidate) <= maxWidth) {
-                current.setLength(0);
-                current.append(candidate);
-                continue;
-            }
-
-            if (current.length() > 0) {
-                lines.add(current.toString());
-                current.setLength(0);
-            }
-            appendWrappedStickyNoteDisplayWord(lines, current, word, textRenderer, maxWidth);
-        }
-        lines.add(current.toString());
-    }
-
-    private void appendStickyNoteDisplayWhitespace(List<String> lines, StringBuilder current, Font textRenderer, int maxWidth) {
-        if (current.length() == 0 || textRenderer.width(current + " ") <= maxWidth) {
-            current.append(' ');
-            return;
-        }
-        lines.add(current.toString());
-        current.setLength(0);
-    }
-
-    private void appendWrappedStickyNoteDisplayWord(List<String> lines, StringBuilder current, String word,
-                                                    Font textRenderer, int maxWidth) {
-        for (int index = 0; index < word.length(); index++) {
-            String candidate = current.toString() + word.charAt(index);
-            if (current.length() > 0 && textRenderer.width(candidate) > maxWidth) {
-                lines.add(current.toString());
-                current.setLength(0);
-            }
-            current.append(word.charAt(index));
-        }
     }
 
     private void renderStickyNoteResizeHandle(GuiGraphics context, Node node, StickyNoteResizeCorner corner, int color) {

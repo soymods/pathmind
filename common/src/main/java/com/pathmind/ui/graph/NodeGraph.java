@@ -289,16 +289,48 @@ public class NodeGraph {
     private int amountSelectionStart = -1;
     private int amountSelectionEnd = -1;
     private int amountSelectionAnchor = -1;
+    private final InlineTextEditor.Host inlineEditorHost = new InlineTextEditor.Host() {
+        @Override
+        public boolean isTextShortcutDown(int modifiers) {
+            return NodeGraph.this.isTextShortcutDown(modifiers);
+        }
+
+        @Override
+        public String getClipboardText() {
+            return NodeGraph.this.getClipboardText();
+        }
+
+        @Override
+        public void setClipboardText(String text) {
+            NodeGraph.this.setClipboardText(text);
+        }
+
+        @Override
+        public int findPreviousWordBoundary(String text, int fromPosition) {
+            return NodeGraph.this.findPreviousWordBoundary(text, fromPosition);
+        }
+    };
+
     private Node messageEditingNode = null;
     private int messageEditingIndex = -1;
-    private String messageEditBuffer = "";
     private String messageEditOriginalValue = "";
-    private long messageCaretLastToggleTime = 0L;
-    private boolean messageCaretVisible = true;
-    private int messageCaretPosition = 0;
-    private int messageSelectionStart = -1;
-    private int messageSelectionEnd = -1;
-    private int messageSelectionAnchor = -1;
+    private final InlineTextEditor messageEditor = new InlineTextEditor(inlineEditorHost);
+    private final InlineTextEditor.Policy messagePolicy = new InlineTextEditor.Policy() {
+        @Override
+        public void onBufferChanged() {
+            updateMessageFieldContentWidth(getClientTextRenderer());
+        }
+
+        @Override
+        public void onEnter() {
+            stopMessageEditing(true);
+        }
+
+        @Override
+        public void onEscape() {
+            stopMessageEditing(true);
+        }
+    };
     private final StickyNoteController stickyNoteController = new StickyNoteController(new StickyNoteHost() {
         @Override
         public int cameraX() {
@@ -6400,7 +6432,7 @@ public class NodeGraph {
 
         boolean editing = isEditingMessageField() && messageEditingNode == node;
         if (editing) {
-            updateMessageCaretBlink();
+            messageEditor.updateCaretBlink();
         }
 
         Set<String> runtimeVariableNames = collectRuntimeVariableNames(node);
@@ -6433,7 +6465,7 @@ public class NodeGraph {
 
             UIStyleHelper.drawFieldFrame(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, palette);
 
-            String rawValue = editingThis ? messageEditBuffer : node.getMessageLine(i);
+            String rawValue = editingThis ? messageEditor.getBuffer() : node.getMessageLine(i);
             if (rawValue == null) {
                 rawValue = "";
             }
@@ -6471,9 +6503,9 @@ public class NodeGraph {
             if (!fixedPrefix.isEmpty()) {
                 drawNodeText(context, textRenderer, Component.literal(fixedPrefix), textX, textY, UITheme.TEXT_TERTIARY);
             }
-            if (editingThis && hasMessageSelection()) {
-                int start = messageSelectionStart;
-                int end = messageSelectionEnd;
+            if (editingThis && messageEditor.hasSelection()) {
+                int start = messageEditor.getSelectionStart();
+                int end = messageEditor.getSelectionEnd();
                 if (renderData != null) {
                     start = renderData.toDisplayIndex(start);
                     end = renderData.toDisplayIndex(end);
@@ -6492,8 +6524,8 @@ public class NodeGraph {
                 drawNodeText(context, textRenderer, Component.literal(display), expressionTextX, textY, valueColor);
             }
 
-            if (editingThis && messageCaretVisible) {
-                int caretIndex = messageCaretPosition;
+            if (editingThis && messageEditor.isCaretVisible()) {
+                int caretIndex = messageEditor.getCaretPosition();
                 if (renderData != null) {
                     caretIndex = renderData.toDisplayIndex(caretIndex);
                 }
@@ -7082,7 +7114,7 @@ public class NodeGraph {
         int maxWidth = 0;
         int fieldCount = messageEditingNode.getMessageFieldCount();
         for (int i = 0; i < fieldCount; i++) {
-            String line = i == messageEditingIndex ? messageEditBuffer : messageEditingNode.getMessageLine(i);
+            String line = i == messageEditingIndex ? messageEditor.getBuffer() : messageEditingNode.getMessageLine(i);
             if (line == null) {
                 line = "";
             }
@@ -9411,19 +9443,6 @@ public class NodeGraph {
         return messageEditingNode != null && messageEditingIndex >= 0;
     }
 
-    private void updateMessageCaretBlink() {
-        long now = System.currentTimeMillis();
-        if (now - messageCaretLastToggleTime >= COORDINATE_CARET_BLINK_INTERVAL_MS) {
-            messageCaretVisible = !messageCaretVisible;
-            messageCaretLastToggleTime = now;
-        }
-    }
-
-    private void resetMessageCaretBlink() {
-        messageCaretVisible = true;
-        messageCaretLastToggleTime = System.currentTimeMillis();
-    }
-
     public void startMessageEditing(Node node, int index) {
         if (node == null || !node.hasMessageInputFields() || index < 0 || index >= node.getMessageFieldCount()) {
             stopMessageEditing(false);
@@ -9452,14 +9471,10 @@ public class NodeGraph {
         messageEditingNode = node;
         messageEditingIndex = index;
         messageEditOriginalValue = node.getMessageLine(index);
-        messageEditBuffer = node.getType() == NodeType.CHANGE_VARIABLE
+        String initialBuffer = node.getType() == NodeType.CHANGE_VARIABLE
             ? getCalculateExpressionText(messageEditOriginalValue, getCalculateOutputName(node, index))
             : messageEditOriginalValue;
-        resetMessageCaretBlink();
-        messageCaretPosition = messageEditBuffer.length();
-        messageSelectionAnchor = -1;
-        messageSelectionStart = -1;
-        messageSelectionEnd = -1;
+        messageEditor.begin(initialBuffer, initialBuffer.length());
         updateMessageFieldContentWidth(getClientTextRenderer());
     }
 
@@ -9481,13 +9496,8 @@ public class NodeGraph {
 
         messageEditingNode = null;
         messageEditingIndex = -1;
-        messageEditBuffer = "";
         messageEditOriginalValue = "";
-        messageCaretVisible = true;
-        messageCaretPosition = 0;
-        messageSelectionAnchor = -1;
-        messageSelectionStart = -1;
-        messageSelectionEnd = -1;
+        messageEditor.clear();
     }
 
     public boolean isEditingEventNameField() {
@@ -9691,7 +9701,7 @@ public class NodeGraph {
         if (!isEditingMessageField()) {
             return false;
         }
-        String value = messageEditBuffer == null ? "" : messageEditBuffer;
+        String value = messageEditor.getBuffer();
         if (messageEditingNode.getType() == NodeType.CHANGE_VARIABLE) {
             value = getCalculateOutputName(messageEditingNode, messageEditingIndex) + " = " + value;
         }
@@ -10291,100 +10301,14 @@ public class NodeGraph {
         if (!isEditingMessageField()) {
             return false;
         }
-
-        boolean shiftHeld = (modifiers & GLFW.GLFW_MOD_SHIFT) != 0;
-        boolean controlHeld = isTextShortcutDown(modifiers);
-
-        switch (keyCode) {
-            case GLFW.GLFW_KEY_BACKSPACE:
-                if (deleteMessageSelection()) {
-                    return true;
-                }
-                if (controlHeld && messageCaretPosition > 0) {
-                    // CTRL+Backspace: delete to previous word boundary
-                    int deleteToPos = findPreviousWordBoundary(messageEditBuffer, messageCaretPosition);
-                    messageEditBuffer = messageEditBuffer.substring(0, deleteToPos)
-                        + messageEditBuffer.substring(messageCaretPosition);
-                    setMessageCaretPosition(deleteToPos);
-                    updateMessageFieldContentWidth(getClientTextRenderer());
-                } else if (messageCaretPosition > 0 && !messageEditBuffer.isEmpty()) {
-                    messageEditBuffer = messageEditBuffer.substring(0, messageCaretPosition - 1)
-                        + messageEditBuffer.substring(messageCaretPosition);
-                    setMessageCaretPosition(messageCaretPosition - 1);
-                    updateMessageFieldContentWidth(getClientTextRenderer());
-                }
-                return true;
-            case GLFW.GLFW_KEY_DELETE:
-                if (deleteMessageSelection()) {
-                    return true;
-                }
-                if (messageCaretPosition < messageEditBuffer.length()) {
-                    messageEditBuffer = messageEditBuffer.substring(0, messageCaretPosition)
-                        + messageEditBuffer.substring(messageCaretPosition + 1);
-                    setMessageCaretPosition(messageCaretPosition);
-                    updateMessageFieldContentWidth(getClientTextRenderer());
-                }
-                return true;
-            case GLFW.GLFW_KEY_LEFT:
-                moveMessageCaretTo(messageCaretPosition - 1, shiftHeld);
-                return true;
-            case GLFW.GLFW_KEY_RIGHT:
-                moveMessageCaretTo(messageCaretPosition + 1, shiftHeld);
-                return true;
-            case GLFW.GLFW_KEY_HOME:
-                moveMessageCaretTo(0, shiftHeld);
-                return true;
-            case GLFW.GLFW_KEY_END:
-                moveMessageCaretTo(messageEditBuffer.length(), shiftHeld);
-                return true;
-            case GLFW.GLFW_KEY_ENTER:
-            case GLFW.GLFW_KEY_KP_ENTER:
-                stopMessageEditing(true);
-                return true;
-            case GLFW.GLFW_KEY_ESCAPE:
-                stopMessageEditing(true);
-                return true;
-            case GLFW.GLFW_KEY_A:
-                if (controlHeld) {
-                    selectAllMessageText();
-                    return true;
-                }
-                break;
-            case GLFW.GLFW_KEY_C:
-                if (controlHeld) {
-                    copyMessageSelection();
-                    return true;
-                }
-                break;
-            case GLFW.GLFW_KEY_X:
-                if (controlHeld) {
-                    cutMessageSelection();
-                    return true;
-                }
-                break;
-            case GLFW.GLFW_KEY_V:
-                if (controlHeld) {
-                    Font textRenderer = getClientTextRenderer();
-                    if (textRenderer != null) {
-                        insertMessageText(getClipboardText(), textRenderer);
-                    }
-                    return true;
-                }
-                break;
-            default:
-                return false;
-        }
-        return false;
+        return messageEditor.handleKeyPressed(keyCode, modifiers, messagePolicy);
     }
 
     public boolean handleMessageCharTyped(char chr, int modifiers, Font textRenderer) {
         if (!isEditingMessageField()) {
             return false;
         }
-        if (chr == '\n' || chr == '\r') {
-            return false;
-        }
-        return insertMessageText(String.valueOf(chr), textRenderer);
+        return messageEditor.handleCharTyped(chr, messagePolicy);
     }
 
     private boolean hasCoordinateSelection() {
@@ -10409,12 +10333,6 @@ public class NodeGraph {
         return variableSelectionStart >= 0
             && variableSelectionEnd >= 0
             && variableSelectionStart != variableSelectionEnd;
-    }
-
-    private boolean hasMessageSelection() {
-        return messageSelectionStart >= 0
-            && messageSelectionEnd >= 0
-            && messageSelectionStart != messageSelectionEnd;
     }
 
     private boolean hasEventNameSelection() {
@@ -10447,11 +10365,6 @@ public class NodeGraph {
     private void resetVariableSelectionRange() {
         variableSelectionStart = -1;
         variableSelectionEnd = -1;
-    }
-
-    private void resetMessageSelectionRange() {
-        messageSelectionStart = -1;
-        messageSelectionEnd = -1;
     }
 
     private void resetEventNameSelectionRange() {
@@ -10781,40 +10694,11 @@ public class NodeGraph {
         resetVariableCaretBlink();
     }
 
-    private void setMessageCaretPosition(int position) {
-        messageCaretPosition = Mth.clamp(position, 0, messageEditBuffer.length());
-        messageSelectionAnchor = -1;
-        resetMessageSelectionRange();
-        resetMessageCaretBlink();
-    }
-
     private void setEventNameCaretPosition(int position) {
         eventNameCaretPosition = Mth.clamp(position, 0, eventNameEditBuffer.length());
         eventNameSelectionAnchor = -1;
         resetEventNameSelectionRange();
         resetEventNameCaretBlink();
-    }
-
-    private void moveMessageCaretTo(int position, boolean extendSelection) {
-        position = Mth.clamp(position, 0, messageEditBuffer.length());
-        if (extendSelection) {
-            if (messageSelectionAnchor == -1) {
-                messageSelectionAnchor = messageCaretPosition;
-            }
-            int start = Math.min(messageSelectionAnchor, position);
-            int end = Math.max(messageSelectionAnchor, position);
-            if (start == end) {
-                resetMessageSelectionRange();
-            } else {
-                messageSelectionStart = start;
-                messageSelectionEnd = end;
-            }
-        } else {
-            messageSelectionAnchor = -1;
-            resetMessageSelectionRange();
-        }
-        messageCaretPosition = position;
-        resetMessageCaretBlink();
     }
 
     private void moveEventNameCaretTo(int position, boolean extendSelection) {
@@ -10962,17 +10846,6 @@ public class NodeGraph {
         deleteVariableSelection();
     }
 
-    private boolean deleteMessageSelection() {
-        if (!hasMessageSelection()) {
-            return false;
-        }
-        messageEditBuffer = messageEditBuffer.substring(0, messageSelectionStart)
-            + messageEditBuffer.substring(messageSelectionEnd);
-        setMessageCaretPosition(messageSelectionStart);
-        updateMessageFieldContentWidth(getClientTextRenderer());
-        return true;
-    }
-
     private boolean deleteEventNameSelection() {
         if (!hasEventNameSelection()) {
             return false;
@@ -10994,21 +10867,6 @@ public class NodeGraph {
         refreshStateParameterPreview();
         clearParameterDropdownSuppression();
         return true;
-    }
-
-    private void selectAllMessageText() {
-        if (!isEditingMessageField()) {
-            return;
-        }
-        messageSelectionAnchor = 0;
-        if (messageEditBuffer.isEmpty()) {
-            resetMessageSelectionRange();
-        } else {
-            messageSelectionStart = 0;
-            messageSelectionEnd = messageEditBuffer.length();
-        }
-        messageCaretPosition = messageEditBuffer.length();
-        resetMessageCaretBlink();
     }
 
     private void selectAllEventNameText() {
@@ -11041,13 +10899,6 @@ public class NodeGraph {
         resetParameterCaretBlink();
     }
 
-    private void copyMessageSelection() {
-        if (!hasMessageSelection()) {
-            return;
-        }
-        setClipboardText(messageEditBuffer.substring(messageSelectionStart, messageSelectionEnd));
-    }
-
     private void copyEventNameSelection() {
         if (!hasEventNameSelection()) {
             return;
@@ -11060,14 +10911,6 @@ public class NodeGraph {
             return;
         }
         setClipboardText(parameterEditBuffer.substring(parameterSelectionStart, parameterSelectionEnd));
-    }
-
-    private void cutMessageSelection() {
-        if (!hasMessageSelection()) {
-            return;
-        }
-        copyMessageSelection();
-        deleteMessageSelection();
     }
 
     private void cutEventNameSelection() {
@@ -11268,56 +11111,6 @@ public class NodeGraph {
         eventNameSelectionStart = originalSelectionStart;
         eventNameSelectionEnd = originalSelectionEnd;
         eventNameSelectionAnchor = originalSelectionAnchor;
-        return false;
-    }
-
-    private boolean insertMessageText(String text, Font textRenderer) {
-        if (!isEditingMessageField() || textRenderer == null || text == null || text.isEmpty()) {
-            return false;
-        }
-
-        String filtered = text.replace("\r", "").replace("\n", "");
-        if (filtered.isEmpty()) {
-            return false;
-        }
-
-        String originalBuffer = messageEditBuffer;
-        int originalCaret = messageCaretPosition;
-        int originalSelectionStart = messageSelectionStart;
-        int originalSelectionEnd = messageSelectionEnd;
-        int originalSelectionAnchor = messageSelectionAnchor;
-
-        String working = messageEditBuffer;
-        int caret = messageCaretPosition;
-
-        if (hasMessageSelection()) {
-            int start = messageSelectionStart;
-            int end = messageSelectionEnd;
-            working = working.substring(0, start) + working.substring(end);
-            caret = start;
-        }
-
-        boolean inserted = false;
-        for (int i = 0; i < filtered.length(); i++) {
-            char c = filtered.charAt(i);
-            String candidate = working.substring(0, caret) + c + working.substring(caret);
-            working = candidate;
-            caret++;
-            inserted = true;
-        }
-
-        if (inserted) {
-            messageEditBuffer = working;
-            setMessageCaretPosition(caret);
-            updateMessageFieldContentWidth(textRenderer);
-            return true;
-        }
-
-        messageEditBuffer = originalBuffer;
-        messageCaretPosition = originalCaret;
-        messageSelectionStart = originalSelectionStart;
-        messageSelectionEnd = originalSelectionEnd;
-        messageSelectionAnchor = originalSelectionAnchor;
         return false;
     }
 

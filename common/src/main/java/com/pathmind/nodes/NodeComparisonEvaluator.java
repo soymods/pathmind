@@ -203,6 +203,10 @@ final class NodeComparisonEvaluator {
             return emptyTargetedBlockComparison;
         }
         if (leftValues != null && !leftValues.isEmpty() && rightValues != null && !rightValues.isEmpty()) {
+            Optional<Boolean> coordinateComparison = comparePositionCoordinateValues(left, leftValues, right, rightValues);
+            if (coordinateComparison.isPresent()) {
+                return coordinateComparison;
+            }
             Optional<Boolean> blockComparison = compareBlockSelectionValues(leftValues, rightValues);
             if (blockComparison.isPresent()) {
                 return blockComparison;
@@ -242,6 +246,47 @@ final class NodeComparisonEvaluator {
             return Optional.empty();
         }
         return Optional.of(canonicalizeValueMap(leftValues).equals(canonicalizeValueMap(rightValues)));
+    }
+
+    Optional<Boolean> comparePositionCoordinateValues(Node left, Map<String, String> leftValues,
+                                                       Node right, Map<String, String> rightValues) {
+        Node positionNode;
+        Map<String, String> positionValues;
+        Node coordinateNode;
+        Map<String, String> coordinateValues;
+        if (left.getType() == NodeType.SENSOR_POSITION_OF && right.getType() == NodeType.PARAM_COORDINATE) {
+            positionNode = left;
+            positionValues = leftValues;
+            coordinateNode = right;
+            coordinateValues = rightValues;
+        } else if (right.getType() == NodeType.SENSOR_POSITION_OF && left.getType() == NodeType.PARAM_COORDINATE) {
+            positionNode = right;
+            positionValues = rightValues;
+            coordinateNode = left;
+            coordinateValues = leftValues;
+        } else {
+            return Optional.empty();
+        }
+
+        if (positionNode.isSensorPositionSingleAxisMode()) {
+            return Optional.empty();
+        }
+        for (String axis : List.of("X", "Y", "Z")) {
+            Double liveValue = Node.parseDoubleOrNull(owner.getRuntimeValue(positionValues, axis));
+            String rawTarget = Node.getParameterString(coordinateNode, axis);
+            Double targetValue = Node.parseDoubleOrNull(owner.getRuntimeValue(coordinateValues, axis));
+            if (liveValue == null || targetValue == null || rawTarget == null) {
+                return Optional.empty();
+            }
+            boolean preciseAxis = rawTarget.trim().indexOf('.') >= 0;
+            boolean matches = preciseAxis
+                ? Double.compare(liveValue, targetValue) == 0
+                : Math.floor(liveValue) == Math.floor(targetValue);
+            if (!matches) {
+                return Optional.of(false);
+            }
+        }
+        return Optional.of(true);
     }
 
     private Map<String, String> canonicalizeValueMap(Map<String, String> values) {

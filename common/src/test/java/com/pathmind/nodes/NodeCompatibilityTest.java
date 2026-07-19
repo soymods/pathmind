@@ -13,6 +13,7 @@ import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -21,6 +22,32 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NodeCompatibilityTest {
+
+    @Test
+    void wholeCoordinateComparisonUsesOccupiedBlockPosition() {
+        Node equals = new Node(NodeType.OPERATOR_EQUALS, 0, 0);
+        Node position = new Node(NodeType.SENSOR_POSITION_OF, 0, 0);
+        Node coordinate = coordinateNode("10", "64", "-20");
+
+        assertEquals(Optional.of(true), new NodeComparisonEvaluator(equals).comparePositionCoordinateValues(
+            position, Map.of("X", "10.75", "Y", "64.0", "Z", "-19.25"),
+            coordinate, coordinate.exportParameterValues()));
+    }
+
+    @Test
+    void decimalCoordinateComparisonRemainsPrecise() {
+        Node equals = new Node(NodeType.OPERATOR_EQUALS, 0, 0);
+        Node position = new Node(NodeType.SENSOR_POSITION_OF, 0, 0);
+        Node coordinate = coordinateNode("10.5", "64", "-19.25");
+        NodeComparisonEvaluator evaluator = new NodeComparisonEvaluator(equals);
+
+        assertEquals(Optional.of(true), evaluator.comparePositionCoordinateValues(
+            position, Map.of("X", "10.5", "Y", "64.75", "Z", "-19.25"),
+            coordinate, coordinate.exportParameterValues()));
+        assertEquals(Optional.of(false), evaluator.comparePositionCoordinateValues(
+            position, Map.of("X", "10.5001", "Y", "64.75", "Z", "-19.25"),
+            coordinate, coordinate.exportParameterValues()));
+    }
 
     @Test
     void greaterOperatorAcceptsPositionOfSensor() {
@@ -231,6 +258,25 @@ class NodeCompatibilityTest {
         Node.resetRecipeCacheWarmup();
 
         assertNull(cachedRecipeBookField.get(null));
+    }
+
+    @Test
+    void recipeCacheWarmupRequiresAnActiveSingleplayerServer() {
+        Node.resetRecipeCacheWarmup();
+
+        assertFalse(Node.requestRecipeCacheWarmup(null));
+        assertFalse(Node.isRecipeCacheWarmupRequested());
+    }
+
+    @Test
+    void resetRecipeCacheWarmupClearsManualWarmupRequest() throws Exception {
+        Field requestedField = NodeCraftCommandExecutor.class.getDeclaredField("recipeCacheWarmupRequested");
+        requestedField.setAccessible(true);
+        requestedField.setBoolean(null, true);
+
+        Node.resetRecipeCacheWarmup();
+
+        assertFalse(Node.isRecipeCacheWarmupRequested());
     }
 
     @Test
@@ -734,10 +780,14 @@ class NodeCompatibilityTest {
     }
 
     private Node coordinateNode(int x, int y, int z) {
+        return coordinateNode(Integer.toString(x), Integer.toString(y), Integer.toString(z));
+    }
+
+    private Node coordinateNode(String x, String y, String z) {
         Node coordinate = new Node(NodeType.PARAM_COORDINATE, 0, 0);
-        coordinate.getParameter("X").setStringValue(Integer.toString(x));
-        coordinate.getParameter("Y").setStringValue(Integer.toString(y));
-        coordinate.getParameter("Z").setStringValue(Integer.toString(z));
+        coordinate.getParameter("X").setStringValue(x);
+        coordinate.getParameter("Y").setStringValue(y);
+        coordinate.getParameter("Z").setStringValue(z);
         return coordinate;
     }
 

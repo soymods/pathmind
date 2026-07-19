@@ -331,10 +331,8 @@ public class PathmindMarketplaceScreen extends Screen {
                 MatrixStackBridge.pop(popupMatrices);
             }
         }
-        if (!editorPopupMode) {
-            DrawContextBridge.startNewRootLayer(context);
-            PathmindCursor.renderDefault(context, popupMouseX, popupMouseY);
-        }
+        DrawContextBridge.startNewRootLayer(context);
+        PathmindCursor.renderDefault(context, popupMouseX, popupMouseY);
     }
 
     private void ensureCustomCursorHidden() {

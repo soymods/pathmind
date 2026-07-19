@@ -67,6 +67,10 @@ Variables are separate from routine inputs: local variables belong to one runnin
 - Build workflows that respond to events, conditions, and changing state.
 - Use runtime state and feedback overlays while automation is active.
 
+### Sensors
+
+Sensor searches use world data already loaded by the Minecraft client; they never force distant chunks to load. See [Sensor range and loaded-chunk behavior](docs/sensor-range-and-loaded-chunks.md) for default ranges and multiplayer limitations.
+
 ### Navigation And Pathfinding
 
 Pathmind ships with its own local movement backend and also supports Baritone-aware nodes.

@@ -63,6 +63,7 @@ final class NodeCraftCommandExecutor {
     private static final Object RECIPE_CACHE_LOCK = new Object();
     private static volatile CachedRecipeBook cachedRecipeBook;
     private static volatile RecipeCacheWarmupState recipeCacheWarmupState;
+    private static volatile boolean recipeCacheWarmupRequested;
 
     private final Node owner;
 
@@ -178,7 +179,8 @@ final class NodeCraftCommandExecutor {
                 message = "Cannot craft " + itemDisplayName + ": recipe requires a crafting table.";
             } else {
                 message = "Cannot craft " + itemDisplayName + ": no matching recipe found. "
-                    + "If this is a multiplayer server, open a singleplayer world once to cache recipes.";
+                    + "To cache recipes for multiplayer, open a singleplayer world and choose "
+                    + "Settings > Cache recipes.";
             }
             NodeExecutionCompletion.fail(owner, client, future, message);
             return;
@@ -1034,7 +1036,11 @@ final class NodeCraftCommandExecutor {
                 try {
                     Class<?> paramType = method.getParameterTypes()[0];
                     Object arg = null;
-                    if (registryArg != null && paramType.isInstance(registryArg)) {
+                    if (input != null && paramType.isInstance(input)) {
+                        // Minecraft 26.2 changed Recipe#assemble from
+                        // assemble(input, registries) to assemble(input).
+                        arg = input;
+                    } else if (registryArg != null && paramType.isInstance(registryArg)) {
                         arg = registryArg;
                     } else if (lookup != null && paramType.isInstance(lookup)) {
                         arg = lookup;
@@ -3173,10 +3179,25 @@ final class NodeCraftCommandExecutor {
     }
 
     public static boolean warmRecipeCache(net.minecraft.client.Minecraft client) {
-        if (client == null || client.getSingleplayerServer() == null) {
+        if (client == null || client.getSingleplayerServer() == null || !recipeCacheWarmupRequested) {
             return false;
         }
         return new NodeCraftCommandExecutor(new Node(NodeType.CRAFT, 0, 0)).warmRecipeCacheInternal(client);
+    }
+
+    public static boolean requestRecipeCacheWarmup(net.minecraft.client.Minecraft client) {
+        if (client == null || client.getSingleplayerServer() == null) {
+            return false;
+        }
+        synchronized (RECIPE_CACHE_LOCK) {
+            recipeCacheWarmupState = null;
+            recipeCacheWarmupRequested = true;
+        }
+        return true;
+    }
+
+    public static boolean isRecipeCacheWarmupRequested() {
+        return recipeCacheWarmupRequested;
     }
 
     public static boolean hasUsableRecipeCache(net.minecraft.client.Minecraft client) {
@@ -3190,6 +3211,7 @@ final class NodeCraftCommandExecutor {
         synchronized (RECIPE_CACHE_LOCK) {
             cachedRecipeBook = null;
             recipeCacheWarmupState = null;
+            recipeCacheWarmupRequested = false;
         }
     }
 
@@ -3197,6 +3219,7 @@ final class NodeCraftCommandExecutor {
         synchronized (RECIPE_CACHE_LOCK) {
             cachedRecipeBook = null;
             recipeCacheWarmupState = null;
+            recipeCacheWarmupRequested = false;
 
             Path path = getRecipeCachePath(client);
             if (path == null) {
@@ -3239,6 +3262,7 @@ final class NodeCraftCommandExecutor {
             recipeCacheWarmupState = state;
         }
         if (state == null) {
+            recipeCacheWarmupRequested = false;
             return false;
         }
 
@@ -3279,6 +3303,7 @@ final class NodeCraftCommandExecutor {
             state.dirty = false;
         }
         recipeCacheWarmupState = null;
+        recipeCacheWarmupRequested = false;
         return state.book.recipesByOutput != null && !state.book.recipesByOutput.isEmpty();
     }
 
@@ -3390,7 +3415,7 @@ final class NodeCraftCommandExecutor {
         if (client == null || client.getSingleplayerServer() == null) {
             return null;
         }
-        if (hasUsableRecipeCacheInternal(client)) {
+        if (hasUsableRecipeCacheInternal(client) && !recipeCacheWarmupRequested) {
             return null;
         }
         Object manager = client.getSingleplayerServer().getRecipeManager();

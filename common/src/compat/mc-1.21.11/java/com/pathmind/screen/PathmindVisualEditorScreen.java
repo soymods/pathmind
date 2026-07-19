@@ -7464,6 +7464,14 @@ public class PathmindVisualEditorScreen extends Screen {
         return settingsPopupController.getSettingsClearCacheButtonBounds(popupX, popupY, popupWidth, popupHeight, contentX, nodeSettingsContentY);
     }
 
+    int[] getSettingsCacheRecipesButtonBounds(int popupX, int popupY, int popupWidth, int popupHeight, int contentX, int nodeSettingsContentY) {
+        return settingsPopupController.getSettingsCacheRecipesButtonBounds(popupX, popupY, popupWidth, popupHeight, contentX, nodeSettingsContentY);
+    }
+
+    void cacheSettingsRecipes() {
+        settingsPopupController.cacheSettingsRecipes();
+    }
+
     void clearSettingsCache() {
         settingsPopupController.clearSettingsCache();
     }
@@ -7759,6 +7767,13 @@ public class PathmindVisualEditorScreen extends Screen {
         }
         int[] clearCacheButtonBounds = getSettingsClearCacheButtonBounds(
             popupX, popupY, popupWidth, popupHeight, contentX, nodeSettingsContentY);
+        int[] cacheRecipesButtonBounds = getSettingsCacheRecipesButtonBounds(
+            popupX, popupY, popupWidth, popupHeight, contentX, nodeSettingsContentY);
+        if (isPointInRect(mouseXi, mouseYi, cacheRecipesButtonBounds[0], cacheRecipesButtonBounds[1],
+            cacheRecipesButtonBounds[2], cacheRecipesButtonBounds[3])) {
+            cacheSettingsRecipes();
+            return true;
+        }
         if (isPointInRect(mouseXi, mouseYi, clearCacheButtonBounds[0], clearCacheButtonBounds[1],
             clearCacheButtonBounds[2], clearCacheButtonBounds[3])) {
             clearSettingsCache();

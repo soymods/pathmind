@@ -222,12 +222,24 @@ final class PathmindSettingsPopupController {
         }
 
         int[] clearCacheButtonBounds = getSettingsClearCacheButtonBounds(popupX, popupY, scaledWidth, scaledHeight, contentX, nodeSettingsContentY);
+        int[] cacheRecipesButtonBounds = getSettingsCacheRecipesButtonBounds(popupX, popupY, scaledWidth, scaledHeight, contentX, nodeSettingsContentY);
         int clearCacheRowCenterY = getSettingsClearCacheRowCenterY(popupX, popupY, scaledWidth, scaledHeight, contentX, nodeSettingsContentY);
         context.hLine(sectionDividerX, popupX + scaledWidth - 16,
             getSettingsClearCacheDividerY(popupX, popupY, scaledWidth, scaledHeight, contentX, nodeSettingsContentY),
             screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.BORDER_SUBTLE));
-        screen.drawPopupTextWithEllipsis(context, Component.translatable("pathmind.settings.clearCache").getString(), contentX, clearCacheRowCenterY - screen.textRenderer().lineHeight / 2,
-            scaledWidth - 40 - clearCacheButtonBounds[2] - 12, screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.TEXT_PRIMARY));
+        screen.drawPopupTextWithEllipsis(context, Component.translatable("pathmind.settings.recipeCache").getString(), contentX, clearCacheRowCenterY - screen.textRenderer().lineHeight / 2,
+            scaledWidth - 40 - clearCacheButtonBounds[2] - cacheRecipesButtonBounds[2] - 18, screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.TEXT_PRIMARY));
+        PathmindPopupRenderer.drawButton(
+            context,
+            screen.textRenderer(),
+            PathmindPopupLayout.rect(cacheRecipesButtonBounds[0], cacheRecipesButtonBounds[1], cacheRecipesButtonBounds[2], cacheRecipesButtonBounds[3]),
+            mouseX,
+            mouseY,
+            Component.translatable("pathmind.settings.cacheRecipes"),
+            PathmindPopupRenderer.ButtonStyle.PRIMARY,
+            screen.getAccentColor(),
+            screen.settingsPopupAnimation
+        );
         PathmindPopupRenderer.drawButton(
             context,
             screen.textRenderer(),
@@ -736,6 +748,12 @@ final class PathmindSettingsPopupController {
         return new int[]{buttonX, buttonY, SETTINGS_SECTION_BUTTON_WIDTH, SETTINGS_SECTION_BUTTON_HEIGHT};
     }
 
+    int[] getSettingsCacheRecipesButtonBounds(int popupX, int popupY, int popupWidth, int popupHeight, int contentX, int nodeSettingsContentY) {
+        int[] clearBounds = getSettingsClearCacheButtonBounds(popupX, popupY, popupWidth, popupHeight, contentX, nodeSettingsContentY);
+        int buttonWidth = SETTINGS_SECTION_BUTTON_WIDTH + 36;
+        return new int[]{clearBounds[0] - buttonWidth - 6, clearBounds[1], buttonWidth, SETTINGS_SECTION_BUTTON_HEIGHT};
+    }
+
     int getSettingsClearCacheRowCenterY(int popupX, int popupY, int popupWidth, int popupHeight, int contentX, int nodeSettingsContentY) {
         return getSettingsClearCacheButtonBounds(popupX, popupY, popupWidth, popupHeight, contentX, nodeSettingsContentY)[1]
             + SETTINGS_SECTION_BUTTON_HEIGHT / 2;
@@ -760,6 +778,19 @@ final class PathmindSettingsPopupController {
             overlay.show(Component.translatable("pathmind.settings.cacheCleared").getString(), UITheme.STATE_SUCCESS);
         } else {
             overlay.show(Component.translatable("pathmind.settings.cacheNotFound").getString(), UITheme.STATE_ERROR);
+        }
+    }
+
+    void cacheSettingsRecipes() {
+        NodeErrorNotificationOverlay overlay = NodeErrorNotificationOverlay.getInstance();
+        if (screen.client() == null || screen.client().getSingleplayerServer() == null) {
+            overlay.show(Component.translatable("pathmind.settings.cacheRequiresSingleplayer").getString(), UITheme.STATE_ERROR);
+            return;
+        }
+        if (Node.requestRecipeCacheWarmup(screen.client())) {
+            overlay.show(Component.translatable("pathmind.settings.cacheStarted").getString(), UITheme.ACCENT_SKY);
+        } else {
+            overlay.show(Component.translatable("pathmind.settings.cacheStartFailed").getString(), UITheme.STATE_ERROR);
         }
     }
 

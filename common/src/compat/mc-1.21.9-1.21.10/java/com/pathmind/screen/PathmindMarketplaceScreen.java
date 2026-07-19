@@ -311,10 +311,8 @@ public class PathmindMarketplaceScreen extends Screen {
             DrawContextBridge.startNewRootLayer(context);
             popupController.renderConfirmPopup(context, popupMouseX, popupMouseY, layout);
         }
-        if (!editorPopupMode) {
-            DrawContextBridge.startNewRootLayer(context);
-            PathmindCursor.renderDefault(context, popupMouseX, popupMouseY);
-        }
+        DrawContextBridge.startNewRootLayer(context);
+        PathmindCursor.renderDefault(context, popupMouseX, popupMouseY);
     }
 
     private void ensureCustomCursorHidden() {

@@ -1117,6 +1117,13 @@ class ExecutionManagerValidationTest {
     }
 
     @Test
+    void keybindLaunchExplainsWhenCurrentWorkspaceHasNoStartNode() {
+        manager.setWorkspaceGraph(List.of(new Node(NodeType.MESSAGE, 0, 0)), List.of());
+
+        assertEquals(ExecutionManager.PlayAllResult.NO_START_NODE, manager.playAllGraphsWithResult());
+    }
+
+    @Test
     void stopChainWithMissingExplicitTargetDoesNotStopCaller() throws Exception {
         Node runningStart = new Node(NodeType.START, 0, 0);
         runningStart.setStartNodeNumber(2);

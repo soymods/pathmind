@@ -6641,7 +6641,7 @@ public class NodeGraph {
                 plainStart = cursor;
                 continue;
             }
-            if (isInlineArithmeticOperator(current)) {
+            if (isInlineArithmeticOperatorAt(rawText, cursor)) {
                 if (cursor > plainStart) {
                     appendStyledPlainSegment(rawText.substring(plainStart, cursor), baseColor, segments, displayBuilder);
                 }
@@ -6702,7 +6702,7 @@ public class NodeGraph {
             return false;
         }
         for (int i = 0; i < text.length(); i++) {
-            if (isInlineArithmeticOperator(text.charAt(i))) {
+            if (isInlineArithmeticOperatorAt(text, i)) {
                 return true;
             }
         }
@@ -6711,6 +6711,23 @@ public class NodeGraph {
 
     private boolean isInlineArithmeticOperator(char character) {
         return character == '+' || character == '-' || character == '*' || character == '/' || character == '^';
+    }
+
+    static boolean isInlineArithmeticOperatorAt(String text, int index) {
+        if (text == null || index <= 0 || index >= text.length()) {
+            return false;
+        }
+        char character = text.charAt(index);
+        if (character != '+' && character != '-' && character != '*'
+            && character != '/' && character != '^') {
+            return false;
+        }
+        for (int i = 0; i < index; i++) {
+            if (!Character.isWhitespace(text.charAt(i))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void appendStyledPlainSegment(String text, int baseColor, List<InlineTextSegment> segments, StringBuilder displayBuilder) {

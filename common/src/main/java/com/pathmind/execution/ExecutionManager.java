@@ -719,10 +719,10 @@ public class ExecutionManager {
         executeGraphInternal(nodes, connections, true);
     }
 
-    private void executeGraphInternal(List<Node> nodes, List<NodeConnection> connections, boolean markGlobalSnapshot) {
+    private boolean executeGraphInternal(List<Node> nodes, List<NodeConnection> connections, boolean markGlobalSnapshot) {
         if (nodes == null || connections == null) {
             LOGGER.warn("Cannot execute graph - missing nodes or connections");
-            return;
+            return false;
         }
         logValidationErrors(nodes, connections, PresetManager.getActivePreset(), "workspace");
 
@@ -732,7 +732,7 @@ public class ExecutionManager {
         List<Node> startNodes = findStartNodes(nodes);
         if (startNodes.isEmpty()) {
             LOGGER.warn("No START nodes found");
-            return;
+            return false;
         }
 
         // Track the last started chain by START node number so the keybind can replay it.
@@ -773,7 +773,7 @@ public class ExecutionManager {
 
         if (isolatedStartNodes.isEmpty()) {
             LOGGER.warn("No START branches could be prepared for execution");
-            return;
+            return false;
         }
 
         startExecution(isolatedStartNodes, markGlobalSnapshot);
@@ -789,6 +789,7 @@ public class ExecutionManager {
             chainFuture.whenComplete((ignored, throwable) ->
                 handleChainCompletion(controller, throwable, controller.rootExecutionId));
         }
+        return true;
     }
 
     public void replayLastGraph() {
@@ -807,20 +808,35 @@ public class ExecutionManager {
     }
 
     public void playAllGraphs() {
+        playAllGraphsWithResult();
+    }
+
+    public PlayAllResult playAllGraphsWithResult() {
+        boolean graphAvailable = false;
         if (workspaceNodes != null && !workspaceNodes.isEmpty() && workspaceConnections != null) {
-            executeGraphInternal(workspaceNodes, workspaceConnections, true);
-            return;
+            return executeGraphInternal(workspaceNodes, workspaceConnections, true)
+                ? PlayAllResult.STARTED
+                : PlayAllResult.NO_START_NODE;
         }
 
         if (lastGlobalGraph != null && executeGraphSnapshot(lastGlobalGraph, true)) {
-            return;
+            return PlayAllResult.STARTED;
         }
+        graphAvailable |= lastGlobalGraph != null;
 
         if (lastExecutedGraph != null && executeGraphSnapshot(lastExecutedGraph, lastSnapshotWasGlobal)) {
-            return;
+            return PlayAllResult.STARTED;
         }
+        graphAvailable |= lastExecutedGraph != null;
 
         LOGGER.debug("No workspace graph available for keybind launch");
+        return graphAvailable ? PlayAllResult.NO_START_NODE : PlayAllResult.NO_GRAPH;
+    }
+
+    public enum PlayAllResult {
+        STARTED,
+        NO_GRAPH,
+        NO_START_NODE
     }
 
     public boolean executeBranch(Node startNode, List<Node> nodes, List<NodeConnection> connections) {
@@ -2669,8 +2685,7 @@ public class ExecutionManager {
             return false;
         }
 
-        executeGraphInternal(loadedGraph.nodes, loadedGraph.connections, markGlobalSnapshot);
-        return true;
+        return executeGraphInternal(loadedGraph.nodes, loadedGraph.connections, markGlobalSnapshot);
     }
 
     private void logValidationErrors(List<Node> nodes, List<NodeConnection> connections, String presetName, String context) {

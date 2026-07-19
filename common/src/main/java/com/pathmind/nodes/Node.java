@@ -1166,6 +1166,38 @@ public class Node {
         this.runtimeState.activeRepeatUntilGuard = guard;
     }
 
+    /**
+     * Returns the latest sensor reading relevant to this running node.
+     *
+     * <p>Control nodes report their attached sensor directly. Actions running inside a
+     * Repeat Until body report the guard's attached sensor, so the HUD keeps showing
+     * the condition while the action is being interrupted.</p>
+     */
+    public SensorRuntimeReading getRuntimeSensorReading() {
+        Node sensor = null;
+        if (isSensorNode()) {
+            sensor = this;
+        } else if (attachments.getAttachedSensor() != null) {
+            sensor = attachments.getAttachedSensor();
+        } else {
+            Node guard = runtimeState.activeRepeatUntilGuard;
+            if (guard != null && guard.attachments.getAttachedSensor() != null) {
+                sensor = guard.attachments.getAttachedSensor();
+            }
+        }
+        if (sensor == null || !sensor.runtimeState.hasSensorResult) {
+            return null;
+        }
+        return new SensorRuntimeReading(
+            sensor.getType().getDisplayName(),
+            sensor.runtimeState.lastSensorResult,
+            sensor.runtimeState.lastSensorUpdatedAt
+        );
+    }
+
+    public record SensorRuntimeReading(String sensorName, boolean result, long updatedAt) {
+    }
+
     public int getInputSocketCount() {
         if (type == NodeType.START || type == NodeType.EVENT_FUNCTION || type == NodeType.ROUTINE_ENTRY || isSensorNode() || isParameterNode() || isStickyNote()) {
             return 0;
@@ -5558,6 +5590,9 @@ public class Node {
                         continue;
                     }
                     mutable.set(playerPos.getX() + dx, playerPos.getY() + dy, playerPos.getZ() + dz);
+                    if (!client.level.hasChunk(Math.floorDiv(mutable.getX(), 16), Math.floorDiv(mutable.getZ(), 16))) {
+                        continue;
+                    }
                     BlockState state = client.level.getBlockState(mutable);
                     if (state.isAir()) {
                         continue;
@@ -5688,6 +5723,9 @@ public class Node {
                         continue;
                     }
                     mutable.set(playerPos.getX() + dx, playerPos.getY() + dy, playerPos.getZ() + dz);
+                    if (!client.level.hasChunk(Math.floorDiv(mutable.getX(), 16), Math.floorDiv(mutable.getZ(), 16))) {
+                        continue;
+                    }
                     BlockState state = client.level.getBlockState(mutable);
                     if (state.isAir()) {
                         continue;
@@ -5718,6 +5756,9 @@ public class Node {
             for (int dy = -radius; dy <= radius; dy++) {
                 for (int dz = -radius; dz <= radius; dz++) {
                     mutable.set(playerPos.getX() + dx, playerPos.getY() + dy, playerPos.getZ() + dz);
+                    if (!client.level.hasChunk(Math.floorDiv(mutable.getX(), 16), Math.floorDiv(mutable.getZ(), 16))) {
+                        continue;
+                    }
                     if (!client.level.getWorldBorder().isWithinBounds(mutable)) {
                         continue;
                     }
@@ -5870,6 +5911,14 @@ public class Node {
 
     public static boolean warmRecipeCache(Minecraft client) {
         return NodeCraftCommandExecutor.warmRecipeCache(client);
+    }
+
+    public static boolean requestRecipeCacheWarmup(Minecraft client) {
+        return NodeCraftCommandExecutor.requestRecipeCacheWarmup(client);
+    }
+
+    public static boolean isRecipeCacheWarmupRequested() {
+        return NodeCraftCommandExecutor.isRecipeCacheWarmupRequested();
     }
 
     public static boolean hasUsableRecipeCache(Minecraft client) {
@@ -7376,8 +7425,14 @@ public class Node {
             default -> false;
         };
         result = adjustBooleanToggleResult(result);
-        this.runtimeState.lastSensorResult = result;
+        recordSensorResult(result);
         return result;
+    }
+
+    private void recordSensorResult(boolean result) {
+        this.runtimeState.lastSensorResult = result;
+        this.runtimeState.hasSensorResult = true;
+        this.runtimeState.lastSensorUpdatedAt = System.currentTimeMillis();
     }
 
     private boolean evaluateJoinedServerEdge() {

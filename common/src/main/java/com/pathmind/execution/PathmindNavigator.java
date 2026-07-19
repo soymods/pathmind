@@ -236,6 +236,7 @@ public final class PathmindNavigator {
     private long lastMovementAtMs;
     private double lastDistanceCheckpoint = Double.POSITIVE_INFINITY;
     private long lastDistanceCheckpointAtMs;
+    private volatile Snapshot renderSnapshot;
     private final Map<EdgeKey, Long> failedEdges = new HashMap<>();
     private final Map<BlockPos, Long> failedNodes = new HashMap<>();
     private final Map<EdgeKey, Long> failedBreaks = new HashMap<>();
@@ -711,11 +712,18 @@ public final class PathmindNavigator {
         appendDebugEventLocked("logging=" + (enabled ? "enabled" : "disabled"));
     }
 
-    public synchronized Snapshot getSnapshot() {
+    /**
+     * Returns the immutable snapshot prepared by the client tick. Render callbacks must
+     * never run world scans, collision checks, or planner work.
+     */
+    public Snapshot getSnapshot() {
+        return renderSnapshot;
+    }
+
+    private synchronized Snapshot buildRenderSnapshot(Minecraft client) {
         if (state == State.IDLE || targetPos == null) {
             return null;
         }
-        Minecraft client = Minecraft.getInstance();
         double distance = -1.0D;
         if (client != null && client.player != null) {
             Vec3 target = Vec3.atCenterOf(targetPos);
@@ -1053,10 +1061,19 @@ public final class PathmindNavigator {
         this.plannedBreakTargets = buildPathBreakPlan(client.level, this.currentPath, this.pathIndex);
         this.currentPlan = computation.plannedPrimitives();
         this.activePlannedPrimitive = this.pathIndex < this.currentPlan.size() ? this.currentPlan.get(this.pathIndex) : null;
+        this.renderSnapshot = buildRenderSnapshot(client);
         return new PreviewResult(true, "Pathmind Nav: previewing path to " + this.targetPos.getX() + " " + this.targetPos.getY() + " " + this.targetPos.getZ());
     }
 
     public void tick(Minecraft client) {
+        try {
+            tickInternal(client);
+        } finally {
+            renderSnapshot = buildRenderSnapshot(client);
+        }
+    }
+
+    private void tickInternal(Minecraft client) {
         CompletableFuture<Void> future;
         BlockPos target;
         GoalMode goalMode;
@@ -1428,6 +1445,7 @@ public final class PathmindNavigator {
             future.completeExceptionally(new RuntimeException(message));
         }
         state = State.IDLE;
+        renderSnapshot = null;
     }
 
     private synchronized void complete(State terminalState) {
@@ -1566,6 +1584,7 @@ public final class PathmindNavigator {
         if (state == State.STOPPED) {
             state = State.IDLE;
         }
+        renderSnapshot = null;
     }
 
     private boolean shouldReplan(ClientLevel world, BlockPos start, BlockPos target, long now) {

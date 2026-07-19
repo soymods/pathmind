@@ -57,7 +57,15 @@ public final class RecipeCompatibilityBridge {
             Object result = method.invoke(placement);
             return result instanceof Boolean bool && bool;
         } catch (NoSuchMethodException e) {
-            return true;
+            try {
+                Method method = placement.getClass().getMethod("isImpossibleToPlace");
+                Object result = method.invoke(placement);
+                return result instanceof Boolean bool && bool;
+            } catch (NoSuchMethodException ignored) {
+                return false;
+            } catch (IllegalAccessException | InvocationTargetException | LinkageError ignored) {
+                return true;
+            }
         } catch (IllegalAccessException | InvocationTargetException | LinkageError e) {
             return true;
         }
@@ -67,20 +75,23 @@ public final class RecipeCompatibilityBridge {
         if (placement == null) {
             return Collections.emptyList();
         }
-        try {
-            Method method = placement.getClass().getMethod("getIngredients");
-            Object result = method.invoke(placement);
-            if (result instanceof List<?> list) {
-                List<Ingredient> cast = new ArrayList<>(list.size());
-                for (Object entry : list) {
-                    Ingredient ingredient = extractIngredient(entry);
-                    if (ingredient != null) {
-                        cast.add(ingredient);
+        for (String methodName : List.of("getIngredients", "ingredients")) {
+            try {
+                Method method = placement.getClass().getMethod(methodName);
+                Object result = method.invoke(placement);
+                if (result instanceof List<?> list) {
+                    List<Ingredient> cast = new ArrayList<>(list.size());
+                    for (Object entry : list) {
+                        Ingredient ingredient = extractIngredient(entry);
+                        if (ingredient != null) {
+                            cast.add(ingredient);
+                        }
                     }
+                    return cast;
                 }
-                return cast;
+            } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException | LinkageError ignored) {
+                // Try the next version-specific name.
             }
-        } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException | LinkageError ignored) {
         }
         return Collections.emptyList();
     }
@@ -174,6 +185,9 @@ public final class RecipeCompatibilityBridge {
         }
 
         Object rawSlots = invokePlacementMethod(placement, "getPlacementSlots");
+        if (rawSlots == null) {
+            rawSlots = invokePlacementMethod(placement, "slotsToIngredientIndex");
+        }
         if (rawSlots instanceof IntList intList) {
             return intList;
         }
@@ -229,13 +243,16 @@ public final class RecipeCompatibilityBridge {
     }
 
     private static Method resolveRecipePlacementMethod() {
-        try {
-            Method method = CraftingRecipe.class.getMethod("getIngredientPlacement");
-            method.setAccessible(true);
-            return method;
-        } catch (NoSuchMethodException ignored) {
-            return null;
+        for (String methodName : List.of("getIngredientPlacement", "placementInfo")) {
+            try {
+                Method method = CraftingRecipe.class.getMethod(methodName);
+                method.setAccessible(true);
+                return method;
+            } catch (NoSuchMethodException ignored) {
+                // Try the next version-specific name.
+            }
         }
+        return null;
     }
 
     private static Method resolveRecipeIngredientsMethod() {
@@ -1488,7 +1505,7 @@ public final class RecipeCompatibilityBridge {
         if (collection == null) {
             return Collections.emptyList();
         }
-        Object result = accessValue(collection, "getAllRecipes", "method_2650", "entries", "field_54835");
+        Object result = accessValue(collection, "getAllRecipes", "getRecipes", "method_2650", "entries", "field_54835");
         if (result instanceof List<?> list) {
             return list;
         }

@@ -21,7 +21,7 @@ import net.minecraft.network.chat.Component;
  */
 public class ActiveNodeOverlay {
     private static final int OVERLAY_WIDTH = 150;
-    private static final int OVERLAY_HEIGHT = 60;
+    private static final int OVERLAY_HEIGHT = 72;
     private static final int COMPACT_MIN_WIDTH = 112;
     private static final int COMPACT_MAX_WIDTH = 210;
     private static final int COMPACT_HEIGHT = 18;
@@ -128,13 +128,30 @@ public class ActiveNodeOverlay {
                 AnimationHelper.multiplyAlpha(UITheme.TEXT_HEADER, progress)
             );
 
+            Node.SensorRuntimeReading sensorReading = node != null ? node.getRuntimeSensorReading() : null;
+            int statusY = overlayY + 42;
+            if (sensorReading != null) {
+                String booleanText = tr(sensorReading.result() ? "pathmind.option.true" : "pathmind.option.false");
+                String sensorText = sensorReading.sensorName() + ": " + booleanText;
+                sensorText = trimToWidth(textRenderer, sensorText, OVERLAY_WIDTH - 16);
+                int sensorWidth = textRenderer.width(sensorText);
+                context.drawString(
+                    textRenderer,
+                    Component.literal(sensorText),
+                    textRightX - sensorWidth,
+                    overlayY + 42,
+                    AnimationHelper.multiplyAlpha(sensorReading.result() ? UITheme.STATE_SUCCESS : UITheme.STATE_ERROR, progress)
+                );
+                statusY += 12;
+            }
+
             String statusText = showingCompletion ? tr("pathmind.overlay.finished") : tr("pathmind.overlay.executing");
             int statusWidth = textRenderer.width(statusText);
             context.drawString(
                 textRenderer,
                 Component.literal(statusText),
                 textRightX - statusWidth,
-                overlayY + 42,
+                statusY,
                 AnimationHelper.multiplyAlpha(showingCompletion ? UITheme.STATE_ERROR : UITheme.ACCENT_SKY, progress)
             );
 

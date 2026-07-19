@@ -14,6 +14,8 @@ final class NodeRuntimeState {
     boolean repeatActive;
     boolean repeatExecuteAttachedAction;
     boolean lastSensorResult;
+    boolean hasSensorResult;
+    long lastSensorUpdatedAt;
     boolean lastJoinedServerRawResult;
     RuntimeParameterData runtimeParameterData;
     Node owningStartNode;
@@ -30,6 +32,8 @@ final class NodeRuntimeState {
         repeatActive = false;
         repeatExecuteAttachedAction = false;
         lastSensorResult = false;
+        hasSensorResult = false;
+        lastSensorUpdatedAt = 0L;
         lastJoinedServerRawResult = false;
         nextOutputSocket = 0;
     }

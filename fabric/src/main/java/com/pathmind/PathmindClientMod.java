@@ -21,6 +21,7 @@ import com.pathmind.util.BlockSelection;
 import com.pathmind.util.ChatMessageTracker;
 import com.pathmind.util.DrawContextBridge;
 import com.pathmind.util.FabricEventTracker;
+import com.pathmind.util.KeybindDiagnostics;
 import com.pathmind.util.MatrixStackBridge;
 import com.pathmind.util.ServerJoinTracker;
 import com.pathmind.util.UseItemCallbackCompat;
@@ -57,6 +58,7 @@ import net.minecraft.client.gui.screens.inventory.MerchantScreen;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.Item;
@@ -489,20 +491,39 @@ public class PathmindClientMod implements ClientModInitializer {
 
         boolean playDown = isPathmindKeyDown(client, PathmindKeybinds.PLAY_GRAPHS, GLFW.GLFW_KEY_K);
         if (!typing && playDown && !playGraphsKeyDown) {
-            ExecutionManager.getInstance().playAllGraphs();
+            showPlayKeyDiagnostics(client);
+            showGraphStartDiagnostic(ExecutionManager.getInstance().playAllGraphsWithResult());
         }
         playGraphsKeyDown = playDown;
     }
 
     private boolean isPathmindKeyDown(Minecraft client, net.minecraft.client.KeyMapping keyBinding, int fallbackKeyCode) {
-        if (keyBinding != null && keyBinding.isDown()) {
-            return true;
+        if (keyBinding != null) {
+            return keyBinding.isDown();
         }
         if (client == null || client.getWindow() == null) {
             return false;
         }
         long handle = client.getWindow().handle();
         return handle != 0L && GLFW.glfwGetKey(handle, fallbackKeyCode) == GLFW.GLFW_PRESS;
+    }
+
+    private void showPlayKeyDiagnostics(Minecraft client) {
+        String warning = KeybindDiagnostics.describeConflict(client, PathmindKeybinds.PLAY_GRAPHS,
+            PathmindKeybinds.OPEN_VISUAL_EDITOR, PathmindKeybinds.STOP_GRAPHS);
+        if (warning != null && nodeErrorNotificationOverlay != null) {
+            nodeErrorNotificationOverlay.show(warning, com.pathmind.ui.theme.UITheme.STATE_WARNING);
+        }
+    }
+
+    private void showGraphStartDiagnostic(ExecutionManager.PlayAllResult result) {
+        if (result == null || result == ExecutionManager.PlayAllResult.STARTED || nodeErrorNotificationOverlay == null) {
+            return;
+        }
+        String key = result == ExecutionManager.PlayAllResult.NO_START_NODE
+            ? "pathmind.keybind.noStartNode"
+            : "pathmind.keybind.noGraph";
+        nodeErrorNotificationOverlay.show(Component.translatable(key).getString(), com.pathmind.ui.theme.UITheme.STATE_ERROR);
     }
 
     private boolean isPauseMenuOpen(Minecraft client) {
@@ -550,20 +571,14 @@ public class PathmindClientMod implements ClientModInitializer {
             recipeCacheWarmed = false;
             return;
         }
-        boolean cacheReady = Node.hasUsableRecipeCache(client);
-        boolean warmupInProgress = Node.isRecipeCacheWarmupInProgress(client);
-        if (cacheReady && !warmupInProgress) {
-            if (!recipeCacheWarmed && nodeErrorNotificationOverlay != null) {
-                nodeErrorNotificationOverlay.dismiss(RECIPE_CACHE_NOTIFICATION_KEY);
-                nodeErrorNotificationOverlay.show("Recipe cache ready.", com.pathmind.ui.theme.UITheme.ACCENT_SKY);
-            } else if (nodeErrorNotificationOverlay != null) {
+        if (!Node.isRecipeCacheWarmupRequested()) {
+            if (nodeErrorNotificationOverlay != null) {
                 nodeErrorNotificationOverlay.dismiss(RECIPE_CACHE_NOTIFICATION_KEY);
             }
-            recipeCacheWarmed = true;
+            recipeCacheWarmed = Node.hasUsableRecipeCache(client);
             recipeCacheWarmupCooldownTicks = 0;
             return;
         }
-
         recipeCacheWarmed = false;
         if (nodeErrorNotificationOverlay != null) {
             String message = "Building recipe cache\nPreparing singleplayer recipes...";
@@ -573,18 +588,6 @@ public class PathmindClientMod implements ClientModInitializer {
                 com.pathmind.ui.theme.UITheme.ACCENT_SKY,
                 0.0f
             );
-        }
-        if (client.getSingleplayerServer() == null) {
-            if (nodeErrorNotificationOverlay != null) {
-                nodeErrorNotificationOverlay.showProgress(
-                    RECIPE_CACHE_NOTIFICATION_KEY,
-                    "Building recipe cache\nPreparing singleplayer recipes...",
-                    com.pathmind.ui.theme.UITheme.ACCENT_SKY,
-                    0.0f
-                );
-            }
-            recipeCacheWarmupCooldownTicks = 20;
-            return;
         }
         if (recipeCacheWarmupCooldownTicks > 0) {
             recipeCacheWarmupCooldownTicks--;
@@ -613,8 +616,11 @@ public class PathmindClientMod implements ClientModInitializer {
             }
             LOGGER.debug("Pathmind recipe cache populated from singleplayer recipes.");
         } else if (!Node.isRecipeCacheWarmupInProgress(client) && !Node.hasUsableRecipeCache(client)) {
-            recipeCacheWarmupCooldownTicks = 100;
-            LOGGER.debug("Pathmind recipe cache warmup attempted but no recipes found.");
+            if (nodeErrorNotificationOverlay != null) {
+                nodeErrorNotificationOverlay.dismiss(RECIPE_CACHE_NOTIFICATION_KEY);
+                nodeErrorNotificationOverlay.show("Recipe cache could not be built.", com.pathmind.ui.theme.UITheme.STATE_ERROR);
+            }
+            LOGGER.warn("Pathmind manual recipe cache warmup completed without usable recipes.");
         }
     }
 

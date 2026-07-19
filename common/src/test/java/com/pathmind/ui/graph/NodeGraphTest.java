@@ -20,6 +20,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class NodeGraphTest {
 
     @Test
+    void leadingMinusIsStyledAsPartOfANegativeLiteral() {
+        assertFalse(NodeGraph.isInlineArithmeticOperatorAt("-12", 0));
+        assertFalse(NodeGraph.isInlineArithmeticOperatorAt("  -12", 2));
+        assertTrue(NodeGraph.isInlineArithmeticOperatorAt("12-3", 2));
+    }
+
+    @Test
     void autosaveDelegatesToOwningWorkspace() {
         NodeGraph graph = new NodeGraph();
         AtomicInteger saves = new AtomicInteger();

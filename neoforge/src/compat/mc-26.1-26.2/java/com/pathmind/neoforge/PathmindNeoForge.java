@@ -9,9 +9,12 @@ import com.pathmind.ui.overlay.NodeErrorNotificationOverlay;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.ChatMessageTracker;
 import com.pathmind.util.FabricEventTracker;
+import com.pathmind.util.KeybindDiagnostics;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.client.gui.screens.ChatScreen;
 import net.minecraft.client.gui.screens.PauseScreen;
 import net.minecraft.client.gui.screens.Screen;
@@ -105,7 +108,7 @@ public class PathmindNeoForge {
     private Object executionManager;
     private Method setSingleplayerPausedMethod;
     private Method requestStopAllMethod;
-    private Method playAllGraphsMethod;
+    private Method playAllGraphsWithResultMethod;
     private Method openVisualEditorOrWarnMethod;
     private Method isVisualEditorScreenMethod;
     private Object navigatorChatSuggestions;
@@ -129,6 +132,7 @@ public class PathmindNeoForge {
     private Object pathmindNavigatorWaterModeAvoid;
     private Method previewResultMessageMethod;
     private Method recipeWarmRecipeCacheMethod;
+    private Method recipeIsRecipeCacheWarmupRequestedMethod;
     private Method recipeHasUsableRecipeCacheMethod;
     private Method recipeResetRecipeCacheWarmupMethod;
     private Method recipeIsRecipeCacheWarmupInProgressMethod;
@@ -235,7 +239,7 @@ public class PathmindNeoForge {
         executionManager = executionManagerClass.getMethod("getInstance").invoke(null);
         setSingleplayerPausedMethod = executionManagerClass.getMethod("setSingleplayerPaused", boolean.class);
         requestStopAllMethod = executionManagerClass.getMethod("requestStopAll");
-        playAllGraphsMethod = executionManagerClass.getMethod("playAllGraphs");
+        playAllGraphsWithResultMethod = executionManagerClass.getMethod("playAllGraphsWithResult");
 
         Class<?> suggestionsClass = Class.forName("com.pathmind.ui.overlay.NavigatorChatSuggestions");
         navigatorChatSuggestions = suggestionsClass.getMethod("getInstance").invoke(null);
@@ -273,6 +277,7 @@ public class PathmindNeoForge {
 
         Class<?> nodeClass = Class.forName("com.pathmind.nodes.Node");
         recipeWarmRecipeCacheMethod = nodeClass.getMethod("warmRecipeCache", Minecraft.class);
+        recipeIsRecipeCacheWarmupRequestedMethod = nodeClass.getMethod("isRecipeCacheWarmupRequested");
         recipeHasUsableRecipeCacheMethod = nodeClass.getMethod("hasUsableRecipeCache", Minecraft.class);
         recipeResetRecipeCacheWarmupMethod = nodeClass.getMethod("resetRecipeCacheWarmup");
         recipeIsRecipeCacheWarmupInProgressMethod = nodeClass.getMethod("isRecipeCacheWarmupInProgress", Minecraft.class);
@@ -411,9 +416,30 @@ public class PathmindNeoForge {
 
         boolean playDown = PathmindNeoForgeKeybinds.PLAY_GRAPHS.isDown();
         if (!chatOrGuiOpen && playDown && !playGraphsKeyDown) {
-            invokeBridge("play Pathmind graphs", () -> playAllGraphsMethod.invoke(executionManager));
+            showPlayKeyDiagnostics(client);
+            invokeBridge("play Pathmind graphs", () -> {
+                Object result = playAllGraphsWithResultMethod.invoke(executionManager);
+                showGraphStartDiagnostic(result);
+            });
         }
         playGraphsKeyDown = playDown;
+    }
+
+    private void showPlayKeyDiagnostics(Minecraft client) {
+        String warning = KeybindDiagnostics.describeConflict(client, PathmindNeoForgeKeybinds.PLAY_GRAPHS,
+            PathmindNeoForgeKeybinds.OPEN_VISUAL_EDITOR, PathmindNeoForgeKeybinds.STOP_GRAPHS);
+        if (warning != null && nodeErrorNotificationOverlay != null) {
+            nodeErrorNotificationOverlay.show(warning, UITheme.STATE_WARNING);
+        }
+    }
+
+    private void showGraphStartDiagnostic(Object result) {
+        String resultName = String.valueOf(result);
+        if ("STARTED".equals(resultName) || nodeErrorNotificationOverlay == null) {
+            return;
+        }
+        String key = "NO_START_NODE".equals(resultName) ? "pathmind.keybind.noStartNode" : "pathmind.keybind.noGraph";
+        nodeErrorNotificationOverlay.show(Component.translatable(key).getString(), UITheme.STATE_ERROR);
     }
 
     private void onScreenInitPost(ScreenEvent.Init.Post event) {
@@ -592,7 +618,28 @@ public class PathmindNeoForge {
         if (client == null || client.screen == null) {
             return false;
         }
-        return client.screen instanceof ChatScreen || isVisualEditorScreen(client.screen);
+        if (client.screen instanceof ChatScreen || isVisualEditorScreen(client.screen)) {
+            return true;
+        }
+        return isTextInputFocused(client.screen);
+    }
+
+    private boolean isTextInputFocused(Screen screen) {
+        GuiEventListener focused = getFocusedElement(screen);
+        return focused instanceof EditBox textField && textField.isFocused();
+    }
+
+    private GuiEventListener getFocusedElement(Screen screen) {
+        if (screen == null) {
+            return null;
+        }
+        try {
+            Method method = Screen.class.getMethod("getFocused");
+            Object focused = method.invoke(screen);
+            return focused instanceof GuiEventListener element ? element : null;
+        } catch (ReflectiveOperationException ignored) {
+            return null;
+        }
     }
 
     private void handleRecipeCacheWarmup(Minecraft client) {
@@ -603,17 +650,11 @@ public class PathmindNeoForge {
             recipeCacheWarmed = false;
             return;
         }
-
-        boolean cacheReady = invokeBoolean(recipeHasUsableRecipeCacheMethod, null, client);
-        boolean warmupInProgress = invokeBoolean(recipeIsRecipeCacheWarmupInProgressMethod, null, client);
-        if (cacheReady && !warmupInProgress) {
-            if (!recipeCacheWarmed && nodeErrorNotificationOverlay != null) {
-                nodeErrorNotificationOverlay.dismiss(RECIPE_CACHE_NOTIFICATION_KEY);
-                nodeErrorNotificationOverlay.show("Recipe cache ready.", UITheme.ACCENT_SKY);
-            } else if (nodeErrorNotificationOverlay != null) {
+        if (!invokeBoolean(recipeIsRecipeCacheWarmupRequestedMethod, null)) {
+            if (nodeErrorNotificationOverlay != null) {
                 nodeErrorNotificationOverlay.dismiss(RECIPE_CACHE_NOTIFICATION_KEY);
             }
-            recipeCacheWarmed = true;
+            recipeCacheWarmed = invokeBoolean(recipeHasUsableRecipeCacheMethod, null, client);
             recipeCacheWarmupCooldownTicks = 0;
             return;
         }
@@ -650,8 +691,11 @@ public class PathmindNeoForge {
             PathmindCommon.LOGGER.debug("Pathmind recipe cache populated from singleplayer recipes.");
         } else if (!invokeBoolean(recipeIsRecipeCacheWarmupInProgressMethod, null, client)
             && !invokeBoolean(recipeHasUsableRecipeCacheMethod, null, client)) {
-            recipeCacheWarmupCooldownTicks = 100;
-            PathmindCommon.LOGGER.debug("Pathmind recipe cache warmup attempted but no recipes found.");
+            if (nodeErrorNotificationOverlay != null) {
+                nodeErrorNotificationOverlay.dismiss(RECIPE_CACHE_NOTIFICATION_KEY);
+                nodeErrorNotificationOverlay.show("Recipe cache could not be built.", UITheme.STATE_ERROR);
+            }
+            PathmindCommon.LOGGER.warn("Pathmind manual recipe cache warmup completed without usable recipes.");
         }
     }
 

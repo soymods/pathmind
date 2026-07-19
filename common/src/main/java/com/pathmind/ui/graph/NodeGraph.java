@@ -1,5 +1,29 @@
 package com.pathmind.ui.graph;
 
+import static com.pathmind.ui.graph.ParameterTypeClassifier.isAmountParameter;
+import static com.pathmind.ui.graph.ParameterTypeClassifier.isAttributeDetectionAttributeParameter;
+import static com.pathmind.ui.graph.ParameterTypeClassifier.isAttributeDetectionBooleanValueParameter;
+import static com.pathmind.ui.graph.ParameterTypeClassifier.isAttributeDetectionDropdownParameter;
+import static com.pathmind.ui.graph.ParameterTypeClassifier.isBlockFaceParameter;
+import static com.pathmind.ui.graph.ParameterTypeClassifier.isBlockItemParameter;
+import static com.pathmind.ui.graph.ParameterTypeClassifier.isBlockParameter;
+import static com.pathmind.ui.graph.ParameterTypeClassifier.isBlockStateParameter;
+import static com.pathmind.ui.graph.ParameterTypeClassifier.isBooleanLiteralParameter;
+import static com.pathmind.ui.graph.ParameterTypeClassifier.isDirectionParameter;
+import static com.pathmind.ui.graph.ParameterTypeClassifier.isEntityParameter;
+import static com.pathmind.ui.graph.ParameterTypeClassifier.isEntityStateParameter;
+import static com.pathmind.ui.graph.ParameterTypeClassifier.isFabricEventSensorParameter;
+import static com.pathmind.ui.graph.ParameterTypeClassifier.isGuiParameter;
+import static com.pathmind.ui.graph.ParameterTypeClassifier.isHandParameter;
+import static com.pathmind.ui.graph.ParameterTypeClassifier.isInlineDropdownParameter;
+import static com.pathmind.ui.graph.ParameterTypeClassifier.isItemParameter;
+import static com.pathmind.ui.graph.ParameterTypeClassifier.isListIndexParameter;
+import static com.pathmind.ui.graph.ParameterTypeClassifier.isMessageParameter;
+import static com.pathmind.ui.graph.ParameterTypeClassifier.isMouseButtonParameter;
+import static com.pathmind.ui.graph.ParameterTypeClassifier.isPlayerParameter;
+import static com.pathmind.ui.graph.ParameterTypeClassifier.isSeedParameter;
+import static com.pathmind.ui.graph.ParameterTypeClassifier.isTradeInlineParameter;
+
 import com.pathmind.data.NodeGraphData;
 import com.pathmind.data.NodeGraphPersistence;
 import com.pathmind.data.PresetManager;
@@ -10347,53 +10371,6 @@ public class NodeGraph {
         parameterEditingNode.recalculateDimensions();
     }
 
-    private boolean isPlayerParameter(Node node, NodeParameter parameter) {
-        if (node == null || parameter == null) {
-            return false;
-        }
-        if (node.getType() != NodeType.PARAM_PLAYER) {
-            return false;
-        }
-        return "Player".equalsIgnoreCase(parameter.getName());
-    }
-
-    private boolean isMessageParameter(Node node, NodeParameter parameter) {
-        if (node == null || parameter == null) {
-            return false;
-        }
-        if (node.getType() != NodeType.PARAM_MESSAGE) {
-            return false;
-        }
-        return "Text".equalsIgnoreCase(parameter.getName()) || "Message".equalsIgnoreCase(parameter.getName());
-    }
-
-    private boolean isSeedParameter(Node node, NodeParameter parameter) {
-        if (node == null || parameter == null) {
-            return false;
-        }
-        if (node.getType() != NodeType.OPERATOR_RANDOM) {
-            return false;
-        }
-        return "Seed".equalsIgnoreCase(parameter.getName());
-    }
-
-    private boolean isAmountParameter(Node node, NodeParameter parameter) {
-        if (node == null || parameter == null) {
-            return false;
-        }
-        if (node.getType() != NodeType.PARAM_AMOUNT) {
-            return false;
-        }
-        return "Amount".equalsIgnoreCase(parameter.getName());
-    }
-
-    private boolean isTradeInlineParameter(Node node, NodeParameter parameter) {
-        if (node == null || parameter == null || node.getType() != NodeType.TRADE) {
-            return false;
-        }
-        return "Count".equalsIgnoreCase(parameter.getName());
-    }
-
     private boolean isTradeInlinePlaceholder(Node node, NodeParameter parameter, boolean editing) {
         if (!isTradeInlineParameter(node, parameter)) {
             return false;
@@ -10404,48 +10381,6 @@ public class NodeGraph {
             value = parameterEditBuffer;
         }
         return value == null || value.isEmpty() || (!parameter.isUserEdited() && "1".equals(value));
-    }
-
-    private boolean isGuiParameter(Node node, NodeParameter parameter) {
-        if (node == null) {
-            return false;
-        }
-        if (node.getType() != NodeType.PARAM_GUI) {
-            return false;
-        }
-        if (parameter != null) {
-            return "GUI".equalsIgnoreCase(parameter.getName());
-        }
-        NodeParameter guiParam = node.getParameter("GUI");
-        return guiParam != null;
-    }
-
-    private boolean isMouseButtonParameter(Node node, NodeParameter parameter) {
-        if (node == null) {
-            return false;
-        }
-        if (node.getType() != NodeType.PARAM_MOUSE_BUTTON) {
-            return false;
-        }
-        if (parameter != null) {
-            return "MouseButton".equalsIgnoreCase(parameter.getName());
-        }
-        NodeParameter mouseButtonParam = node.getParameter("MouseButton");
-        return mouseButtonParam != null;
-    }
-
-    private boolean isHandParameter(Node node, NodeParameter parameter) {
-        if (node == null) {
-            return false;
-        }
-        if (node.getType() != NodeType.PARAM_HAND) {
-            return false;
-        }
-        if (parameter != null) {
-            return "Hand".equalsIgnoreCase(parameter.getName());
-        }
-        NodeParameter handParam = node.getParameter("Hand");
-        return handParam != null;
     }
 
     private boolean isDefaultMouseButtonValue(String value) {
@@ -10497,84 +10432,6 @@ public class NodeGraph {
             return "Offhand";
         }
         return value;
-    }
-
-    private boolean isDirectionParameter(Node node, int index) {
-        if (node == null || node.getType() != NodeType.PARAM_DIRECTION) {
-            return false;
-        }
-        if (index < 0 || index >= node.getParameters().size()) {
-            return false;
-        }
-        NodeParameter param = node.getParameters().get(index);
-        if (param == null) {
-            return false;
-        }
-        return "Direction".equalsIgnoreCase(param.getName());
-    }
-
-    private boolean isBooleanLiteralParameter(Node node, int index) {
-        if (node == null || node.getType() != NodeType.PARAM_BOOLEAN || !node.isBooleanModeLiteral()) {
-            return false;
-        }
-        if (index < 0 || index >= node.getParameters().size()) {
-            return false;
-        }
-        NodeParameter param = node.getParameters().get(index);
-        if (param == null) {
-            return false;
-        }
-        return "Toggle".equalsIgnoreCase(param.getName());
-    }
-
-    private boolean isAttributeDetectionAttributeParameter(Node node, int index) {
-        if (node == null || !node.isAttributeDetectionSensor() || index < 0 || index >= node.getParameters().size()) {
-            return false;
-        }
-        NodeParameter param = node.getParameters().get(index);
-        return param != null && "Attribute".equalsIgnoreCase(param.getName());
-    }
-
-    private boolean isAttributeDetectionBooleanValueParameter(Node node, int index) {
-        if (node == null || !node.isAttributeDetectionSensor() || index < 0 || index >= node.getParameters().size()) {
-            return false;
-        }
-        NodeParameter param = node.getParameters().get(index);
-        if (param == null || !"Value".equalsIgnoreCase(param.getName())) {
-            return false;
-        }
-        AttributeDetectionConfig.AttributeOption attribute =
-            AttributeDetectionConfig.getAttribute(node.getParameter("Attribute") != null
-                ? node.getParameter("Attribute").getStringValue()
-                : "");
-        return attribute != null && attribute.valueType() == AttributeDetectionConfig.ValueType.BOOLEAN;
-    }
-
-    private boolean isAttributeDetectionDropdownParameter(Node node, int index) {
-        return isAttributeDetectionAttributeParameter(node, index)
-            || isAttributeDetectionBooleanValueParameter(node, index);
-    }
-
-    private boolean isInlineDropdownParameter(Node node, int index) {
-        if (node == null || index < 0 || index >= node.getParameters().size()) {
-            return false;
-        }
-        return isBooleanLiteralParameter(node, index)
-            || isAttributeDetectionDropdownParameter(node, index);
-    }
-
-    private boolean isBlockFaceParameter(Node node, int index) {
-        if (node == null || node.getType() != NodeType.PARAM_BLOCK_FACE) {
-            return false;
-        }
-        if (index < 0 || index >= node.getParameters().size()) {
-            return false;
-        }
-        NodeParameter param = node.getParameters().get(index);
-        if (param == null) {
-            return false;
-        }
-        return "Face".equalsIgnoreCase(param.getName());
     }
 
     private void revertParameterEdit() {
@@ -11785,62 +11642,6 @@ public class NodeGraph {
         return false;
     }
 
-    private boolean isListIndexParameter(Node node, int index) {
-        if (node == null || node.getType() != NodeType.LIST_ITEM || index < 0 || index >= node.getParameters().size()) {
-            return false;
-        }
-        NodeParameter param = node.getParameters().get(index);
-        return param != null && "Index".equalsIgnoreCase(param.getName());
-    }
-
-    private boolean isBlockItemParameter(Node node, int index) {
-        if (node == null || index < 0 || index >= node.getParameters().size()) {
-            return false;
-        }
-        NodeParameter param = node.getParameters().get(index);
-        if (param == null) {
-            return false;
-        }
-        if (param.getType() == ParameterType.BLOCK_TYPE) {
-            return true;
-        }
-        String name = param.getName();
-        return isBlockStateParameter(node, index)
-            || isEntityStateParameter(node, index)
-            || "Block".equalsIgnoreCase(name)
-            || "Blocks".equalsIgnoreCase(name)
-            || "Item".equalsIgnoreCase(name)
-            || "Entity".equalsIgnoreCase(name);
-    }
-
-    private boolean isBlockStateParameter(Node node, int index) {
-        if (node == null || index < 0 || index >= node.getParameters().size()) {
-            return false;
-        }
-        if (node.getType() != NodeType.PARAM_BLOCK) {
-            return false;
-        }
-        NodeParameter param = node.getParameters().get(index);
-        if (param == null) {
-            return false;
-        }
-        return "State".equalsIgnoreCase(param.getName());
-    }
-
-    private boolean isEntityStateParameter(Node node, int index) {
-        if (node == null || index < 0 || index >= node.getParameters().size()) {
-            return false;
-        }
-        if (node.getType() != NodeType.PARAM_ENTITY) {
-            return false;
-        }
-        NodeParameter param = node.getParameters().get(index);
-        if (param == null) {
-            return false;
-        }
-        return "State".equalsIgnoreCase(param.getName());
-    }
-
     private boolean isAnyBlockItemValue(String value) {
         if (value == null) {
             return true;
@@ -11909,43 +11710,6 @@ public class NodeGraph {
             return "";
         }
         return id.toString();
-    }
-
-    private boolean isBlockParameter(Node node, int index) {
-        if (node == null || index < 0 || index >= node.getParameters().size()) {
-            return false;
-        }
-        NodeParameter param = node.getParameters().get(index);
-        if (param == null) {
-            return false;
-        }
-        if (param.getType() == ParameterType.BLOCK_TYPE) {
-            return true;
-        }
-        String name = param.getName();
-        return "Block".equalsIgnoreCase(name) || "Blocks".equalsIgnoreCase(name);
-    }
-
-    private boolean isItemParameter(Node node, int index) {
-        if (node == null || index < 0 || index >= node.getParameters().size()) {
-            return false;
-        }
-        NodeParameter param = node.getParameters().get(index);
-        if (param == null) {
-            return false;
-        }
-        return "Item".equalsIgnoreCase(param.getName());
-    }
-
-    private boolean isEntityParameter(Node node, int index) {
-        if (node == null || index < 0 || index >= node.getParameters().size()) {
-            return false;
-        }
-        NodeParameter param = node.getParameters().get(index);
-        if (param == null) {
-            return false;
-        }
-        return "Entity".equalsIgnoreCase(param.getName());
     }
 
     private static int findSegmentStart(String value, int caret) {
@@ -12187,20 +11951,6 @@ public class NodeGraph {
         result.addAll(starts);
         result.addAll(contains);
         return result;
-    }
-
-    private boolean isFabricEventSensorParameter(Node node, int index) {
-        if (node == null || node.getType() != NodeType.SENSOR_FABRIC_EVENT || index < 0) {
-            return false;
-        }
-        List<NodeParameter> parameters = node.getParameters();
-        if (parameters == null || index >= parameters.size()) {
-            return false;
-        }
-        NodeParameter parameter = parameters.get(index);
-        return parameter != null
-            && parameter.getType() == ParameterType.STRING
-            && "Event".equals(parameter.getName());
     }
 
     private List<ParameterDropdownOption> getBlockStateDropdownOptions(Node node, String loweredQuery) {
@@ -13153,48 +12903,6 @@ public class NodeGraph {
             }
         }
         return ItemStack.EMPTY;
-    }
-
-    private static final class RegistryStringCache {
-        private static final List<String> BLOCK_IDS = buildBlockIds();
-        private static final List<String> ITEM_IDS = buildItemIds();
-        private static final List<String> ENTITY_IDS = buildEntityIds();
-
-        private static List<String> buildBlockIds() {
-            List<String> options = new ArrayList<>();
-            for (Identifier id : BuiltInRegistries.BLOCK.keySet()) {
-                if (id == null) {
-                    continue;
-                }
-                options.add(id.getPath());
-            }
-            options.sort(String::compareToIgnoreCase);
-            return options;
-        }
-
-        private static List<String> buildItemIds() {
-            List<String> options = new ArrayList<>();
-            for (Identifier id : BuiltInRegistries.ITEM.keySet()) {
-                if (id == null) {
-                    continue;
-                }
-                options.add(id.getPath());
-            }
-            options.sort(String::compareToIgnoreCase);
-            return options;
-        }
-
-        private static List<String> buildEntityIds() {
-            List<String> options = new ArrayList<>();
-            for (Identifier id : BuiltInRegistries.ENTITY_TYPE.keySet()) {
-                if (id == null) {
-                    continue;
-                }
-                options.add(id.getPath());
-            }
-            options.sort(String::compareToIgnoreCase);
-            return options;
-        }
     }
 
     private Font getClientTextRenderer() {

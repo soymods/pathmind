@@ -29,6 +29,7 @@ import com.pathmind.ui.control.PathmindWorkspaceChrome;
 import com.pathmind.ui.control.ToggleSwitch;
 import com.pathmind.ui.control.UiHitTest;
 import com.pathmind.ui.graph.NodeGraph;
+import com.pathmind.ui.graph.StickyNoteResizeCorner;
 import com.pathmind.ui.menu.ContextMenuSelection;
 import com.pathmind.ui.overlay.BookTextEditorOverlay;
 import com.pathmind.ui.overlay.NodeErrorNotificationOverlay;
@@ -755,7 +756,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void renderCustomCursor(GuiGraphics context, int mouseX, int mouseY) {
-        NodeGraph.StickyNoteResizeCorner resizeCorner = getHoveredStickyNoteResizeCorner(mouseX, mouseY);
+        StickyNoteResizeCorner resizeCorner = getHoveredStickyNoteResizeCorner(mouseX, mouseY);
         PathmindCursor.render(context, resolveCursorTexture(mouseX, mouseY, resizeCorner), mouseX, mouseY);
     }
 
@@ -763,7 +764,7 @@ public class PathmindVisualEditorScreen extends Screen {
         return resolveCursorTexture(mouseX, mouseY, getHoveredStickyNoteResizeCorner(mouseX, mouseY));
     }
 
-    private Identifier resolveCursorTexture(int mouseX, int mouseY, NodeGraph.StickyNoteResizeCorner resizeCorner) {
+    private Identifier resolveCursorTexture(int mouseX, int mouseY, StickyNoteResizeCorner resizeCorner) {
         if (nodeGraph.isConnectionCutActive()) {
             return PathmindCursor.CUT_TEXTURE;
         }
@@ -807,7 +808,7 @@ public class PathmindVisualEditorScreen extends Screen {
         return PathmindCursor.DEFAULT_TEXTURE;
     }
 
-    private NodeGraph.StickyNoteResizeCorner getHoveredStickyNoteResizeCorner(int mouseX, int mouseY) {
+    private StickyNoteResizeCorner getHoveredStickyNoteResizeCorner(int mouseX, int mouseY) {
         boolean overWorkspace = mouseX >= sidebar.getWidth() && mouseY > TITLE_BAR_HEIGHT;
         if (!overWorkspace) {
             return null;

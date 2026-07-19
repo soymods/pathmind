@@ -301,6 +301,26 @@ public class NodeGraph {
     private int messageSelectionAnchor = -1;
     private final StickyNoteController stickyNoteController = new StickyNoteController(new StickyNoteHost() {
         @Override
+        public int cameraX() {
+            return cameraX;
+        }
+
+        @Override
+        public int cameraY() {
+            return cameraY;
+        }
+
+        @Override
+        public void drawNodeText(GuiGraphics context, Font renderer, String text, int x, int y, int color) {
+            NodeGraph.this.drawNodeText(context, renderer, text, x, y, color);
+        }
+
+        @Override
+        public int selectedNodeAccentColor() {
+            return getSelectedNodeAccentColor();
+        }
+
+        @Override
         public void stopOtherEditors() {
             stopCoordinateEditing(true);
             stopAmountEditing(true);
@@ -472,12 +492,6 @@ public class NodeGraph {
     private final Map<Node, DragStartInfo> multiDragStartPositions = new HashMap<>();
     private boolean selectionDeletionPreviewActive = false;
 
-    public enum StickyNoteResizeCorner {
-        TOP_LEFT,
-        TOP_RIGHT,
-        BOTTOM_LEFT,
-        BOTTOM_RIGHT
-    }
 
     public enum ZoomLevel {
         FOCUSED(1.0f, true),
@@ -531,16 +545,6 @@ public class NodeGraph {
             this.minY = minY;
             this.maxX = maxX;
             this.maxY = maxY;
-        }
-    }
-
-    private static final class StickyNoteCaretRenderPosition {
-        final int lineIndex;
-        final String lineTextBeforeCaret;
-
-        StickyNoteCaretRenderPosition(int lineIndex, String lineTextBeforeCaret) {
-            this.lineIndex = lineIndex;
-            this.lineTextBeforeCaret = lineTextBeforeCaret;
         }
     }
 
@@ -3671,7 +3675,7 @@ public class NodeGraph {
         boolean isOverSidebar = isNodeOverSidebarForRender(node, x, width);
 
         if (node.isStickyNote()) {
-            renderStickyNote(context, textRenderer, node, x, y, width, height, isOverSidebar);
+            stickyNoteController.render(context, textRenderer, node, x, y, width, height, isOverSidebar);
             return;
         }
 
@@ -4865,90 +4869,6 @@ public class NodeGraph {
 
     private int getParameterFieldHeight() {
         return PARAMETER_INPUT_HEIGHT;
-    }
-
-    private void renderStickyNote(GuiGraphics context, Font textRenderer, Node node, int x, int y, int width, int height,
-                                  boolean isOverSidebar) {
-        int paperColor = isOverSidebar ? UITheme.NODE_DIMMED_BG : 0xFFF3E28A;
-        int headerColor = isOverSidebar ? UITheme.NODE_HEADER_DIMMED : 0xFFE2C65A;
-        int borderColor = node.isSelected() ? getSelectedNodeAccentColor() : (isOverSidebar ? UITheme.BORDER_SUBTLE : 0xFFC2A748);
-        int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : 0xFF3F3420;
-
-        context.fill(x, y, x + width, y + height, paperColor);
-        context.fill(x + 1, y + 1, x + width - 1, y + node.getStickyNoteHeaderHeight(), headerColor);
-        DrawContextBridge.drawBorderInLayer(context, x, y, width, height, borderColor);
-
-        int bodyLeft = node.getStickyNoteBodyLeft() - cameraX;
-        int bodyTop = node.getStickyNoteBodyTop() - cameraY;
-        int maxLines = Math.max(1, node.getStickyNoteBodyHeight() / Math.max(1, textRenderer.lineHeight + 1));
-        List<String> lines = getStickyNoteDisplayLines(node, textRenderer, maxLines);
-        for (int i = 0; i < lines.size(); i++) {
-            int lineY = bodyTop + i * (textRenderer.lineHeight + 1);
-            if (lineY + textRenderer.lineHeight > y + height - 4) {
-                break;
-            }
-            drawNodeText(context, textRenderer, lines.get(i), bodyLeft, lineY, textColor);
-        }
-
-        if (stickyNoteController.getEditingNode() == node) {
-            stickyNoteController.updateCaretBlink();
-            if (stickyNoteController.isCaretVisible()) {
-                StickyNoteCaretRenderPosition caretPosition = getStickyNoteCaretRenderPosition(node, textRenderer, maxLines);
-                if (caretPosition != null) {
-                    int caretY = bodyTop + caretPosition.lineIndex * (textRenderer.lineHeight + 1);
-                    int caretX = bodyLeft + textRenderer.width(caretPosition.lineTextBeforeCaret);
-                    UIStyleHelper.drawTextCaretAtBaseline(context, textRenderer, caretX, caretY + textRenderer.lineHeight - 1, x + width - 6, 0xFF000000);
-                }
-            }
-        }
-
-        if (node.isSelected()) {
-            renderStickyNoteResizeHandle(context, node, StickyNoteResizeCorner.TOP_LEFT, borderColor);
-            renderStickyNoteResizeHandle(context, node, StickyNoteResizeCorner.TOP_RIGHT, borderColor);
-            renderStickyNoteResizeHandle(context, node, StickyNoteResizeCorner.BOTTOM_LEFT, borderColor);
-            renderStickyNoteResizeHandle(context, node, StickyNoteResizeCorner.BOTTOM_RIGHT, borderColor);
-        }
-    }
-
-    private List<String> getStickyNoteDisplayLines(Node node, Font textRenderer, int maxLines) {
-        String source = stickyNoteController.getEditingNode() == node ? stickyNoteController.getEditBuffer() : node.getStickyNoteText();
-        return StickyNoteTextLayout.wrapLines(source, textRenderer, Math.max(1, node.getStickyNoteBodyWidth()), maxLines);
-    }
-
-    private StickyNoteCaretRenderPosition getStickyNoteCaretRenderPosition(Node node, Font textRenderer, int maxLines) {
-        if (!isEditingStickyNote() || stickyNoteController.getEditingNode() != node) {
-            return null;
-        }
-        String editBuffer = stickyNoteController.getEditBuffer();
-        int caretOffset = Mth.clamp(stickyNoteController.getCaretPosition(), 0, editBuffer.length());
-        String textBeforeCaret = editBuffer.substring(0, caretOffset);
-        List<String> wrappedBeforeCaret = StickyNoteTextLayout.wrapLines(
-            textBeforeCaret,
-            textRenderer,
-            Math.max(1, node.getStickyNoteBodyWidth()),
-            maxLines + 1);
-        if (wrappedBeforeCaret.isEmpty()) {
-            return new StickyNoteCaretRenderPosition(0, "");
-        }
-        int lineIndex = wrappedBeforeCaret.size() - 1;
-        if (lineIndex >= maxLines) {
-            return null;
-        }
-        return new StickyNoteCaretRenderPosition(lineIndex, wrappedBeforeCaret.get(lineIndex));
-    }
-
-    private void renderStickyNoteResizeHandle(GuiGraphics context, Node node, StickyNoteResizeCorner corner, int color) {
-        int size = node.getStickyNoteResizeHandleSize();
-        int left = switch (corner) {
-            case TOP_LEFT, BOTTOM_LEFT -> node.getX() - cameraX - size / 2;
-            case TOP_RIGHT, BOTTOM_RIGHT -> node.getX() + node.getWidth() - cameraX - size / 2;
-        };
-        int top = switch (corner) {
-            case TOP_LEFT, TOP_RIGHT -> node.getY() - cameraY - size / 2;
-            case BOTTOM_LEFT, BOTTOM_RIGHT -> node.getY() + node.getHeight() - cameraY - size / 2;
-        };
-        context.fill(left, top, left + size, top + size, UITheme.TEXT_PRIMARY);
-        DrawContextBridge.drawBorderInLayer(context, left, top, size, size, color);
     }
 
     private void renderModeField(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar,

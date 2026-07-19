@@ -109,8 +109,6 @@
 4. **Organize Your Graph**: Move nodes around to keep your setup readable
 5. **Run And Refine**: Test your workflow in-game and keep improving it
 
-## Disclaimer
+## Responsible Use
 
-Pathmind is designed for automation and workflow visualization in **single-player** or in **multiplayer environments where such tools are explicitly permitted**.  
-You are solely responsible for ensuring that your use of this mod does **not violate any server rules, terms of service, or community guidelines**.  
-Do not use Pathmind in ways that provide unfair advantages, disrupt gameplay for others, or break the terms set by server administrators or Minecraft service providers.
+Pathmind is intended for use in environments where automation is allowed. Users are responsible for ensuring their use complies with the rules and policies of any server or platform on which it is used.

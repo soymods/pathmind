@@ -13142,11 +13142,15 @@ public class NodeGraph {
             if (entityType == null) {
                 return ItemStack.EMPTY;
             }
-            Item spawnEgg = SpawnEggItem.byId(entityType);
-            if (spawnEgg == null || spawnEgg == Items.AIR) {
+            try {
+                Item spawnEgg = SpawnEggItem.byId(entityType);
+                if (spawnEgg == null || spawnEgg == Items.AIR) {
+                    return ItemStack.EMPTY;
+                }
+                return new ItemStack(spawnEgg);
+            } catch (RuntimeException e) {
                 return ItemStack.EMPTY;
             }
-            return new ItemStack(spawnEgg);
         }
         return ItemStack.EMPTY;
     }

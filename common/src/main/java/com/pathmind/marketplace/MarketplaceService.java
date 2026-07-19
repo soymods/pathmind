@@ -33,6 +33,7 @@ public final class MarketplaceService {
     public static final String PUBLISHABLE_KEY = "sb_publishable_ZJbCFcG5Yh4QM9W9as4jVA_daD3fwnn";
     public static final String PUBLIC_BUCKET_NAME = "graphs";
     public static final String PRIVATE_BUCKET_NAME = "private_graphs";
+    private static final long MAX_PRESET_FILE_SIZE_BYTES = 5L * 1024 * 1024;
     private static final String PUBLISH_PRESET_RPC = "publish_marketplace_preset";
     private static final String DELETE_PRESET_RPC = "delete_marketplace_preset";
     private static final String UPDATE_PRESET_METADATA_RPC = "update_marketplace_preset_metadata";
@@ -386,6 +387,7 @@ public final class MarketplaceService {
                 if (request == null || request.localPresetPath() == null || !Files.exists(request.localPresetPath())) {
                     throw new IOException("Preset file is missing.");
                 }
+                requireWithinSizeLimit(request.localPresetPath());
 
                 String slug = sanitizeSlug(request.slug());
                 if (slug.isBlank()) {
@@ -432,6 +434,7 @@ public final class MarketplaceService {
                 String targetPath = preset.getFilePath();
                 boolean hasLocalPresetFile = request.localPresetPath() != null && Files.exists(request.localPresetPath());
                 if (hasLocalPresetFile) {
+                    requireWithinSizeLimit(request.localPresetPath());
                     uploadPresetFile(accessToken, targetBucket, targetPath, request.localPresetPath(), true);
                 } else if (!currentBucket.equals(targetBucket)) {
                     moveStorageObject(accessToken, currentBucket, targetBucket, targetPath);
@@ -615,6 +618,14 @@ public final class MarketplaceService {
             }
         }
         return array;
+    }
+
+    private static void requireWithinSizeLimit(Path localPresetPath) throws IOException {
+        long size = Files.size(localPresetPath);
+        if (size > MAX_PRESET_FILE_SIZE_BYTES) {
+            throw new IOException("Preset file is too large (" + (size / (1024 * 1024)) + " MB). "
+                + "Presets must be under " + (MAX_PRESET_FILE_SIZE_BYTES / (1024 * 1024)) + " MB.");
+        }
     }
 
     private static void uploadPresetFile(String accessToken, String bucketName, String storagePath, Path localPresetPath, boolean upsert)

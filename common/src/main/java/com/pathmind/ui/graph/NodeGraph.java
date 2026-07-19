@@ -409,14 +409,23 @@ public class NodeGraph {
         }
     });
     private Node eventNameEditingNode = null;
-    private String eventNameEditBuffer = "";
     private String eventNameEditOriginalValue = "";
-    private long eventNameCaretLastToggleTime = 0L;
-    private boolean eventNameCaretVisible = true;
-    private int eventNameCaretPosition = 0;
-    private int eventNameSelectionStart = -1;
-    private int eventNameSelectionEnd = -1;
-    private int eventNameSelectionAnchor = -1;
+    private final InlineTextEditor eventNameEditor = new InlineTextEditor(inlineEditorHost);
+    private final InlineTextEditor.Policy eventNamePolicy = new InlineTextEditor.Policy() {
+        @Override
+        public void onBufferChanged() {
+        }
+
+        @Override
+        public void onEnter() {
+            stopEventNameEditing(true);
+        }
+
+        @Override
+        public void onEscape() {
+            stopEventNameEditing(true);
+        }
+    };
     private Node parameterEditingNode = null;
     private int parameterEditingIndex = -1;
     private String parameterEditBuffer = "";
@@ -428,23 +437,43 @@ public class NodeGraph {
     private int parameterSelectionEnd = -1;
     private int parameterSelectionAnchor = -1;
     private Node stopTargetEditingNode = null;
-    private String stopTargetEditBuffer = "";
     private String stopTargetEditOriginalValue = "";
-    private long stopTargetCaretLastToggleTime = 0L;
-    private boolean stopTargetCaretVisible = true;
-    private int stopTargetCaretPosition = 0;
-    private int stopTargetSelectionStart = -1;
-    private int stopTargetSelectionEnd = -1;
-    private int stopTargetSelectionAnchor = -1;
+    private final InlineTextEditor stopTargetEditor = new InlineTextEditor(inlineEditorHost);
+    private final InlineTextEditor.Policy stopTargetPolicy = new InlineTextEditor.Policy() {
+        @Override
+        public void onBufferChanged() {
+            updateStopTargetFieldContentWidth(getClientTextRenderer());
+        }
+
+        @Override
+        public void onEnter() {
+            stopStopTargetEditing(true);
+        }
+
+        @Override
+        public void onEscape() {
+            stopStopTargetEditing(true);
+        }
+    };
     private Node variableEditingNode = null;
-    private String variableEditBuffer = "";
     private String variableEditOriginalValue = "";
-    private long variableCaretLastToggleTime = 0L;
-    private boolean variableCaretVisible = true;
-    private int variableCaretPosition = 0;
-    private int variableSelectionStart = -1;
-    private int variableSelectionEnd = -1;
-    private int variableSelectionAnchor = -1;
+    private final InlineTextEditor variableEditor = new InlineTextEditor(inlineEditorHost);
+    private final InlineTextEditor.Policy variablePolicy = new InlineTextEditor.Policy() {
+        @Override
+        public void onBufferChanged() {
+            updateVariableFieldContentWidth(getClientTextRenderer());
+        }
+
+        @Override
+        public void onEnter() {
+            stopVariableEditing(true);
+        }
+
+        @Override
+        public void onEscape() {
+            stopVariableEditing(true);
+        }
+    };
     private Node schematicDropdownNode = null;
     private boolean schematicDropdownOpen = false;
     private final AnimatedValue schematicDropdownAnimation = AnimatedValue.forHover();
@@ -3949,12 +3978,12 @@ public class NodeGraph {
 
             boolean editingEventName = isEditingEventNameField() && eventNameEditingNode == node;
             if (editingEventName) {
-                updateEventNameCaretBlink();
+                eventNameEditor.updateCaretBlink();
             }
 
             NodeParameter nameParam = node.getParameter("Name");
             String value = editingEventName
-                ? eventNameEditBuffer
+                ? eventNameEditor.getBuffer()
                 : (nameParam != null ? nameParam.getStringValue() : "");
             if (value == null) {
                 value = "";
@@ -3994,9 +4023,9 @@ public class NodeGraph {
                 textColor = eventNameVariableHighlightColor;
             }
             int textX = boxLeft + 4;
-            if (editingEventName && hasEventNameSelection()) {
-                int start = eventNameSelectionStart;
-                int end = eventNameSelectionEnd;
+            if (editingEventName && eventNameEditor.hasSelection()) {
+                int start = eventNameEditor.getSelectionStart();
+                int end = eventNameEditor.getSelectionEnd();
                 if (eventNameRenderData != null) {
                     start = eventNameRenderData.toDisplayIndex(start);
                     end = eventNameRenderData.toDisplayIndex(end);
@@ -4023,8 +4052,8 @@ public class NodeGraph {
                 }
             }
 
-            if (editingEventName && eventNameCaretVisible) {
-                int caretIndex = eventNameCaretPosition;
+            if (editingEventName && eventNameEditor.isCaretVisible()) {
+                int caretIndex = eventNameEditor.getCaretPosition();
                 if (eventNameRenderData != null) {
                     caretIndex = eventNameRenderData.toDisplayIndex(caretIndex);
                 }
@@ -4215,12 +4244,12 @@ public class NodeGraph {
 
             boolean editingEventName = isEditingEventNameField() && eventNameEditingNode == node;
             if (editingEventName) {
-                updateEventNameCaretBlink();
+                eventNameEditor.updateCaretBlink();
             }
 
             NodeParameter nameParam = node.getParameter("Name");
             String value = editingEventName
-                ? eventNameEditBuffer
+                ? eventNameEditor.getBuffer()
                 : (nameParam != null ? nameParam.getStringValue() : "");
             if (value == null) {
                 value = "";
@@ -4240,9 +4269,9 @@ public class NodeGraph {
                 textColor = UITheme.TEXT_TERTIARY;
             }
             int textX = boxLeft + 4;
-            if (editingEventName && hasEventNameSelection()) {
-                int start = Mth.clamp(eventNameSelectionStart, 0, display.length());
-                int end = Mth.clamp(eventNameSelectionEnd, 0, display.length());
+            if (editingEventName && eventNameEditor.hasSelection()) {
+                int start = Mth.clamp(eventNameEditor.getSelectionStart(), 0, display.length());
+                int end = Mth.clamp(eventNameEditor.getSelectionEnd(), 0, display.length());
                 if (start != end) {
                     int selectionStartX = textX + textRenderer.width(display.substring(0, start));
                     int selectionEndX = textX + textRenderer.width(display.substring(0, end));
@@ -4255,8 +4284,8 @@ public class NodeGraph {
                 drawNodeText(context, textRenderer, Component.literal(display), textX, textY, textColor);
             }
 
-            if (editingEventName && eventNameCaretVisible) {
-                int caretIndex = Mth.clamp(eventNameCaretPosition, 0, display.length());
+            if (editingEventName && eventNameEditor.isCaretVisible()) {
+                int caretIndex = Mth.clamp(eventNameEditor.getCaretPosition(), 0, display.length());
                 int caretX = textX + textRenderer.width(display.substring(0, caretIndex));
                 caretX = Math.min(caretX, boxRight - 2);
                 int caretBaseline = Math.min(textY + textRenderer.lineHeight - 1, boxBottom - 2);
@@ -7155,7 +7184,7 @@ public class NodeGraph {
         if (!isEditingStopTargetField() || stopTargetEditingNode == null || textRenderer == null) {
             return;
         }
-        String value = stopTargetEditBuffer == null ? "" : stopTargetEditBuffer;
+        String value = stopTargetEditor.getBuffer();
         stopTargetEditingNode.setStopTargetFieldTextWidth(textRenderer.width(value));
         stopTargetEditingNode.recalculateDimensions();
     }
@@ -7164,7 +7193,7 @@ public class NodeGraph {
         if (!isEditingVariableField() || variableEditingNode == null || textRenderer == null) {
             return;
         }
-        String value = variableEditBuffer == null ? "" : variableEditBuffer;
+        String value = variableEditor.getBuffer();
         variableEditingNode.setVariableFieldTextWidth(textRenderer.width(value));
         variableEditingNode.recalculateDimensions();
     }
@@ -7719,7 +7748,7 @@ public class NodeGraph {
 
         boolean editing = isEditingStopTargetField() && stopTargetEditingNode == node;
         if (editing) {
-            updateStopTargetCaretBlink();
+            stopTargetEditor.updateCaretBlink();
         }
 
         int fieldTop = node.getStopTargetFieldInputTop() - cameraY;
@@ -7770,7 +7799,7 @@ public class NodeGraph {
 
         String value;
         if (editing) {
-            value = stopTargetEditBuffer;
+            value = stopTargetEditor.getBuffer();
         } else {
             NodeParameter targetParam = node.getParameter(getStopTargetParameterKey(node));
             value = targetParam != null ? targetParam.getStringValue() : "";
@@ -7810,9 +7839,9 @@ public class NodeGraph {
 
         int textX = fieldLeft + 3;
         int textY = fieldTop + (fieldHeight - textRenderer.lineHeight) / 2 + 1;
-        if (editing && hasStopTargetSelection()) {
-            int start = stopTargetSelectionStart;
-            int end = stopTargetSelectionEnd;
+        if (editing && stopTargetEditor.hasSelection()) {
+            int start = stopTargetEditor.getSelectionStart();
+            int end = stopTargetEditor.getSelectionEnd();
             if (stopTargetRenderData != null) {
                 start = stopTargetRenderData.toDisplayIndex(start);
                 end = stopTargetRenderData.toDisplayIndex(end);
@@ -7830,8 +7859,8 @@ public class NodeGraph {
             drawNodeText(context, textRenderer, Component.literal(display), textX, textY, valueColor);
         }
 
-        if (editing && stopTargetCaretVisible) {
-            int caretIndex = stopTargetCaretPosition;
+        if (editing && stopTargetEditor.isCaretVisible()) {
+            int caretIndex = stopTargetEditor.getCaretPosition();
             if (stopTargetRenderData != null) {
                 caretIndex = stopTargetRenderData.toDisplayIndex(caretIndex);
             }
@@ -7858,7 +7887,7 @@ public class NodeGraph {
 
         boolean editing = isEditingStopTargetField() && stopTargetEditingNode == node;
         if (editing) {
-            updateStopTargetCaretBlink();
+            stopTargetEditor.updateCaretBlink();
         }
         boolean open = runPresetDropdownOpen && runPresetDropdownNode == node;
 
@@ -7903,7 +7932,7 @@ public class NodeGraph {
 
         String value;
         if (editing) {
-            value = stopTargetEditBuffer;
+            value = stopTargetEditor.getBuffer();
         } else {
             NodeParameter targetParam = node.getParameter(getStopTargetParameterKey(node));
             value = targetParam != null ? targetParam.getStringValue() : "";
@@ -7921,9 +7950,9 @@ public class NodeGraph {
         display = editing ? display : trimTextToWidth(display, textRenderer, maxValueWidth);
 
         int textY = fieldTop + (fieldHeight - textRenderer.lineHeight) / 2 + 1;
-        if (editing && hasStopTargetSelection()) {
-            int start = Mth.clamp(stopTargetSelectionStart, 0, display.length());
-            int end = Mth.clamp(stopTargetSelectionEnd, 0, display.length());
+        if (editing && stopTargetEditor.hasSelection()) {
+            int start = Mth.clamp(stopTargetEditor.getSelectionStart(), 0, display.length());
+            int end = Mth.clamp(stopTargetEditor.getSelectionEnd(), 0, display.length());
             if (start != end) {
                 int selectionStartX = valueTextX + textRenderer.width(display.substring(0, start));
                 int selectionEndX = valueTextX + textRenderer.width(display.substring(0, end));
@@ -7932,8 +7961,8 @@ public class NodeGraph {
         }
         drawNodeText(context, textRenderer, Component.literal(display), valueTextX, textY, valueDrawColor);
 
-        if (editing && stopTargetCaretVisible) {
-            int caretIndex = Mth.clamp(stopTargetCaretPosition, 0, display.length());
+        if (editing && stopTargetEditor.isCaretVisible()) {
+            int caretIndex = Mth.clamp(stopTargetEditor.getCaretPosition(), 0, display.length());
             int caretX = valueTextX + textRenderer.width(display.substring(0, caretIndex));
             caretX = Math.min(caretX, fieldLeft + fieldWidth - 2);
             UIStyleHelper.drawTextCaret(context, caretX, fieldTop + 2, fieldBottom - 2, caretColor);
@@ -7951,7 +7980,7 @@ public class NodeGraph {
 
         boolean editing = isEditingVariableField() && variableEditingNode == node;
         if (editing) {
-            updateVariableCaretBlink();
+            variableEditor.updateCaretBlink();
         }
 
         int fieldTop = node.getVariableFieldInputTop() - cameraY;
@@ -7976,7 +8005,7 @@ public class NodeGraph {
 
         String value;
         if (editing) {
-            value = variableEditBuffer;
+            value = variableEditor.getBuffer();
         } else {
             String keyName = node.getVariableFieldParameterKey();
             NodeParameter variableParam = node.getParameter(keyName);
@@ -8017,9 +8046,9 @@ public class NodeGraph {
 
         int textX = fieldLeft + 3;
         int textY = fieldTop + (fieldHeight - textRenderer.lineHeight) / 2 + 1;
-        if (editing && hasVariableSelection()) {
-            int start = variableSelectionStart;
-            int end = variableSelectionEnd;
+        if (editing && variableEditor.hasSelection()) {
+            int start = variableEditor.getSelectionStart();
+            int end = variableEditor.getSelectionEnd();
             if (variableFieldRenderData != null) {
                 start = variableFieldRenderData.toDisplayIndex(start);
                 end = variableFieldRenderData.toDisplayIndex(end);
@@ -8036,8 +8065,8 @@ public class NodeGraph {
             drawNodeText(context, textRenderer, Component.literal(display), textX, textY, valueColor);
         }
 
-        if (editing && variableCaretVisible) {
-            int caretIndex = variableCaretPosition;
+        if (editing && variableEditor.isCaretVisible()) {
+            int caretIndex = variableEditor.getCaretPosition();
             if (variableFieldRenderData != null) {
                 caretIndex = variableFieldRenderData.toDisplayIndex(caretIndex);
             }
@@ -8894,19 +8923,6 @@ public class NodeGraph {
         return stopTargetEditingNode != null;
     }
 
-    private void updateStopTargetCaretBlink() {
-        long now = System.currentTimeMillis();
-        if (now - stopTargetCaretLastToggleTime >= COORDINATE_CARET_BLINK_INTERVAL_MS) {
-            stopTargetCaretVisible = !stopTargetCaretVisible;
-            stopTargetCaretLastToggleTime = now;
-        }
-    }
-
-    private void resetStopTargetCaretBlink() {
-        stopTargetCaretVisible = true;
-        stopTargetCaretLastToggleTime = System.currentTimeMillis();
-    }
-
     public void startStopTargetEditing(Node node) {
         if (node == null || !node.hasStopTargetInputField() || isPresetSelectorNode(node)) {
             stopStopTargetEditing(false);
@@ -8935,13 +8951,8 @@ public class NodeGraph {
 
         stopTargetEditingNode = node;
         NodeParameter targetParam = node.getParameter(getStopTargetParameterKey(node));
-        stopTargetEditBuffer = targetParam != null ? targetParam.getStringValue() : "";
-        stopTargetEditOriginalValue = stopTargetEditBuffer;
-        resetStopTargetCaretBlink();
-        stopTargetCaretPosition = stopTargetEditBuffer.length();
-        stopTargetSelectionAnchor = -1;
-        stopTargetSelectionStart = -1;
-        stopTargetSelectionEnd = -1;
+        stopTargetEditOriginalValue = targetParam != null ? targetParam.getStringValue() : "";
+        stopTargetEditor.begin(stopTargetEditOriginalValue, stopTargetEditOriginalValue.length());
         updateStopTargetFieldContentWidth(getClientTextRenderer());
     }
 
@@ -8962,30 +8973,12 @@ public class NodeGraph {
         }
 
         stopTargetEditingNode = null;
-        stopTargetEditBuffer = "";
         stopTargetEditOriginalValue = "";
-        stopTargetCaretVisible = true;
-        stopTargetCaretPosition = 0;
-        stopTargetSelectionAnchor = -1;
-        stopTargetSelectionStart = -1;
-        stopTargetSelectionEnd = -1;
+        stopTargetEditor.clear();
     }
 
     public boolean isEditingVariableField() {
         return variableEditingNode != null;
-    }
-
-    private void updateVariableCaretBlink() {
-        long now = System.currentTimeMillis();
-        if (now - variableCaretLastToggleTime >= COORDINATE_CARET_BLINK_INTERVAL_MS) {
-            variableCaretVisible = !variableCaretVisible;
-            variableCaretLastToggleTime = now;
-        }
-    }
-
-    private void resetVariableCaretBlink() {
-        variableCaretVisible = true;
-        variableCaretLastToggleTime = System.currentTimeMillis();
     }
 
     public void startVariableEditing(Node node) {
@@ -9017,13 +9010,8 @@ public class NodeGraph {
         variableEditingNode = node;
         String keyName = node.getVariableFieldParameterKey();
         NodeParameter variableParam = node.getParameter(keyName);
-        variableEditBuffer = variableParam != null ? variableParam.getStringValue() : "";
-        variableEditOriginalValue = variableEditBuffer;
-        resetVariableCaretBlink();
-        variableCaretPosition = variableEditBuffer.length();
-        variableSelectionAnchor = -1;
-        variableSelectionStart = -1;
-        variableSelectionEnd = -1;
+        variableEditOriginalValue = variableParam != null ? variableParam.getStringValue() : "";
+        variableEditor.begin(variableEditOriginalValue, variableEditOriginalValue.length());
         updateVariableFieldContentWidth(getClientTextRenderer());
     }
 
@@ -9044,13 +9032,8 @@ public class NodeGraph {
         }
 
         variableEditingNode = null;
-        variableEditBuffer = "";
         variableEditOriginalValue = "";
-        variableCaretVisible = true;
-        variableCaretPosition = 0;
-        variableSelectionAnchor = -1;
-        variableSelectionStart = -1;
-        variableSelectionEnd = -1;
+        variableEditor.clear();
     }
 
     private boolean applyVariableEdit() {
@@ -9058,7 +9041,7 @@ public class NodeGraph {
             return false;
         }
 
-        String value = variableEditBuffer == null ? "" : variableEditBuffer;
+        String value = variableEditor.getBuffer();
         String keyName = variableEditingNode.getVariableFieldParameterKey();
         NodeParameter variableParam = variableEditingNode.getParameter(keyName);
         String previous = variableParam != null ? variableParam.getStringValue() : "";
@@ -9080,99 +9063,14 @@ public class NodeGraph {
         if (!isEditingVariableField()) {
             return false;
         }
-
-        boolean shiftHeld = (modifiers & GLFW.GLFW_MOD_SHIFT) != 0;
-        boolean controlHeld = isTextShortcutDown(modifiers);
-
-        switch (keyCode) {
-            case GLFW.GLFW_KEY_BACKSPACE:
-                if (deleteVariableSelection()) {
-                    return true;
-                }
-                if (controlHeld && variableCaretPosition > 0) {
-                    int deleteToPos = findPreviousWordBoundary(variableEditBuffer, variableCaretPosition);
-                    variableEditBuffer = variableEditBuffer.substring(0, deleteToPos)
-                        + variableEditBuffer.substring(variableCaretPosition);
-                    setVariableCaretPosition(deleteToPos);
-                    updateVariableFieldContentWidth(getClientTextRenderer());
-                } else if (variableCaretPosition > 0 && !variableEditBuffer.isEmpty()) {
-                    variableEditBuffer = variableEditBuffer.substring(0, variableCaretPosition - 1)
-                        + variableEditBuffer.substring(variableCaretPosition);
-                    setVariableCaretPosition(variableCaretPosition - 1);
-                    updateVariableFieldContentWidth(getClientTextRenderer());
-                }
-                return true;
-            case GLFW.GLFW_KEY_DELETE:
-                if (deleteVariableSelection()) {
-                    return true;
-                }
-                if (variableCaretPosition < variableEditBuffer.length()) {
-                    variableEditBuffer = variableEditBuffer.substring(0, variableCaretPosition)
-                        + variableEditBuffer.substring(variableCaretPosition + 1);
-                    setVariableCaretPosition(variableCaretPosition);
-                    updateVariableFieldContentWidth(getClientTextRenderer());
-                }
-                return true;
-            case GLFW.GLFW_KEY_LEFT:
-                moveVariableCaretTo(variableCaretPosition - 1, shiftHeld);
-                return true;
-            case GLFW.GLFW_KEY_RIGHT:
-                moveVariableCaretTo(variableCaretPosition + 1, shiftHeld);
-                return true;
-            case GLFW.GLFW_KEY_HOME:
-                moveVariableCaretTo(0, shiftHeld);
-                return true;
-            case GLFW.GLFW_KEY_END:
-                moveVariableCaretTo(variableEditBuffer.length(), shiftHeld);
-                return true;
-            case GLFW.GLFW_KEY_ENTER:
-            case GLFW.GLFW_KEY_KP_ENTER:
-                stopVariableEditing(true);
-                return true;
-            case GLFW.GLFW_KEY_ESCAPE:
-                stopVariableEditing(true);
-                return true;
-            case GLFW.GLFW_KEY_A:
-                if (controlHeld) {
-                    selectAllVariableText();
-                    return true;
-                }
-                break;
-            case GLFW.GLFW_KEY_C:
-                if (controlHeld) {
-                    copyVariableSelection();
-                    return true;
-                }
-                break;
-            case GLFW.GLFW_KEY_X:
-                if (controlHeld) {
-                    cutVariableSelection();
-                    return true;
-                }
-                break;
-            case GLFW.GLFW_KEY_V:
-                if (controlHeld) {
-                    Font textRenderer = getClientTextRenderer();
-                    if (textRenderer != null) {
-                        insertVariableText(getClipboardText(), textRenderer);
-                    }
-                    return true;
-                }
-                break;
-            default:
-                return false;
-        }
-        return false;
+        return variableEditor.handleKeyPressed(keyCode, modifiers, variablePolicy);
     }
 
     public boolean handleVariableCharTyped(char chr, int modifiers, Font textRenderer) {
         if (!isEditingVariableField()) {
             return false;
         }
-        if (chr == '\n' || chr == '\r') {
-            return false;
-        }
-        return insertVariableText(String.valueOf(chr), textRenderer);
+        return variableEditor.handleCharTyped(chr, variablePolicy);
     }
 
     private boolean applyStopTargetEdit() {
@@ -9180,7 +9078,7 @@ public class NodeGraph {
             return false;
         }
 
-        String value = stopTargetEditBuffer == null ? "" : stopTargetEditBuffer.trim();
+        String value = stopTargetEditor.getBuffer().trim();
         if (!isPresetSelectorNode(stopTargetEditingNode)
             && !value.isEmpty()
             && !isNumericOrVariableReference(value, stopTargetEditingNode, false, false)) {
@@ -9210,100 +9108,14 @@ public class NodeGraph {
         if (!isEditingStopTargetField()) {
             return false;
         }
-
-        boolean shiftHeld = (modifiers & GLFW.GLFW_MOD_SHIFT) != 0;
-        boolean controlHeld = isTextShortcutDown(modifiers);
-
-        switch (keyCode) {
-            case GLFW.GLFW_KEY_BACKSPACE:
-                if (deleteStopTargetSelection()) {
-                    return true;
-                }
-                if (controlHeld && stopTargetCaretPosition > 0) {
-                    // CTRL+Backspace: delete to previous word boundary
-                    int deleteToPos = findPreviousWordBoundary(stopTargetEditBuffer, stopTargetCaretPosition);
-                    stopTargetEditBuffer = stopTargetEditBuffer.substring(0, deleteToPos)
-                        + stopTargetEditBuffer.substring(stopTargetCaretPosition);
-                    setStopTargetCaretPosition(deleteToPos);
-                    updateStopTargetFieldContentWidth(getClientTextRenderer());
-                } else if (stopTargetCaretPosition > 0 && !stopTargetEditBuffer.isEmpty()) {
-                    stopTargetEditBuffer = stopTargetEditBuffer.substring(0, stopTargetCaretPosition - 1)
-                        + stopTargetEditBuffer.substring(stopTargetCaretPosition);
-                    setStopTargetCaretPosition(stopTargetCaretPosition - 1);
-                    updateStopTargetFieldContentWidth(getClientTextRenderer());
-                }
-                return true;
-            case GLFW.GLFW_KEY_DELETE:
-                if (deleteStopTargetSelection()) {
-                    return true;
-                }
-                if (stopTargetCaretPosition < stopTargetEditBuffer.length()) {
-                    stopTargetEditBuffer = stopTargetEditBuffer.substring(0, stopTargetCaretPosition)
-                        + stopTargetEditBuffer.substring(stopTargetCaretPosition + 1);
-                    setStopTargetCaretPosition(stopTargetCaretPosition);
-                    updateStopTargetFieldContentWidth(getClientTextRenderer());
-                }
-                return true;
-            case GLFW.GLFW_KEY_LEFT:
-                moveStopTargetCaretTo(stopTargetCaretPosition - 1, shiftHeld);
-                return true;
-            case GLFW.GLFW_KEY_RIGHT:
-                moveStopTargetCaretTo(stopTargetCaretPosition + 1, shiftHeld);
-                return true;
-            case GLFW.GLFW_KEY_HOME:
-                moveStopTargetCaretTo(0, shiftHeld);
-                return true;
-            case GLFW.GLFW_KEY_END:
-                moveStopTargetCaretTo(stopTargetEditBuffer.length(), shiftHeld);
-                return true;
-            case GLFW.GLFW_KEY_ENTER:
-            case GLFW.GLFW_KEY_KP_ENTER:
-                stopStopTargetEditing(true);
-                return true;
-            case GLFW.GLFW_KEY_ESCAPE:
-                stopStopTargetEditing(true);
-                return true;
-            case GLFW.GLFW_KEY_A:
-                if (controlHeld) {
-                    selectAllStopTargetText();
-                    return true;
-                }
-                break;
-            case GLFW.GLFW_KEY_C:
-                if (controlHeld) {
-                    copyStopTargetSelection();
-                    return true;
-                }
-                break;
-            case GLFW.GLFW_KEY_X:
-                if (controlHeld) {
-                    cutStopTargetSelection();
-                    return true;
-                }
-                break;
-            case GLFW.GLFW_KEY_V:
-                if (controlHeld) {
-                    Font textRenderer = getClientTextRenderer();
-                    if (textRenderer != null) {
-                        insertStopTargetText(getClipboardText(), textRenderer);
-                    }
-                    return true;
-                }
-                break;
-            default:
-                return false;
-        }
-        return false;
+        return stopTargetEditor.handleKeyPressed(keyCode, modifiers, stopTargetPolicy);
     }
 
     public boolean handleStopTargetCharTyped(char chr, int modifiers, Font textRenderer) {
         if (!isEditingStopTargetField()) {
             return false;
         }
-        if (chr == '\n' || chr == '\r') {
-            return false;
-        }
-        return insertStopTargetText(String.valueOf(chr), textRenderer);
+        return stopTargetEditor.handleCharTyped(chr, stopTargetPolicy);
     }
 
     public boolean isEditingStickyNote() {
@@ -9504,19 +9316,6 @@ public class NodeGraph {
         return eventNameEditingNode != null;
     }
 
-    private void updateEventNameCaretBlink() {
-        long now = System.currentTimeMillis();
-        if (now - eventNameCaretLastToggleTime >= COORDINATE_CARET_BLINK_INTERVAL_MS) {
-            eventNameCaretVisible = !eventNameCaretVisible;
-            eventNameCaretLastToggleTime = now;
-        }
-    }
-
-    private void resetEventNameCaretBlink() {
-        eventNameCaretVisible = true;
-        eventNameCaretLastToggleTime = System.currentTimeMillis();
-    }
-
     public void startEventNameEditing(Node node) {
         if (node == null || (node.getType() != NodeType.EVENT_FUNCTION && node.getType() != NodeType.EVENT_CALL && node.getType() != NodeType.ROUTINE_ENTRY)) {
             stopEventNameEditing(false);
@@ -9545,13 +9344,8 @@ public class NodeGraph {
 
         eventNameEditingNode = node;
         NodeParameter nameParam = node.getParameter("Name");
-        eventNameEditBuffer = nameParam != null ? nameParam.getStringValue() : "";
-        eventNameEditOriginalValue = eventNameEditBuffer;
-        resetEventNameCaretBlink();
-        eventNameCaretPosition = eventNameEditBuffer.length();
-        eventNameSelectionAnchor = -1;
-        eventNameSelectionStart = -1;
-        eventNameSelectionEnd = -1;
+        eventNameEditOriginalValue = nameParam != null ? nameParam.getStringValue() : "";
+        eventNameEditor.begin(eventNameEditOriginalValue, eventNameEditOriginalValue.length());
     }
 
     public void stopEventNameEditing(boolean commit) {
@@ -9571,20 +9365,15 @@ public class NodeGraph {
         }
 
         eventNameEditingNode = null;
-        eventNameEditBuffer = "";
         eventNameEditOriginalValue = "";
-        eventNameCaretVisible = true;
-        eventNameCaretPosition = 0;
-        eventNameSelectionAnchor = -1;
-        eventNameSelectionStart = -1;
-        eventNameSelectionEnd = -1;
+        eventNameEditor.clear();
     }
 
     private boolean applyEventNameEdit() {
         if (!isEditingEventNameField()) {
             return false;
         }
-        String value = eventNameEditBuffer == null ? "" : eventNameEditBuffer;
+        String value = eventNameEditor.getBuffer();
         NodeParameter nameParam = eventNameEditingNode.getParameter("Name");
         String previous = nameParam != null ? nameParam.getStringValue() : "";
         eventNameEditingNode.setParameterValueAndPropagate("Name", value);
@@ -9604,97 +9393,14 @@ public class NodeGraph {
         if (!isEditingEventNameField()) {
             return false;
         }
-
-        boolean shiftHeld = (modifiers & GLFW.GLFW_MOD_SHIFT) != 0;
-        boolean controlHeld = isTextShortcutDown(modifiers);
-
-        switch (keyCode) {
-            case GLFW.GLFW_KEY_BACKSPACE:
-                if (deleteEventNameSelection()) {
-                    return true;
-                }
-                if (controlHeld && eventNameCaretPosition > 0) {
-                    // CTRL+Backspace: delete to previous word boundary
-                    int deleteToPos = findPreviousWordBoundary(eventNameEditBuffer, eventNameCaretPosition);
-                    eventNameEditBuffer = eventNameEditBuffer.substring(0, deleteToPos)
-                        + eventNameEditBuffer.substring(eventNameCaretPosition);
-                    setEventNameCaretPosition(deleteToPos);
-                } else if (eventNameCaretPosition > 0 && !eventNameEditBuffer.isEmpty()) {
-                    eventNameEditBuffer = eventNameEditBuffer.substring(0, eventNameCaretPosition - 1)
-                        + eventNameEditBuffer.substring(eventNameCaretPosition);
-                    setEventNameCaretPosition(eventNameCaretPosition - 1);
-                }
-                return true;
-            case GLFW.GLFW_KEY_DELETE:
-                if (deleteEventNameSelection()) {
-                    return true;
-                }
-                if (eventNameCaretPosition < eventNameEditBuffer.length()) {
-                    eventNameEditBuffer = eventNameEditBuffer.substring(0, eventNameCaretPosition)
-                        + eventNameEditBuffer.substring(eventNameCaretPosition + 1);
-                    setEventNameCaretPosition(eventNameCaretPosition);
-                }
-                return true;
-            case GLFW.GLFW_KEY_LEFT:
-                moveEventNameCaretTo(eventNameCaretPosition - 1, shiftHeld);
-                return true;
-            case GLFW.GLFW_KEY_RIGHT:
-                moveEventNameCaretTo(eventNameCaretPosition + 1, shiftHeld);
-                return true;
-            case GLFW.GLFW_KEY_HOME:
-                moveEventNameCaretTo(0, shiftHeld);
-                return true;
-            case GLFW.GLFW_KEY_END:
-                moveEventNameCaretTo(eventNameEditBuffer.length(), shiftHeld);
-                return true;
-            case GLFW.GLFW_KEY_ENTER:
-            case GLFW.GLFW_KEY_KP_ENTER:
-                stopEventNameEditing(true);
-                return true;
-            case GLFW.GLFW_KEY_ESCAPE:
-                stopEventNameEditing(true);
-                return true;
-            case GLFW.GLFW_KEY_A:
-                if (controlHeld) {
-                    selectAllEventNameText();
-                    return true;
-                }
-                break;
-            case GLFW.GLFW_KEY_C:
-                if (controlHeld) {
-                    copyEventNameSelection();
-                    return true;
-                }
-                break;
-            case GLFW.GLFW_KEY_X:
-                if (controlHeld) {
-                    cutEventNameSelection();
-                    return true;
-                }
-                break;
-            case GLFW.GLFW_KEY_V:
-                if (controlHeld) {
-                    Font textRenderer = getClientTextRenderer();
-                    if (textRenderer != null) {
-                        insertEventNameText(getClipboardText());
-                    }
-                    return true;
-                }
-                break;
-            default:
-                return false;
-        }
-        return false;
+        return eventNameEditor.handleKeyPressed(keyCode, modifiers, eventNamePolicy);
     }
 
     public boolean handleEventNameCharTyped(char chr, int modifiers) {
         if (!isEditingEventNameField()) {
             return false;
         }
-        if (chr == '\n' || chr == '\r') {
-            return false;
-        }
-        return insertEventNameText(String.valueOf(chr));
+        return eventNameEditor.handleCharTyped(chr, eventNamePolicy);
     }
 
     private boolean applyMessageEdit() {
@@ -10323,24 +10029,6 @@ public class NodeGraph {
             && amountSelectionStart != amountSelectionEnd;
     }
 
-    private boolean hasStopTargetSelection() {
-        return stopTargetSelectionStart >= 0
-            && stopTargetSelectionEnd >= 0
-            && stopTargetSelectionStart != stopTargetSelectionEnd;
-    }
-
-    private boolean hasVariableSelection() {
-        return variableSelectionStart >= 0
-            && variableSelectionEnd >= 0
-            && variableSelectionStart != variableSelectionEnd;
-    }
-
-    private boolean hasEventNameSelection() {
-        return eventNameSelectionStart >= 0
-            && eventNameSelectionEnd >= 0
-            && eventNameSelectionStart != eventNameSelectionEnd;
-    }
-
     private boolean hasParameterSelection() {
         return parameterSelectionStart >= 0
             && parameterSelectionEnd >= 0
@@ -10355,21 +10043,6 @@ public class NodeGraph {
     private void resetAmountSelectionRange() {
         amountSelectionStart = -1;
         amountSelectionEnd = -1;
-    }
-
-    private void resetStopTargetSelectionRange() {
-        stopTargetSelectionStart = -1;
-        stopTargetSelectionEnd = -1;
-    }
-
-    private void resetVariableSelectionRange() {
-        variableSelectionStart = -1;
-        variableSelectionEnd = -1;
-    }
-
-    private void resetEventNameSelectionRange() {
-        eventNameSelectionStart = -1;
-        eventNameSelectionEnd = -1;
     }
 
     private void resetParameterSelectionRange() {
@@ -10636,93 +10309,6 @@ public class NodeGraph {
         resetAmountCaretBlink();
     }
 
-    private void setStopTargetCaretPosition(int position) {
-        stopTargetCaretPosition = Mth.clamp(position, 0, stopTargetEditBuffer.length());
-        stopTargetSelectionAnchor = -1;
-        resetStopTargetSelectionRange();
-        resetStopTargetCaretBlink();
-    }
-
-    private void moveStopTargetCaretTo(int position, boolean extendSelection) {
-        position = Mth.clamp(position, 0, stopTargetEditBuffer.length());
-        if (extendSelection) {
-            if (stopTargetSelectionAnchor == -1) {
-                stopTargetSelectionAnchor = stopTargetCaretPosition;
-            }
-            int start = Math.min(stopTargetSelectionAnchor, position);
-            int end = Math.max(stopTargetSelectionAnchor, position);
-            if (start == end) {
-                resetStopTargetSelectionRange();
-            } else {
-                stopTargetSelectionStart = start;
-                stopTargetSelectionEnd = end;
-            }
-        } else {
-            stopTargetSelectionAnchor = -1;
-            resetStopTargetSelectionRange();
-        }
-        stopTargetCaretPosition = position;
-        resetStopTargetCaretBlink();
-    }
-
-    private void setVariableCaretPosition(int position) {
-        variableCaretPosition = Mth.clamp(position, 0, variableEditBuffer.length());
-        variableSelectionAnchor = -1;
-        resetVariableSelectionRange();
-        resetVariableCaretBlink();
-    }
-
-    private void moveVariableCaretTo(int position, boolean extendSelection) {
-        position = Mth.clamp(position, 0, variableEditBuffer.length());
-        if (extendSelection) {
-            if (variableSelectionAnchor == -1) {
-                variableSelectionAnchor = variableCaretPosition;
-            }
-            int start = Math.min(variableSelectionAnchor, position);
-            int end = Math.max(variableSelectionAnchor, position);
-            if (start == end) {
-                resetVariableSelectionRange();
-            } else {
-                variableSelectionStart = start;
-                variableSelectionEnd = end;
-            }
-        } else {
-            variableSelectionAnchor = -1;
-            resetVariableSelectionRange();
-        }
-        variableCaretPosition = position;
-        resetVariableCaretBlink();
-    }
-
-    private void setEventNameCaretPosition(int position) {
-        eventNameCaretPosition = Mth.clamp(position, 0, eventNameEditBuffer.length());
-        eventNameSelectionAnchor = -1;
-        resetEventNameSelectionRange();
-        resetEventNameCaretBlink();
-    }
-
-    private void moveEventNameCaretTo(int position, boolean extendSelection) {
-        position = Mth.clamp(position, 0, eventNameEditBuffer.length());
-        if (extendSelection) {
-            if (eventNameSelectionAnchor == -1) {
-                eventNameSelectionAnchor = eventNameCaretPosition;
-            }
-            int start = Math.min(eventNameSelectionAnchor, position);
-            int end = Math.max(eventNameSelectionAnchor, position);
-            if (start == end) {
-                resetEventNameSelectionRange();
-            } else {
-                eventNameSelectionStart = start;
-                eventNameSelectionEnd = end;
-            }
-        } else {
-            eventNameSelectionAnchor = -1;
-            resetEventNameSelectionRange();
-        }
-        eventNameCaretPosition = position;
-        resetEventNameCaretBlink();
-    }
-
     private boolean deleteAmountSelection() {
         if (!hasAmountSelection()) {
             return false;
@@ -10731,28 +10317,6 @@ public class NodeGraph {
             + amountEditBuffer.substring(amountSelectionEnd);
         setAmountCaretPosition(amountSelectionStart);
         updateAmountFieldContentWidth(getClientTextRenderer());
-        return true;
-    }
-
-    private boolean deleteStopTargetSelection() {
-        if (!hasStopTargetSelection()) {
-            return false;
-        }
-        stopTargetEditBuffer = stopTargetEditBuffer.substring(0, stopTargetSelectionStart)
-            + stopTargetEditBuffer.substring(stopTargetSelectionEnd);
-        setStopTargetCaretPosition(stopTargetSelectionStart);
-        updateStopTargetFieldContentWidth(getClientTextRenderer());
-        return true;
-    }
-
-    private boolean deleteVariableSelection() {
-        if (!hasVariableSelection()) {
-            return false;
-        }
-        variableEditBuffer = variableEditBuffer.substring(0, variableSelectionStart)
-            + variableEditBuffer.substring(variableSelectionEnd);
-        setVariableCaretPosition(variableSelectionStart);
-        updateVariableFieldContentWidth(getClientTextRenderer());
         return true;
     }
 
@@ -10771,55 +10335,11 @@ public class NodeGraph {
         resetAmountCaretBlink();
     }
 
-    private void selectAllStopTargetText() {
-        if (!isEditingStopTargetField()) {
-            return;
-        }
-        stopTargetSelectionAnchor = 0;
-        if (stopTargetEditBuffer.isEmpty()) {
-            resetStopTargetSelectionRange();
-        } else {
-            stopTargetSelectionStart = 0;
-            stopTargetSelectionEnd = stopTargetEditBuffer.length();
-        }
-        stopTargetCaretPosition = stopTargetEditBuffer.length();
-        resetStopTargetCaretBlink();
-    }
-
-    private void selectAllVariableText() {
-        if (!isEditingVariableField()) {
-            return;
-        }
-        variableSelectionAnchor = 0;
-        if (variableEditBuffer.isEmpty()) {
-            resetVariableSelectionRange();
-        } else {
-            variableSelectionStart = 0;
-            variableSelectionEnd = variableEditBuffer.length();
-        }
-        variableCaretPosition = variableEditBuffer.length();
-        resetVariableCaretBlink();
-    }
-
     private void copyAmountSelection() {
         if (!hasAmountSelection()) {
             return;
         }
         setClipboardText(amountEditBuffer.substring(amountSelectionStart, amountSelectionEnd));
-    }
-
-    private void copyStopTargetSelection() {
-        if (!hasStopTargetSelection()) {
-            return;
-        }
-        setClipboardText(stopTargetEditBuffer.substring(stopTargetSelectionStart, stopTargetSelectionEnd));
-    }
-
-    private void copyVariableSelection() {
-        if (!hasVariableSelection()) {
-            return;
-        }
-        setClipboardText(variableEditBuffer.substring(variableSelectionStart, variableSelectionEnd));
     }
 
     private void cutAmountSelection() {
@@ -10828,32 +10348,6 @@ public class NodeGraph {
         }
         copyAmountSelection();
         deleteAmountSelection();
-    }
-
-    private void cutStopTargetSelection() {
-        if (!hasStopTargetSelection()) {
-            return;
-        }
-        copyStopTargetSelection();
-        deleteStopTargetSelection();
-    }
-
-    private void cutVariableSelection() {
-        if (!hasVariableSelection()) {
-            return;
-        }
-        copyVariableSelection();
-        deleteVariableSelection();
-    }
-
-    private boolean deleteEventNameSelection() {
-        if (!hasEventNameSelection()) {
-            return false;
-        }
-        eventNameEditBuffer = eventNameEditBuffer.substring(0, eventNameSelectionStart)
-            + eventNameEditBuffer.substring(eventNameSelectionEnd);
-        setEventNameCaretPosition(eventNameSelectionStart);
-        return true;
     }
 
     private boolean deleteParameterSelection() {
@@ -10867,21 +10361,6 @@ public class NodeGraph {
         refreshStateParameterPreview();
         clearParameterDropdownSuppression();
         return true;
-    }
-
-    private void selectAllEventNameText() {
-        if (!isEditingEventNameField()) {
-            return;
-        }
-        eventNameSelectionAnchor = 0;
-        if (eventNameEditBuffer.isEmpty()) {
-            resetEventNameSelectionRange();
-        } else {
-            eventNameSelectionStart = 0;
-            eventNameSelectionEnd = eventNameEditBuffer.length();
-        }
-        eventNameCaretPosition = eventNameEditBuffer.length();
-        resetEventNameCaretBlink();
     }
 
     private void selectAllParameterText() {
@@ -10899,26 +10378,11 @@ public class NodeGraph {
         resetParameterCaretBlink();
     }
 
-    private void copyEventNameSelection() {
-        if (!hasEventNameSelection()) {
-            return;
-        }
-        setClipboardText(eventNameEditBuffer.substring(eventNameSelectionStart, eventNameSelectionEnd));
-    }
-
     private void copyParameterSelection() {
         if (!hasParameterSelection()) {
             return;
         }
         setClipboardText(parameterEditBuffer.substring(parameterSelectionStart, parameterSelectionEnd));
-    }
-
-    private void cutEventNameSelection() {
-        if (!hasEventNameSelection()) {
-            return;
-        }
-        copyEventNameSelection();
-        deleteEventNameSelection();
     }
 
     private void cutParameterSelection() {
@@ -10991,127 +10455,6 @@ public class NodeGraph {
             || "0".equals(trimmed)
             || "all".equalsIgnoreCase(trimmed)
             || "any".equalsIgnoreCase(trimmed);
-    }
-
-    private boolean insertStopTargetText(String text, Font textRenderer) {
-        if (!isEditingStopTargetField() || textRenderer == null || text == null || text.isEmpty()) {
-            return false;
-        }
-        String filtered = text.replace("\r", "").replace("\n", "");
-        if (filtered.isEmpty()) {
-            return false;
-        }
-
-        String working = stopTargetEditBuffer;
-        int caret = stopTargetCaretPosition;
-        if (hasStopTargetSelection()) {
-            int start = stopTargetSelectionStart;
-            int end = stopTargetSelectionEnd;
-            working = working.substring(0, start) + working.substring(end);
-            caret = start;
-        }
-
-        stopTargetEditBuffer = working.substring(0, caret) + filtered + working.substring(caret);
-        setStopTargetCaretPosition(caret + filtered.length());
-        updateStopTargetFieldContentWidth(textRenderer);
-        return true;
-    }
-
-    private boolean insertVariableText(String text, Font textRenderer) {
-        if (!isEditingVariableField() || textRenderer == null || text == null || text.isEmpty()) {
-            return false;
-        }
-
-        String filtered = text.replace("\r", "").replace("\n", "");
-        if (filtered.isEmpty()) {
-            return false;
-        }
-
-        String originalBuffer = variableEditBuffer;
-        int originalCaret = variableCaretPosition;
-        int originalSelectionStart = variableSelectionStart;
-        int originalSelectionEnd = variableSelectionEnd;
-        int originalSelectionAnchor = variableSelectionAnchor;
-
-        String working = variableEditBuffer;
-        int caret = variableCaretPosition;
-
-        if (hasVariableSelection()) {
-            int start = variableSelectionStart;
-            int end = variableSelectionEnd;
-            working = working.substring(0, start) + working.substring(end);
-            caret = start;
-        }
-
-        boolean inserted = false;
-        for (int i = 0; i < filtered.length(); i++) {
-            char c = filtered.charAt(i);
-            String candidate = working.substring(0, caret) + c + working.substring(caret);
-            working = candidate;
-            caret++;
-            inserted = true;
-        }
-
-        if (inserted) {
-            variableEditBuffer = working;
-            setVariableCaretPosition(caret);
-            updateVariableFieldContentWidth(textRenderer);
-            return true;
-        }
-
-        variableEditBuffer = originalBuffer;
-        variableCaretPosition = originalCaret;
-        variableSelectionStart = originalSelectionStart;
-        variableSelectionEnd = originalSelectionEnd;
-        variableSelectionAnchor = originalSelectionAnchor;
-        return false;
-    }
-
-    private boolean insertEventNameText(String text) {
-        if (!isEditingEventNameField() || text == null || text.isEmpty()) {
-            return false;
-        }
-        String filtered = text.replace("\r", "").replace("\n", "");
-        if (filtered.isEmpty()) {
-            return false;
-        }
-
-        String originalBuffer = eventNameEditBuffer;
-        int originalCaret = eventNameCaretPosition;
-        int originalSelectionStart = eventNameSelectionStart;
-        int originalSelectionEnd = eventNameSelectionEnd;
-        int originalSelectionAnchor = eventNameSelectionAnchor;
-
-        String working = eventNameEditBuffer;
-        int caret = eventNameCaretPosition;
-
-        if (hasEventNameSelection()) {
-            int start = eventNameSelectionStart;
-            int end = eventNameSelectionEnd;
-            working = working.substring(0, start) + working.substring(end);
-            caret = start;
-        }
-
-        boolean inserted = false;
-        for (int i = 0; i < filtered.length(); i++) {
-            char c = filtered.charAt(i);
-            working = working.substring(0, caret) + c + working.substring(caret);
-            caret++;
-            inserted = true;
-        }
-
-        if (inserted) {
-            eventNameEditBuffer = working;
-            setEventNameCaretPosition(caret);
-            return true;
-        }
-
-        eventNameEditBuffer = originalBuffer;
-        eventNameCaretPosition = originalCaret;
-        eventNameSelectionStart = originalSelectionStart;
-        eventNameSelectionEnd = originalSelectionEnd;
-        eventNameSelectionAnchor = originalSelectionAnchor;
-        return false;
     }
 
     private boolean insertParameterText(String text, Font textRenderer) {
@@ -13119,13 +12462,8 @@ public class NodeGraph {
         String keyName = getStopTargetParameterKey(node);
         node.setParameterValueAndPropagate(keyName, value);
         if (isEditingStopTargetField() && stopTargetEditingNode == node) {
-            stopTargetEditBuffer = value;
             stopTargetEditOriginalValue = value;
-            stopTargetCaretPosition = stopTargetEditBuffer.length();
-            stopTargetSelectionAnchor = -1;
-            stopTargetSelectionStart = -1;
-            stopTargetSelectionEnd = -1;
-            resetStopTargetCaretBlink();
+            stopTargetEditor.begin(value, value.length());
             updateStopTargetFieldContentWidth(getClientTextRenderer());
         }
         if (node.getType() == NodeType.TEMPLATE) {
@@ -14880,7 +14218,7 @@ public class NodeGraph {
             value = parameterEditBuffer;
         }
         if (eventNameEditingNode == node && "Name".equals(parameterName)) {
-            value = eventNameEditBuffer;
+            value = eventNameEditor.getBuffer();
         }
         return value == null ? "" : value;
     }

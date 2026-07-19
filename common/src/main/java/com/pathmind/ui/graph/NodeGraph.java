@@ -299,13 +299,63 @@ public class NodeGraph {
     private int messageSelectionStart = -1;
     private int messageSelectionEnd = -1;
     private int messageSelectionAnchor = -1;
-    private Node stickyNoteEditingNode = null;
-    private String stickyNoteEditBuffer = "";
-    private String stickyNoteEditOriginalValue = "";
-    private long stickyNoteCaretLastToggleTime = 0L;
-    private boolean stickyNoteCaretVisible = true;
-    private int stickyNoteCaretPosition = 0;
-    private long deferredStickyNoteSaveAtMillis = 0L;
+    private final StickyNoteController stickyNoteController = new StickyNoteController(new StickyNoteHost() {
+        @Override
+        public void stopOtherEditors() {
+            stopCoordinateEditing(true);
+            stopAmountEditing(true);
+            stopStopTargetEditing(true);
+            stopVariableEditing(true);
+            stopEventNameEditing(true);
+            stopParameterEditing(true);
+            stopMessageEditing(true);
+        }
+
+        @Override
+        public void markWorkspaceDirty() {
+            NodeGraph.this.markWorkspaceDirty();
+        }
+
+        @Override
+        public boolean isWorkspaceDirty() {
+            return workspaceDirty;
+        }
+
+        @Override
+        public void setWorkspaceDirty(boolean dirty) {
+            workspaceDirty = dirty;
+        }
+
+        @Override
+        public void invalidateValidation() {
+            NodeGraph.this.invalidateValidation();
+        }
+
+        @Override
+        public void invalidateRenderCaches() {
+            NodeGraph.this.invalidateRenderCaches();
+        }
+
+        @Override
+        public boolean save() {
+            return NodeGraph.this.save();
+        }
+
+        @Override
+        public boolean isTextShortcutDown(int modifiers) {
+            return NodeGraph.this.isTextShortcutDown(modifiers);
+        }
+
+        @Override
+        public String getClipboardText() {
+            return NodeGraph.this.getClipboardText();
+        }
+
+        @Override
+        public void setClipboardText(String text) {
+            NodeGraph.this.setClipboardText(text);
+        }
+    });
     private Node eventNameEditingNode = null;
     private String eventNameEditBuffer = "";
     private String eventNameEditOriginalValue = "";
@@ -4840,9 +4890,9 @@ public class NodeGraph {
             drawNodeText(context, textRenderer, lines.get(i), bodyLeft, lineY, textColor);
         }
 
-        if (stickyNoteEditingNode == node) {
-            updateStickyNoteCaretBlink();
-            if (stickyNoteCaretVisible) {
+        if (stickyNoteController.getEditingNode() == node) {
+            stickyNoteController.updateCaretBlink();
+            if (stickyNoteController.isCaretVisible()) {
                 StickyNoteCaretRenderPosition caretPosition = getStickyNoteCaretRenderPosition(node, textRenderer, maxLines);
                 if (caretPosition != null) {
                     int caretY = bodyTop + caretPosition.lineIndex * (textRenderer.lineHeight + 1);
@@ -4861,16 +4911,17 @@ public class NodeGraph {
     }
 
     private List<String> getStickyNoteDisplayLines(Node node, Font textRenderer, int maxLines) {
-        String source = stickyNoteEditingNode == node ? stickyNoteEditBuffer : node.getStickyNoteText();
+        String source = stickyNoteController.getEditingNode() == node ? stickyNoteController.getEditBuffer() : node.getStickyNoteText();
         return StickyNoteTextLayout.wrapLines(source, textRenderer, Math.max(1, node.getStickyNoteBodyWidth()), maxLines);
     }
 
     private StickyNoteCaretRenderPosition getStickyNoteCaretRenderPosition(Node node, Font textRenderer, int maxLines) {
-        if (!isEditingStickyNote() || stickyNoteEditingNode != node) {
+        if (!isEditingStickyNote() || stickyNoteController.getEditingNode() != node) {
             return null;
         }
-        int caretOffset = Mth.clamp(stickyNoteCaretPosition, 0, stickyNoteEditBuffer.length());
-        String textBeforeCaret = stickyNoteEditBuffer.substring(0, caretOffset);
+        String editBuffer = stickyNoteController.getEditBuffer();
+        int caretOffset = Mth.clamp(stickyNoteController.getCaretPosition(), 0, editBuffer.length());
+        String textBeforeCaret = editBuffer.substring(0, caretOffset);
         List<String> wrappedBeforeCaret = StickyNoteTextLayout.wrapLines(
             textBeforeCaret,
             textRenderer,
@@ -9304,99 +9355,19 @@ public class NodeGraph {
     }
 
     public boolean isEditingStickyNote() {
-        return stickyNoteEditingNode != null;
-    }
-
-    private void updateStickyNoteCaretBlink() {
-        long now = System.currentTimeMillis();
-        if (now - stickyNoteCaretLastToggleTime >= COORDINATE_CARET_BLINK_INTERVAL_MS) {
-            stickyNoteCaretVisible = !stickyNoteCaretVisible;
-            stickyNoteCaretLastToggleTime = now;
-        }
-    }
-
-    private void resetStickyNoteCaretBlink() {
-        stickyNoteCaretVisible = true;
-        stickyNoteCaretLastToggleTime = System.currentTimeMillis();
+        return stickyNoteController.isEditing();
     }
 
     public void startStickyNoteEditing(Node node) {
-        if (node == null || !node.isStickyNote()) {
-            stopStickyNoteEditing(false);
-            return;
-        }
-        if (stickyNoteEditingNode == node) {
-            return;
-        }
-
-        stopCoordinateEditing(true);
-        stopAmountEditing(true);
-        stopStopTargetEditing(true);
-        stopVariableEditing(true);
-        stopEventNameEditing(true);
-        stopParameterEditing(true);
-        stopStickyNoteEditing(true);
-        stopMessageEditing(true);
-
-        stickyNoteEditingNode = node;
-        stickyNoteEditBuffer = node.getStickyNoteText();
-        stickyNoteEditOriginalValue = stickyNoteEditBuffer;
-        stickyNoteCaretPosition = stickyNoteEditBuffer.length();
-        resetStickyNoteCaretBlink();
+        stickyNoteController.startEditing(node);
     }
 
     public void stopStickyNoteEditing(boolean commit) {
-        if (!isEditingStickyNote()) {
-            return;
-        }
-        if (commit) {
-            commitStickyNoteEditBuffer(true);
-        } else {
-            stickyNoteEditingNode.setStickyNoteText(stickyNoteEditOriginalValue);
-        }
-        stickyNoteEditingNode = null;
-        stickyNoteEditBuffer = "";
-        stickyNoteEditOriginalValue = "";
-        stickyNoteCaretPosition = 0;
-        stickyNoteCaretVisible = true;
-    }
-
-    private void commitStickyNoteEditBuffer(boolean saveNow) {
-        if (!isEditingStickyNote()) {
-            return;
-        }
-        boolean changed = !Objects.equals(stickyNoteEditingNode.getStickyNoteText(), stickyNoteEditBuffer);
-        if (!changed) {
-            stickyNoteEditOriginalValue = stickyNoteEditBuffer;
-            if (saveNow && workspaceDirty) {
-                markWorkspaceDirty();
-            }
-            return;
-        }
-        stickyNoteEditingNode.setStickyNoteText(stickyNoteEditBuffer);
-        stickyNoteEditOriginalValue = stickyNoteEditBuffer;
-        if (saveNow) {
-            markWorkspaceDirty();
-        } else {
-            markWorkspaceDirtyWithoutSaving();
-        }
-    }
-
-    private void markWorkspaceDirtyWithoutSaving() {
-        workspaceDirty = true;
-        invalidateValidation();
-        invalidateRenderCaches();
-        deferredStickyNoteSaveAtMillis = System.currentTimeMillis() + 750L;
+        stickyNoteController.stopEditing(commit);
     }
 
     private void flushDeferredStickyNoteSaveIfDue() {
-        if (deferredStickyNoteSaveAtMillis <= 0L || System.currentTimeMillis() < deferredStickyNoteSaveAtMillis) {
-            return;
-        }
-        deferredStickyNoteSaveAtMillis = 0L;
-        if (workspaceDirty) {
-            save();
-        }
+        stickyNoteController.flushDeferredSaveIfDue();
     }
 
     public boolean isPointInsideStickyNoteTextArea(Node node, int screenX, int screenY) {
@@ -9509,108 +9480,11 @@ public class NodeGraph {
     }
 
     public boolean handleStickyNoteKeyPressed(int keyCode, int modifiers) {
-        if (!isEditingStickyNote()) {
-            return false;
-        }
-        boolean controlHeld = isTextShortcutDown(modifiers);
-        switch (keyCode) {
-            case GLFW.GLFW_KEY_BACKSPACE:
-                if (stickyNoteCaretPosition > 0 && !stickyNoteEditBuffer.isEmpty()) {
-                    stickyNoteEditBuffer = stickyNoteEditBuffer.substring(0, stickyNoteCaretPosition - 1)
-                        + stickyNoteEditBuffer.substring(stickyNoteCaretPosition);
-                    stickyNoteCaretPosition--;
-                    resetStickyNoteCaretBlink();
-                    commitStickyNoteEditBuffer(false);
-                }
-                return true;
-            case GLFW.GLFW_KEY_DELETE:
-                if (stickyNoteCaretPosition < stickyNoteEditBuffer.length()) {
-                    stickyNoteEditBuffer = stickyNoteEditBuffer.substring(0, stickyNoteCaretPosition)
-                        + stickyNoteEditBuffer.substring(stickyNoteCaretPosition + 1);
-                    resetStickyNoteCaretBlink();
-                    commitStickyNoteEditBuffer(false);
-                }
-                return true;
-            case GLFW.GLFW_KEY_LEFT:
-                stickyNoteCaretPosition = Math.max(0, stickyNoteCaretPosition - 1);
-                resetStickyNoteCaretBlink();
-                return true;
-            case GLFW.GLFW_KEY_RIGHT:
-                stickyNoteCaretPosition = Math.min(stickyNoteEditBuffer.length(), stickyNoteCaretPosition + 1);
-                resetStickyNoteCaretBlink();
-                return true;
-            case GLFW.GLFW_KEY_HOME:
-                stickyNoteCaretPosition = 0;
-                resetStickyNoteCaretBlink();
-                return true;
-            case GLFW.GLFW_KEY_END:
-                stickyNoteCaretPosition = stickyNoteEditBuffer.length();
-                resetStickyNoteCaretBlink();
-                return true;
-            case GLFW.GLFW_KEY_ENTER:
-            case GLFW.GLFW_KEY_KP_ENTER:
-                return insertStickyNoteText("\n");
-            case GLFW.GLFW_KEY_ESCAPE:
-                stopStickyNoteEditing(true);
-                return true;
-            case GLFW.GLFW_KEY_A:
-                if (controlHeld) {
-                    stickyNoteCaretPosition = stickyNoteEditBuffer.length();
-                    return true;
-                }
-                break;
-            case GLFW.GLFW_KEY_C:
-                if (controlHeld) {
-                    setClipboardText(stickyNoteEditBuffer);
-                    return true;
-                }
-                break;
-            case GLFW.GLFW_KEY_X:
-                if (controlHeld) {
-                    setClipboardText(stickyNoteEditBuffer);
-                    stickyNoteEditBuffer = "";
-                    stickyNoteCaretPosition = 0;
-                    commitStickyNoteEditBuffer(false);
-                    return true;
-                }
-                break;
-            case GLFW.GLFW_KEY_V:
-                if (controlHeld) {
-                    return insertStickyNoteText(getClipboardText());
-                }
-                break;
-            default:
-                return false;
-        }
-        return false;
+        return stickyNoteController.handleKeyPressed(keyCode, modifiers);
     }
 
     public boolean handleStickyNoteCharTyped(char chr, int modifiers) {
-        if (!isEditingStickyNote()) {
-            return false;
-        }
-        if (chr == '\r') {
-            return false;
-        }
-        return insertStickyNoteText(String.valueOf(chr));
-    }
-
-    private boolean insertStickyNoteText(String text) {
-        if (!isEditingStickyNote() || text == null || text.isEmpty()) {
-            return false;
-        }
-        int allowed = STICKY_NOTE_MAX_CHARS - stickyNoteEditBuffer.length();
-        if (allowed <= 0) {
-            return true;
-        }
-        String safe = text.length() > allowed ? text.substring(0, allowed) : text;
-        stickyNoteEditBuffer = stickyNoteEditBuffer.substring(0, stickyNoteCaretPosition)
-            + safe
-            + stickyNoteEditBuffer.substring(stickyNoteCaretPosition);
-        stickyNoteCaretPosition += safe.length();
-        resetStickyNoteCaretBlink();
-        commitStickyNoteEditBuffer(false);
-        return true;
+        return stickyNoteController.handleCharTyped(chr, modifiers);
     }
 
     public boolean isEditingMessageField() {
@@ -14759,8 +14633,8 @@ public class NodeGraph {
      * Save the current node graph to disk
      */
     public boolean save() {
-        deferredStickyNoteSaveAtMillis = 0L;
-        commitStickyNoteEditBuffer(false);
+        stickyNoteController.cancelDeferredSave();
+        stickyNoteController.commitPendingEdit();
         boolean saved = workspaceSaveHandler != null
             ? workspaceSaveHandler.getAsBoolean()
             : NodeGraphPersistence.saveNodeGraphForPreset(activePreset, nodes, connections, routineRegistry);

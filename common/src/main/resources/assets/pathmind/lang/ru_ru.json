@@ -194,7 +194,7 @@
   "pathmind.node.type.paramDuration.desc": "Представляет длительность или интервал",
   "pathmind.node.type.paramEntity": "Сущность",
   "pathmind.node.type.paramEntity.desc": "Выбирает загруженную сущность как цель (радиус поиска по умолчанию: 64 блока)",
-  "pathmind.node.type.paramGui": "GUI",
+  "pathmind.node.type.paramGui": "Screen",
   "pathmind.node.type.paramGui.desc": "Selects a GUI/container type",
   "pathmind.node.type.paramHand": "Рука",
   "pathmind.node.type.paramHand.desc": "Представляет предпочтительный выбор руки",

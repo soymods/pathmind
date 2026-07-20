@@ -611,7 +611,7 @@
   "pathmind.node.type.paramDuration.desc": "Provides a duration or interval",
   "pathmind.node.type.paramEntity": "Entity",
   "pathmind.node.type.paramEntity.desc": "Selects a loaded entity target (64-block default search range)",
-  "pathmind.node.type.paramGui": "Screen / Container",
+  "pathmind.node.type.paramGui": "Screen",
   "pathmind.node.type.paramGui.desc": "Provides a screen or container type",
   "pathmind.node.type.paramHand": "Hand",
   "pathmind.node.type.paramHand.desc": "Provides a hand selection",

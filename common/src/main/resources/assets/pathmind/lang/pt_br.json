@@ -194,7 +194,7 @@
   "pathmind.node.type.paramDuration.desc": "Representa uma duração ou intervalo",
   "pathmind.node.type.paramEntity": "Entidade",
   "pathmind.node.type.paramEntity.desc": "Seleciona uma entidade carregada como alvo (alcance de busca padrão: 64 blocos)",
-  "pathmind.node.type.paramGui": "GUI",
+  "pathmind.node.type.paramGui": "Screen",
   "pathmind.node.type.paramGui.desc": "Seleciona um tipo de GUI/contêiner",
   "pathmind.node.type.paramHand": "Mão",
   "pathmind.node.type.paramHand.desc": "Representa uma seleção de mão preferida",

@@ -26,15 +26,10 @@ import static com.pathmind.ui.graph.ParameterTypeClassifier.isTradeInlineParamet
 import static com.pathmind.ui.graph.ParameterDropdownOptions.getAttributeDetectionTargetKind;
 import static com.pathmind.ui.graph.ParameterDropdownOptions.getParameterDropdownOptions;
 import static com.pathmind.ui.graph.ParameterDropdownOptions.resolveParameterDropdownIcon;
-import static com.pathmind.ui.graph.ConnectionGeometry.connectionDistanceToPoint;
-import static com.pathmind.ui.graph.ConnectionGeometry.connectionIntersectsRect;
-import static com.pathmind.ui.graph.ConnectionGeometry.doesSegmentIntersectConnection;
-import static com.pathmind.ui.graph.ConnectionGeometry.isPointNearConnection;
 import static com.pathmind.ui.graph.SchematicRepository.loadSchematicOptions;
 import static com.pathmind.ui.graph.SchematicRepository.schematicExistsInRoots;
 import static com.pathmind.ui.graph.InlineVariableRenderer.buildInlineVariableRender;
 import static com.pathmind.ui.graph.InlineVariableRenderer.isSingleKnownInlineVariableReference;
-import static com.pathmind.ui.graph.ConnectionRenderer.drawSegmentWithThickness;
 import static com.pathmind.ui.graph.ConnectionRenderer.renderAnimatedConnectionCurve;
 import static com.pathmind.ui.graph.ConnectionRenderer.renderConnectionCurve;
 import static com.pathmind.ui.graph.ConnectionRenderer.renderDenseConnectionCurve;
@@ -116,7 +111,6 @@ public class NodeGraph {
     private static final int DUPLICATE_OFFSET_X = 32;
     private static final int DUPLICATE_OFFSET_Y = 24;
     private static final int SELECTION_BOX_MIN_DRAG = 3;
-    private static final int CONNECTION_CLICK_THRESHOLD = 4;
     private static final int MINIMAL_NODE_TAB_WIDTH = 6;
     private static final int GRID_SNAP_SIZE = 20;
     private static final int TEMPLATE_PREVIEW_MARGIN = 6;
@@ -128,8 +122,6 @@ public class NodeGraph {
     private static final int TEMPLATE_PREVIEW_TOP = 42;
     private static final int TEMPLATE_PREVIEW_BOTTOM_MARGIN = 6;
     private static final int VIEWPORT_CULL_MARGIN = 64;
-    private static final int CONNECTION_CUT_THRESHOLD = 6;
-    private static final int CONNECTION_CUT_PREVIEW_COLOR = 0xCCFF6B6B;
     private static final int STICKY_NOTE_MAX_CHARS = 4096;
     private static final int DENSE_VIEW_VISIBLE_NODE_THRESHOLD = 120;
     private static final int COMPACT_VIEW_VISIBLE_NODE_THRESHOLD = 40;
@@ -142,8 +134,21 @@ public class NodeGraph {
     private final List<Node> cachedVisibleRootNodes;
     private final Map<Node, SelectionBounds> cachedHierarchyBounds;
     private final Map<Node, Integer> cachedHierarchyNodeCounts;
-    private final Set<SocketKey> connectedInputSockets;
-    private final Set<SocketKey> connectedOutputSockets;
+    private final ConnectionController connectionController = new ConnectionController(new ConnectionController.Host() {
+        @Override public List<Node> getNodes() { return nodes; }
+        @Override public List<NodeConnection> getConnections() { return connections; }
+        @Override public Node getNodeAtWorld(int worldX, int worldY) { return NodeGraph.this.getNodeAtWorld(worldX, worldY); }
+        @Override public Node getNodeAtWorldExcluding(int worldX, int worldY, Node excludedNode) {
+            return NodeGraph.this.getNodeAtWorldExcluding(worldX, worldY, excludedNode);
+        }
+        @Override public Node getParentForNode(Node node) { return NodeGraph.this.getParentForNode(node); }
+        @Override public void stopConnectionEditors() { NodeGraph.this.stopConnectionEditors(); }
+        @Override public void pushUndoState() { NodeGraph.this.pushUndoState(); }
+        @Override public boolean isUndoCaptureSuppressed() { return suppressUndoCapture; }
+        @Override public void markWorkspaceDirty() { NodeGraph.this.markWorkspaceDirty(); }
+        @Override public void invalidateRenderCaches() { NodeGraph.this.invalidateRenderCaches(); }
+        @Override public void markDragOperationChanged() { dragOperationChanged = true; }
+    });
     private Node selectedNode;
     private final LinkedHashSet<Node> selectedNodes;
     private Node draggingNode;
@@ -174,35 +179,6 @@ public class NodeGraph {
     private int panStartX, panStartY;
     private int panStartCameraX, panStartCameraY;
     
-    // Connection dragging state
-    private boolean isDraggingConnection = false;
-    private Node connectionSourceNode;
-    private int connectionSourceSocket;
-    private boolean isOutputSocket; // true if dragging from output, false if from input
-    private int connectionDragX, connectionDragY;
-    private int connectionDragStartX, connectionDragStartY;
-    private boolean connectionDragMoved = false;
-    private Node hoveredNode = null;
-    private int hoveredSocket = -1;
-    private boolean hoveredSocketIsInput = false;
-    
-    // Store the original connection that was disconnected
-    private NodeConnection disconnectedConnection = null;
-    private NodeConnection insertionPreviewConnection = null;
-
-    // Connection cutting state
-    private boolean connectionCutActive = false;
-    private boolean connectionCutMoved = false;
-    private int connectionCutStartWorldX = 0;
-    private int connectionCutStartWorldY = 0;
-    private int connectionCutCurrentWorldX = 0;
-    private int connectionCutCurrentWorldY = 0;
-    private final List<CutPoint> connectionCutPath = new ArrayList<>();
-    
-    // Socket hover state
-    private Node hoveredSocketNode = null;
-    private int hoveredSocketIndex = -1;
-
     // Start button hover state
     private boolean hoveringStartButton = false;
     private Node hoveredStartNode = null;
@@ -254,7 +230,6 @@ public class NodeGraph {
     private boolean executionEnabled = true;
     private boolean hierarchyGeometryDirty = true;
     private boolean visibleRootsDirty = true;
-    private boolean connectionIndexDirty = true;
     private boolean compactViewportMode = false;
     private boolean denseViewportMode = false;
     private int visibleNodeCountForFrame = 0;
@@ -704,33 +679,6 @@ public class NodeGraph {
         }
     }
 
-    private static final class SocketKey {
-        private final Node node;
-        private final int socketIndex;
-
-        private SocketKey(Node node, int socketIndex) {
-            this.node = node;
-            this.socketIndex = socketIndex;
-        }
-
-        @Override
-        public boolean equals(Object obj) {
-            if (this == obj) {
-                return true;
-            }
-            if (!(obj instanceof SocketKey)) {
-                return false;
-            }
-            SocketKey other = (SocketKey) obj;
-            return node == other.node && socketIndex == other.socketIndex;
-        }
-
-        @Override
-        public int hashCode() {
-            return 31 * System.identityHashCode(node) + socketIndex;
-        }
-    }
-
     private static final class DragStartInfo {
         private final int x;
         private final int y;
@@ -884,8 +832,6 @@ public class NodeGraph {
         this.cachedVisibleRootNodes = new ArrayList<>();
         this.cachedHierarchyBounds = new HashMap<>();
         this.cachedHierarchyNodeCounts = new HashMap<>();
-        this.connectedInputSockets = new HashSet<>();
-        this.connectedOutputSockets = new HashSet<>();
         this.selectedNode = null;
         this.selectedNodes = new LinkedHashSet<>();
         this.draggingNode = null;
@@ -1199,33 +1145,6 @@ public class NodeGraph {
         return null;
     }
 
-    private boolean updateHoveredSocketInHierarchy(Node node, int worldMouseX, int worldMouseY, boolean inputsOnly, boolean outputsOnly) {
-        if (node == null) {
-            return false;
-        }
-
-        Map<Integer, Node> parameterMap = node.getAttachedParameters();
-        if (parameterMap != null && !parameterMap.isEmpty()) {
-            List<Integer> keys = new ArrayList<>(parameterMap.keySet());
-            keys.sort(Collections.reverseOrder());
-            for (Integer key : keys) {
-                if (updateHoveredSocketInHierarchy(parameterMap.get(key), worldMouseX, worldMouseY, inputsOnly, outputsOnly)) {
-                    return true;
-                }
-            }
-        }
-
-        if (updateHoveredSocketInHierarchy(node.getAttachedSensor(), worldMouseX, worldMouseY, inputsOnly, outputsOnly)) {
-            return true;
-        }
-
-        if (updateHoveredSocketInHierarchy(node.getAttachedActionNode(), worldMouseX, worldMouseY, inputsOnly, outputsOnly)) {
-            return true;
-        }
-
-        return updateHoveredSocketForNode(node, worldMouseX, worldMouseY, inputsOnly, outputsOnly);
-    }
-
     private boolean isNodeHitAt(Node node, int worldX, int worldY) {
         if (node == null) {
             return false;
@@ -1319,7 +1238,7 @@ public class NodeGraph {
     }
 
     private void invalidateConnectionIndex() {
-        connectionIndexDirty = true;
+        connectionController.invalidateConnectionIndex();
     }
 
     private void invalidateRenderCaches() {
@@ -1381,21 +1300,6 @@ public class NodeGraph {
         visibleRootsViewportWidth = viewportWidth;
         visibleRootsViewportHeight = viewportHeight;
         return cachedVisibleRootNodes;
-    }
-
-    private void rebuildConnectionIndexIfNeeded() {
-        if (!connectionIndexDirty) {
-            return;
-        }
-
-        connectedInputSockets.clear();
-        connectedOutputSockets.clear();
-        for (NodeConnection connection : connections) {
-            connectedInputSockets.add(new SocketKey(connection.getInputNode(), connection.getInputSocket()));
-            connectedOutputSockets.add(new SocketKey(connection.getOutputNode(), connection.getOutputSocket()));
-        }
-
-        connectionIndexDirty = false;
     }
 
     void collectHierarchyNodes(Node node, List<Node> collected, Set<Node> visited) {
@@ -1514,17 +1418,10 @@ public class NodeGraph {
     private void clearTransientGraphState() {
         clearSelection();
         draggingNode = null;
-        hoveredNode = null;
-        hoveredSocketNode = null;
-        hoveredSocketIndex = -1;
-        hoveredSocket = -1;
-        hoveredSocketIsInput = false;
+        connectionController.clearGraphState();
         hoveringStartButton = false;
         hoveredStartNode = null;
         startModeDropdown.close();
-        isDraggingConnection = false;
-        connectionSourceNode = null;
-        disconnectedConnection = null;
         sensorDropTarget = null;
         actionDropTarget = null;
         parameterDropTarget = null;
@@ -1708,79 +1605,19 @@ public class NodeGraph {
     }
 
     private boolean isNodeEligibleForConnectionInsertion(Node node) {
-        return node != null
-            && node.shouldRenderSockets()
-            && !node.isSensorNode()
-            && !node.isParameterNode()
-            && node.getInputSocketCount() == 1
-            && node.getOutputSocketCount() == 1;
+        return connectionController.isNodeEligibleForConnectionInsertion(node);
     }
 
     private NodeConnection findInsertionPreviewConnection(Node node) {
-        if (!isNodeEligibleForConnectionInsertion(node)) {
-            return null;
-        }
-
-        NodeConnection bestConnection = null;
-        double bestDistance = Double.MAX_VALUE;
-        int left = node.getX();
-        int top = node.getY();
-        int right = left + node.getWidth();
-        int bottom = top + node.getHeight();
-        double centerX = left + node.getWidth() / 2.0;
-        double centerY = top + node.getHeight() / 2.0;
-
-        for (NodeConnection connection : connections) {
-            if (connection == null
-                || connection.getOutputNode() == node
-                || connection.getInputNode() == node) {
-                continue;
-            }
-            if (!connectionIntersectsRect(connection, left, top, right, bottom, CONNECTION_CLICK_THRESHOLD)) {
-                continue;
-            }
-
-            double distance = connectionDistanceToPoint(connection, centerX, centerY);
-            if (distance < bestDistance) {
-                bestDistance = distance;
-                bestConnection = connection;
-            }
-        }
-
-        return bestConnection;
+        return connectionController.findInsertionPreviewConnection(node);
     }
 
     private boolean tryInsertDraggedNodeIntoPreviewConnection(Node node) {
-        if (!isNodeEligibleForConnectionInsertion(node) || insertionPreviewConnection == null) {
-            return false;
-        }
-
-        NodeConnection connection = insertionPreviewConnection;
-        insertionPreviewConnection = null;
-        boolean inserted = insertNodeIntoConnection(node, connection);
-        if (inserted) {
-            dragOperationChanged = true;
-        }
-        return inserted;
+        return connectionController.tryInsertDraggedNodeIntoPreviewConnection(node);
     }
 
     private boolean insertNodeIntoConnection(Node node, NodeConnection connection) {
-        if (node == null || connection == null || !connections.contains(connection)) {
-            return false;
-        }
-
-        Node source = connection.getOutputNode();
-        Node target = connection.getInputNode();
-        if (source == null || target == null || source == node || target == node) {
-            return false;
-        }
-
-        connections.remove(connection);
-        addConnectionReplacingConflicts(source, node, connection.getOutputSocket(), 0);
-        addConnectionReplacingConflicts(node, target, 0, connection.getInputSocket());
-        invalidateConnectionIndex();
-        invalidateRenderCaches();
-        return true;
+        return connectionController.insertNodeIntoConnection(node, connection);
     }
 
     private ClipboardSnapshot createClipboardSnapshot(Collection<Node> selection) {
@@ -1874,6 +1711,10 @@ public class NodeGraph {
     }
     
     public void startDraggingConnection(Node node, int socketIndex, boolean isOutput, int mouseX, int mouseY) {
+        connectionController.startDraggingConnection(node, socketIndex, isOutput, screenToWorldX(mouseX), screenToWorldY(mouseY));
+    }
+
+    private void stopConnectionEditors() {
         stopCoordinateEditing(true);
         stopAmountEditing(true);
         stopStopTargetEditing(true);
@@ -1883,50 +1724,13 @@ public class NodeGraph {
         stopEventNameEditing(true);
         stopParameterEditing(true);
         stopMessageEditing(true);
-        isDraggingConnection = true;
-        connectionSourceNode = node;
-        connectionSourceSocket = socketIndex;
-        isOutputSocket = isOutput;
-        connectionDragX = screenToWorldX(mouseX);
-        connectionDragY = screenToWorldY(mouseY);
-        connectionDragStartX = connectionDragX;
-        connectionDragStartY = connectionDragY;
-        connectionDragMoved = false;
-        hoveredNode = null;
-        hoveredSocket = -1;
-        hoveredSocketIsInput = false;
-        
-        // Find and disconnect existing connection from this socket
-        disconnectedConnection = null;
-        if (isOutput) {
-            // Dragging from output socket - find connection that starts from this socket
-            for (NodeConnection conn : connections) {
-                if (conn.getOutputNode().equals(node) && conn.getOutputSocket() == socketIndex) {
-                    disconnectedConnection = conn;
-                    connections.remove(conn);
-                    break;
-                }
-            }
-        } else {
-            // Dragging from input socket - find connection that ends at this socket
-            for (NodeConnection conn : connections) {
-                if (conn.getInputNode().equals(node) && conn.getInputSocket() == socketIndex) {
-                    disconnectedConnection = conn;
-                    connections.remove(conn);
-                    break;
-                }
-            }
-        }
-        if (disconnectedConnection != null) {
-            invalidateConnectionIndex();
-        }
     }
 
     public void updateDrag(int mouseX, int mouseY) {
         int worldMouseX = screenToWorldX(mouseX);
         int worldMouseY = screenToWorldY(mouseY);
 
-        if (connectionCutActive) {
+        if (connectionController.isConnectionCutActive()) {
             updateConnectionCut(worldMouseX, worldMouseY);
             return;
         }
@@ -1967,7 +1771,7 @@ public class NodeGraph {
                 invalidateHierarchyCache();
                 draggingNode.setSocketsHidden(false);
                 resetDropTargets();
-                insertionPreviewConnection = null;
+                connectionController.setInsertionPreviewConnection(null);
             } else {
                 if (!draggingNodeDetached) {
                     if (newX != draggingNodeStartX || newY != draggingNodeStartY) {
@@ -2015,45 +1819,16 @@ public class NodeGraph {
                             }
                         }
                     }
-                    insertionPreviewConnection = !hideSockets ? findInsertionPreviewConnection(draggingNode) : null;
+                    connectionController.setInsertionPreviewConnection(!hideSockets ? findInsertionPreviewConnection(draggingNode) : null);
                     draggingNode.setSocketsHidden(hideSockets);
                 } else {
-                    insertionPreviewConnection = null;
+                    connectionController.setInsertionPreviewConnection(null);
                 }
             }
         } else {
-            insertionPreviewConnection = null;
+            connectionController.setInsertionPreviewConnection(null);
         }
-        if (isDraggingConnection) {
-            connectionDragX = worldMouseX;
-            connectionDragY = worldMouseY;
-            if (!connectionDragMoved) {
-                int deltaX = Math.abs(connectionDragX - connectionDragStartX);
-                int deltaY = Math.abs(connectionDragY - connectionDragStartY);
-                if (deltaX >= CONNECTION_CLICK_THRESHOLD || deltaY >= CONNECTION_CLICK_THRESHOLD) {
-                    connectionDragMoved = true;
-                }
-            }
-
-            // Check for socket snapping
-            hoveredNode = null;
-            hoveredSocket = -1;
-
-            if (denseViewportMode) {
-                Node hoveredCandidate = getNodeAtWorldExcluding(worldMouseX, worldMouseY, connectionSourceNode);
-                for (Node current = hoveredCandidate; current != null; current = getParentForNode(current)) {
-                    if (updateConnectionSnapForNode(current, worldMouseX, worldMouseY)) {
-                        break;
-                    }
-                }
-            } else {
-                for (Node node : nodes) {
-                    if (updateConnectionSnapForNode(node, worldMouseX, worldMouseY)) {
-                        break;
-                    }
-                }
-            }
-        }
+        connectionController.updateDrag(worldMouseX, worldMouseY, denseViewportMode);
     }
 
     public void previewSidebarDrag(NodeType nodeType, int worldMouseX, int worldMouseY) {
@@ -2062,7 +1837,7 @@ public class NodeGraph {
 
     public void previewSidebarDrag(Node candidate, int worldMouseX, int worldMouseY) {
         resetDropTargets();
-        insertionPreviewConnection = null;
+        connectionController.setInsertionPreviewConnection(null);
         if (candidate == null) {
             return;
         }
@@ -2093,7 +1868,7 @@ public class NodeGraph {
                 }
             }
             if (!actionTargetFound) {
-                insertionPreviewConnection = findInsertionPreviewConnection(candidate);
+                connectionController.setInsertionPreviewConnection(findInsertionPreviewConnection(candidate));
             }
         }
     }
@@ -2259,7 +2034,7 @@ public class NodeGraph {
 
     public Node handleSidebarDrop(Node newNode, int worldMouseX, int worldMouseY) {
         resetDropTargets();
-        insertionPreviewConnection = null;
+        connectionController.setInsertionPreviewConnection(null);
         if (newNode == null) {
             return null;
         }
@@ -2321,8 +2096,7 @@ public class NodeGraph {
         long startNanos = System.nanoTime();
         List<Node> visibleRoots = getVisibleRootsForViewport();
         // Reset hover state
-        hoveredSocketNode = null;
-        hoveredSocketIndex = -1;
+        connectionController.clearSocketHover();
         hoveringStartButton = false;
         hoveredStartNode = null;
 
@@ -2336,7 +2110,7 @@ public class NodeGraph {
         }
         
         // Don't check for socket hover if we're currently dragging a connection
-        if (isDraggingConnection) {
+        if (connectionController.isDraggingConnection()) {
             profilerHoverMs = (System.nanoTime() - startNanos) / 1_000_000.0;
             return;
         }
@@ -2344,21 +2118,9 @@ public class NodeGraph {
         int worldMouseX = screenToWorldX(mouseX);
         int worldMouseY = screenToWorldY(mouseY);
 
-        // Check for socket hover
-        if (denseViewportMode) {
-            Node hoveredCandidate = getNodeAtWorld(worldMouseX, worldMouseY);
-            for (Node current = hoveredCandidate; current != null; current = getParentForNode(current)) {
-                if (updateHoveredSocketForNode(current, worldMouseX, worldMouseY, false, false)) {
-                    return;
-                }
-            }
-        } else {
-            for (int i = visibleRoots.size() - 1; i >= 0; i--) {
-                if (updateHoveredSocketInHierarchy(visibleRoots.get(i), worldMouseX, worldMouseY, false, false)) {
-                    profilerHoverMs = (System.nanoTime() - startNanos) / 1_000_000.0;
-                    return;
-                }
-            }
+        boolean socketHovered = connectionController.updateMouseHover(worldMouseX, worldMouseY, denseViewportMode, visibleRoots);
+        if (socketHovered && denseViewportMode) {
+            return;
         }
         profilerHoverMs = (System.nanoTime() - startNanos) / 1_000_000.0;
     }
@@ -2429,7 +2191,7 @@ public class NodeGraph {
         draggingNode = null;
         draggingNodeDetached = false;
         resetDropTargets();
-        insertionPreviewConnection = null;
+        connectionController.setInsertionPreviewConnection(null);
 
         if (dragOperationChanged) {
             pushUndoSnapshot(pendingDragUndoSnapshot);
@@ -2463,14 +2225,7 @@ public class NodeGraph {
         }
         selectionDeletionPreviewActive = false;
         selectionBoxActive = false;
-        isDraggingConnection = false;
-        connectionSourceNode = null;
-        connectionSourceSocket = -1;
-        hoveredNode = null;
-        hoveredSocket = -1;
-        disconnectedConnection = null;
-        connectionDragMoved = false;
-        insertionPreviewConnection = null;
+        connectionController.forceClearTransientDragState();
         resetDropTargets();
     }
 
@@ -2515,138 +2270,12 @@ public class NodeGraph {
         invalidateHierarchyCache();
     }
 
-    private boolean updateHoveredSocketForNode(Node node, int worldMouseX, int worldMouseY, boolean inputsOnly, boolean outputsOnly) {
-        if (node == null || !node.shouldRenderSockets()) {
-            return false;
-        }
-
-        if (!outputsOnly) {
-            for (int i = 0; i < node.getInputSocketCount(); i++) {
-                if (node.isSocketClicked(worldMouseX, worldMouseY, i, true)) {
-                    hoveredSocketNode = node;
-                    hoveredSocketIndex = i;
-                    hoveredSocketIsInput = true;
-                    return true;
-                }
-            }
-        }
-
-        if (!inputsOnly) {
-            for (int i = 0; i < node.getOutputSocketCount(); i++) {
-                if (node.isSocketClicked(worldMouseX, worldMouseY, i, false)) {
-                    hoveredSocketNode = node;
-                    hoveredSocketIndex = i;
-                    hoveredSocketIsInput = false;
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
-
-    private boolean updateConnectionSnapForNode(Node node, int worldMouseX, int worldMouseY) {
-        if (node == null || node == connectionSourceNode || !node.shouldRenderSockets()) {
-            return false;
-        }
-
-        if (isOutputSocket) {
-            for (int i = 0; i < node.getInputSocketCount(); i++) {
-                if (node.isSocketClicked(worldMouseX, worldMouseY, i, true)) {
-                    hoveredNode = node;
-                    hoveredSocket = i;
-                    hoveredSocketIsInput = true;
-                    return true;
-                }
-            }
-        } else {
-            for (int i = 0; i < node.getOutputSocketCount(); i++) {
-                if (node.isSocketClicked(worldMouseX, worldMouseY, i, false)) {
-                    hoveredNode = node;
-                    hoveredSocket = i;
-                    hoveredSocketIsInput = false;
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
-    
     public void stopDraggingConnection() {
-        boolean connectionChanged = false;
-        if (isDraggingConnection && connectionSourceNode != null) {
-            // Try to create connection if hovering over valid socket
-            if (hoveredNode != null && hoveredSocket != -1) {
-                if (isOutputSocket && hoveredSocketIsInput) {
-                    captureUndoStateForConnectionChange(disconnectedConnection);
-                    addConnectionReplacingConflicts(connectionSourceNode, hoveredNode, connectionSourceSocket, hoveredSocket);
-                    connectionChanged = true;
-                } else if (!isOutputSocket && !hoveredSocketIsInput) {
-                    captureUndoStateForConnectionChange(disconnectedConnection);
-                    addConnectionReplacingConflicts(hoveredNode, connectionSourceNode, hoveredSocket, connectionSourceSocket);
-                    connectionChanged = true;
-                } else {
-                    // Invalid connection - restore original
-                    restoreDisconnectedConnection();
-                }
-            } else {
-                // No valid target - decide whether to keep the removal
-                if (disconnectedConnection != null && isOutputSocket && !connectionDragMoved) {
-                    captureUndoStateForConnectionChange(disconnectedConnection);
-                    connectionChanged = true;
-                } else {
-                    restoreDisconnectedConnection();
-                }
-            }
-        }
-
-        if (connectionChanged) {
-            markWorkspaceDirty();
-        }
-        
-        isDraggingConnection = false;
-        connectionSourceNode = null;
-        connectionSourceSocket = -1;
-        hoveredNode = null;
-        hoveredSocket = -1;
-        disconnectedConnection = null;
-        connectionDragMoved = false;
+        connectionController.stopDraggingConnection();
     }
 
     private void addConnectionReplacingConflicts(Node outputNode, Node inputNode, int outputSocket, int inputSocket) {
-        if (outputNode == null || inputNode == null || outputNode == inputNode) {
-            return;
-        }
-        connections.removeIf(conn ->
-            conn.getInputNode() == inputNode && conn.getInputSocket() == inputSocket
-        );
-        connections.removeIf(conn ->
-            conn.getOutputNode() == outputNode && conn.getOutputSocket() == outputSocket
-        );
-        connections.add(new NodeConnection(outputNode, inputNode, outputSocket, inputSocket));
-    }
-
-    private void restoreDisconnectedConnection() {
-        if (disconnectedConnection != null) {
-            connections.add(disconnectedConnection);
-            invalidateConnectionIndex();
-        }
-    }
-
-    private void captureUndoStateForConnectionChange(NodeConnection previousConnection) {
-        if (suppressUndoCapture) {
-            return;
-        }
-        boolean temporarilyAdded = false;
-        if (previousConnection != null && !connections.contains(previousConnection)) {
-            connections.add(previousConnection);
-            temporarilyAdded = true;
-        }
-        pushUndoState();
-        if (temporarilyAdded) {
-            connections.remove(previousConnection);
-        }
+        connectionController.addConnectionReplacingConflicts(outputNode, inputNode, outputSocket, inputSocket);
     }
     
     public boolean isInSidebar(int mouseX, int sidebarWidth) {
@@ -2654,7 +2283,8 @@ public class NodeGraph {
     }
     
     public boolean isAnyNodeBeingDragged() {
-        return draggingNode != null || stickyNoteController.isResizing() || isDraggingConnection || connectionCutActive;
+        return draggingNode != null || stickyNoteController.isResizing()
+            || connectionController.isDraggingConnection() || connectionController.isConnectionCutActive();
     }
 
     private boolean isLowDetailModeEnabled() {
@@ -3243,108 +2873,41 @@ public class NodeGraph {
     }
     
     public boolean tryConnectToSocket(Node targetNode, int targetSocket, boolean isInput) {
-        if (isDraggingConnection && connectionSourceNode != null) {
-            if (!targetNode.shouldRenderSockets()) {
-                return false;
-            }
-            // Validate connection (output can only connect to input)
-            if (isInput && connectionSourceNode != targetNode) {
-                addConnectionReplacingConflicts(connectionSourceNode, targetNode, connectionSourceSocket, targetSocket);
-                stopDraggingConnection();
-                return true;
-            }
-        }
-        return false;
+        return connectionController.tryConnectToSocket(targetNode, targetSocket, isInput);
     }
     
     public NodeConnection getConnectionAt(int mouseX, int mouseY) {
         int worldX = screenToWorldX(mouseX);
         int worldY = screenToWorldY(mouseY);
-        for (NodeConnection connection : connections) {
-            if (isPointNearConnection(connection, worldX, worldY, CONNECTION_CLICK_THRESHOLD)) {
-                return connection;
-            }
-        }
-        return null;
+        return connectionController.getConnectionAt(worldX, worldY);
     }
 
     public void startConnectionCut(int mouseX, int mouseY) {
-        connectionCutActive = true;
-        connectionCutMoved = false;
-        connectionCutStartWorldX = screenToWorldX(mouseX);
-        connectionCutStartWorldY = screenToWorldY(mouseY);
-        connectionCutCurrentWorldX = connectionCutStartWorldX;
-        connectionCutCurrentWorldY = connectionCutStartWorldY;
-        connectionCutPath.clear();
-        connectionCutPath.add(new CutPoint(connectionCutStartWorldX, connectionCutStartWorldY));
+        connectionController.startConnectionCut(screenToWorldX(mouseX), screenToWorldY(mouseY));
     }
 
     public void updateConnectionCut(int worldX, int worldY) {
-        if (!connectionCutActive) {
-            return;
-        }
-        connectionCutCurrentWorldX = worldX;
-        connectionCutCurrentWorldY = worldY;
-        if (!connectionCutMoved) {
-            int deltaX = Math.abs(connectionCutCurrentWorldX - connectionCutStartWorldX);
-            int deltaY = Math.abs(connectionCutCurrentWorldY - connectionCutStartWorldY);
-            connectionCutMoved = deltaX > CONNECTION_CUT_THRESHOLD || deltaY > CONNECTION_CUT_THRESHOLD;
-        }
-        CutPoint lastPoint = connectionCutPath.isEmpty() ? null : connectionCutPath.get(connectionCutPath.size() - 1);
-        if (lastPoint == null || lastPoint.x != worldX || lastPoint.y != worldY) {
-            connectionCutPath.add(new CutPoint(worldX, worldY));
-        }
+        connectionController.updateConnectionCut(worldX, worldY);
     }
 
     public boolean stopConnectionCut() {
-        boolean removedAny = false;
-        if (connectionCutActive && connectionCutMoved) {
-            List<NodeConnection> toRemove = new ArrayList<>();
-            for (NodeConnection connection : connections) {
-                if (doesCutPathIntersectConnection(connection)) {
-                    toRemove.add(connection);
-                }
-            }
-            if (!toRemove.isEmpty()) {
-                pushUndoState();
-                connections.removeAll(toRemove);
-                invalidateConnectionIndex();
-                markWorkspaceDirty();
-                removedAny = true;
-            }
-        }
-
-        connectionCutActive = false;
-        connectionCutMoved = false;
-        connectionCutPath.clear();
-        return removedAny;
+        return connectionController.stopConnectionCut();
     }
 
     public void cancelConnectionCut() {
-        connectionCutActive = false;
-        connectionCutMoved = false;
-        connectionCutPath.clear();
+        connectionController.cancelConnectionCut();
     }
 
     public boolean removeConnection(NodeConnection connection) {
-        if (connection == null || !connections.contains(connection)) {
-            return false;
-        }
-        pushUndoState();
-        boolean removed = connections.remove(connection);
-        if (removed) {
-            invalidateConnectionIndex();
-            markWorkspaceDirty();
-        }
-        return removed;
+        return connectionController.removeConnection(connection);
     }
 
     public boolean isConnectionCutActive() {
-        return connectionCutActive;
+        return connectionController.isConnectionCutActive();
     }
 
     public boolean hasConnectionCutMoved() {
-        return connectionCutMoved;
+        return connectionController.hasConnectionCutMoved();
     }
 
     public void render(GuiGraphics context, Font textRenderer, int mouseX, int mouseY, float delta, boolean onlyDragged) {
@@ -3632,9 +3195,9 @@ public class NodeGraph {
         }
         return node.isSelected()
             || node.isDragging()
-            || node == connectionSourceNode
-            || node == hoveredSocketNode
-            || node == hoveredNode;
+            || node == connectionController.getConnectionSourceNode()
+            || node == connectionController.getHoveredSocketNode()
+            || node == connectionController.getHoveredNode();
     }
 
     private boolean shouldUseCompactNodeContent(Node node) {
@@ -3790,7 +3353,9 @@ public class NodeGraph {
         if (shouldRenderNodeSockets(node)) {
             // Render input sockets
             for (int i = 0; i < node.getInputSocketCount(); i++) {
-                boolean isHovered = (hoveredSocketNode == node && hoveredSocketIndex == i && hoveredSocketIsInput);
+                boolean isHovered = (connectionController.getHoveredSocketNode() == node
+                    && connectionController.getHoveredSocketIndex() == i
+                    && connectionController.isHoveredSocketInput());
                 boolean isActive = isSocketActive(node, i, true);
                 int socketColor;
                 if (lowDetail && !isOverSidebar) {
@@ -3811,7 +3376,9 @@ public class NodeGraph {
 
             // Render output sockets
             for (int i = 0; i < node.getOutputSocketCount(); i++) {
-                boolean isHovered = (hoveredSocketNode == node && hoveredSocketIndex == i && !hoveredSocketIsInput);
+                boolean isHovered = (connectionController.getHoveredSocketNode() == node
+                    && connectionController.getHoveredSocketIndex() == i
+                    && !connectionController.isHoveredSocketInput());
                 boolean isActive = isSocketActive(node, i, false);
                 int socketColor;
                 if (lowDetail && !isOverSidebar) {
@@ -11008,22 +10575,11 @@ public class NodeGraph {
     }
 
     private boolean isSocketConnected(Node node, int socketIndex, boolean isInput) {
-        rebuildConnectionIndexIfNeeded();
-        SocketKey key = new SocketKey(node, socketIndex);
-        return isInput ? connectedInputSockets.contains(key) : connectedOutputSockets.contains(key);
+        return connectionController.isSocketConnected(node, socketIndex, isInput);
     }
 
     private boolean isSocketActive(Node node, int socketIndex, boolean isInput) {
-        if (isSocketConnected(node, socketIndex, isInput)) {
-            return true;
-        }
-        if (isDraggingConnection && connectionSourceNode == node && connectionSourceSocket == socketIndex) {
-            // Treat the drag source as active so it stays bright while connecting.
-            if ((isInput && !isOutputSocket) || (!isInput && isOutputSocket)) {
-                return true;
-            }
-        }
-        return false;
+        return connectionController.isSocketActive(node, socketIndex, isInput);
     }
 
     private int darkenColor(int color, float factor) {
@@ -11069,13 +10625,18 @@ public class NodeGraph {
         }
 
         // Render dragging connection if active
-        if (isDraggingConnection && connectionSourceNode != null) {
+        Node connectionSourceNode = connectionController.getConnectionSourceNode();
+        boolean isOutputSocket = connectionController.isOutputSocket();
+        if (connectionController.isDraggingConnection() && connectionSourceNode != null) {
             int sourceX = connectionSourceNode.getSocketX(!isOutputSocket) - cameraX;
-            int sourceY = connectionSourceNode.getSocketY(connectionSourceSocket, !isOutputSocket) - cameraY;
-            int targetX = connectionDragX - cameraX;
-            int targetY = connectionDragY - cameraY;
+            int sourceY = connectionSourceNode.getSocketY(connectionController.getConnectionSourceSocket(), !isOutputSocket) - cameraY;
+            int targetX = connectionController.getConnectionDragX() - cameraX;
+            int targetY = connectionController.getConnectionDragY() - cameraY;
 
             // Snap to hovered socket if available
+            Node hoveredNode = connectionController.getHoveredNode();
+            int hoveredSocket = connectionController.getHoveredSocket();
+            boolean hoveredSocketIsInput = connectionController.isHoveredSocketInput();
             if (hoveredNode != null && hoveredSocket != -1) {
                 targetX = hoveredNode.getSocketX(hoveredSocketIsInput) - cameraX;
                 targetY = hoveredNode.getSocketY(hoveredSocket, hoveredSocketIsInput) - cameraY;
@@ -11088,7 +10649,7 @@ public class NodeGraph {
 
             if (!onlyDragged) {
                 // Render the dragging connection below sockets in the main layer.
-                int color = connectionSourceNode.getOutputSocketColor(connectionSourceSocket);
+                int color = connectionSourceNode.getOutputSocketColor(connectionController.getConnectionSourceSocket());
                 int sourceScreenX = connectionSourceNode.getX() - cameraX;
                 if (isNodeOverSidebarForRender(connectionSourceNode, sourceScreenX, connectionSourceNode.getWidth())) {
                     color = toGrayscale(color, 0.65f);
@@ -11106,8 +10667,8 @@ public class NodeGraph {
             }
         }
 
-        if (!onlyDragged && connectionCutActive) {
-            renderConnectionCutPreview(context);
+        if (!onlyDragged && connectionController.isConnectionCutActive()) {
+            connectionController.renderConnectionCutPreview(context, cameraX, cameraY);
         }
         if (trackProfiler) {
             profilerConnectionMs = (System.nanoTime() - startNanos) / 1_000_000.0;
@@ -11180,7 +10741,7 @@ public class NodeGraph {
         if (!denseViewportMode && shouldGrayOutConnection(outputNode, inputNode)) {
             color = toGrayscale(color, 0.65f);
         }
-        if (connection == insertionPreviewConnection) {
+        if (connection == connectionController.getInsertionPreviewConnection()) {
             color = getSelectedNodeAccentColor();
         }
 
@@ -11248,61 +10809,6 @@ public class NodeGraph {
             parent = getParentForNode(parent);
         }
         return false;
-    }
-
-    private void renderConnectionCutPreview(GuiGraphics context) {
-        if (connectionCutPath.size() < 2) {
-            int x = connectionCutCurrentWorldX - cameraX;
-            int y = connectionCutCurrentWorldY - cameraY;
-            drawSegmentWithThickness(context, x, y, x, y, CONNECTION_CUT_PREVIEW_COLOR, 0);
-            return;
-        }
-        CutPoint previous = connectionCutPath.get(0);
-        for (int i = 1; i < connectionCutPath.size(); i++) {
-            CutPoint current = connectionCutPath.get(i);
-            drawSegmentWithThickness(
-                context,
-                previous.x - cameraX,
-                previous.y - cameraY,
-                current.x - cameraX,
-                current.y - cameraY,
-                CONNECTION_CUT_PREVIEW_COLOR,
-                0
-            );
-            previous = current;
-        }
-    }
-
-    private boolean doesCutPathIntersectConnection(NodeConnection connection) {
-        if (connectionCutPath.size() < 2) {
-            return false;
-        }
-        CutPoint previous = connectionCutPath.get(0);
-        for (int i = 1; i < connectionCutPath.size(); i++) {
-            CutPoint current = connectionCutPath.get(i);
-            if (doesSegmentIntersectConnection(
-                connection,
-                previous.x,
-                previous.y,
-                current.x,
-                current.y,
-                CONNECTION_CUT_THRESHOLD
-            )) {
-                return true;
-            }
-            previous = current;
-        }
-        return false;
-    }
-
-    private static final class CutPoint {
-        private final int x;
-        private final int y;
-
-        private CutPoint(int x, int y) {
-            this.x = x;
-            this.y = y;
-        }
     }
 
     private record TrimKey(String text, int maxWidth) {
@@ -11804,17 +11310,10 @@ public class NodeGraph {
         nextStartNodeNumber = 1;
         clearSelection();
         draggingNode = null;
-        hoveredNode = null;
-        hoveredSocketNode = null;
-        hoveredSocketIndex = -1;
-        hoveredSocket = -1;
         invalidateValidation();
-        hoveredSocketIsInput = false;
+        connectionController.clearGraphState();
         hoveringStartButton = false;
         hoveredStartNode = null;
-        isDraggingConnection = false;
-        connectionSourceNode = null;
-        disconnectedConnection = null;
         sensorDropTarget = null;
         actionDropTarget = null;
         parameterDropTarget = null;
@@ -12030,16 +11529,9 @@ public class NodeGraph {
 
         sensorDropTarget = null;
         actionDropTarget = null;
-        hoveredNode = null;
-        hoveredSocketNode = null;
-        hoveredSocketIndex = -1;
-        hoveredSocket = -1;
-        hoveredSocketIsInput = false;
+        connectionController.clearGraphState();
         hoveringStartButton = false;
         hoveredStartNode = null;
-        isDraggingConnection = false;
-        connectionSourceNode = null;
-        disconnectedConnection = null;
         lastClickedNode = null;
         lastClickTime = 0;
         cascadeDeletionPreviewNodes.clear();

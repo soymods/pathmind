@@ -206,9 +206,6 @@ final class NodeDimensionCalculator {
         if (node.hasAmountToggle()) {
             amountContentWidth += Node.AMOUNT_TOGGLE_WIDTH + Node.AMOUNT_TOGGLE_SPACING;
         }
-        if (node.hasAmountSignToggle()) {
-            amountContentWidth += Node.AMOUNT_SIGN_TOGGLE_WIDTH + Node.AMOUNT_TOGGLE_SPACING;
-        }
         int amountWidth = amountContentWidth + 2 * Node.PARAMETER_SLOT_MARGIN_HORIZONTAL;
         return Math.max(computedWidth, amountWidth);
     }

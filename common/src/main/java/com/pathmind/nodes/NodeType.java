@@ -16,7 +16,6 @@ public enum NodeType {
     // Variable nodes
     VARIABLE,
     SET_VARIABLE,
-    CHANGE_VARIABLE,
     CREATE_LIST,
     ADD_TO_LIST,
     REMOVE_FIRST_FROM_LIST,

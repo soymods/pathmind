@@ -185,8 +185,6 @@ public class Node {
     static final int AMOUNT_TOGGLE_WIDTH = 18;
     private static final int AMOUNT_TOGGLE_HEIGHT = 10;
     static final int AMOUNT_TOGGLE_SPACING = 6;
-    static final int AMOUNT_SIGN_TOGGLE_WIDTH = 28;
-    private static final int AMOUNT_SIGN_TOGGLE_HEIGHT = 16;
     private static final int RANDOM_ROUNDING_FIELD_TOP_MARGIN = 6;
     private static final int RANDOM_ROUNDING_FIELD_LABEL_HEIGHT = 10;
     private static final int RANDOM_ROUNDING_FIELD_HEIGHT = 16;
@@ -329,7 +327,7 @@ public class Node {
         this.parameters = new ArrayList<>();
         this.dynamicBooleanOperatorSlotCount = isExpandableBooleanOperatorType(type) ? 2 : 0;
         this.messageLines = new ArrayList<>();
-        if (type == NodeType.MESSAGE || type == NodeType.CHANGE_VARIABLE) {
+        if (type == NodeType.MESSAGE) {
             this.messageLines.add(getDefaultMessageLineValue());
         }
         this.messageClientSide = false;
@@ -1510,7 +1508,6 @@ public class Node {
             case SENSOR_CURRENT_HAND -> NodeType.PARAM_INVENTORY_SLOT;
             case SENSOR_CURRENT_GUI -> NodeType.PARAM_GUI;
             case SENSOR_SLOT_ITEM_COUNT, SENSOR_FIND_TRADE, LIST_LENGTH, OPERATOR_RANDOM, OPERATOR_MOD -> NodeType.PARAM_AMOUNT;
-            case CHANGE_VARIABLE -> NodeType.PARAM_AMOUNT;
             default -> type;
         };
     }
@@ -1729,10 +1726,6 @@ public class Node {
             || type == NodeType.DROP_ITEM;
     }
 
-    public boolean hasAmountSignToggle() {
-        return false;
-    }
-
     public boolean isAmountInputEnabled() {
         ensureAmountToggleParameters();
         if (!hasAmountInputField()) {
@@ -1769,22 +1762,6 @@ public class Node {
 
     public int getAmountToggleHeight() {
         return AMOUNT_TOGGLE_HEIGHT;
-    }
-
-    public int getAmountSignToggleLeft() {
-        return getParameterSlotLeft();
-    }
-
-    public int getAmountSignToggleTop() {
-        return getAmountFieldInputTop() + (getAmountFieldHeight() - AMOUNT_SIGN_TOGGLE_HEIGHT) / 2;
-    }
-
-    public int getAmountSignToggleWidth() {
-        return AMOUNT_SIGN_TOGGLE_WIDTH;
-    }
-
-    public int getAmountSignToggleHeight() {
-        return AMOUNT_SIGN_TOGGLE_HEIGHT;
     }
 
     public int getRandomRoundingFieldDisplayHeight() {
@@ -3216,7 +3193,7 @@ public class Node {
     }
 
     public boolean hasMessageInputFields() {
-        return type == NodeType.MESSAGE || type == NodeType.CHANGE_VARIABLE;
+        return type == NodeType.MESSAGE;
     }
 
     public String getStickyNoteText() {
@@ -3386,9 +3363,6 @@ public class Node {
             return;
         }
         String lineValue = sanitizeMessageLine(value);
-        if (type == NodeType.CHANGE_VARIABLE && lineValue.isBlank()) {
-            lineValue = getDefaultCalculationLineValue(messageLines.size());
-        }
         messageLines.add(lineValue);
         layoutState.clearMessageFieldContentWidthOverride();
         recalculateDimensions();
@@ -3429,29 +3403,12 @@ public class Node {
         messageClientSide = !messageClientSide;
     }
 
-    public String getAmountOperation() {
-        NodeParameter operation = getParameter("Operation");
-        String value = operation == null ? "" : operation.getStringValue();
-        return value == null || value.isBlank() ? "+" : value;
-    }
-
-    public void setAmountOperation(String operation) {
-        NodeParameter parameter = getParameter("Operation");
-        if (parameter == null) {
-            return;
-        }
-        parameter.setStringValue(operation == null || operation.isBlank() ? "+" : operation);
-    }
-
     public String getMessageFieldLabelText(int index) {
-        if (type == NodeType.CHANGE_VARIABLE) {
-            return "Output " + getCalculationVariableLabel(index);
-        }
         return getMessageFieldCount() > 1 ? "Message " + (index + 1) : "Message";
     }
 
     private String getDefaultMessageLineValue() {
-        return type == NodeType.CHANGE_VARIABLE ? getDefaultCalculationLineValue(messageLines.size()) : "Hello World";
+        return "Hello World";
     }
 
     private String sanitizeMessageLine(String value) {
@@ -3460,21 +3417,6 @@ public class Node {
             return sanitized.substring(0, MAX_MESSAGE_LINE_LENGTH);
         }
         return sanitized;
-    }
-
-    private String getDefaultCalculationLineValue(int index) {
-        return getCalculationVariableLabel(index) + " = 0";
-    }
-
-    private String getCalculationVariableLabel(int index) {
-        int value = Math.max(0, index);
-        StringBuilder builder = new StringBuilder();
-        do {
-            int remainder = value % 26;
-            builder.insert(0, (char) ('A' + remainder));
-            value = value / 26 - 1;
-        } while (value >= 0);
-        return builder.toString();
     }
 
     public int getMessageFieldDisplayHeight() {
@@ -4047,7 +3989,6 @@ public class Node {
                 ROUTINE_CALL,
                 ROUTINE_INPUT,
                 SET_VARIABLE,
-                CHANGE_VARIABLE,
                 CONTROL_REPEAT,
                 CONTROL_FOREVER,
                 START_CHAIN,

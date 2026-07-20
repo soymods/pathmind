@@ -64,8 +64,6 @@
   "pathmind.node.type.break.desc": "Breaks a targeted or specified block",
   "pathmind.node.type.build": "Construire",
   "pathmind.node.type.build.desc": "Construit des structures à partir de fichiers schématiques",
-  "pathmind.node.type.changeVariable": "Modifier",
-  "pathmind.node.type.changeVariable.desc": "Ajuste la valeur d'une variable à la hausse ou à la baisse pendant l'exécution",
   "pathmind.node.type.clickSlot": "Cliquer emplacement",
   "pathmind.node.type.clickSlot.desc": "Clique sur l'emplacement d'inventaire sélectionné",
   "pathmind.node.type.closeGui": "Fermer l'interface",

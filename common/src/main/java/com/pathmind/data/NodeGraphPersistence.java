@@ -1442,7 +1442,7 @@ public class NodeGraphPersistence {
             return true;
         }
         NodeType hostType = host.getType();
-        if ((hostType == NodeType.SET_VARIABLE || hostType == NodeType.CHANGE_VARIABLE) && slotIndex == 0) {
+        if (hostType == NodeType.SET_VARIABLE && slotIndex == 0) {
             return false;
         }
         return true;

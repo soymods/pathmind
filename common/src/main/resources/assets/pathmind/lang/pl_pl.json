@@ -64,8 +64,6 @@
   "pathmind.node.type.break.desc": "Breaks a targeted or specified block",
   "pathmind.node.type.build": "Buduj",
   "pathmind.node.type.build.desc": "Buduje struktury z plików schematycznych",
-  "pathmind.node.type.changeVariable": "Zmień",
-  "pathmind.node.type.changeVariable.desc": "Zwiększa lub zmniejsza wartość zmiennej w czasie wykonywania",
   "pathmind.node.type.clickSlot": "Kliknij slot",
   "pathmind.node.type.clickSlot.desc": "Klika wybrany slot ekwipunku",
   "pathmind.node.type.closeGui": "Zamknij interfejs",

@@ -64,8 +64,6 @@
   "pathmind.node.type.break.desc": "Quebra um bloco mirado ou especificado",
   "pathmind.node.type.build": "Construir",
   "pathmind.node.type.build.desc": "Constrói estruturas a partir de arquivos de esquemático",
-  "pathmind.node.type.changeVariable": "Alterar",
-  "pathmind.node.type.changeVariable.desc": "Ajusta o valor de uma variável para cima ou para baixo em tempo de execução",
   "pathmind.node.type.clickSlot": "Clicar Slot",
   "pathmind.node.type.clickSlot.desc": "Clica no slot de inventário selecionado",
   "pathmind.node.type.closeGui": "Fechar Interface",

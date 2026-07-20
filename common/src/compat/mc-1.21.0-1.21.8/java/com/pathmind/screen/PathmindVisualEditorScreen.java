@@ -1436,11 +1436,7 @@ public class PathmindVisualEditorScreen extends Screen {
         }
         if (nodeGraph.handleModeDropdownClick(mouseX, mouseY)) {
             return true;
-        }
-        if (button == 0 && nodeGraph.handleAmountSignDropdownClick(null, (int)mouseX, (int)mouseY)) {
-            return true;
-        }
-        if (button == 0 && nodeGraph.handleOperatorToggleClick(font, (int)mouseX, (int)mouseY)) {
+        }        if (button == 0 && nodeGraph.handleOperatorToggleClick(font, (int)mouseX, (int)mouseY)) {
             return true;
         }
 
@@ -1707,11 +1703,6 @@ public class PathmindVisualEditorScreen extends Screen {
                 }
 
                 if (nodeGraph.handleAmountToggleClick(clickedNode, (int)mouseX, (int)mouseY)) {
-                    nodeGraph.focusSelectedNode(clickedNode);
-                    return true;
-                }
-
-                if (button == 0 && nodeGraph.handleAmountSignDropdownClick(clickedNode, (int)mouseX, (int)mouseY)) {
                     nodeGraph.focusSelectedNode(clickedNode);
                     return true;
                 }

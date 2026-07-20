@@ -19,7 +19,6 @@ final class NodeCommandDispatcher {
 
         switch (route) {
             case SET_VARIABLE -> new NodeVariableListCommandExecutor(node).executeSetVariableCommand(future);
-            case CHANGE_VARIABLE -> new NodeVariableListCommandExecutor(node).executeChangeVariableCommand(future);
             case GOTO -> new NodeNavigationCommandExecutor(node).executeGotoCommand(future);
             case TRAVEL -> new NodeNavigationCommandExecutor(node).executeTravelCommand(future);
             case GOAL -> new NodeNavigationCommandExecutor(node).executeGoalCommand(future);

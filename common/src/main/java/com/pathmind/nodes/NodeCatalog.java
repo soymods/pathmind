@@ -149,7 +149,6 @@ public final class NodeCatalog {
         define(NodeCategory.DATA,
             NodeType.VARIABLE,
             NodeType.SET_VARIABLE,
-            NodeType.CHANGE_VARIABLE,
             NodeType.CREATE_LIST,
             NodeType.ADD_TO_LIST,
             NodeType.REMOVE_FIRST_FROM_LIST,
@@ -559,8 +558,7 @@ public final class NodeCatalog {
 
         sidebar(NodeCategory.DATA, "pathmind.sidebar.group.variables",
             NodeType.VARIABLE,
-            NodeType.SET_VARIABLE,
-            NodeType.CHANGE_VARIABLE);
+            NodeType.SET_VARIABLE);
         sidebar(NodeCategory.DATA, "pathmind.sidebar.group.lists",
             NodeType.CREATE_LIST,
             NodeType.ADD_TO_LIST,
@@ -688,7 +686,6 @@ public final class NodeCatalog {
         provided(NodeType.SENSOR_IS_ON_GROUND, NodeValueTrait.DISTANCE);
         provided(NodeType.OPERATOR_RANDOM, NodeValueTrait.NUMBER);
         provided(NodeType.OPERATOR_MOD, NodeValueTrait.NUMBER);
-        provided(NodeType.CHANGE_VARIABLE, NodeValueTrait.NUMBER);
         provided(NodeType.OPERATOR_BOOLEAN_OR, NodeValueTrait.BOOLEAN);
         provided(NodeType.OPERATOR_BOOLEAN_AND, NodeValueTrait.BOOLEAN);
         provided(NodeType.OPERATOR_BOOLEAN_XOR, NodeValueTrait.BOOLEAN);
@@ -1035,9 +1032,6 @@ public final class NodeCatalog {
             of("random_use_rounding", "UseRounding", ParameterType.BOOLEAN, "false"));
         typeParameters(List.of(NodeType.OPERATOR_GREATER, NodeType.OPERATOR_LESS),
             of("Inclusive", ParameterType.BOOLEAN, "false"));
-        typeParameters(NodeType.CHANGE_VARIABLE,
-            of("change_variable_amount", "Amount", ParameterType.INTEGER, "1"),
-            of("change_variable_operation", "Operation", ParameterType.STRING, "+"));
         typeParameters(
             List.of(NodeType.SENSOR_TOUCHING_BLOCK, NodeType.SENSOR_TOUCHING_ENTITY, NodeType.SENSOR_AT_COORDINATES,
                 NodeType.SENSOR_IS_DAYTIME, NodeType.SENSOR_IS_RAINING, NodeType.SENSOR_ITEM_IN_INVENTORY,
@@ -1120,7 +1114,6 @@ public final class NodeCatalog {
         typeParameters(NodeType.PARAM_CLOSEST, of("Range", ParameterType.INTEGER, "5"));
 
         route(ExecutionRoute.SET_VARIABLE, NodeType.SET_VARIABLE);
-        route(ExecutionRoute.CHANGE_VARIABLE, NodeType.CHANGE_VARIABLE);
         route(ExecutionRoute.GOTO, NodeType.GOTO);
         route(ExecutionRoute.TRAVEL, NodeType.TRAVEL);
         route(ExecutionRoute.GOAL, NodeType.GOAL);
@@ -1456,7 +1449,6 @@ public final class NodeCatalog {
             case ROUTINE_INPUT -> "pathmind.node.type.routineInput";
             case VARIABLE -> "pathmind.node.type.variable";
             case SET_VARIABLE -> "pathmind.node.type.setVariable";
-            case CHANGE_VARIABLE -> "pathmind.node.type.changeVariable";
             case CREATE_LIST -> "pathmind.node.type.createList";
             case ADD_TO_LIST -> "pathmind.node.type.addToList";
             case REMOVE_FIRST_FROM_LIST -> "pathmind.node.type.removeFirstFromList";
@@ -1606,7 +1598,6 @@ public final class NodeCatalog {
             case ROUTINE_INPUT -> "pathmind.node.type.routineInput.desc";
             case VARIABLE -> "pathmind.node.type.variable.desc";
             case SET_VARIABLE -> "pathmind.node.type.setVariable.desc";
-            case CHANGE_VARIABLE -> "pathmind.node.type.changeVariable.desc";
             case CREATE_LIST -> "pathmind.node.type.createList.desc";
             case ADD_TO_LIST -> "pathmind.node.type.addToList.desc";
             case REMOVE_FIRST_FROM_LIST -> "pathmind.node.type.removeFirstFromList.desc";
@@ -1754,7 +1745,6 @@ public final class NodeCatalog {
             case ROUTINE_ENTRY, ROUTINE_INPUT, ROUTINE_CALL -> 0xFFEC407A;
             case VARIABLE -> 0xFFFF9800;
             case SET_VARIABLE -> 0xFFFF9800;
-            case CHANGE_VARIABLE -> 0xFFFF9800;
             case CREATE_LIST -> 0xFFFF9800;
             case ADD_TO_LIST -> 0xFFFF9800;
             case REMOVE_FIRST_FROM_LIST -> 0xFFFF9800;
@@ -2027,7 +2017,6 @@ public final class NodeCatalog {
 
     public enum ExecutionRoute {
         SET_VARIABLE,
-        CHANGE_VARIABLE,
         GOTO,
         TRAVEL,
         GOAL,

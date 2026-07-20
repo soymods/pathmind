@@ -22,11 +22,7 @@ final class NodeParameterRepair {
                 || type == NodeType.SENSOR_FABRIC_EVENT;
             ParameterType amountType = decimalAmount ? ParameterType.DOUBLE : ParameterType.INTEGER;
             String defaultValue = decimalAmount ? "0.0" : "1";
-            if (type == NodeType.CHANGE_VARIABLE) {
-                parameters.add(new NodeParameter("change_variable_amount", amountKey, amountType, defaultValue));
-            } else {
-                parameters.add(new NodeParameter(amountKey, amountType, defaultValue));
-            }
+            parameters.add(new NodeParameter(amountKey, amountType, defaultValue));
         }
         if (node.getParameter("UseAmount") == null) {
             boolean defaultEnabled = false;

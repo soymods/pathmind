@@ -64,8 +64,6 @@
   "pathmind.node.type.break.desc": "Breaks a targeted or specified block",
   "pathmind.node.type.build": "Построить",
   "pathmind.node.type.build.desc": "Строит структуры из файлов схем",
-  "pathmind.node.type.changeVariable": "Изменить",
-  "pathmind.node.type.changeVariable.desc": "Увеличивает или уменьшает значение переменной во время выполнения",
   "pathmind.node.type.clickSlot": "Клик по слоту",
   "pathmind.node.type.clickSlot.desc": "Кликает по выбранному слоту инвентаря",
   "pathmind.node.type.closeGui": "Закрыть интерфейс",

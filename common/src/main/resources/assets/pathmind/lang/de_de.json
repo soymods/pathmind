@@ -64,8 +64,6 @@
   "pathmind.node.type.break.desc": "Breaks a targeted or specified block",
   "pathmind.node.type.build": "Bauen",
   "pathmind.node.type.build.desc": "Konstruiert Strukturen aus Schematic-Dateien",
-  "pathmind.node.type.changeVariable": "Ändern",
-  "pathmind.node.type.changeVariable.desc": "Ändert einen Variablenwert zur Laufzeit nach oben oder unten",
   "pathmind.node.type.clickSlot": "Slot anklicken",
   "pathmind.node.type.clickSlot.desc": "Klickt den ausgewählten Inventar-Slot an",
   "pathmind.node.type.closeGui": "GUI schließen",

@@ -540,12 +540,6 @@ public class NodeGraph {
     private int modeDropdownFieldWidth = 0;
     private int modeDropdownFieldHeight = 0;
     private final java.util.List<ModeDropdownOption> modeDropdownOptions = new java.util.ArrayList<>();
-    private Node amountSignDropdownNode = null;
-    private boolean amountSignDropdownOpen = false;
-    private final AnimatedValue amountSignDropdownAnimation = AnimatedValue.forHover();
-    private int amountSignDropdownHoverIndex = -1;
-    private int amountSignDropdownScrollOffset = 0;
-    private static final int AMOUNT_SIGN_DROPDOWN_MAX_ROWS = 5;
     private static final int PARAMETER_DROPDOWN_MAX_ROWS = 8;
     private static final int PARAMETER_DROPDOWN_ROW_HEIGHT = 16;
     private static final int DROPDOWN_SIDE_PADDING = 6;
@@ -3457,7 +3451,6 @@ public class NodeGraph {
             renderParameterDropdownList(context, textRenderer, mouseX, mouseY);
             renderRandomRoundingDropdownList(context, textRenderer, mouseX, mouseY);
             renderModeDropdownList(context, textRenderer, mouseX, mouseY);
-            renderAmountSignDropdownList(context, textRenderer, mouseX, mouseY);
             profilerDropdownMs = (System.nanoTime() - dropdownStartNanos) / 1_000_000.0;
         }
 
@@ -6328,39 +6321,6 @@ public class NodeGraph {
                 getNodeToggleProgress(amountToggleAnimations, node, amountEnabled), false, isOverSidebar);
         }
 
-        if (node.hasAmountSignToggle()) {
-            int toggleLeft = node.getAmountSignToggleLeft() - cameraX;
-            int toggleTop = node.getAmountSignToggleTop() - cameraY;
-            int toggleWidth = node.getAmountSignToggleWidth();
-            int toggleHeight = node.getAmountSignToggleHeight();
-            boolean open = amountSignDropdownOpen && amountSignDropdownNode == node;
-            String operation = node.getAmountOperation();
-            UIStyleHelper.FieldPalette signPalette = UIStyleHelper.getDropdownFieldPalette(
-                isOverSidebar ? toGrayscale(getSelectedNodeAccentColor(), 0.8f) : getSelectedNodeAccentColor(),
-                open ? 1f : 0f,
-                open,
-                false
-            );
-            if (isOverSidebar) {
-                signPalette = getLowDetailAwareFieldPalette(
-                    UITheme.BACKGROUND_SECONDARY,
-                    UITheme.BORDER_HIGHLIGHT,
-                    UITheme.PANEL_INNER_BORDER,
-                    UITheme.TEXT_TERTIARY,
-                    UITheme.TEXT_TERTIARY,
-                    true
-                );
-            }
-            int signTextColor = signPalette.textColor();
-            UIStyleHelper.drawFieldFrame(context, toggleLeft, toggleTop, toggleWidth, toggleHeight, signPalette);
-
-            String label = operation == null || operation.isEmpty() ? "+" : operation;
-            int signTextX = toggleLeft + 3;
-            int arrowCenterX = toggleLeft + toggleWidth - 7;
-            int signTextY = toggleTop + (toggleHeight - textRenderer.lineHeight) / 2 + 1;
-            drawNodeText(context, textRenderer, Component.literal(label), signTextX, signTextY, signTextColor);
-            UIStyleHelper.drawChevron(context, arrowCenterX, toggleTop + toggleHeight / 2, open, signTextColor);
-        }
     }
 
     private void renderRandomRoundingField(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar) {
@@ -6523,14 +6483,6 @@ public class NodeGraph {
             int textY = fieldTop + (fieldHeight - textRenderer.lineHeight) / 2 + 1;
             String fixedPrefix = "";
             int expressionTextX = textX;
-            if (node.getType() == NodeType.CHANGE_VARIABLE) {
-                String variableName = getCalculateOutputName(node, i);
-                fixedPrefix = variableName + " = ";
-                expressionTextX = textX + textRenderer.width(fixedPrefix);
-                if (!editingThis) {
-                    rawValue = getCalculateExpressionText(rawValue, variableName);
-                }
-            }
             int expressionFieldWidth = Math.max(1, fieldWidth - 6 - textRenderer.width(fixedPrefix));
             String display = editingThis
                 ? rawValue
@@ -6889,25 +6841,10 @@ public class NodeGraph {
                 if (!trimmed.isEmpty()) {
                     names.add(trimmed);
                 }
-            } else if (graphNode.getType() == NodeType.CHANGE_VARIABLE) {
-                collectCalculateOutputNames(graphNode, names);
             }
         }
         cachedBaseRuntimeVariableNames = names;
         return cachedBaseRuntimeVariableNames;
-    }
-
-    private void collectCalculateOutputNames(Node node, Set<String> names) {
-        if (node == null || node.getType() != NodeType.CHANGE_VARIABLE || names == null) {
-            return;
-        }
-        int lineCount = node.getMessageFieldCount();
-        for (int i = 0; i < lineCount; i++) {
-            String outputName = getCalculateOutputName(node, i);
-            if (outputName != null && !outputName.isBlank()) {
-                names.add(outputName.trim());
-            }
-        }
     }
 
     private static final class InlineVariableRender {
@@ -8285,64 +8222,6 @@ public class NodeGraph {
         );
     }
 
-    private void renderAmountSignDropdownList(GuiGraphics context, Font textRenderer, int mouseX, int mouseY) {
-        float animProgress = getDropdownAnimationProgress(amountSignDropdownAnimation, amountSignDropdownOpen);
-        if (amountSignDropdownNode == null) {
-            return;
-        }
-        if (animProgress <= 0.001f) {
-            clearAmountSignDropdownState();
-            return;
-        }
-
-        Node node = amountSignDropdownNode;
-        boolean isOverSidebar = node.getX() < sidebarWidthForRendering;
-        int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
-
-        java.util.List<String> options = getAmountSignDropdownOptions();
-        int optionCount = options.size();
-        int listTop = getAmountSignDropdownListTop(node);
-        DropdownLayoutHelper.Layout layout = getAmountSignDropdownLayout(node);
-        int visibleCount = layout.visibleCount;
-        amountSignDropdownScrollOffset = Mth.clamp(amountSignDropdownScrollOffset, 0, layout.maxScrollOffset);
-
-        int dropdownWidth = getAmountSignDropdownWidth(node);
-        int listLeft = node.getAmountSignToggleLeft() - cameraX;
-        int accentColor = isOverSidebar ? toGrayscale(getSelectedNodeAccentColor(), 0.8f) : getSelectedNodeAccentColor();
-        UIStyleHelper.ScrollContainerPalette containerPalette = UIStyleHelper.getScrollContainerPalette(accentColor, animProgress, true, false);
-        UIStyleHelper.ScrollContainerPalette adjustedPalette = new UIStyleHelper.ScrollContainerPalette(
-            isOverSidebar ? UITheme.BACKGROUND_SECONDARY : containerPalette.backgroundColor(),
-            isOverSidebar ? UITheme.BORDER_SUBTLE : containerPalette.borderColor(),
-            isOverSidebar ? UITheme.PANEL_INNER_BORDER : containerPalette.innerBorderColor(),
-            containerPalette.trackColor(),
-            containerPalette.thumbColor()
-        );
-
-        float zoom = Math.max(0.01f, getZoomScale());
-        int transformedMouseX = Math.round(mouseX / zoom);
-        int transformedMouseY = Math.round(mouseY / zoom);
-        amountSignDropdownHoverIndex = PathmindDropdownRenderer.renderTextList(
-            context,
-            textRenderer,
-            PathmindDropdownRenderer.TextListSpec.builder()
-                .bounds(listLeft, listTop, dropdownWidth)
-                .rows(SCHEMATIC_DROPDOWN_ROW_HEIGHT, visibleCount, optionCount)
-                .scroll(amountSignDropdownScrollOffset, layout.maxScrollOffset, DROPDOWN_SCROLLBAR_ALLOWANCE)
-                .animation(animProgress)
-                .hoverPoint(transformedMouseX, transformedMouseY)
-                .colors(accentColor, textColor)
-                .textLayout(DROPDOWN_SIDE_PADDING, 4, true, shouldRenderNodeText())
-                .labels("", options::get)
-                .chrome(
-                    adjustedPalette,
-                    isOverSidebar ? UITheme.BORDER_SUBTLE : containerPalette.trackColor(),
-                    isOverSidebar ? UITheme.BORDER_HIGHLIGHT : containerPalette.thumbColor(),
-                    isOverSidebar ? UITheme.BORDER_SUBTLE : containerPalette.borderColor()
-                )
-                .build()
-        );
-    }
-
     public boolean isEditingCoordinateField() {
         return coordinateEditingNode != null && coordinateEditingAxis >= 0;
     }
@@ -8468,13 +8347,6 @@ public class NodeGraph {
 
         closeSchematicDropdown();
         closeRunPresetDropdown();
-        closeRandomRoundingDropdown();
-        closeAmountSignDropdown();
-        closeAmountSignDropdown();
-        closeAmountSignDropdown();
-        closeAmountSignDropdown();
-        closeAmountSignDropdown();
-        closeAmountSignDropdown();
         closeRandomRoundingDropdown();
         stopAmountEditing(true);
         stopStopTargetEditing(true);
@@ -9097,10 +8969,7 @@ public class NodeGraph {
         messageEditingNode = node;
         messageEditingIndex = index;
         messageEditOriginalValue = node.getMessageLine(index);
-        String initialBuffer = node.getType() == NodeType.CHANGE_VARIABLE
-            ? getCalculateExpressionText(messageEditOriginalValue, getCalculateOutputName(node, index))
-            : messageEditOriginalValue;
-        messageEditor.begin(initialBuffer, initialBuffer.length());
+        messageEditor.begin(messageEditOriginalValue, messageEditOriginalValue.length());
         updateMessageFieldContentWidth(getClientTextRenderer());
     }
 
@@ -9222,9 +9091,6 @@ public class NodeGraph {
             return false;
         }
         String value = messageEditor.getBuffer();
-        if (messageEditingNode.getType() == NodeType.CHANGE_VARIABLE) {
-            value = getCalculateOutputName(messageEditingNode, messageEditingIndex) + " = " + value;
-        }
         String previous = messageEditingNode.getMessageLine(messageEditingIndex);
         messageEditingNode.setMessageLine(messageEditingIndex, value);
         messageEditingNode.recalculateDimensions();
@@ -9237,67 +9103,6 @@ public class NodeGraph {
         }
         messageEditingNode.setMessageLine(messageEditingIndex, messageEditOriginalValue);
         messageEditingNode.recalculateDimensions();
-    }
-
-    private String getCalculateOutputName(Node node, int index) {
-        if (node != null && node.getType() == NodeType.CHANGE_VARIABLE) {
-            String raw = node.getMessageLine(index);
-            int equalsIndex = raw == null ? -1 : raw.indexOf('=');
-            if (equalsIndex > 0) {
-                String candidate = raw.substring(0, equalsIndex).trim();
-                if (candidate.startsWith("$")) {
-                    candidate = candidate.substring(1).trim();
-                }
-                if (isValidCalculateOutputName(candidate)) {
-                    return candidate;
-                }
-            }
-        }
-        return defaultCalculateOutputName(index);
-    }
-
-    private String getCalculateExpressionText(String raw, String outputName) {
-        String value = raw == null ? "" : raw.trim();
-        int equalsIndex = value.indexOf('=');
-        if (equalsIndex > 0) {
-            String candidate = value.substring(0, equalsIndex).trim();
-            if (candidate.startsWith("$")) {
-                candidate = candidate.substring(1).trim();
-            }
-            if (isValidCalculateOutputName(candidate)
-                && (outputName == null || outputName.isBlank() || candidate.equals(outputName))) {
-                return value.substring(equalsIndex + 1).trim();
-            }
-        }
-        return value;
-    }
-
-    private boolean isValidCalculateOutputName(String name) {
-        if (name == null || name.isBlank()) {
-            return false;
-        }
-        String trimmed = name.trim();
-        if (!Character.isLetter(trimmed.charAt(0)) && trimmed.charAt(0) != '_') {
-            return false;
-        }
-        for (int i = 1; i < trimmed.length(); i++) {
-            char c = trimmed.charAt(i);
-            if (!Character.isLetterOrDigit(c) && c != '_') {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private String defaultCalculateOutputName(int index) {
-        int value = Math.max(0, index);
-        StringBuilder builder = new StringBuilder();
-        do {
-            int remainder = value % 26;
-            builder.insert(0, (char) ('A' + remainder));
-            value = value / 26 - 1;
-        } while (value >= 0);
-        return builder.toString();
     }
 
     public boolean isEditingParameterField() {
@@ -9327,7 +9132,6 @@ public class NodeGraph {
         closeModeDropdown();
         closeSchematicDropdown();
         closeRunPresetDropdown();
-        closeAmountSignDropdown();
         closeRandomRoundingDropdown();
         if (isEditingParameterField()) {
             if (parameterEditingNode == node && parameterEditingIndex == index) {
@@ -10252,9 +10056,6 @@ public class NodeGraph {
     private record ModeDropdownOption(String label, com.pathmind.nodes.NodeMode mode) {
     }
 
-    private java.util.List<String> getAmountSignDropdownOptions() {
-        return java.util.Arrays.asList("+", "-", "*", "/", "%");
-    }
 
     private List<ParameterDropdownOption> getRandomRoundingDropdownOptions() {
         List<ParameterDropdownOption> options = new ArrayList<>(3);
@@ -10442,7 +10243,6 @@ public class NodeGraph {
         closeSchematicDropdown();
         closeRunPresetDropdown();
         closeRandomRoundingDropdown();
-        closeAmountSignDropdown();
         stopParameterEditing(false);
         parameterDropdownNode = node;
         parameterDropdownIndex = index;
@@ -10954,20 +10754,6 @@ public class NodeGraph {
         return longestLabelWidth + DROPDOWN_SIDE_PADDING * 2 + DROPDOWN_SCROLLBAR_ALLOWANCE;
     }
 
-    private int getAmountSignDropdownWidth(Node node) {
-        Font textRenderer = getClientTextRenderer();
-        if (textRenderer == null || node == null) {
-            return node != null ? node.getAmountSignToggleWidth() : 0;
-        }
-        int longestLabelWidth = 0;
-        for (String option : getAmountSignDropdownOptions()) {
-            if (option != null) {
-                longestLabelWidth = Math.max(longestLabelWidth, textRenderer.width(option));
-            }
-        }
-        return longestLabelWidth + DROPDOWN_SIDE_PADDING * 2 + DROPDOWN_SCROLLBAR_ALLOWANCE;
-    }
-
     private DropdownLayoutHelper.Layout getModeDropdownLayout() {
         int optionCount = Math.max(1, modeDropdownOptions.size());
         int listTop = getModeDropdownListTop();
@@ -11199,78 +10985,6 @@ public class NodeGraph {
             && worldY >= top && worldY <= top + height;
     }
 
-    private boolean isPointInsideAmountSignToggle(Node node, int screenX, int screenY) {
-        if (node == null || !node.hasAmountSignToggle()) {
-            return false;
-        }
-        int worldX = screenToWorldX(screenX);
-        int worldY = screenToWorldY(screenY);
-        int left = node.getAmountSignToggleLeft() - 3;
-        int top = node.getAmountSignToggleTop() - 3;
-        int width = node.getAmountSignToggleWidth() + 6;
-        int height = node.getAmountSignToggleHeight() + 6;
-        return worldX >= left && worldX <= left + width
-            && worldY >= top && worldY <= top + height;
-    }
-
-    private boolean isPointInsideAmountSignDropdownList(int screenX, int screenY) {
-        if (!amountSignDropdownOpen || amountSignDropdownNode == null) {
-            return false;
-        }
-        Node node = amountSignDropdownNode;
-        float zoom = Math.max(0.01f, getZoomScale());
-        int transformedX = Math.round(screenX / zoom);
-        int transformedY = Math.round(screenY / zoom);
-        int listTop = getAmountSignDropdownListTop(node);
-        DropdownLayoutHelper.Layout layout = getAmountSignDropdownLayout(node);
-        int listHeight = layout.height;
-        int listLeft = node.getAmountSignToggleLeft() - cameraX;
-        int listWidth = getAmountSignDropdownWidth(node);
-        return transformedX >= listLeft && transformedX <= listLeft + listWidth
-            && transformedY >= listTop && transformedY <= listTop + listHeight;
-    }
-
-    private int getAmountSignDropdownIndexAt(Node node, int screenX, int screenY) {
-        if (node == null) {
-            return -1;
-        }
-        java.util.List<String> options = getAmountSignDropdownOptions();
-        if (options.isEmpty()) {
-            return -1;
-        }
-        float zoom = Math.max(0.01f, getZoomScale());
-        int transformedY = Math.round(screenY / zoom);
-        int listTop = getAmountSignDropdownListTop(node);
-        DropdownLayoutHelper.Layout layout = getAmountSignDropdownLayout(node);
-        int row = (transformedY - listTop) / SCHEMATIC_DROPDOWN_ROW_HEIGHT;
-        if (row < 0 || row >= layout.visibleCount) {
-            return -1;
-        }
-        int index = amountSignDropdownScrollOffset + row;
-        if (index < 0 || index >= options.size()) {
-            return -1;
-        }
-        return index;
-    }
-
-    private int getAmountSignDropdownListTop(Node node) {
-        return node.getAmountSignToggleTop() + node.getAmountSignToggleHeight() + 2 - cameraY;
-    }
-
-    private DropdownLayoutHelper.Layout getAmountSignDropdownLayout(Node node) {
-        int optionCount = Math.max(1, getAmountSignDropdownOptions().size());
-        int listTop = getAmountSignDropdownListTop(node);
-        float zoom = Math.max(0.01f, getZoomScale());
-        int transformedScreenHeight = Math.round(Minecraft.getInstance().getWindow().getGuiScaledHeight() / zoom);
-        return DropdownLayoutHelper.calculate(
-            optionCount,
-            SCHEMATIC_DROPDOWN_ROW_HEIGHT,
-            AMOUNT_SIGN_DROPDOWN_MAX_ROWS,
-            listTop,
-            transformedScreenHeight
-        );
-    }
-
     private boolean isPointInsideRandomRoundingDropdownList(int screenX, int screenY) {
         if (!randomRoundingDropdownOpen || randomRoundingDropdownNode == null) {
             return false;
@@ -11405,41 +11119,6 @@ public class NodeGraph {
         }
         stopParameterEditing(true);
         openRandomRoundingDropdown(node);
-        return true;
-    }
-
-    public boolean handleAmountSignDropdownClick(Node node, int mouseX, int mouseY) {
-        if (amountSignDropdownOpen) {
-            if (node == null && amountSignDropdownNode != null
-                && isPointInsideAmountSignToggle(amountSignDropdownNode, mouseX, mouseY)) {
-                closeAmountSignDropdown();
-                return true;
-            }
-            if (node == amountSignDropdownNode && isPointInsideAmountSignToggle(node, mouseX, mouseY)) {
-                closeAmountSignDropdown();
-                return true;
-            }
-            if (isPointInsideAmountSignDropdownList(mouseX, mouseY)) {
-                int selectedIndex = getAmountSignDropdownIndexAt(amountSignDropdownNode, mouseX, mouseY);
-                if (amountSignDropdownNode != null && selectedIndex >= 0) {
-                    java.util.List<String> options = getAmountSignDropdownOptions();
-                    if (selectedIndex < options.size()) {
-                        amountSignDropdownNode.setAmountOperation(options.get(selectedIndex));
-                        amountSignDropdownNode.recalculateDimensions();
-                        notifyNodeParametersChanged(amountSignDropdownNode);
-                    }
-                }
-                closeAmountSignDropdown();
-                return true;
-            }
-            closeAmountSignDropdown();
-            return false;
-        }
-
-        if (node == null || !isPointInsideAmountSignToggle(node, mouseX, mouseY)) {
-            return false;
-        }
-        openAmountSignDropdown(node);
         return true;
     }
 
@@ -12058,18 +11737,6 @@ public class NodeGraph {
         runPresetDropdownHoverIndex = -1;
     }
 
-    private void openAmountSignDropdown(Node node) {
-        amountSignDropdownNode = node;
-        amountSignDropdownOpen = true;
-        amountSignDropdownScrollOffset = 0;
-        amountSignDropdownHoverIndex = -1;
-    }
-
-    private void closeAmountSignDropdown() {
-        amountSignDropdownOpen = false;
-        amountSignDropdownHoverIndex = -1;
-    }
-
     private void openRandomRoundingDropdown(Node node) {
         randomRoundingDropdownNode = node;
         randomRoundingDropdownOpen = true;
@@ -12109,15 +11776,6 @@ public class NodeGraph {
         runPresetDropdownOptions = new ArrayList<>();
         runPresetDropdownHoverIndex = -1;
         runPresetDropdownScrollOffset = 0;
-    }
-
-    private void clearAmountSignDropdownState() {
-        if (amountSignDropdownOpen) {
-            return;
-        }
-        amountSignDropdownNode = null;
-        amountSignDropdownHoverIndex = -1;
-        amountSignDropdownScrollOffset = 0;
     }
 
     private void clearRandomRoundingDropdownState() {
@@ -13221,7 +12879,6 @@ public class NodeGraph {
             || isPointInsideRandomRoundingToggle(node, mouseX, mouseY)
             || isPointInsideRandomRoundingField(node, mouseX, mouseY)
             || isPointInsideAmountToggle(node, mouseX, mouseY)
-            || isPointInsideAmountSignToggle(node, mouseX, mouseY)
             || isPointInsideAmountField(node, mouseX, mouseY)
             || getMessageFieldIndexAt(node, mouseX, mouseY) >= 0
             || getParameterFieldIndexAt(node, mouseX, mouseY) >= 0

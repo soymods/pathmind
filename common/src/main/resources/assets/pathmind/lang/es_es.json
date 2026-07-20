@@ -64,8 +64,6 @@
   "pathmind.node.type.break.desc": "Breaks a targeted or specified block",
   "pathmind.node.type.build": "Construir",
   "pathmind.node.type.build.desc": "Construye estructuras desde archivos de esquemas",
-  "pathmind.node.type.changeVariable": "Cambiar",
-  "pathmind.node.type.changeVariable.desc": "Ajusta el valor de una variable hacia arriba o abajo en tiempo de ejecución",
   "pathmind.node.type.clickSlot": "Clic en Ranura",
   "pathmind.node.type.clickSlot.desc": "Hace clic en la ranura de inventario seleccionada",
   "pathmind.node.type.closeGui": "Cerrar Interfaz",

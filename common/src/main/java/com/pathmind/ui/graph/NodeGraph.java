@@ -1331,6 +1331,14 @@ public class NodeGraph {
     }
 
     private void rebuildHierarchyCacheIfNeeded() {
+        if (hierarchyGeometryDirty) {
+            // The visible-viewport set (cachedVisibleRootNodes/cachedVisibleNodeCount) is derived
+            // from the hierarchy cache, so it must be invalidated whenever the roots/bounds are
+            // rebuilt. Otherwise swapping the graph at an unchanged camera (e.g. switching presets)
+            // leaves the previous graph's visible set cached and drawn even though the node data
+            // and cachedRootNodes have already updated.
+            visibleRootsDirty = true;
+        }
         NodeGraphHierarchySupport.rebuildHierarchyCacheIfNeeded(
             this,
             hierarchyGeometryDirty,

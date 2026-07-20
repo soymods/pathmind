@@ -269,26 +269,12 @@ public class NodeGraph {
 
     private Node coordinateEditingNode = null;
     private int coordinateEditingAxis = -1;
-    private String coordinateEditBuffer = "";
     private String coordinateEditOriginalValue = "";
-    private long coordinateCaretLastToggleTime = 0L;
-    private boolean coordinateCaretVisible = true;
     private Node amountEditingNode = null;
-    private String amountEditBuffer = "";
     private String amountEditOriginalValue = "";
-    private long amountCaretLastToggleTime = 0L;
-    private boolean amountCaretVisible = true;
-    private int coordinateCaretPosition = 0;
-    private int coordinateSelectionStart = -1;
-    private int coordinateSelectionEnd = -1;
-    private int coordinateSelectionAnchor = -1;
     private Node screenCoordinateCaptureNode = null;
     private int screenCoordinatePreviewX = 0;
     private int screenCoordinatePreviewY = 0;
-    private int amountCaretPosition = 0;
-    private int amountSelectionStart = -1;
-    private int amountSelectionEnd = -1;
-    private int amountSelectionAnchor = -1;
     private final InlineTextEditor.Host inlineEditorHost = new InlineTextEditor.Host() {
         @Override
         public boolean isTextShortcutDown(int modifiers) {
@@ -308,6 +294,41 @@ public class NodeGraph {
         @Override
         public int findPreviousWordBoundary(String text, int fromPosition) {
             return NodeGraph.this.findPreviousWordBoundary(text, fromPosition);
+        }
+    };
+
+    private final InlineTextEditor coordinateEditor = new InlineTextEditor(inlineEditorHost);
+    private final InlineTextEditor.Policy coordinatePolicy = new InlineTextEditor.Policy() {
+        @Override
+        public void onBufferChanged() {
+            updateCoordinateFieldContentWidth(getClientTextRenderer());
+        }
+
+        @Override
+        public void onEnter() {
+            stopCoordinateEditing(true);
+        }
+
+        @Override
+        public void onEscape() {
+            stopCoordinateEditing(true);
+        }
+    };
+    private final InlineTextEditor amountEditor = new InlineTextEditor(inlineEditorHost);
+    private final InlineTextEditor.Policy amountPolicy = new InlineTextEditor.Policy() {
+        @Override
+        public void onBufferChanged() {
+            updateAmountFieldContentWidth(getClientTextRenderer());
+        }
+
+        @Override
+        public void onEnter() {
+            stopAmountEditing(true);
+        }
+
+        @Override
+        public void onEscape() {
+            stopAmountEditing(true);
         }
     };
 
@@ -6016,7 +6037,7 @@ public class NodeGraph {
         int activeTextColor = UITheme.TEXT_EDITING;
 
         if (isEditingCoordinateField() && coordinateEditingNode == node) {
-            updateCoordinateCaretBlink();
+            coordinateEditor.updateCaretBlink();
         }
 
         int labelTop = node.getCoordinateFieldLabelTop() - cameraY;
@@ -6078,7 +6099,7 @@ public class NodeGraph {
 
             String value;
             if (editingAxis) {
-                value = coordinateEditBuffer;
+                value = coordinateEditor.getBuffer();
             } else if (captureActive) {
                 value = Integer.toString(i == 0 ? screenCoordinatePreviewX : screenCoordinatePreviewY);
             } else {
@@ -6111,9 +6132,9 @@ public class NodeGraph {
 
             int textX = fieldX + 3;
             int textY = inputTop + (fieldHeight - textRenderer.lineHeight) / 2 + 1;
-            if (editingAxis && hasCoordinateSelection()) {
-                int start = coordinateSelectionStart;
-                int end = coordinateSelectionEnd;
+            if (editingAxis && coordinateEditor.hasSelection()) {
+                int start = coordinateEditor.getSelectionStart();
+                int end = coordinateEditor.getSelectionEnd();
                 if (coordRenderData != null) {
                     start = coordRenderData.toDisplayIndex(start);
                     end = coordRenderData.toDisplayIndex(end);
@@ -6130,8 +6151,8 @@ public class NodeGraph {
                 drawNodeText(context, textRenderer, Component.literal(display), textX, textY, valueColor);
             }
 
-            if (editingAxis && coordinateCaretVisible) {
-                int caretIndex = coordinateCaretPosition;
+            if (editingAxis && coordinateEditor.isCaretVisible()) {
+                int caretIndex = coordinateEditor.getCaretPosition();
                 if (coordRenderData != null) {
                     caretIndex = coordRenderData.toDisplayIndex(caretIndex);
                 }
@@ -6157,7 +6178,7 @@ public class NodeGraph {
 
         boolean editing = isEditingAmountField() && amountEditingNode == node;
         if (editing) {
-            updateAmountCaretBlink();
+            amountEditor.updateCaretBlink();
         }
 
         int labelTop = node.getAmountFieldLabelTop() - cameraY;
@@ -6222,7 +6243,7 @@ public class NodeGraph {
 
         String value;
         if (editing && amountEnabled) {
-            value = amountEditBuffer;
+            value = amountEditor.getBuffer();
         } else {
             String amountKey = node.getAmountParameterKey();
             NodeParameter amountParam = node.getParameter(amountKey);
@@ -6267,9 +6288,9 @@ public class NodeGraph {
 
         int textX = fieldLeft + 3;
         int textY = fieldTop + (fieldHeight - textRenderer.lineHeight) / 2 + 1;
-        if (editing && amountEnabled && hasAmountSelection()) {
-            int start = amountSelectionStart;
-            int end = amountSelectionEnd;
+        if (editing && amountEnabled && amountEditor.hasSelection()) {
+            int start = amountEditor.getSelectionStart();
+            int end = amountEditor.getSelectionEnd();
             if (amountRenderData != null) {
                 start = amountRenderData.toDisplayIndex(start);
                 end = amountRenderData.toDisplayIndex(end);
@@ -6286,8 +6307,8 @@ public class NodeGraph {
             drawNodeText(context, textRenderer, Component.literal(display), textX, textY, valueColor);
         }
 
-        if (editing && amountEnabled && amountCaretVisible) {
-            int caretIndex = amountCaretPosition;
+        if (editing && amountEnabled && amountEditor.isCaretVisible()) {
+            int caretIndex = amountEditor.getCaretPosition();
             if (amountRenderData != null) {
                 caretIndex = amountRenderData.toDisplayIndex(caretIndex);
             }
@@ -7161,7 +7182,7 @@ public class NodeGraph {
         String[] axes = getCoordinateAxes(coordinateEditingNode);
         for (int i = 0; i < axes.length; i++) {
             NodeParameter parameter = getCoordinateParameter(coordinateEditingNode, i);
-            String value = i == coordinateEditingAxis ? coordinateEditBuffer : (parameter != null ? parameter.getStringValue() : "");
+            String value = i == coordinateEditingAxis ? coordinateEditor.getBuffer() : (parameter != null ? parameter.getStringValue() : "");
             if (value == null) {
                 value = "";
             }
@@ -7175,7 +7196,7 @@ public class NodeGraph {
         if (!isEditingAmountField() || amountEditingNode == null || textRenderer == null) {
             return;
         }
-        String value = amountEditBuffer == null ? "" : amountEditBuffer;
+        String value = amountEditor.getBuffer();
         amountEditingNode.setAmountFieldTextWidth(textRenderer.width(value));
         amountEditingNode.recalculateDimensions();
     }
@@ -8382,19 +8403,6 @@ public class NodeGraph {
         return true;
     }
 
-    private void updateCoordinateCaretBlink() {
-        long now = System.currentTimeMillis();
-        if (now - coordinateCaretLastToggleTime >= COORDINATE_CARET_BLINK_INTERVAL_MS) {
-            coordinateCaretVisible = !coordinateCaretVisible;
-            coordinateCaretLastToggleTime = now;
-        }
-    }
-
-    private void resetCoordinateCaretBlink() {
-        coordinateCaretVisible = true;
-        coordinateCaretLastToggleTime = System.currentTimeMillis();
-    }
-
     public int getCoordinateFieldAxisAt(Node node, int screenX, int screenY) {
         if (node == null || !node.hasCoordinateInputFields()) {
             return -1;
@@ -8489,13 +8497,8 @@ public class NodeGraph {
         coordinateEditingAxis = axisIndex;
 
         NodeParameter parameter = getCoordinateParameter(node, axisIndex);
-        coordinateEditBuffer = parameter != null ? parameter.getStringValue() : "";
-        coordinateEditOriginalValue = coordinateEditBuffer;
-        resetCoordinateCaretBlink();
-        coordinateCaretPosition = coordinateEditBuffer.length();
-        coordinateSelectionAnchor = -1;
-        coordinateSelectionStart = -1;
-        coordinateSelectionEnd = -1;
+        coordinateEditOriginalValue = parameter != null ? parameter.getStringValue() : "";
+        coordinateEditor.begin(coordinateEditOriginalValue, coordinateEditOriginalValue.length());
         updateCoordinateFieldContentWidth(getClientTextRenderer());
     }
 
@@ -8517,20 +8520,15 @@ public class NodeGraph {
 
         coordinateEditingNode = null;
         coordinateEditingAxis = -1;
-        coordinateEditBuffer = "";
         coordinateEditOriginalValue = "";
-        coordinateCaretVisible = true;
-        coordinateCaretPosition = 0;
-        coordinateSelectionAnchor = -1;
-        coordinateSelectionStart = -1;
-        coordinateSelectionEnd = -1;
+        coordinateEditor.clear();
     }
 
     private boolean applyCoordinateEdit() {
         if (!isEditingCoordinateField()) {
             return false;
         }
-        String value = coordinateEditBuffer == null ? "" : coordinateEditBuffer.trim();
+        String value = coordinateEditor.getBuffer().trim();
         if (!value.isEmpty() && !"-".equals(value) && !isNumericOrVariableReference(value, coordinateEditingNode, false, true)) {
             coordinateEditingNode.sendNodeErrorMessageToPlayer(tr("pathmind.error.enterNumberExpressionOrVariable"));
             return false;
@@ -8567,97 +8565,24 @@ public class NodeGraph {
         if (!isEditingCoordinateField()) {
             return false;
         }
-
-        boolean shiftHeld = (modifiers & GLFW.GLFW_MOD_SHIFT) != 0;
-        boolean controlHeld = isTextShortcutDown(modifiers);
-
-        switch (keyCode) {
-            case GLFW.GLFW_KEY_BACKSPACE:
-                if (deleteCoordinateSelection()) {
-                    return true;
-                }
-                if (controlHeld && coordinateCaretPosition > 0) {
-                    // CTRL+Backspace: delete to previous word boundary
-                    int deleteToPos = findPreviousWordBoundary(coordinateEditBuffer, coordinateCaretPosition);
-                    coordinateEditBuffer = coordinateEditBuffer.substring(0, deleteToPos)
-                        + coordinateEditBuffer.substring(coordinateCaretPosition);
-                    setCoordinateCaretPosition(deleteToPos);
-                    updateCoordinateFieldContentWidth(getClientTextRenderer());
-                } else if (coordinateCaretPosition > 0 && !coordinateEditBuffer.isEmpty()) {
-                    coordinateEditBuffer = coordinateEditBuffer.substring(0, coordinateCaretPosition - 1)
-                        + coordinateEditBuffer.substring(coordinateCaretPosition);
-                    setCoordinateCaretPosition(coordinateCaretPosition - 1);
-                    updateCoordinateFieldContentWidth(getClientTextRenderer());
-                }
-                return true;
-            case GLFW.GLFW_KEY_DELETE:
-                if (deleteCoordinateSelection()) {
-                    return true;
-                }
-                if (coordinateCaretPosition < coordinateEditBuffer.length()) {
-                    coordinateEditBuffer = coordinateEditBuffer.substring(0, coordinateCaretPosition)
-                        + coordinateEditBuffer.substring(coordinateCaretPosition + 1);
-                    setCoordinateCaretPosition(coordinateCaretPosition);
-                    updateCoordinateFieldContentWidth(getClientTextRenderer());
-                }
-                return true;
-            case GLFW.GLFW_KEY_LEFT:
-                moveCoordinateCaretTo(coordinateCaretPosition - 1, shiftHeld);
-                return true;
-            case GLFW.GLFW_KEY_RIGHT:
-                moveCoordinateCaretTo(coordinateCaretPosition + 1, shiftHeld);
-                return true;
-            case GLFW.GLFW_KEY_HOME:
-                moveCoordinateCaretTo(0, shiftHeld);
-                return true;
-            case GLFW.GLFW_KEY_END:
-                moveCoordinateCaretTo(coordinateEditBuffer.length(), shiftHeld);
-                return true;
-            case GLFW.GLFW_KEY_ENTER:
-            case GLFW.GLFW_KEY_KP_ENTER:
-                stopCoordinateEditing(true);
-                return true;
-            case GLFW.GLFW_KEY_ESCAPE:
-                stopCoordinateEditing(true);
-                return true;
-            case GLFW.GLFW_KEY_TAB:
-                Node node = coordinateEditingNode;
-                int direction = (modifiers & GLFW.GLFW_MOD_SHIFT) != 0 ? -1 : 1;
-                int axisCount = getCoordinateAxes(node).length;
-                int nextAxis = (coordinateEditingAxis + direction + axisCount) % axisCount;
-                startCoordinateEditing(node, nextAxis);
-                return true;
-            case GLFW.GLFW_KEY_A:
-                if (controlHeld) {
-                    selectAllCoordinateText();
-                    return true;
-                }
-                break;
-            case GLFW.GLFW_KEY_C:
-                if (controlHeld) {
-                    copyCoordinateSelection();
-                    return true;
-                }
-                break;
-            case GLFW.GLFW_KEY_X:
-                if (controlHeld) {
-                    cutCoordinateSelection();
-                    return true;
-                }
-                break;
-            case GLFW.GLFW_KEY_V:
-                if (controlHeld) {
-                    Font textRenderer = getClientTextRenderer();
-                    if (textRenderer != null) {
-                        smartPasteCoordinates(getClipboardText(), textRenderer);
-                    }
-                    return true;
-                }
-                break;
-            default:
-                return false;
+        // Coordinate-specific keys the shared engine does not handle:
+        if (keyCode == GLFW.GLFW_KEY_TAB) {
+            Node node = coordinateEditingNode;
+            int direction = (modifiers & GLFW.GLFW_MOD_SHIFT) != 0 ? -1 : 1;
+            int axisCount = getCoordinateAxes(node).length;
+            int nextAxis = (coordinateEditingAxis + direction + axisCount) % axisCount;
+            startCoordinateEditing(node, nextAxis);
+            return true;
         }
-        return false;
+        if (keyCode == GLFW.GLFW_KEY_V && isTextShortcutDown(modifiers)) {
+            // Smart paste: fills multiple axes from "x, y, z" clipboard content.
+            Font textRenderer = getClientTextRenderer();
+            if (textRenderer != null) {
+                smartPasteCoordinates(getClipboardText(), textRenderer);
+            }
+            return true;
+        }
+        return coordinateEditor.handleKeyPressed(keyCode, modifiers, coordinatePolicy);
     }
 
     private boolean isTextShortcutDown(int modifiers) {
@@ -8669,27 +8594,11 @@ public class NodeGraph {
         if (!isEditingCoordinateField()) {
             return false;
         }
-        if (chr == '\n' || chr == '\r') {
-            return false;
-        }
-        return insertCoordinateText(String.valueOf(chr), textRenderer);
+        return coordinateEditor.handleCharTyped(chr, coordinatePolicy);
     }
 
     public boolean isEditingAmountField() {
         return amountEditingNode != null;
-    }
-
-    private void updateAmountCaretBlink() {
-        long now = System.currentTimeMillis();
-        if (now - amountCaretLastToggleTime >= COORDINATE_CARET_BLINK_INTERVAL_MS) {
-            amountCaretVisible = !amountCaretVisible;
-            amountCaretLastToggleTime = now;
-        }
-    }
-
-    private void resetAmountCaretBlink() {
-        amountCaretVisible = true;
-        amountCaretLastToggleTime = System.currentTimeMillis();
     }
 
     public void startAmountEditing(Node node) {
@@ -8721,16 +8630,12 @@ public class NodeGraph {
         amountEditingNode = node;
         String amountKey = node.getAmountParameterKey();
         NodeParameter amountParam = node.getParameter(amountKey);
-        amountEditBuffer = amountParam != null ? amountParam.getStringValue() : "";
-        if (node.getType() == NodeType.MOVE_ITEM && isMoveItemAllAmountValue(amountEditBuffer)) {
-            amountEditBuffer = "";
+        String initialBuffer = amountParam != null ? amountParam.getStringValue() : "";
+        if (node.getType() == NodeType.MOVE_ITEM && isMoveItemAllAmountValue(initialBuffer)) {
+            initialBuffer = "";
         }
-        amountEditOriginalValue = amountEditBuffer;
-        resetAmountCaretBlink();
-        amountCaretPosition = amountEditBuffer.length();
-        amountSelectionAnchor = -1;
-        amountSelectionStart = -1;
-        amountSelectionEnd = -1;
+        amountEditOriginalValue = initialBuffer;
+        amountEditor.begin(initialBuffer, initialBuffer.length());
         updateAmountFieldContentWidth(getClientTextRenderer());
     }
 
@@ -8751,13 +8656,8 @@ public class NodeGraph {
         }
 
         amountEditingNode = null;
-        amountEditBuffer = "";
         amountEditOriginalValue = "";
-        amountCaretVisible = true;
-        amountCaretPosition = 0;
-        amountSelectionAnchor = -1;
-        amountSelectionStart = -1;
-        amountSelectionEnd = -1;
+        amountEditor.clear();
     }
 
     private boolean applyAmountEdit() {
@@ -8765,7 +8665,7 @@ public class NodeGraph {
             return false;
         }
 
-        String value = amountEditBuffer == null ? "" : amountEditBuffer.trim();
+        String value = amountEditor.getBuffer().trim();
         if ((amountEditingNode.getType() == NodeType.PARAM_DURATION
             || amountEditingNode.getType() == NodeType.USE
             || amountEditingNode.getType() == NodeType.SWING)
@@ -8823,100 +8723,14 @@ public class NodeGraph {
         if (!isEditingAmountField()) {
             return false;
         }
-
-        boolean shiftHeld = (modifiers & GLFW.GLFW_MOD_SHIFT) != 0;
-        boolean controlHeld = isTextShortcutDown(modifiers);
-
-        switch (keyCode) {
-            case GLFW.GLFW_KEY_BACKSPACE:
-                if (deleteAmountSelection()) {
-                    return true;
-                }
-                if (controlHeld && amountCaretPosition > 0) {
-                    // CTRL+Backspace: delete to previous word boundary
-                    int deleteToPos = findPreviousWordBoundary(amountEditBuffer, amountCaretPosition);
-                    amountEditBuffer = amountEditBuffer.substring(0, deleteToPos)
-                        + amountEditBuffer.substring(amountCaretPosition);
-                    setAmountCaretPosition(deleteToPos);
-                    updateAmountFieldContentWidth(getClientTextRenderer());
-                } else if (amountCaretPosition > 0 && !amountEditBuffer.isEmpty()) {
-                    amountEditBuffer = amountEditBuffer.substring(0, amountCaretPosition - 1)
-                        + amountEditBuffer.substring(amountCaretPosition);
-                    setAmountCaretPosition(amountCaretPosition - 1);
-                    updateAmountFieldContentWidth(getClientTextRenderer());
-                }
-                return true;
-            case GLFW.GLFW_KEY_DELETE:
-                if (deleteAmountSelection()) {
-                    return true;
-                }
-                if (amountCaretPosition < amountEditBuffer.length()) {
-                    amountEditBuffer = amountEditBuffer.substring(0, amountCaretPosition)
-                        + amountEditBuffer.substring(amountCaretPosition + 1);
-                    setAmountCaretPosition(amountCaretPosition);
-                    updateAmountFieldContentWidth(getClientTextRenderer());
-                }
-                return true;
-            case GLFW.GLFW_KEY_LEFT:
-                moveAmountCaretTo(amountCaretPosition - 1, shiftHeld);
-                return true;
-            case GLFW.GLFW_KEY_RIGHT:
-                moveAmountCaretTo(amountCaretPosition + 1, shiftHeld);
-                return true;
-            case GLFW.GLFW_KEY_HOME:
-                moveAmountCaretTo(0, shiftHeld);
-                return true;
-            case GLFW.GLFW_KEY_END:
-                moveAmountCaretTo(amountEditBuffer.length(), shiftHeld);
-                return true;
-            case GLFW.GLFW_KEY_ENTER:
-            case GLFW.GLFW_KEY_KP_ENTER:
-                stopAmountEditing(true);
-                return true;
-            case GLFW.GLFW_KEY_ESCAPE:
-                stopAmountEditing(true);
-                return true;
-            case GLFW.GLFW_KEY_A:
-                if (controlHeld) {
-                    selectAllAmountText();
-                    return true;
-                }
-                break;
-            case GLFW.GLFW_KEY_C:
-                if (controlHeld) {
-                    copyAmountSelection();
-                    return true;
-                }
-                break;
-            case GLFW.GLFW_KEY_X:
-                if (controlHeld) {
-                    cutAmountSelection();
-                    return true;
-                }
-                break;
-            case GLFW.GLFW_KEY_V:
-                if (controlHeld) {
-                    Font textRenderer = getClientTextRenderer();
-                    if (textRenderer != null) {
-                        insertAmountText(getClipboardText(), textRenderer);
-                    }
-                    return true;
-                }
-                break;
-            default:
-                return false;
-        }
-        return false;
+        return amountEditor.handleKeyPressed(keyCode, modifiers, amountPolicy);
     }
 
     public boolean handleAmountCharTyped(char chr, int modifiers, Font textRenderer) {
         if (!isEditingAmountField()) {
             return false;
         }
-        if (chr == '\n' || chr == '\r') {
-            return false;
-        }
-        return insertAmountText(String.valueOf(chr), textRenderer);
+        return amountEditor.handleCharTyped(chr, amountPolicy);
     }
 
     public boolean isEditingStopTargetField() {
@@ -10017,66 +9831,15 @@ public class NodeGraph {
         return messageEditor.handleCharTyped(chr, messagePolicy);
     }
 
-    private boolean hasCoordinateSelection() {
-        return coordinateSelectionStart >= 0
-            && coordinateSelectionEnd >= 0
-            && coordinateSelectionStart != coordinateSelectionEnd;
-    }
-
-    private boolean hasAmountSelection() {
-        return amountSelectionStart >= 0
-            && amountSelectionEnd >= 0
-            && amountSelectionStart != amountSelectionEnd;
-    }
-
     private boolean hasParameterSelection() {
         return parameterSelectionStart >= 0
             && parameterSelectionEnd >= 0
             && parameterSelectionStart != parameterSelectionEnd;
     }
 
-    private void resetCoordinateSelectionRange() {
-        coordinateSelectionStart = -1;
-        coordinateSelectionEnd = -1;
-    }
-
-    private void resetAmountSelectionRange() {
-        amountSelectionStart = -1;
-        amountSelectionEnd = -1;
-    }
-
     private void resetParameterSelectionRange() {
         parameterSelectionStart = -1;
         parameterSelectionEnd = -1;
-    }
-
-    private void setCoordinateCaretPosition(int position) {
-        coordinateCaretPosition = Mth.clamp(position, 0, coordinateEditBuffer.length());
-        coordinateSelectionAnchor = -1;
-        resetCoordinateSelectionRange();
-        resetCoordinateCaretBlink();
-    }
-
-    private void moveCoordinateCaretTo(int position, boolean extendSelection) {
-        position = Mth.clamp(position, 0, coordinateEditBuffer.length());
-        if (extendSelection) {
-            if (coordinateSelectionAnchor == -1) {
-                coordinateSelectionAnchor = coordinateCaretPosition;
-            }
-            int start = Math.min(coordinateSelectionAnchor, position);
-            int end = Math.max(coordinateSelectionAnchor, position);
-            if (start == end) {
-                resetCoordinateSelectionRange();
-            } else {
-                coordinateSelectionStart = start;
-                coordinateSelectionEnd = end;
-            }
-        } else {
-            coordinateSelectionAnchor = -1;
-            resetCoordinateSelectionRange();
-        }
-        coordinateCaretPosition = position;
-        resetCoordinateCaretBlink();
     }
 
     private void setParameterCaretPosition(int position) {
@@ -10107,47 +9870,6 @@ public class NodeGraph {
         parameterCaretPosition = position;
         resetParameterCaretBlink();
         clearParameterDropdownSuppression();
-    }
-
-    private boolean deleteCoordinateSelection() {
-        if (!hasCoordinateSelection()) {
-            return false;
-        }
-        coordinateEditBuffer = coordinateEditBuffer.substring(0, coordinateSelectionStart)
-            + coordinateEditBuffer.substring(coordinateSelectionEnd);
-        setCoordinateCaretPosition(coordinateSelectionStart);
-        updateCoordinateFieldContentWidth(getClientTextRenderer());
-        return true;
-    }
-
-    private void selectAllCoordinateText() {
-        if (!isEditingCoordinateField()) {
-            return;
-        }
-        coordinateSelectionAnchor = 0;
-        if (coordinateEditBuffer.isEmpty()) {
-            resetCoordinateSelectionRange();
-        } else {
-            coordinateSelectionStart = 0;
-            coordinateSelectionEnd = coordinateEditBuffer.length();
-        }
-        coordinateCaretPosition = coordinateEditBuffer.length();
-        resetCoordinateCaretBlink();
-    }
-
-    private void copyCoordinateSelection() {
-        if (!hasCoordinateSelection()) {
-            return;
-        }
-        setClipboardText(coordinateEditBuffer.substring(coordinateSelectionStart, coordinateSelectionEnd));
-    }
-
-    private void cutCoordinateSelection() {
-        if (!hasCoordinateSelection()) {
-            return;
-        }
-        copyCoordinateSelection();
-        deleteCoordinateSelection();
     }
 
     private void smartPasteCoordinates(String clipboardText, Font textRenderer) {
@@ -10206,27 +9928,10 @@ public class NodeGraph {
     }
 
     private boolean insertCoordinateText(String text, Font textRenderer) {
-        if (!isEditingCoordinateField() || textRenderer == null || text == null || text.isEmpty()) {
+        if (!isEditingCoordinateField() || textRenderer == null) {
             return false;
         }
-        String filtered = text.replace("\r", "").replace("\n", "");
-        if (filtered.isEmpty()) {
-            return false;
-        }
-
-        String working = coordinateEditBuffer;
-        int caret = coordinateCaretPosition;
-        if (hasCoordinateSelection()) {
-            int start = coordinateSelectionStart;
-            int end = coordinateSelectionEnd;
-            working = working.substring(0, start) + working.substring(end);
-            caret = start;
-        }
-
-        coordinateEditBuffer = working.substring(0, caret) + filtered + working.substring(caret);
-        setCoordinateCaretPosition(caret + filtered.length());
-        updateCoordinateFieldContentWidth(textRenderer);
-        return true;
+        return coordinateEditor.insert(text, coordinatePolicy);
     }
 
     private int findPreviousWordBoundary(String text, int fromPosition) {
@@ -10280,76 +9985,6 @@ public class NodeGraph {
         return true;
     }
 
-    private void setAmountCaretPosition(int position) {
-        amountCaretPosition = Mth.clamp(position, 0, amountEditBuffer.length());
-        amountSelectionAnchor = -1;
-        resetAmountSelectionRange();
-        resetAmountCaretBlink();
-    }
-
-    private void moveAmountCaretTo(int position, boolean extendSelection) {
-        position = Mth.clamp(position, 0, amountEditBuffer.length());
-        if (extendSelection) {
-            if (amountSelectionAnchor == -1) {
-                amountSelectionAnchor = amountCaretPosition;
-            }
-            int start = Math.min(amountSelectionAnchor, position);
-            int end = Math.max(amountSelectionAnchor, position);
-            if (start == end) {
-                resetAmountSelectionRange();
-            } else {
-                amountSelectionStart = start;
-                amountSelectionEnd = end;
-            }
-        } else {
-            amountSelectionAnchor = -1;
-            resetAmountSelectionRange();
-        }
-        amountCaretPosition = position;
-        resetAmountCaretBlink();
-    }
-
-    private boolean deleteAmountSelection() {
-        if (!hasAmountSelection()) {
-            return false;
-        }
-        amountEditBuffer = amountEditBuffer.substring(0, amountSelectionStart)
-            + amountEditBuffer.substring(amountSelectionEnd);
-        setAmountCaretPosition(amountSelectionStart);
-        updateAmountFieldContentWidth(getClientTextRenderer());
-        return true;
-    }
-
-    private void selectAllAmountText() {
-        if (!isEditingAmountField()) {
-            return;
-        }
-        amountSelectionAnchor = 0;
-        if (amountEditBuffer.isEmpty()) {
-            resetAmountSelectionRange();
-        } else {
-            amountSelectionStart = 0;
-            amountSelectionEnd = amountEditBuffer.length();
-        }
-        amountCaretPosition = amountEditBuffer.length();
-        resetAmountCaretBlink();
-    }
-
-    private void copyAmountSelection() {
-        if (!hasAmountSelection()) {
-            return;
-        }
-        setClipboardText(amountEditBuffer.substring(amountSelectionStart, amountSelectionEnd));
-    }
-
-    private void cutAmountSelection() {
-        if (!hasAmountSelection()) {
-            return;
-        }
-        copyAmountSelection();
-        deleteAmountSelection();
-    }
-
     private boolean deleteParameterSelection() {
         if (!hasParameterSelection()) {
             return false;
@@ -10391,30 +10026,6 @@ public class NodeGraph {
         }
         copyParameterSelection();
         deleteParameterSelection();
-    }
-
-    private boolean insertAmountText(String text, Font textRenderer) {
-        if (!isEditingAmountField() || textRenderer == null || text == null || text.isEmpty()) {
-            return false;
-        }
-        String filtered = text.replace("\r", "").replace("\n", "");
-        if (filtered.isEmpty()) {
-            return false;
-        }
-
-        String working = amountEditBuffer;
-        int caret = amountCaretPosition;
-        if (hasAmountSelection()) {
-            int start = amountSelectionStart;
-            int end = amountSelectionEnd;
-            working = working.substring(0, start) + working.substring(end);
-            caret = start;
-        }
-
-        amountEditBuffer = working.substring(0, caret) + filtered + working.substring(caret);
-        setAmountCaretPosition(caret + filtered.length());
-        updateAmountFieldContentWidth(textRenderer);
-        return true;
     }
 
     private boolean isValidSignedAmountInput(String value) {

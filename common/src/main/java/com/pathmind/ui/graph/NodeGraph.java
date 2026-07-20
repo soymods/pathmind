@@ -9782,7 +9782,11 @@ public class NodeGraph {
                 break;
             case GLFW.GLFW_KEY_C:
                 if (controlHeld) {
-                    copyParameterSelection();
+                    if (isCoordinateParameterNode(parameterEditingNode) && !hasParameterSelection()) {
+                        copyCoordinateParameterValues();
+                    } else {
+                        copyParameterSelection();
+                    }
                     return true;
                 }
                 break;
@@ -9796,8 +9800,16 @@ public class NodeGraph {
                 if (controlHeld) {
                     Font textRenderer = getClientTextRenderer();
                     if (textRenderer != null) {
-                        insertParameterText(getClipboardText(), textRenderer);
+                        String clipboard = getClipboardText();
+                        if (!smartPasteCoordinateParameter(clipboard)) {
+                            insertParameterText(clipboard, textRenderer);
+                        }
                     }
+                    return true;
+                }
+                break;
+            case GLFW.GLFW_KEY_TAB:
+                if (cycleCoordinateParameterAxis(shiftHeld)) {
                     return true;
                 }
                 break;
@@ -9925,6 +9937,88 @@ public class NodeGraph {
 
         // Fall back to single-axis paste
         insertCoordinateText(clipboardText, textRenderer);
+    }
+
+    private String cleanCoordinateToken(String token) {
+        StringBuilder cleaned = new StringBuilder();
+        for (int j = 0; j < token.length(); j++) {
+            char c = token.charAt(j);
+            if (Character.isDigit(c) || (c == '-' && j == 0)) {
+                cleaned.append(c);
+            }
+        }
+        return cleaned.toString();
+    }
+
+    private boolean isCoordinateParameterNode(Node node) {
+        return node != null && node.getType() == NodeType.PARAM_COORDINATE;
+    }
+
+    /**
+     * When editing a PARAM_COORDINATE axis, paste "x, y, z" (or "x y z") across all
+     * three axis parameters at once. Returns false (so the caller falls back to a
+     * normal single-field paste) unless the clipboard holds exactly one valid
+     * integer per axis.
+     */
+    private boolean smartPasteCoordinateParameter(String clipboardText) {
+        if (!isEditingParameterField() || !isCoordinateParameterNode(parameterEditingNode)
+            || clipboardText == null || clipboardText.isEmpty()) {
+            return false;
+        }
+        List<NodeParameter> parameters = parameterEditingNode.getParameters();
+        String[] parts = clipboardText.trim().split("[\\s,]+");
+        if (parts.length != parameters.size()) {
+            return false;
+        }
+        String[] parsed = new String[parameters.size()];
+        for (int i = 0; i < parameters.size(); i++) {
+            String cleaned = cleanCoordinateToken(parts[i].trim());
+            if (cleaned.isEmpty() || !isValidCoordinateValue(cleaned)) {
+                return false;
+            }
+            parsed[i] = cleaned;
+        }
+        Node node = parameterEditingNode;
+        stopParameterEditing(false);
+        for (int i = 0; i < parameters.size(); i++) {
+            node.setParameterValueAndPropagate(parameters.get(i).getName(), parsed[i]);
+        }
+        node.recalculateDimensions();
+        notifyNodeParametersChanged(node);
+        return true;
+    }
+
+    /** Copy all axes of the PARAM_COORDINATE being edited as a single "x, y, z" string. */
+    private void copyCoordinateParameterValues() {
+        if (!isEditingParameterField() || !isCoordinateParameterNode(parameterEditingNode)) {
+            return;
+        }
+        List<NodeParameter> parameters = parameterEditingNode.getParameters();
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < parameters.size(); i++) {
+            if (i > 0) {
+                sb.append(", ");
+            }
+            // Reflect the in-progress edit buffer for the axis currently being edited.
+            String value = i == parameterEditingIndex ? parameterEditBuffer : parameters.get(i).getStringValue();
+            sb.append(value == null ? "" : value);
+        }
+        setClipboardText(sb.toString());
+    }
+
+    private boolean cycleCoordinateParameterAxis(boolean backward) {
+        if (!isEditingParameterField() || !isCoordinateParameterNode(parameterEditingNode)) {
+            return false;
+        }
+        Node node = parameterEditingNode;
+        int count = node.getParameters().size();
+        if (count <= 1) {
+            return false;
+        }
+        int direction = backward ? -1 : 1;
+        int nextIndex = (parameterEditingIndex + direction + count) % count;
+        startParameterEditing(node, nextIndex);
+        return true;
     }
 
     private boolean insertCoordinateText(String text, Font textRenderer) {

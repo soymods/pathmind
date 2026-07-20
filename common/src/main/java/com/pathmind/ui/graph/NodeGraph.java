@@ -51,7 +51,6 @@ import com.pathmind.nodes.RuntimeValueScope;
 import com.pathmind.nodes.StartLaunchMode;
 import com.pathmind.nodes.StartScreenTarget;
 import com.pathmind.ui.menu.ContextMenuSelection;
-import com.pathmind.ui.menu.ContextMenuRenderer;
 import com.pathmind.ui.animation.AnimatedValue;
 import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.animation.HoverAnimator;
@@ -147,12 +146,6 @@ public class NodeGraph {
     private int draggingNodeStartX;
     private int draggingNodeStartY;
     private boolean draggingNodeDetached;
-    private Node resizingStickyNote;
-    private StickyNoteResizeCorner stickyNoteResizeCorner;
-    private int stickyNoteResizeStartX;
-    private int stickyNoteResizeStartY;
-    private int stickyNoteResizeStartWidth;
-    private int stickyNoteResizeStartHeight;
     private NodeGraphData pendingDragUndoSnapshot = null;
     private boolean dragOperationChanged = false;
     
@@ -400,6 +393,16 @@ public class NodeGraph {
         }
 
         @Override
+        public int screenToWorldX(int screenX) {
+            return NodeGraph.this.screenToWorldX(screenX);
+        }
+
+        @Override
+        public int screenToWorldY(int screenY) {
+            return NodeGraph.this.screenToWorldY(screenY);
+        }
+
+        @Override
         public void drawNodeText(GuiGraphics context, Font renderer, String text, int x, int y, int color) {
             NodeGraph.this.drawNodeText(context, renderer, text, x, y, color);
         }
@@ -443,6 +446,26 @@ public class NodeGraph {
         @Override
         public void invalidateRenderCaches() {
             NodeGraph.this.invalidateRenderCaches();
+        }
+
+        @Override
+        public void invalidateHierarchyCache() {
+            NodeGraph.this.invalidateHierarchyCache();
+        }
+
+        @Override
+        public void beginDragOperation() {
+            if (suppressUndoCapture) {
+                pendingDragUndoSnapshot = null;
+            } else {
+                pendingDragUndoSnapshot = buildGraphData(new ArrayList<>(nodes), new ArrayList<>(connections), null);
+            }
+            dragOperationChanged = false;
+        }
+
+        @Override
+        public void markDragOperationChanged() {
+            dragOperationChanged = true;
         }
 
         @Override
@@ -1206,7 +1229,7 @@ public class NodeGraph {
         if (node.containsPoint(worldX, worldY)) {
             return true;
         }
-        return node.isSelected() && getStickyNoteResizeCornerAtWorld(node, worldX, worldY) != null;
+        return node.isSelected() && stickyNoteController.getResizeCornerAtWorld(node, worldX, worldY) != null;
     }
 
     public void selectNode(Node node) {
@@ -1896,8 +1919,8 @@ public class NodeGraph {
             return;
         }
 
-        if (resizingStickyNote != null && stickyNoteResizeCorner != null) {
-            updateStickyNoteResize(worldMouseX, worldMouseY);
+        if (stickyNoteController.isResizing()) {
+            stickyNoteController.updateResize(worldMouseX, worldMouseY);
             return;
         }
 
@@ -2354,10 +2377,8 @@ public class NodeGraph {
 
     public void stopDragging() {
         Node rootToPromote = null;
-        if (resizingStickyNote != null) {
-            rootToPromote = resizingStickyNote;
-            resizingStickyNote = null;
-            stickyNoteResizeCorner = null;
+        if (stickyNoteController.isResizing()) {
+            rootToPromote = stickyNoteController.finishResize();
         }
         if (draggingNode != null) {
             Node node = draggingNode;
@@ -2445,8 +2466,7 @@ public class NodeGraph {
         }
         draggingNode = null;
         draggingNodeDetached = false;
-        resizingStickyNote = null;
-        stickyNoteResizeCorner = null;
+        stickyNoteController.cancelResize();
         pendingDragUndoSnapshot = null;
         dragOperationChanged = false;
         if (multiDragActive) {
@@ -2654,7 +2674,7 @@ public class NodeGraph {
     }
     
     public boolean isAnyNodeBeingDragged() {
-        return draggingNode != null || resizingStickyNote != null || isDraggingConnection || connectionCutActive;
+        return draggingNode != null || stickyNoteController.isResizing() || isDraggingConnection || connectionCutActive;
     }
 
     private boolean isLowDetailModeEnabled() {
@@ -8703,27 +8723,7 @@ public class NodeGraph {
     }
 
     public boolean handleStickyNoteResizeHandleClick(Node node, int screenX, int screenY) {
-        if (node == null || !node.isStickyNote()) {
-            return false;
-        }
-        StickyNoteResizeCorner corner = getStickyNoteResizeCornerAt(node, screenX, screenY);
-        if (corner == null) {
-            return false;
-        }
-        stopStickyNoteEditing(true);
-        if (suppressUndoCapture) {
-            pendingDragUndoSnapshot = null;
-        } else {
-            pendingDragUndoSnapshot = buildGraphData(new ArrayList<>(nodes), new ArrayList<>(connections), null);
-        }
-        dragOperationChanged = false;
-        resizingStickyNote = node;
-        stickyNoteResizeCorner = corner;
-        stickyNoteResizeStartX = node.getX();
-        stickyNoteResizeStartY = node.getY();
-        stickyNoteResizeStartWidth = node.getWidth();
-        stickyNoteResizeStartHeight = node.getHeight();
-        return true;
+        return stickyNoteController.handleResizeHandleClick(node, screenX, screenY);
     }
 
     public boolean isPointInsideStickyNoteResizeHandle(Node node, int screenX, int screenY) {
@@ -8731,72 +8731,7 @@ public class NodeGraph {
     }
 
     public StickyNoteResizeCorner getStickyNoteResizeCornerAt(Node node, int screenX, int screenY) {
-        if (node == null || !node.isStickyNote()) {
-            return null;
-        }
-        int worldX = screenToWorldX(screenX);
-        int worldY = screenToWorldY(screenY);
-        return getStickyNoteResizeCornerAtWorld(node, worldX, worldY);
-    }
-
-    private StickyNoteResizeCorner getStickyNoteResizeCornerAtWorld(Node node, int worldX, int worldY) {
-        if (node == null || !node.isStickyNote()) {
-            return null;
-        }
-        int size = node.getStickyNoteResizeHandleSize();
-        int half = size / 2;
-        if (ContextMenuRenderer.isPointInRect(worldX, worldY, node.getX() - half, node.getY() - half, size, size)) {
-            return StickyNoteResizeCorner.TOP_LEFT;
-        }
-        if (ContextMenuRenderer.isPointInRect(worldX, worldY, node.getX() + node.getWidth() - half, node.getY() - half, size, size)) {
-            return StickyNoteResizeCorner.TOP_RIGHT;
-        }
-        if (ContextMenuRenderer.isPointInRect(worldX, worldY, node.getX() - half, node.getY() + node.getHeight() - half, size, size)) {
-            return StickyNoteResizeCorner.BOTTOM_LEFT;
-        }
-        if (ContextMenuRenderer.isPointInRect(worldX, worldY, node.getX() + node.getWidth() - half, node.getY() + node.getHeight() - half, size, size)) {
-            return StickyNoteResizeCorner.BOTTOM_RIGHT;
-        }
-        return null;
-    }
-
-    private void updateStickyNoteResize(int worldMouseX, int worldMouseY) {
-        if (resizingStickyNote == null || stickyNoteResizeCorner == null) {
-            return;
-        }
-        int left = stickyNoteResizeStartX;
-        int top = stickyNoteResizeStartY;
-        int right = stickyNoteResizeStartX + stickyNoteResizeStartWidth;
-        int bottom = stickyNoteResizeStartY + stickyNoteResizeStartHeight;
-
-        switch (stickyNoteResizeCorner) {
-            case TOP_LEFT -> {
-                left = Math.min(worldMouseX, right - 120);
-                top = Math.min(worldMouseY, bottom - 84);
-            }
-            case TOP_RIGHT -> {
-                right = Math.max(worldMouseX, left + 120);
-                top = Math.min(worldMouseY, bottom - 84);
-            }
-            case BOTTOM_LEFT -> {
-                left = Math.min(worldMouseX, right - 120);
-                bottom = Math.max(worldMouseY, top + 84);
-            }
-            case BOTTOM_RIGHT -> {
-                right = Math.max(worldMouseX, left + 120);
-                bottom = Math.max(worldMouseY, top + 84);
-            }
-        }
-
-        int newWidth = right - left;
-        int newHeight = bottom - top;
-        if (left != resizingStickyNote.getX() || top != resizingStickyNote.getY()
-            || newWidth != resizingStickyNote.getWidth() || newHeight != resizingStickyNote.getHeight()) {
-            dragOperationChanged = true;
-        }
-        resizingStickyNote.setPosition(left, top);
-        resizingStickyNote.setStickyNoteSize(newWidth, newHeight);
-        invalidateHierarchyCache();
+        return stickyNoteController.getResizeCornerAt(node, screenX, screenY);
     }
 
     public boolean handleStickyNoteKeyPressed(int keyCode, int modifiers) {

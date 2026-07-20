@@ -14,6 +14,10 @@ interface StickyNoteHost {
 
     int cameraY();
 
+    int screenToWorldX(int screenX);
+
+    int screenToWorldY(int screenY);
+
     /** Draw node body text using the editor's shared text renderer/layer. */
     void drawNodeText(GuiGraphics context, Font renderer, String text, int x, int y, int color);
 
@@ -33,6 +37,12 @@ interface StickyNoteHost {
     void invalidateValidation();
 
     void invalidateRenderCaches();
+
+    void invalidateHierarchyCache();
+
+    void beginDragOperation();
+
+    void markDragOperationChanged();
 
     /** Persist the workspace now. */
     boolean save();

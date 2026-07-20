@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Objects;
 
 import com.pathmind.nodes.Node;
+import com.pathmind.ui.menu.ContextMenuRenderer;
 import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.DrawContextBridge;
@@ -35,6 +36,12 @@ final class StickyNoteController {
     private boolean caretVisible = true;
     private int caretPosition = 0;
     private long deferredSaveAtMillis = 0L;
+    private Node resizingStickyNote;
+    private StickyNoteResizeCorner stickyNoteResizeCorner;
+    private int stickyNoteResizeStartX;
+    private int stickyNoteResizeStartY;
+    private int stickyNoteResizeStartWidth;
+    private int stickyNoteResizeStartHeight;
 
     StickyNoteController(StickyNoteHost host) {
         this.host = host;
@@ -225,6 +232,110 @@ final class StickyNoteController {
             return false;
         }
         return insertText(String.valueOf(chr));
+    }
+
+    boolean isResizing() {
+        return resizingStickyNote != null && stickyNoteResizeCorner != null;
+    }
+
+    boolean handleResizeHandleClick(Node node, int screenX, int screenY) {
+        if (node == null || !node.isStickyNote()) {
+            return false;
+        }
+        StickyNoteResizeCorner corner = getResizeCornerAt(node, screenX, screenY);
+        if (corner == null) {
+            return false;
+        }
+        stopEditing(true);
+        host.beginDragOperation();
+        resizingStickyNote = node;
+        stickyNoteResizeCorner = corner;
+        stickyNoteResizeStartX = node.getX();
+        stickyNoteResizeStartY = node.getY();
+        stickyNoteResizeStartWidth = node.getWidth();
+        stickyNoteResizeStartHeight = node.getHeight();
+        return true;
+    }
+
+    StickyNoteResizeCorner getResizeCornerAt(Node node, int screenX, int screenY) {
+        if (node == null || !node.isStickyNote()) {
+            return null;
+        }
+        int worldX = host.screenToWorldX(screenX);
+        int worldY = host.screenToWorldY(screenY);
+        return getResizeCornerAtWorld(node, worldX, worldY);
+    }
+
+    StickyNoteResizeCorner getResizeCornerAtWorld(Node node, int worldX, int worldY) {
+        if (node == null || !node.isStickyNote()) {
+            return null;
+        }
+        int size = node.getStickyNoteResizeHandleSize();
+        int half = size / 2;
+        if (ContextMenuRenderer.isPointInRect(worldX, worldY, node.getX() - half, node.getY() - half, size, size)) {
+            return StickyNoteResizeCorner.TOP_LEFT;
+        }
+        if (ContextMenuRenderer.isPointInRect(worldX, worldY, node.getX() + node.getWidth() - half, node.getY() - half, size, size)) {
+            return StickyNoteResizeCorner.TOP_RIGHT;
+        }
+        if (ContextMenuRenderer.isPointInRect(worldX, worldY, node.getX() - half, node.getY() + node.getHeight() - half, size, size)) {
+            return StickyNoteResizeCorner.BOTTOM_LEFT;
+        }
+        if (ContextMenuRenderer.isPointInRect(worldX, worldY, node.getX() + node.getWidth() - half, node.getY() + node.getHeight() - half, size, size)) {
+            return StickyNoteResizeCorner.BOTTOM_RIGHT;
+        }
+        return null;
+    }
+
+    void updateResize(int worldMouseX, int worldMouseY) {
+        if (resizingStickyNote == null || stickyNoteResizeCorner == null) {
+            return;
+        }
+        int left = stickyNoteResizeStartX;
+        int top = stickyNoteResizeStartY;
+        int right = stickyNoteResizeStartX + stickyNoteResizeStartWidth;
+        int bottom = stickyNoteResizeStartY + stickyNoteResizeStartHeight;
+
+        switch (stickyNoteResizeCorner) {
+            case TOP_LEFT -> {
+                left = Math.min(worldMouseX, right - 120);
+                top = Math.min(worldMouseY, bottom - 84);
+            }
+            case TOP_RIGHT -> {
+                right = Math.max(worldMouseX, left + 120);
+                top = Math.min(worldMouseY, bottom - 84);
+            }
+            case BOTTOM_LEFT -> {
+                left = Math.min(worldMouseX, right - 120);
+                bottom = Math.max(worldMouseY, top + 84);
+            }
+            case BOTTOM_RIGHT -> {
+                right = Math.max(worldMouseX, left + 120);
+                bottom = Math.max(worldMouseY, top + 84);
+            }
+        }
+
+        int newWidth = right - left;
+        int newHeight = bottom - top;
+        if (left != resizingStickyNote.getX() || top != resizingStickyNote.getY()
+            || newWidth != resizingStickyNote.getWidth() || newHeight != resizingStickyNote.getHeight()) {
+            host.markDragOperationChanged();
+        }
+        resizingStickyNote.setPosition(left, top);
+        resizingStickyNote.setStickyNoteSize(newWidth, newHeight);
+        host.invalidateHierarchyCache();
+    }
+
+    Node finishResize() {
+        Node resized = resizingStickyNote;
+        resizingStickyNote = null;
+        stickyNoteResizeCorner = null;
+        return resized;
+    }
+
+    void cancelResize() {
+        resizingStickyNote = null;
+        stickyNoteResizeCorner = null;
     }
 
     private boolean insertText(String text) {

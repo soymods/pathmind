@@ -288,9 +288,29 @@ public class NodeGraph {
     private String coordinateEditOriginalValue = "";
     private Node amountEditingNode = null;
     private String amountEditOriginalValue = "";
-    private Node screenCoordinateCaptureNode = null;
-    private int screenCoordinatePreviewX = 0;
-    private int screenCoordinatePreviewY = 0;
+    private final ScreenCoordinateCaptureController screenCoordinateCapture = new ScreenCoordinateCaptureController(new ScreenCoordinateCaptureController.Host() {
+        @Override
+        public void stopOtherEditors() {
+            stopCoordinateEditing(true);
+            stopAmountEditing(true);
+            stopStopTargetEditing(true);
+            stopVariableEditing(true);
+            stopMessageEditing(true);
+            stopStickyNoteEditing(true);
+            stopParameterEditing(true);
+            stopEventNameEditing(true);
+        }
+
+        @Override
+        public void notifyNodeParametersChanged(Node node) {
+            NodeGraph.this.notifyNodeParametersChanged(node);
+        }
+
+        @Override
+        public void drawNodeText(GuiGraphics context, Font renderer, Component text, int x, int y, int color) {
+            NodeGraph.this.drawNodeText(context, renderer, text, x, y, color);
+        }
+    });
     private final InlineTextEditor.Host inlineEditorHost = new InlineTextEditor.Host() {
         @Override
         public boolean isTextShortcutDown(int modifiers) {
@@ -3460,48 +3480,7 @@ public class NodeGraph {
     }
 
     public void renderScreenCoordinateCaptureOverlay(GuiGraphics context, Font textRenderer, int mouseX, int mouseY) {
-        if (context == null) {
-            return;
-        }
-        Minecraft client = Minecraft.getInstance();
-        if (client == null || client.getWindow() == null) {
-            return;
-        }
-
-        int width = client.getWindow().getGuiScaledWidth();
-        int height = client.getWindow().getGuiScaledHeight();
-        int clampedX = Mth.clamp(mouseX, 0, Math.max(0, width - 1));
-        int clampedY = Mth.clamp(mouseY, 0, Math.max(0, height - 1));
-
-        int lineColor = 0xE6FFFFFF;
-        int glowColor = 0x33FFFFFF;
-        int panelFill = 0xCC111111;
-        int panelBorder = 0xE6FFFFFF;
-        int accentFill = 0xE6FFFFFF;
-        int textColor = UITheme.TEXT_PRIMARY;
-
-        context.fill(clampedX - 1, 0, clampedX + 1, height, glowColor);
-        context.fill(0, clampedY - 1, width, clampedY + 1, glowColor);
-        context.vLine(clampedX, 0, height - 1, lineColor);
-        context.hLine(0, width - 1, clampedY, lineColor);
-
-        int crossRadius = 6;
-        context.fill(clampedX - crossRadius, clampedY - 1, clampedX + crossRadius + 1, clampedY + 1, accentFill);
-        context.fill(clampedX - 1, clampedY - crossRadius, clampedX + 1, clampedY + crossRadius + 1, accentFill);
-        context.fill(clampedX - 2, clampedY - 2, clampedX + 3, clampedY + 3, 0xFF101010);
-        context.fill(clampedX - 1, clampedY - 1, clampedX + 2, clampedY + 2, accentFill);
-
-        if (textRenderer != null) {
-            String label = "Pick Mode  " + clampedX + ", " + clampedY;
-            int textWidth = textRenderer.width(label);
-            int boxWidth = textWidth + 12;
-            int boxHeight = 18;
-            int boxX = Mth.clamp(clampedX + 12, 4, Math.max(4, width - boxWidth - 4));
-            int boxY = clampedY > height - 28 ? clampedY - 24 : clampedY + 12;
-            context.fill(boxX, boxY, boxX + boxWidth, boxY + boxHeight, panelFill);
-            DrawContextBridge.drawBorderInLayer(context, boxX, boxY, boxWidth, boxHeight, panelBorder);
-            drawNodeText(context, textRenderer, Component.literal(label), boxX + 6, boxY + 5, textColor);
-        }
+        screenCoordinateCapture.renderOverlay(context, textRenderer, mouseX, mouseY);
     }
 
     public void renderSelectionBox(GuiGraphics context) {
@@ -6017,7 +5996,7 @@ public class NodeGraph {
             if (editingAxis) {
                 value = coordinateEditor.getBuffer();
             } else if (captureActive) {
-                value = Integer.toString(i == 0 ? screenCoordinatePreviewX : screenCoordinatePreviewY);
+                value = Integer.toString(i == 0 ? screenCoordinateCapture.getPreviewX() : screenCoordinateCapture.getPreviewY());
             } else {
                 NodeParameter parameter = node.getParameter(axisLabel);
                 value = parameter != null ? parameter.getStringValue() : "";
@@ -8150,59 +8129,27 @@ public class NodeGraph {
     }
 
     public boolean isScreenCoordinateCaptureActive() {
-        return screenCoordinateCaptureNode != null;
+        return screenCoordinateCapture.isActive();
     }
 
     public boolean isScreenCoordinateCaptureActiveFor(Node node) {
-        return node != null && node == screenCoordinateCaptureNode;
+        return screenCoordinateCapture.isActiveFor(node);
     }
 
     public void startScreenCoordinateCapture(Node node) {
-        if (node == null || !node.hasScreenCoordinatePickerButton()) {
-            cancelScreenCoordinateCapture();
-            return;
-        }
-        stopCoordinateEditing(true);
-        stopAmountEditing(true);
-        stopStopTargetEditing(true);
-        stopVariableEditing(true);
-        stopMessageEditing(true);
-        stopStickyNoteEditing(true);
-        stopParameterEditing(true);
-        stopEventNameEditing(true);
-        screenCoordinateCaptureNode = node;
-        NodeParameter xParam = node.getParameter("X");
-        NodeParameter yParam = node.getParameter("Y");
-        screenCoordinatePreviewX = xParam != null ? xParam.getIntValue() : 0;
-        screenCoordinatePreviewY = yParam != null ? yParam.getIntValue() : 0;
+        screenCoordinateCapture.start(node);
     }
 
     public void cancelScreenCoordinateCapture() {
-        screenCoordinateCaptureNode = null;
+        screenCoordinateCapture.cancel();
     }
 
     public void updateScreenCoordinateCapturePreview(int screenX, int screenY) {
-        if (!isScreenCoordinateCaptureActive()) {
-            return;
-        }
-        screenCoordinatePreviewX = Math.max(0, screenX);
-        screenCoordinatePreviewY = Math.max(0, screenY);
+        screenCoordinateCapture.updatePreview(screenX, screenY);
     }
 
     public boolean commitScreenCoordinateCapture(int screenX, int screenY) {
-        if (!isScreenCoordinateCaptureActive()) {
-            return false;
-        }
-        Node node = screenCoordinateCaptureNode;
-        screenCoordinateCaptureNode = null;
-        if (node == null) {
-            return false;
-        }
-        node.setParameterValueAndPropagate("X", Integer.toString(Math.max(0, screenX)));
-        node.setParameterValueAndPropagate("Y", Integer.toString(Math.max(0, screenY)));
-        node.recalculateDimensions();
-        notifyNodeParametersChanged(node);
-        return true;
+        return screenCoordinateCapture.commit(screenX, screenY);
     }
 
     public int getCoordinateFieldAxisAt(Node node, int screenX, int screenY) {

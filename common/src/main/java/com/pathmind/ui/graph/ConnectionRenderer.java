@@ -1,14 +1,214 @@
 package com.pathmind.ui.graph;
 
+import com.pathmind.execution.ExecutionManager;
+import com.pathmind.nodes.Node;
+import com.pathmind.nodes.NodeConnection;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import net.minecraft.client.gui.GuiGraphics;
 
 final class ConnectionRenderer {
 
+    static final int VIEWPORT_CULL_MARGIN = 64;
     private static final int CONNECTION_DOT_SPACING = 12;
     private static final int CONNECTION_DOT_LENGTH = 4;
     private static final int CONNECTION_ANIMATION_STEP_MS = 50;
 
-    private ConnectionRenderer() {
+    interface Host {
+        List<NodeConnection> getConnections();
+        List<Node> getVisibleRootsForViewport();
+        int getViewportWorldWidth();
+        int getViewportWorldHeight();
+        int getCameraX();
+        int getCameraY();
+        boolean isDenseViewportMode();
+        boolean shouldRenderConnectionsOnTop();
+        Node getParentForNode(Node node);
+        boolean shouldConsiderConnectionForViewport(NodeConnection connection, Set<Node> visibleRoots,
+                                                    int viewportWidth, int viewportHeight);
+        boolean isNodeOverSidebarForRender(Node node, int screenX, int screenWidth);
+        int toGrayscale(int color, float brightnessFactor);
+        int getSelectedNodeAccentColor();
+        void renderSocket(GuiGraphics context, int x, int y, boolean isInput, int color);
+        void setProfilerConnectionMs(double profilerConnectionMs);
+    }
+
+    private final Host host;
+    private final ConnectionController controller;
+
+    ConnectionRenderer(Host host, ConnectionController controller) {
+        this.host = host;
+        this.controller = controller;
+    }
+
+    int renderConnections(GuiGraphics context, boolean onlyDragged, boolean trackProfiler) {
+        ExecutionManager manager = ExecutionManager.getInstance();
+        boolean denseViewportMode = host.isDenseViewportMode();
+        boolean animateConnections = manager.isExecuting() && !denseViewportMode;
+        long animationTimestamp = System.currentTimeMillis();
+        int viewportWidth = host.getViewportWorldWidth();
+        int viewportHeight = host.getViewportWorldHeight();
+        Set<Node> visibleRoots = new HashSet<>(host.getVisibleRootsForViewport());
+        long startNanos = trackProfiler ? System.nanoTime() : 0L;
+        int drawnConnections = 0;
+
+        if (!onlyDragged) {
+            for (NodeConnection connection : host.getConnections()) {
+                if (!host.shouldConsiderConnectionForViewport(connection, visibleRoots, viewportWidth, viewportHeight)) {
+                    continue;
+                }
+                if (renderConnection(context, connection, animateConnections, animationTimestamp, viewportWidth, viewportHeight, manager)) {
+                    drawnConnections++;
+                }
+            }
+        } else if (host.shouldRenderConnectionsOnTop()) {
+            for (NodeConnection connection : host.getConnections()) {
+                if (shouldRenderConnectionInDraggedPass(connection)) {
+                    if (renderConnection(context, connection, animateConnections, animationTimestamp, viewportWidth, viewportHeight, manager)) {
+                        drawnConnections++;
+                    }
+                }
+            }
+        }
+
+        // Render dragging connection if active
+        Node connectionSourceNode = controller.getConnectionSourceNode();
+        boolean isOutputSocket = controller.isOutputSocket();
+        int cameraX = host.getCameraX();
+        int cameraY = host.getCameraY();
+        if (controller.isDraggingConnection() && connectionSourceNode != null) {
+            int sourceX = connectionSourceNode.getSocketX(!isOutputSocket) - cameraX;
+            int sourceY = connectionSourceNode.getSocketY(controller.getConnectionSourceSocket(), !isOutputSocket) - cameraY;
+            int targetX = controller.getConnectionDragX() - cameraX;
+            int targetY = controller.getConnectionDragY() - cameraY;
+
+            // Snap to hovered socket if available
+            Node hoveredNode = controller.getHoveredNode();
+            int hoveredSocket = controller.getHoveredSocket();
+            boolean hoveredSocketIsInput = controller.isHoveredSocketInput();
+            if (hoveredNode != null && hoveredSocket != -1) {
+                targetX = hoveredNode.getSocketX(hoveredSocketIsInput) - cameraX;
+                targetY = hoveredNode.getSocketY(hoveredSocket, hoveredSocketIsInput) - cameraY;
+
+                if (onlyDragged) {
+                    // Highlight the target socket above nodes while dragging.
+                    host.renderSocket(context, targetX, targetY, hoveredSocketIsInput, host.getSelectedNodeAccentColor());
+                }
+            }
+
+            if (!onlyDragged) {
+                // Render the dragging connection below sockets in the main layer.
+                int color = connectionSourceNode.getOutputSocketColor(controller.getConnectionSourceSocket());
+                int sourceScreenX = connectionSourceNode.getX() - cameraX;
+                if (host.isNodeOverSidebarForRender(connectionSourceNode, sourceScreenX, connectionSourceNode.getWidth())) {
+                    color = host.toGrayscale(color, 0.65f);
+                }
+
+                if (animateConnections) {
+                    renderAnimatedConnectionCurve(context, sourceX, sourceY, targetX, targetY,
+                            color, animationTimestamp);
+                } else if (denseViewportMode) {
+                    renderDenseConnectionCurve(context, sourceX, sourceY, targetX, targetY, color);
+                } else {
+                    renderConnectionCurve(context, sourceX, sourceY, targetX, targetY,
+                            color);
+                }
+            }
+        }
+
+        if (!onlyDragged && controller.isConnectionCutActive()) {
+            controller.renderConnectionCutPreview(context, cameraX, cameraY);
+        }
+        if (trackProfiler) {
+            host.setProfilerConnectionMs((System.nanoTime() - startNanos) / 1_000_000.0);
+        }
+        return drawnConnections;
+    }
+
+    private boolean renderConnection(GuiGraphics context, NodeConnection connection, boolean animateConnections,
+                                     long animationTimestamp, int viewportWidth, int viewportHeight,
+                                     ExecutionManager manager) {
+        if (connection == null) {
+            return false;
+        }
+
+        Node outputNode = connection.getOutputNode();
+        Node inputNode = connection.getInputNode();
+
+        if (outputNode == null || inputNode == null
+            || !outputNode.shouldRenderSockets() || !inputNode.shouldRenderSockets()) {
+            return false;
+        }
+
+        int cameraX = host.getCameraX();
+        int cameraY = host.getCameraY();
+        int outputX = outputNode.getSocketX(false) - cameraX;
+        int outputY = outputNode.getSocketY(connection.getOutputSocket(), false) - cameraY;
+        int inputX = inputNode.getSocketX(true) - cameraX;
+        int inputY = inputNode.getSocketY(connection.getInputSocket(), true) - cameraY;
+        int minX = Math.min(outputX, inputX) - VIEWPORT_CULL_MARGIN;
+        int maxX = Math.max(outputX, inputX) + VIEWPORT_CULL_MARGIN;
+        int minY = Math.min(outputY, inputY) - VIEWPORT_CULL_MARGIN;
+        int maxY = Math.max(outputY, inputY) + VIEWPORT_CULL_MARGIN;
+        if (viewportWidth > 0 && viewportHeight > 0
+            && (maxX < 0 || minX > viewportWidth || maxY < 0 || minY > viewportHeight)) {
+            return false;
+        }
+
+        int color = outputNode.getOutputSocketColor(connection.getOutputSocket());
+        boolean denseViewportMode = host.isDenseViewportMode();
+        if (!denseViewportMode && shouldGrayOutConnection(outputNode, inputNode)) {
+            color = host.toGrayscale(color, 0.65f);
+        }
+        if (connection == controller.getInsertionPreviewConnection()) {
+            color = host.getSelectedNodeAccentColor();
+        }
+
+        if (animateConnections && manager.shouldAnimateConnection(connection)) {
+            renderAnimatedConnectionCurve(context, outputX, outputY, inputX, inputY, color, animationTimestamp);
+        } else if (denseViewportMode) {
+            renderDenseConnectionCurve(context, outputX, outputY, inputX, inputY, color);
+        } else {
+            renderConnectionCurve(context, outputX, outputY, inputX, inputY, color);
+        }
+        return true;
+    }
+
+    private boolean shouldGrayOutConnection(Node outputNode, Node inputNode) {
+        if (outputNode == null || inputNode == null) {
+            return false;
+        }
+        int cameraX = host.getCameraX();
+        int outputScreenX = outputNode.getX() - cameraX;
+        int inputScreenX = inputNode.getX() - cameraX;
+        return host.isNodeOverSidebarForRender(outputNode, outputScreenX, outputNode.getWidth())
+            || host.isNodeOverSidebarForRender(inputNode, inputScreenX, inputNode.getWidth());
+    }
+
+    private boolean shouldRenderConnectionInDraggedPass(NodeConnection connection) {
+        if (connection == null) {
+            return false;
+        }
+        return isNodeInDraggedHierarchy(connection.getOutputNode())
+            || isNodeInDraggedHierarchy(connection.getInputNode());
+    }
+
+    private boolean isNodeInDraggedHierarchy(Node node) {
+        if (node == null) {
+            return false;
+        }
+        if (node.isDragging()) {
+            return true;
+        }
+        Node parent = host.getParentForNode(node);
+        while (parent != null) {
+            if (parent.isDragging()) {
+                return true;
+            }
+            parent = host.getParentForNode(parent);
+        }
+        return false;
     }
 
     static void renderAnimatedConnectionCurve(GuiGraphics context, int x1, int y1, int x2, int y2, int color, long timestamp) {

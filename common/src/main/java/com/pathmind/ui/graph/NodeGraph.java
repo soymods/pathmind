@@ -530,16 +530,33 @@ public class NodeGraph {
     private final AnimatedValue randomRoundingDropdownAnimation = AnimatedValue.forHover();
     private int randomRoundingDropdownHoverIndex = -1;
     private int randomRoundingDropdownScrollOffset = 0;
-    private Node modeDropdownNode = null;
-    private boolean modeDropdownOpen = false;
     private final AnimatedValue modeDropdownAnimation = AnimatedValue.forHover();
-    private int modeDropdownHoverIndex = -1;
-    private int modeDropdownScrollOffset = 0;
-    private int modeDropdownFieldX = 0;
-    private int modeDropdownFieldY = 0;
-    private int modeDropdownFieldWidth = 0;
-    private int modeDropdownFieldHeight = 0;
-    private final java.util.List<ModeDropdownOption> modeDropdownOptions = new java.util.ArrayList<>();
+    private final DropdownController.Host dropdownHost = new DropdownController.Host() {
+        @Override public float getZoomScale() { return NodeGraph.this.getZoomScale(); }
+        @Override public int screenToUiX(int screenX) { return NodeGraph.this.screenToUiX(screenX); }
+        @Override public int screenToUiY(int screenY) { return NodeGraph.this.screenToUiY(screenY); }
+        @Override public int getDropdownRowHeight() { return NodeGraph.this.getDropdownRowHeight(); }
+        @Override public int getSelectedNodeAccentColor() { return NodeGraph.this.getSelectedNodeAccentColor(); }
+        @Override public Font getTextRenderer() { return getClientTextRenderer(); }
+        @Override public int getGuiScaledHeight() { return Minecraft.getInstance().getWindow().getGuiScaledHeight(); }
+        @Override public String trimTextToWidth(String text, Font renderer, int maxWidth) { return NodeGraph.this.trimTextToWidth(text, renderer, maxWidth); }
+        @Override public void drawNodeText(GuiGraphics context, Font renderer, Component text, int x, int y, int color) { NodeGraph.this.drawNodeText(context, renderer, text, x, y, color); }
+        @Override public void enableDropdownScissor(GuiGraphics context, int x, int y, int width, int height) { NodeGraph.this.enableDropdownScissor(context, x, y, width, height); }
+        @Override public float dropdownAnimationProgress(AnimatedValue animation, boolean open) { return getDropdownAnimationProgress(animation, open); }
+    };
+    private final DropdownController<com.pathmind.nodes.NodeMode> modeDropdown = new DropdownController<>(
+        dropdownHost,
+        modeDropdownAnimation,
+        PARAMETER_DROPDOWN_MAX_ROWS,
+        () -> tr("pathmind.dropdown.noModes"),
+        this::computeModeDropdownAnchor,
+        this::getModeDropdownOptions,
+        (node, mode) -> {
+            node.setMode(mode);
+            node.recalculateDimensions();
+            notifyNodeParametersChanged(node);
+        }
+    );
     private static final int PARAMETER_DROPDOWN_MAX_ROWS = 8;
     private static final int PARAMETER_DROPDOWN_ROW_HEIGHT = 16;
     private static final int DROPDOWN_SIDE_PADDING = 6;
@@ -4976,7 +4993,7 @@ public class NodeGraph {
             && worldMouseX <= worldFieldLeft + fieldWidth
             && worldMouseY >= worldFieldTop
             && worldMouseY <= worldFieldTop + fieldHeight;
-        boolean open = modeDropdownOpen && modeDropdownNode == node;
+        boolean open = modeDropdown.isOpen() && modeDropdown.getNode() == node;
 
         float hoverProgress = getAnimatedHoverProgress(node.getId() + "#selector:" + fieldLeft + ":" + fieldTop, hovered || open);
         int accentColor = isOverSidebar ? toGrayscale(getSelectedNodeAccentColor(), 0.8f) : getSelectedNodeAccentColor();
@@ -10053,9 +10070,6 @@ public class NodeGraph {
         }
     }
 
-    private record ModeDropdownOption(String label, com.pathmind.nodes.NodeMode mode) {
-    }
-
 
     private List<ParameterDropdownOption> getRandomRoundingDropdownOptions() {
         List<ParameterDropdownOption> options = new ArrayList<>(3);
@@ -10484,50 +10498,11 @@ public class NodeGraph {
     }
 
     public boolean handleModeDropdownClick(double screenX, double screenY) {
-        if (!modeDropdownOpen) {
-            return false;
-        }
-        refreshModeDropdownAnchor();
-        int x = (int) screenX;
-        int y = (int) screenY;
-        if (isPointInsideModeDropdownList(x, y)) {
-            int index = getModeDropdownIndexAt(x, y);
-            if (index >= 0) {
-                applyModeDropdownSelection(index);
-            }
-            return true;
-        }
-        int transformedX = screenToUiX(x);
-        int transformedY = screenToUiY(y);
-        int fieldLeft = modeDropdownFieldX;
-        int fieldTop = modeDropdownFieldY;
-        if (transformedX >= fieldLeft && transformedX <= fieldLeft + modeDropdownFieldWidth
-            && transformedY >= fieldTop && transformedY <= fieldTop + modeDropdownFieldHeight) {
-            closeModeDropdown();
-            return true;
-        }
-        closeModeDropdown();
-        return false;
+        return modeDropdown.handleClick(screenX, screenY);
     }
 
     public boolean handleModeDropdownScroll(double screenX, double screenY, double verticalAmount) {
-        if (!modeDropdownOpen) {
-            return false;
-        }
-        refreshModeDropdownAnchor();
-        if (!isPointInsideModeDropdownList((int) screenX, (int) screenY)) {
-            return false;
-        }
-        DropdownLayoutHelper.Layout layout = getModeDropdownLayout();
-        if (layout.maxScrollOffset <= 0) {
-            return false;
-        }
-        int delta = (int) Math.signum(verticalAmount);
-        if (delta == 0) {
-            return false;
-        }
-        modeDropdownScrollOffset = Mth.clamp(modeDropdownScrollOffset - delta, 0, layout.maxScrollOffset);
-        return true;
+        return modeDropdown.handleScroll(screenX, screenY, verticalAmount);
     }
 
     public boolean handleRandomRoundingDropdownScroll(double screenX, double screenY, double verticalAmount) {
@@ -10569,7 +10544,7 @@ public class NodeGraph {
         if (!isPointInsideModeField(node, screenX, screenY)) {
             return false;
         }
-        if (modeDropdownOpen && modeDropdownNode == node) {
+        if (modeDropdown.isOpen() && modeDropdown.getNode() == node) {
             closeModeDropdown();
             return true;
         }
@@ -10579,137 +10554,15 @@ public class NodeGraph {
     }
 
     public boolean isModeDropdownOpen() {
-        return modeDropdownOpen;
+        return modeDropdown.isOpen();
     }
 
     public void closeModeDropdown() {
-        modeDropdownOpen = false;
-        modeDropdownHoverIndex = -1;
-    }
-
-    private void refreshModeDropdownAnchor() {
-        if (!modeDropdownOpen || modeDropdownNode == null) {
-            return;
-        }
-        Node node = modeDropdownNode;
-        if (node.getType() == NodeType.WAIT || node.getType() == NodeType.PARAM_DURATION) {
-            modeDropdownFieldX = node.getAmountFieldLeft() - cameraX;
-            modeDropdownFieldY = node.getAmountFieldLabelTop() - cameraY;
-            modeDropdownFieldWidth = node.getAmountFieldWidth();
-            modeDropdownFieldHeight = node.getAmountFieldLabelHeight();
-        } else if (node.showsModeFieldAboveParameterSlot()) {
-            modeDropdownFieldX = node.getModeFieldLeft() - cameraX;
-            modeDropdownFieldY = node.getModeFieldTop() - cameraY;
-            modeDropdownFieldWidth = node.getModeFieldWidth();
-            modeDropdownFieldHeight = node.getModeFieldHeight();
-        } else {
-            modeDropdownFieldX = getParameterFieldLeft(node) - cameraX;
-            modeDropdownFieldY = node.getY() - cameraY + 18;
-            modeDropdownFieldWidth = getParameterFieldWidth(node);
-            modeDropdownFieldHeight = getParameterFieldHeight();
-        }
+        modeDropdown.close();
     }
 
     private void renderModeDropdownList(GuiGraphics context, Font textRenderer, int mouseX, int mouseY) {
-        float animProgress = getDropdownAnimationProgress(modeDropdownAnimation, modeDropdownOpen);
-        if (modeDropdownNode == null) {
-            return;
-        }
-        if (animProgress <= 0.001f) {
-            clearModeDropdownState();
-            return;
-        }
-        refreshModeDropdownAnchor();
-        List<ModeDropdownOption> options = modeDropdownOptions;
-        int optionCount = Math.max(1, options.size());
-        float zoom = getZoomScale();
-        int transformedMouseX = Math.round(mouseX / zoom);
-        int transformedMouseY = Math.round(mouseY / zoom);
-
-        int rowHeight = getDropdownRowHeight();
-        int dropdownWidth = getModeDropdownWidth();
-        DropdownLayoutHelper.Layout layout = getModeDropdownLayout();
-        int listTop = getModeDropdownListTop();
-        int listLeft = modeDropdownFieldX;
-        int listRight = listLeft + dropdownWidth;
-        int listHeight = layout.height;
-        int listBottom = listTop + listHeight;
-        int animatedHeight = Math.max(1, (int) (listHeight * animProgress));
-        int accentColor = getSelectedNodeAccentColor();
-        UIStyleHelper.ScrollContainerPalette containerPalette = UIStyleHelper.getScrollContainerPalette(accentColor, animProgress, true, false);
-
-        enableDropdownScissor(context, listLeft, listTop, dropdownWidth, animatedHeight);
-        UIStyleHelper.drawScrollContainer(context, listLeft, listTop, dropdownWidth, listHeight, containerPalette);
-
-        modeDropdownScrollOffset = Mth.clamp(modeDropdownScrollOffset, 0, layout.maxScrollOffset);
-        modeDropdownHoverIndex = -1;
-        if (animProgress >= 1f
-            && transformedMouseX >= listLeft && transformedMouseX <= listRight
-            && transformedMouseY >= listTop && transformedMouseY <= listBottom) {
-            int row = (transformedMouseY - listTop) / rowHeight;
-            if (row >= 0 && row < layout.visibleCount) {
-                modeDropdownHoverIndex = modeDropdownScrollOffset + row;
-            }
-        }
-
-        int visibleCount = layout.visibleCount;
-        for (int row = 0; row < visibleCount; row++) {
-            int optionIndex = modeDropdownScrollOffset + row;
-            String optionLabel = options.isEmpty() ? tr("pathmind.dropdown.noModes") : options.get(optionIndex).label();
-            int rowTop = listTop + row * rowHeight;
-            int rowBottom = rowTop + rowHeight;
-            boolean hovered = options.isEmpty() ? row == 0 && modeDropdownHoverIndex >= 0 : optionIndex == modeDropdownHoverIndex;
-            UIStyleHelper.DropdownRowPalette rowPalette = UIStyleHelper.getDropdownRowPalette(accentColor, hovered ? 1f : 0f, false, false);
-            if (hovered) {
-                UIStyleHelper.drawDropdownRow(context, listLeft + 1, rowTop + 1, dropdownWidth - 2, rowHeight - 1, rowPalette);
-            }
-            int textPadding = 5;
-            int maxTextWidth = dropdownWidth - (textPadding * 2) - DROPDOWN_SCROLLBAR_ALLOWANCE;
-            String rowText = trimTextToWidth(optionLabel, textRenderer, Math.max(0, maxTextWidth));
-            int textOffsetY = 4;
-            drawNodeText(context, textRenderer, Component.literal(rowText), listLeft + textPadding, rowTop + textOffsetY, hovered ? rowPalette.textColor() : UITheme.TEXT_PRIMARY);
-        }
-
-        DropdownLayoutHelper.drawScrollBar(
-            context,
-            listLeft,
-            listTop,
-            dropdownWidth,
-            listHeight,
-            optionCount,
-            layout.visibleCount,
-            modeDropdownScrollOffset,
-            layout.maxScrollOffset,
-            containerPalette.trackColor(),
-            containerPalette.thumbColor()
-        );
-        DropdownLayoutHelper.drawOutline(
-            context,
-            listLeft,
-            listTop,
-            dropdownWidth,
-            listHeight,
-            containerPalette.borderColor()
-        );
-        context.disableScissor();
-    }
-
-    private int getModeDropdownListTop() {
-        return modeDropdownFieldY + modeDropdownFieldHeight;
-    }
-
-    private int getModeDropdownWidth() {
-        Font textRenderer = getClientTextRenderer();
-        if (textRenderer == null) {
-            return modeDropdownFieldWidth;
-        }
-        int longestLabelWidth = textRenderer.width(tr("pathmind.dropdown.noModes"));
-        for (ModeDropdownOption option : modeDropdownOptions) {
-            if (option != null && option.label() != null) {
-                longestLabelWidth = Math.max(longestLabelWidth, textRenderer.width(option.label()));
-            }
-        }
-        return longestLabelWidth + DROPDOWN_SIDE_PADDING * 2 + DROPDOWN_SCROLLBAR_ALLOWANCE;
+        modeDropdown.render(context, textRenderer, mouseX, mouseY);
     }
 
     private int getRandomRoundingDropdownWidth(Node node) {
@@ -10754,60 +10607,6 @@ public class NodeGraph {
         return longestLabelWidth + DROPDOWN_SIDE_PADDING * 2 + DROPDOWN_SCROLLBAR_ALLOWANCE;
     }
 
-    private DropdownLayoutHelper.Layout getModeDropdownLayout() {
-        int optionCount = Math.max(1, modeDropdownOptions.size());
-        int listTop = getModeDropdownListTop();
-        float zoom = Math.max(0.01f, getZoomScale());
-        int transformedScreenHeight = Math.round(Minecraft.getInstance().getWindow().getGuiScaledHeight() / zoom);
-        int rowHeight = getDropdownRowHeight();
-        return DropdownLayoutHelper.calculate(
-            optionCount,
-            rowHeight,
-            PARAMETER_DROPDOWN_MAX_ROWS,
-            listTop,
-            transformedScreenHeight
-        );
-    }
-
-    private boolean isPointInsideModeDropdownList(int screenX, int screenY) {
-        if (!modeDropdownOpen) {
-            return false;
-        }
-        refreshModeDropdownAnchor();
-        float zoom = getZoomScale();
-        int transformedX = Math.round(screenX / zoom);
-        int transformedY = Math.round(screenY / zoom);
-
-        int dropdownWidth = getModeDropdownWidth();
-        DropdownLayoutHelper.Layout layout = getModeDropdownLayout();
-        int listTop = getModeDropdownListTop();
-        int listLeft = modeDropdownFieldX;
-        return transformedX >= listLeft && transformedX <= listLeft + dropdownWidth
-            && transformedY >= listTop && transformedY <= listTop + layout.height;
-    }
-
-    private int getModeDropdownIndexAt(int screenX, int screenY) {
-        if (!modeDropdownOpen) {
-            return -1;
-        }
-        refreshModeDropdownAnchor();
-        float zoom = getZoomScale();
-        int transformedY = Math.round(screenY / zoom);
-
-        int rowHeight = getDropdownRowHeight();
-        DropdownLayoutHelper.Layout layout = getModeDropdownLayout();
-        int listTop = getModeDropdownListTop();
-        int row = (transformedY - listTop) / rowHeight;
-        if (row < 0 || row >= layout.visibleCount) {
-            return -1;
-        }
-        int index = modeDropdownScrollOffset + row;
-        if (modeDropdownOptions.isEmpty()) {
-            return -1;
-        }
-        return index;
-    }
-
     private void openModeDropdown(Node node) {
         if (node == null || !node.supportsModeSelection()) {
             return;
@@ -10816,31 +10615,31 @@ public class NodeGraph {
         closeSchematicDropdown();
         closeRunPresetDropdown();
         closeRandomRoundingDropdown();
-        modeDropdownNode = node;
-        modeDropdownScrollOffset = 0;
-        modeDropdownHoverIndex = -1;
-        if (node.getType() == NodeType.WAIT || node.getType() == NodeType.PARAM_DURATION) {
-            modeDropdownFieldX = node.getAmountFieldLeft() - cameraX;
-            modeDropdownFieldY = node.getAmountFieldLabelTop() - cameraY;
-            modeDropdownFieldWidth = node.getAmountFieldWidth();
-            modeDropdownFieldHeight = node.getAmountFieldLabelHeight();
-        } else if (node.showsModeFieldAboveParameterSlot()) {
-            modeDropdownFieldX = node.getModeFieldLeft() - cameraX;
-            modeDropdownFieldY = node.getModeFieldTop() - cameraY;
-            modeDropdownFieldWidth = node.getModeFieldWidth();
-            modeDropdownFieldHeight = node.getModeFieldHeight();
-        } else {
-            modeDropdownFieldX = getParameterFieldLeft(node) - cameraX;
-            modeDropdownFieldY = node.getY() - cameraY + 18;
-            modeDropdownFieldWidth = getParameterFieldWidth(node);
-            modeDropdownFieldHeight = getParameterFieldHeight();
-        }
-        modeDropdownOptions.clear();
-        modeDropdownOptions.addAll(getModeDropdownOptions(node));
-        modeDropdownOpen = true;
+        modeDropdown.open(node);
     }
 
-    private List<ModeDropdownOption> getModeDropdownOptions(Node node) {
+    private DropdownController.Rect computeModeDropdownAnchor(Node node) {
+        if (node.getType() == NodeType.WAIT || node.getType() == NodeType.PARAM_DURATION) {
+            return new DropdownController.Rect(
+                node.getAmountFieldLeft() - cameraX,
+                node.getAmountFieldLabelTop() - cameraY,
+                node.getAmountFieldWidth(),
+                node.getAmountFieldLabelHeight());
+        } else if (node.showsModeFieldAboveParameterSlot()) {
+            return new DropdownController.Rect(
+                node.getModeFieldLeft() - cameraX,
+                node.getModeFieldTop() - cameraY,
+                node.getModeFieldWidth(),
+                node.getModeFieldHeight());
+        }
+        return new DropdownController.Rect(
+            getParameterFieldLeft(node) - cameraX,
+            node.getY() - cameraY + 18,
+            getParameterFieldWidth(node),
+            getParameterFieldHeight());
+    }
+
+    private List<DropdownController.Option<com.pathmind.nodes.NodeMode>> getModeDropdownOptions(Node node) {
         if (node == null || !node.supportsModeSelection()) {
             return Collections.emptyList();
         }
@@ -10848,30 +10647,13 @@ public class NodeGraph {
         if (modes == null || modes.length == 0) {
             return Collections.emptyList();
         }
-        List<ModeDropdownOption> options = new ArrayList<>(modes.length);
+        List<DropdownController.Option<com.pathmind.nodes.NodeMode>> options = new ArrayList<>(modes.length);
         for (com.pathmind.nodes.NodeMode mode : modes) {
             if (mode != null) {
-                options.add(new ModeDropdownOption(mode.getDisplayName(), mode));
+                options.add(new DropdownController.Option<>(mode.getDisplayName(), mode));
             }
         }
         return options;
-    }
-
-    private void applyModeDropdownSelection(int optionIndex) {
-        if (!modeDropdownOpen || modeDropdownNode == null || modeDropdownOptions.isEmpty()) {
-            return;
-        }
-        if (optionIndex < 0 || optionIndex >= modeDropdownOptions.size()) {
-            return;
-        }
-        ModeDropdownOption option = modeDropdownOptions.get(optionIndex);
-        if (option == null || option.mode() == null) {
-            return;
-        }
-        modeDropdownNode.setMode(option.mode());
-        modeDropdownNode.recalculateDimensions();
-        notifyNodeParametersChanged(modeDropdownNode);
-        closeModeDropdown();
     }
 
     private boolean isPointInsideModeField(Node node, int screenX, int screenY) {
@@ -11797,16 +11579,6 @@ public class NodeGraph {
         parameterDropdownScrollOffset = 0;
         parameterDropdownQuery = "";
         parameterDropdownOptions.clear();
-    }
-
-    private void clearModeDropdownState() {
-        if (modeDropdownOpen) {
-            return;
-        }
-        modeDropdownNode = null;
-        modeDropdownHoverIndex = -1;
-        modeDropdownScrollOffset = 0;
-        modeDropdownOptions.clear();
     }
 
     private void applySchematicSelection(Node node, String value) {

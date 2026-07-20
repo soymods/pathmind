@@ -1,0 +1,49 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "java",
+      "request": "launch",
+      "name": "neoforge - Client",
+      "presentation": {
+        "group": "Mod Development - neoforge",
+        "order": 0
+      },
+      "projectName": "neoforge",
+      "mainClass": "net.neoforged.devlaunch.Main",
+      "args": [
+        "@/Users/ryder/Desktop/repos/pathmind/mc26/neoforge/build/moddev/clientRunProgramArgs.txt"
+      ],
+      "vmArgs": [
+        "@/Users/ryder/Desktop/repos/pathmind/mc26/neoforge/build/moddev/clientRunVmArgs.txt",
+        "-Dfml.modFolders\u003dpathmind%%/Users/ryder/Desktop/repos/pathmind/mc26/neoforge/bin/main"
+      ],
+      "cwd": "${workspaceFolder}/neoforge/run",
+      "env": {},
+      "console": "internalConsole",
+      "shortenCommandLine": "none"
+    },
+    {
+      "type": "java",
+      "request": "launch",
+      "name": "neoforge - Server",
+      "presentation": {
+        "group": "Mod Development - neoforge",
+        "order": 1
+      },
+      "projectName": "neoforge",
+      "mainClass": "net.neoforged.devlaunch.Main",
+      "args": [
+        "@/Users/ryder/Desktop/repos/pathmind/mc26/neoforge/build/moddev/serverRunProgramArgs.txt"
+      ],
+      "vmArgs": [
+        "@/Users/ryder/Desktop/repos/pathmind/mc26/neoforge/build/moddev/serverRunVmArgs.txt",
+        "-Dfml.modFolders\u003dpathmind%%/Users/ryder/Desktop/repos/pathmind/mc26/neoforge/bin/main"
+      ],
+      "cwd": "${workspaceFolder}/neoforge/run",
+      "env": {},
+      "console": "internalConsole",
+      "shortenCommandLine": "none"
+    }
+  ]
+}

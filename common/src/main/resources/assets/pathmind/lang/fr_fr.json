@@ -295,6 +295,8 @@
   "pathmind.node.type.sensorVillagerTrade": "A un échange de villageois",
   "pathmind.node.type.sensorVillagerTrade.desc": "Detect if the open villager trade list contains the selected trade",
   "pathmind.node.type.setVariable": "Définir",
+  "pathmind.node.type.calculate": "Calculate",
+  "pathmind.node.type.calculate.desc": "Evaluates one or more numeric expressions",
   "pathmind.node.type.setVariable.desc": "Attribue une valeur de paramètre à une variable à l'exécution",
   "pathmind.node.type.sprint": "Sprinter",
   "pathmind.node.type.sprint.desc": "Active ou désactive le sprint",

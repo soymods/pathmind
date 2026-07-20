@@ -74,7 +74,7 @@ class OnboardingPresetManagerTest {
                         NodeType.PARAM_DIRECTION, NodeType.PARAM_DURATION);
                 } else if (index == 1) {
                     assertContainsNodeTypes(preset.name(), nodes,
-                        NodeType.SET_VARIABLE, NodeType.CHANGE_VARIABLE,
+                        NodeType.SET_VARIABLE, NodeType.CALCULATE,
                         NodeType.OPERATOR_BOOLEAN_AND, NodeType.SENSOR_IS_ON_GROUND,
                         NodeType.CONTROL_IF_ELSE, NodeType.CONTROL_JOIN_ANY,
                         NodeType.WALK, NodeType.JUMP, NodeType.CROUCH);

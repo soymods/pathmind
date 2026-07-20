@@ -149,6 +149,7 @@ public final class NodeCatalog {
         define(NodeCategory.DATA,
             NodeType.VARIABLE,
             NodeType.SET_VARIABLE,
+            NodeType.CALCULATE,
             NodeType.CREATE_LIST,
             NodeType.ADD_TO_LIST,
             NodeType.REMOVE_FIRST_FROM_LIST,
@@ -558,7 +559,8 @@ public final class NodeCatalog {
 
         sidebar(NodeCategory.DATA, "pathmind.sidebar.group.variables",
             NodeType.VARIABLE,
-            NodeType.SET_VARIABLE);
+            NodeType.SET_VARIABLE,
+            NodeType.CALCULATE);
         sidebar(NodeCategory.DATA, "pathmind.sidebar.group.lists",
             NodeType.CREATE_LIST,
             NodeType.ADD_TO_LIST,
@@ -686,6 +688,7 @@ public final class NodeCatalog {
         provided(NodeType.SENSOR_IS_ON_GROUND, NodeValueTrait.DISTANCE);
         provided(NodeType.OPERATOR_RANDOM, NodeValueTrait.NUMBER);
         provided(NodeType.OPERATOR_MOD, NodeValueTrait.NUMBER);
+        provided(NodeType.CALCULATE, NodeValueTrait.NUMBER);
         provided(NodeType.OPERATOR_BOOLEAN_OR, NodeValueTrait.BOOLEAN);
         provided(NodeType.OPERATOR_BOOLEAN_AND, NodeValueTrait.BOOLEAN);
         provided(NodeType.OPERATOR_BOOLEAN_XOR, NodeValueTrait.BOOLEAN);
@@ -1114,6 +1117,7 @@ public final class NodeCatalog {
         typeParameters(NodeType.PARAM_CLOSEST, of("Range", ParameterType.INTEGER, "5"));
 
         route(ExecutionRoute.SET_VARIABLE, NodeType.SET_VARIABLE);
+        route(ExecutionRoute.CALCULATE, NodeType.CALCULATE);
         route(ExecutionRoute.GOTO, NodeType.GOTO);
         route(ExecutionRoute.TRAVEL, NodeType.TRAVEL);
         route(ExecutionRoute.GOAL, NodeType.GOAL);
@@ -1449,6 +1453,7 @@ public final class NodeCatalog {
             case ROUTINE_INPUT -> "pathmind.node.type.routineInput";
             case VARIABLE -> "pathmind.node.type.variable";
             case SET_VARIABLE -> "pathmind.node.type.setVariable";
+            case CALCULATE -> "pathmind.node.type.calculate";
             case CREATE_LIST -> "pathmind.node.type.createList";
             case ADD_TO_LIST -> "pathmind.node.type.addToList";
             case REMOVE_FIRST_FROM_LIST -> "pathmind.node.type.removeFirstFromList";
@@ -1598,6 +1603,7 @@ public final class NodeCatalog {
             case ROUTINE_INPUT -> "pathmind.node.type.routineInput.desc";
             case VARIABLE -> "pathmind.node.type.variable.desc";
             case SET_VARIABLE -> "pathmind.node.type.setVariable.desc";
+            case CALCULATE -> "pathmind.node.type.calculate.desc";
             case CREATE_LIST -> "pathmind.node.type.createList.desc";
             case ADD_TO_LIST -> "pathmind.node.type.addToList.desc";
             case REMOVE_FIRST_FROM_LIST -> "pathmind.node.type.removeFirstFromList.desc";
@@ -1745,6 +1751,7 @@ public final class NodeCatalog {
             case ROUTINE_ENTRY, ROUTINE_INPUT, ROUTINE_CALL -> 0xFFEC407A;
             case VARIABLE -> 0xFFFF9800;
             case SET_VARIABLE -> 0xFFFF9800;
+            case CALCULATE -> 0xFFFF9800;
             case CREATE_LIST -> 0xFFFF9800;
             case ADD_TO_LIST -> 0xFFFF9800;
             case REMOVE_FIRST_FROM_LIST -> 0xFFFF9800;
@@ -2017,6 +2024,7 @@ public final class NodeCatalog {
 
     public enum ExecutionRoute {
         SET_VARIABLE,
+        CALCULATE,
         GOTO,
         TRAVEL,
         GOAL,

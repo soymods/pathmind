@@ -295,6 +295,8 @@
   "pathmind.node.type.sensorVillagerTrade": "Tem troca de aldeão",
   "pathmind.node.type.sensorVillagerTrade.desc": "Detecta se a lista de trocas de aldeão aberta contém a troca selecionada",
   "pathmind.node.type.setVariable": "Definir",
+  "pathmind.node.type.calculate": "Calculate",
+  "pathmind.node.type.calculate.desc": "Evaluates one or more numeric expressions",
   "pathmind.node.type.setVariable.desc": "Atribui um valor de parâmetro a uma variável em tempo de execução",
   "pathmind.node.type.sprint": "Correr",
   "pathmind.node.type.sprint.desc": "Ativa ou desativa a corrida",

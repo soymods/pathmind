@@ -167,7 +167,7 @@ class NodeGraphPersistenceTest {
 
     @Test
     void saveAndLoadRoundTripPreservesMathNodeExpressions() {
-        Node math = new Node(NodeType.CHANGE_VARIABLE, 32, 48);
+        Node math = new Node(NodeType.CALCULATE, 32, 48);
         math.setMessageLines(List.of("1 + 2", "$count * 4", "7 / 2"));
 
         Path savePath = tempDir.resolve("math-graph.json");
@@ -178,7 +178,7 @@ class NodeGraphPersistenceTest {
 
         List<Node> restoredNodes = NodeGraphPersistence.convertToNodes(loaded);
         assertEquals(1, restoredNodes.size());
-        assertEquals(NodeType.CHANGE_VARIABLE, restoredNodes.getFirst().getType());
+        assertEquals(NodeType.CALCULATE, restoredNodes.getFirst().getType());
         assertEquals(List.of("1 + 2", "$count * 4", "7 / 2"), restoredNodes.getFirst().getMessageLines());
     }
 
@@ -191,7 +191,7 @@ class NodeGraphPersistenceTest {
 
         NodeGraphData.NodeData mathNode = new NodeGraphData.NodeData(
             "math",
-            NodeType.CHANGE_VARIABLE,
+            NodeType.CALCULATE,
             null,
             32,
             48,

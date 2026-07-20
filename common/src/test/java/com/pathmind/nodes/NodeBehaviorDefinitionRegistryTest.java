@@ -207,19 +207,20 @@ class NodeBehaviorDefinitionRegistryTest {
     }
 
     @Test
-    void mathNodeExportsMultipleExpressionsAndComparableNumber() {
+    void mathNodeParameterUsageResolvesToFirstOutputOnly() {
         Node owner = new Node(NodeType.CONTROL_IF, 0, 0);
-        Node math = new Node(NodeType.CHANGE_VARIABLE, 0, 0);
-        math.setMessageLines(java.util.List.of("1 + 2", "4 * 5"));
-        NodeBehaviorDefinition definition = NodeBehaviorDefinitionRegistry.get(NodeType.CHANGE_VARIABLE);
+        Node math = new Node(NodeType.CALCULATE, 0, 0);
+        math.setMessageLines(java.util.List.of("A = 1 + 2", "B = 4 * 5"));
+        NodeBehaviorDefinition definition = NodeBehaviorDefinitionRegistry.get(NodeType.CALCULATE);
 
         Map<String, String> values = math.exportParameterValues();
         Optional<Double> comparable = definition.resolveComparableNumber(owner, math);
 
-        assertEquals("3, 20", values.get("Amount"));
-        assertEquals("3, 20", values.get("Count"));
-        assertEquals("3, 20", values.get("Threshold"));
-        assertEquals("3, 20", values.get("Value"));
+        // Used as a parameter, Calculate resolves to output A (the first expression) only.
+        assertEquals("3", values.get("Amount"));
+        assertEquals("3", values.get("Count"));
+        assertEquals("3", values.get("Threshold"));
+        assertEquals("3", values.get("Value"));
         assertEquals(Optional.of(3.0), comparable);
         assertFalse(math.hasMessageScopeToggle());
     }

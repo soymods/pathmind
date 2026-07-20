@@ -118,7 +118,7 @@ class GraphValidatorTest {
     @Test
     void validateAcceptsStandaloneCalculateWithoutVariableAttachment() {
         Node start = new Node(NodeType.START, 0, 0);
-        Node calculate = new Node(NodeType.CHANGE_VARIABLE, 100, 0);
+        Node calculate = new Node(NodeType.CALCULATE, 100, 0);
         calculate.setMessageLine(0, "result = 2 * 3");
         NodeConnection connection = new NodeConnection(start, calculate, 0, 0);
 

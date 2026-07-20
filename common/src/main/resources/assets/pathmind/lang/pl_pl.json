@@ -295,6 +295,8 @@
   "pathmind.node.type.sensorVillagerTrade": "Ma handel wieśniaka",
   "pathmind.node.type.sensorVillagerTrade.desc": "Detect if the open villager trade list contains the selected trade",
   "pathmind.node.type.setVariable": "Ustaw",
+  "pathmind.node.type.calculate": "Calculate",
+  "pathmind.node.type.calculate.desc": "Evaluates one or more numeric expressions",
   "pathmind.node.type.setVariable.desc": "Przypisuje wartość parametru do zmiennej w czasie wykonywania",
   "pathmind.node.type.sprint": "Biegnij",
   "pathmind.node.type.sprint.desc": "Przełącza bieganie",

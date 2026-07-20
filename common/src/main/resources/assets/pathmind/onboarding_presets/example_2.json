@@ -64,7 +64,7 @@
     },
     {
       "id": "tutorial-2-calculate",
-      "type": "CHANGE_VARIABLE",
+      "type": "CALCULATE",
       "x": 470,
       "y": 110,
       "parameters": [

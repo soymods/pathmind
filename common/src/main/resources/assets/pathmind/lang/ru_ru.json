@@ -295,6 +295,8 @@
   "pathmind.node.type.sensorVillagerTrade": "Есть сделка жителя",
   "pathmind.node.type.sensorVillagerTrade.desc": "Detect if the open villager trade list contains the selected trade",
   "pathmind.node.type.setVariable": "Установить",
+  "pathmind.node.type.calculate": "Calculate",
+  "pathmind.node.type.calculate.desc": "Evaluates one or more numeric expressions",
   "pathmind.node.type.setVariable.desc": "Присваивает значение параметра переменной во время выполнения",
   "pathmind.node.type.sprint": "Бежать",
   "pathmind.node.type.sprint.desc": "Переключает режим бега",

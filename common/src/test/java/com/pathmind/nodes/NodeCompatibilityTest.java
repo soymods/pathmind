@@ -672,7 +672,7 @@ class NodeCompatibilityTest {
         Node setVariable2 = new Node(NodeType.SET_VARIABLE, 0, 0);
         Node variable2 = new Node(NodeType.VARIABLE, 0, 0);
         Node amount2 = new Node(NodeType.PARAM_AMOUNT, 0, 0);
-        Node calculate = new Node(NodeType.CHANGE_VARIABLE, 0, 0);
+        Node calculate = new Node(NodeType.CALCULATE, 0, 0);
         Node message = new Node(NodeType.MESSAGE, 0, 0);
 
         setVariable1.setOwningStartNode(start);
@@ -704,7 +704,7 @@ class NodeCompatibilityTest {
 
         java.util.concurrent.CompletableFuture<Void> calculated = new java.util.concurrent.CompletableFuture<>();
         new NodeVariableListCommandExecutor(calculate)
-            .executeChangeVariableCommand(calculated);
+            .executeStandaloneCalculateCommand(calculated);
         assertTrue(calculated.isDone());
         assertFalse(calculated.isCompletedExceptionally());
 
@@ -747,7 +747,7 @@ class NodeCompatibilityTest {
     @Test
     void standaloneCalculateExecutesWithoutVariableAttachment() {
         Node start = new Node(NodeType.START, 0, 0);
-        Node calculate = new Node(NodeType.CHANGE_VARIABLE, 0, 0);
+        Node calculate = new Node(NodeType.CALCULATE, 0, 0);
         Node message = new Node(NodeType.MESSAGE, 0, 0);
         assertFalse(calculate.hasParameterSlot());
         calculate.setOwningStartNode(start);
@@ -765,7 +765,7 @@ class NodeCompatibilityTest {
     @Test
     void executionSnapshotPreservesCalculateMessageLines() throws Exception {
         ExecutionManager manager = ExecutionManager.getInstance();
-        Node calculate = new Node(NodeType.CHANGE_VARIABLE, 0, 0);
+        Node calculate = new Node(NodeType.CALCULATE, 0, 0);
         calculate.setMessageLine(0, "A = $variable1*$variable2");
 
         Method createGraphSnapshot = ExecutionManager.class.getDeclaredMethod("createGraphSnapshot", List.class, List.class);

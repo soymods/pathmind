@@ -720,6 +720,8 @@
   "pathmind.node.type.sensorVillagerTrade": "Has Villager Trade",
   "pathmind.node.type.sensorVillagerTrade.desc": "Returns true when the open villager trade list contains the selected trade number",
   "pathmind.node.type.setVariable": "Assign Variable",
+  "pathmind.node.type.calculate": "Calculate",
+  "pathmind.node.type.calculate.desc": "Evaluates one or more numeric expressions",
   "pathmind.node.type.setVariable.desc": "Assigns a parameter value to a variable at runtime",
   "pathmind.node.type.sprint": "Sprint",
   "pathmind.node.type.sprint.desc": "Toggles sprinting",

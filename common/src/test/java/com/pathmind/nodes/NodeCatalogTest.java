@@ -175,12 +175,12 @@ class NodeCatalogTest {
 
     @Test
     void catalogOwnsParameterTraitSchema() {
-        assertEquals(EnumSet.of(NodeValueTrait.NUMBER), NodeCatalog.providedTraits(NodeType.CHANGE_VARIABLE));
+        assertEquals(EnumSet.of(NodeValueTrait.NUMBER), NodeCatalog.providedTraits(NodeType.CALCULATE));
         assertEquals(EnumSet.of(NodeValueTrait.NUMBER), NodeCatalog.providedTraits(NodeType.SENSOR_FIND_TRADE));
         assertEquals(EnumSet.of(NodeValueTrait.DIRECTION), NodeCatalog.providedTraits(NodeType.PARAM_BLOCK_FACE));
 
-        assertFalse(NodeCatalog.canHostParameter(NodeType.CHANGE_VARIABLE));
-        assertEquals(0, NodeCatalog.parameterSlotCount(NodeType.CHANGE_VARIABLE));
+        assertFalse(NodeCatalog.canHostParameter(NodeType.CALCULATE));
+        assertEquals(0, NodeCatalog.parameterSlotCount(NodeType.CALCULATE));
 
         assertEquals(2, NodeCatalog.parameterSlotCount(NodeType.WALK));
         assertEquals("Direction", NodeCatalog.parameterSlotLabel(NodeType.WALK, 0));
@@ -197,7 +197,6 @@ class NodeCatalogTest {
         assertTrue(parameterIds(NodeType.PRESS_KEY).contains("duration"));
         assertTrue(parameterIds(NodeType.PRESS_KEY).contains("useamount"));
 
-        assertEquals(List.of("changevariableamount", "changevariableoperation"), parameterIds(NodeType.CHANGE_VARIABLE));
         assertTrue(parameterIds(NodeType.PARAM_DIRECTION).contains("directionyawoffset"));
         assertTrue(parameterIds(NodeType.PARAM_DIRECTION).contains("directionpitchoffset"));
 

@@ -327,7 +327,7 @@ public class Node {
         this.parameters = new ArrayList<>();
         this.dynamicBooleanOperatorSlotCount = isExpandableBooleanOperatorType(type) ? 2 : 0;
         this.messageLines = new ArrayList<>();
-        if (type == NodeType.MESSAGE) {
+        if (type == NodeType.MESSAGE || type == NodeType.CALCULATE) {
             this.messageLines.add(getDefaultMessageLineValue());
         }
         this.messageClientSide = false;
@@ -857,6 +857,24 @@ public class Node {
         return NodeCatalog.isParameterNode(nodeType);
     }
 
+    /**
+     * Whether a node may be dragged into / used as a parameter: parameter nodes, sensors, and
+     * any node that provides a value trait (e.g. Calculate, operators). Slot trait-matching is
+     * intentionally not enforced beyond this — any usable value node may attach to any slot.
+     */
+    public static boolean isUsableAsParameterType(NodeType nodeType) {
+        return isParameterType(nodeType)
+            || isSensorType(nodeType)
+            || nodeType == NodeType.SENSOR_POSITION_OF
+            || nodeType == NodeType.SENSOR_DISTANCE_BETWEEN
+            || nodeType == NodeType.SENSOR_TARGETED_BLOCK_FACE
+            || nodeType == NodeType.SENSOR_TARGETED_BLOCK
+            || nodeType == NodeType.SENSOR_TARGETED_ENTITY
+            || nodeType == NodeType.SENSOR_CURRENT_GUI
+            || nodeType == NodeType.SENSOR_LOOK_DIRECTION
+            || !NodeTraitRegistry.getProvidedTraits(nodeType).isEmpty();
+    }
+
     public boolean canAcceptSensor() {
         return NodeCompatibility.canHostSlot(type, NodeSlotType.SENSOR);
     }
@@ -903,7 +921,12 @@ public class Node {
     }
 
     public boolean canAcceptParameterNode(Node parameterNode, int slotIndex) {
-        return NodeCompatibility.canAttachToSlot(this, parameterNode, NodeSlotType.PARAMETER, slotIndex);
+        // Editor attachment is unrestricted by slot trait: any node usable as a parameter may be
+        // dropped into any existing parameter slot. Runtime value validation stays strict elsewhere.
+        return parameterNode != null
+            && parameterNode != this
+            && canAcceptParameterAt(slotIndex)
+            && isUsableAsParameterType(parameterNode.getType());
     }
 
     public boolean isParameterSlotRequired(int slotIndex) {
@@ -1508,6 +1531,7 @@ public class Node {
             case SENSOR_CURRENT_HAND -> NodeType.PARAM_INVENTORY_SLOT;
             case SENSOR_CURRENT_GUI -> NodeType.PARAM_GUI;
             case SENSOR_SLOT_ITEM_COUNT, SENSOR_FIND_TRADE, LIST_LENGTH, OPERATOR_RANDOM, OPERATOR_MOD -> NodeType.PARAM_AMOUNT;
+            case CALCULATE -> NodeType.PARAM_AMOUNT;
             default -> type;
         };
     }
@@ -2206,8 +2230,21 @@ public class Node {
     }
 
     public boolean attachParameter(Node parameter, int slotIndex) {
+        return attachParameter(parameter, slotIndex, false);
+    }
+
+    /**
+     * Strict attachment that enforces slot trait compatibility. Used for runtime value substitution
+     * where an incompatible resolved value must be rejected. Editor and graph-restore paths use the
+     * unrestricted two-arg form, so any node usable as a parameter can occupy any existing slot.
+     */
+    public boolean attachParameterStrict(Node parameter, int slotIndex) {
+        return attachParameter(parameter, slotIndex, true);
+    }
+
+    private boolean attachParameter(Node parameter, int slotIndex, boolean enforceCompatibility) {
         if (parameter == null
-            || (!parameter.isParameterNode() && !parameter.isSensorNode())
+            || !isUsableAsParameterType(parameter.getType())
             || parameter == this) {
             return false;
         }
@@ -2233,7 +2270,7 @@ public class Node {
             return true;
         }
 
-        if (!isParameterSupported(parameter, slotIndex)) {
+        if (enforceCompatibility && !isParameterSupported(parameter, slotIndex)) {
             sendIncompatibleParameterMessage(parameter);
             return false;
         }
@@ -3193,7 +3230,7 @@ public class Node {
     }
 
     public boolean hasMessageInputFields() {
-        return type == NodeType.MESSAGE;
+        return type == NodeType.MESSAGE || type == NodeType.CALCULATE;
     }
 
     public String getStickyNoteText() {
@@ -3363,6 +3400,9 @@ public class Node {
             return;
         }
         String lineValue = sanitizeMessageLine(value);
+        if (type == NodeType.CALCULATE && lineValue.isBlank()) {
+            lineValue = getDefaultCalculationLineValue(messageLines.size());
+        }
         messageLines.add(lineValue);
         layoutState.clearMessageFieldContentWidthOverride();
         recalculateDimensions();
@@ -3404,11 +3444,14 @@ public class Node {
     }
 
     public String getMessageFieldLabelText(int index) {
+        if (type == NodeType.CALCULATE) {
+            return "Output " + getCalculationVariableLabel(index);
+        }
         return getMessageFieldCount() > 1 ? "Message " + (index + 1) : "Message";
     }
 
     private String getDefaultMessageLineValue() {
-        return "Hello World";
+        return type == NodeType.CALCULATE ? getDefaultCalculationLineValue(messageLines.size()) : "Hello World";
     }
 
     private String sanitizeMessageLine(String value) {
@@ -3417,6 +3460,21 @@ public class Node {
             return sanitized.substring(0, MAX_MESSAGE_LINE_LENGTH);
         }
         return sanitized;
+    }
+
+    private String getDefaultCalculationLineValue(int index) {
+        return getCalculationVariableLabel(index) + " = 0";
+    }
+
+    private String getCalculationVariableLabel(int index) {
+        int value = Math.max(0, index);
+        StringBuilder builder = new StringBuilder();
+        do {
+            int remainder = value % 26;
+            builder.insert(0, (char) ('A' + remainder));
+            value = value / 26 - 1;
+        } while (value >= 0);
+        return builder.toString();
     }
 
     public int getMessageFieldDisplayHeight() {
@@ -3989,6 +4047,7 @@ public class Node {
                 ROUTINE_CALL,
                 ROUTINE_INPUT,
                 SET_VARIABLE,
+                CALCULATE,
                 CONTROL_REPEAT,
                 CONTROL_FOREVER,
                 START_CHAIN,

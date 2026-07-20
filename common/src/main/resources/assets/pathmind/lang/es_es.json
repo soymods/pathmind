@@ -295,6 +295,8 @@
   "pathmind.node.type.sensorVillagerTrade": "Tiene intercambio de aldeano",
   "pathmind.node.type.sensorVillagerTrade.desc": "Detect if the open villager trade list contains the selected trade",
   "pathmind.node.type.setVariable": "Establecer",
+  "pathmind.node.type.calculate": "Calculate",
+  "pathmind.node.type.calculate.desc": "Evaluates one or more numeric expressions",
   "pathmind.node.type.setVariable.desc": "Asigna un valor de parámetro a una variable en tiempo de ejecución",
   "pathmind.node.type.sprint": "Esprintar",
   "pathmind.node.type.sprint.desc": "Activa o desactiva el esprintar",

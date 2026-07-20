@@ -2077,7 +2077,7 @@ public class ExecutionManager {
             }
             Node host = reporter.getParentParameterHost();
             int slot = reporter.getParentParameterSlotIndex();
-            if (host != null && slot >= 0 && !host.attachParameter(snapshot, slot)) {
+            if (host != null && slot >= 0 && !host.attachParameterStrict(snapshot, slot)) {
                 throw new IllegalStateException("Routine input " + reporter.getDisplayName().getString()
                     + " produced " + snapshot.getType().getDisplayName()
                     + ", which cannot be used for " + host.getParameterSlotLabel(slot)

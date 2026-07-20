@@ -136,6 +136,122 @@ final class NodeVariableListCommandExecutor {
         NodeExecutionCompletion.complete(future);
     }
 
+    void executeStandaloneCalculateCommand(CompletableFuture<Void> future) {
+        net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
+        ExecutionManager manager = ExecutionManager.getInstance();
+        Node startNode = owner.resolveExecutionStartNode();
+        if (startNode == null) {
+            NodeExecutionCompletion.fail(owner, client, future, tr("pathmind.error.noActiveTreeVariableChange"));
+            return;
+        }
+
+        int expressionIndex = 0;
+        int storedCount = 0;
+        for (String line : owner.getMessageLines()) {
+            String raw = line == null ? "" : line.trim();
+            if (raw.isEmpty()) {
+                continue;
+            }
+
+            CalculationLine calculation = parseCalculationLine(raw, expressionIndex);
+            if (calculation == null) {
+                NodeExecutionCompletion.fail(owner, client, future,
+                    "Calculate expression " + (expressionIndex + 1) + " has an invalid variable name.");
+                return;
+            }
+
+            String resolvedExpression = owner.resolveRuntimeVariablesInText(calculation.expression);
+            Double evaluated = Node.evaluateNumericExpression(resolvedExpression);
+            if (evaluated == null) {
+                NodeExecutionCompletion.fail(owner, client, future,
+                    "Calculate expression " + (expressionIndex + 1) + " is not a valid number expression.");
+                return;
+            }
+
+            ExecutionManager.RuntimeVariable value = createNumericRuntimeVariable(formatNumber(evaluated));
+            boolean stored = manager.setRuntimeVariable(startNode, calculation.variableName, value);
+            if (!stored) {
+                manager.setRuntimeVariableForAnyActiveChain(calculation.variableName, value);
+            }
+            expressionIndex++;
+            storedCount++;
+        }
+
+        if (storedCount == 0) {
+            NodeExecutionCompletion.fail(owner, client, future, "Calculate needs at least one expression.");
+            return;
+        }
+
+        NodeExecutionCompletion.complete(future);
+    }
+
+    private CalculationLine parseCalculationLine(String raw, int expressionIndex) {
+        int equalsIndex = raw.indexOf('=');
+        if (equalsIndex > 0) {
+            String candidateName = raw.substring(0, equalsIndex).trim();
+            String expression = raw.substring(equalsIndex + 1).trim();
+            if (!isValidRuntimeVariableName(candidateName) || expression.isEmpty()) {
+                return null;
+            }
+            return new CalculationLine(normalizeCalculationVariableName(candidateName), expression);
+        }
+        return new CalculationLine(defaultCalculationVariableName(expressionIndex), raw);
+    }
+
+    private boolean isValidRuntimeVariableName(String name) {
+        if (name == null || name.isBlank()) {
+            return false;
+        }
+        String trimmed = name.trim();
+        if (trimmed.charAt(0) == '$') {
+            trimmed = trimmed.substring(1);
+        }
+        if (trimmed.isEmpty() || !Character.isLetter(trimmed.charAt(0)) && trimmed.charAt(0) != '_') {
+            return false;
+        }
+        for (int i = 1; i < trimmed.length(); i++) {
+            char c = trimmed.charAt(i);
+            if (!Character.isLetterOrDigit(c) && c != '_') {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private String normalizeCalculationVariableName(String name) {
+        String trimmed = name == null ? "" : name.trim();
+        return trimmed.startsWith("$") ? trimmed.substring(1).trim() : trimmed;
+    }
+
+    private String defaultCalculationVariableName(int index) {
+        int value = Math.max(0, index);
+        StringBuilder builder = new StringBuilder();
+        do {
+            int remainder = value % 26;
+            builder.insert(0, (char) ('A' + remainder));
+            value = value / 26 - 1;
+        } while (value >= 0);
+        return builder.toString();
+    }
+
+    private ExecutionManager.RuntimeVariable createNumericRuntimeVariable(String value) {
+        Map<String, String> values = new HashMap<>();
+        NodeBehaviorDefinitionSupport.put(values, "Amount", value);
+        NodeBehaviorDefinitionSupport.put(values, "Count", value);
+        NodeBehaviorDefinitionSupport.put(values, "Threshold", value);
+        NodeBehaviorDefinitionSupport.put(values, "Value", value);
+        return new ExecutionManager.RuntimeVariable(NodeType.PARAM_AMOUNT, values);
+    }
+
+    private String formatNumber(double value) {
+        return Math.abs(value - Math.rint(value)) < 1.0E-9
+            ? Long.toString(Math.round(value))
+            : Double.toString(value);
+    }
+
+    private record CalculationLine(String variableName, String expression) {
+    }
+
     enum RemoveListMode {
         FIRST,
         LAST,

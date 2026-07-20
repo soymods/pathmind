@@ -123,7 +123,7 @@ class RoutineExecutionTest {
         List<Node> routineNodes = new ArrayList<>(NodeGraphPersistence.convertToNodes(routine.getGraph()));
         Node entry = routineNodes.stream()
             .filter(node -> node.getType() == NodeType.ROUTINE_ENTRY).findFirst().orElseThrow();
-        Node calculate = new Node(NodeType.CHANGE_VARIABLE, 200, 0);
+        Node calculate = new Node(NodeType.CALCULATE, 200, 0);
         calculate.setMessageLine(0, "A = $variable+1");
         Node update = new Node(NodeType.SET_VARIABLE, 400, 0);
         Node updateTarget = new Node(NodeType.VARIABLE, 0, 0);

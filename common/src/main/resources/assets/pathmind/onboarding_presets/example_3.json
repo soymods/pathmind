@@ -170,7 +170,7 @@
     },
     {
       "id": "tutorial-3-plan-math",
-      "type": "CHANGE_VARIABLE",
+      "type": "CALCULATE",
       "x": 990,
       "y": 80,
       "parameters": [
@@ -287,7 +287,7 @@
     },
     {
       "id": "tutorial-3-score-math",
-      "type": "CHANGE_VARIABLE",
+      "type": "CALCULATE",
       "x": 2490,
       "y": 80,
       "parameters": [

@@ -5,6 +5,7 @@ import java.util.Optional;
 final class NodeScalarParameterDefinitions {
     static Optional<NodeBehaviorDefinition> definition(NodeType type) {
         return switch (type) {
+            case CALCULATE -> Optional.of(MathNodeDefinition.create());
             case PARAM_AMOUNT -> Optional.of(AmountParameterDefinition.create());
             case PARAM_DURATION -> Optional.of(DurationParameterDefinition.create());
             case PARAM_RANGE -> Optional.of(RangeParameterDefinition.create());

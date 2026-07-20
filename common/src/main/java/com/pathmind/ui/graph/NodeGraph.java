@@ -1992,15 +1992,7 @@ public class NodeGraph {
 
                     boolean hideSockets = false;
                     resetDropTargets();
-                    boolean parameterCandidate = draggingNode.getType() == NodeType.SENSOR_POSITION_OF
-                        || draggingNode.getType() == NodeType.SENSOR_DISTANCE_BETWEEN
-                        || draggingNode.getType() == NodeType.SENSOR_TARGETED_BLOCK_FACE
-                        || draggingNode.getType() == NodeType.SENSOR_TARGETED_BLOCK
-                        || draggingNode.getType() == NodeType.SENSOR_TARGETED_ENTITY
-                        || draggingNode.getType() == NodeType.SENSOR_CURRENT_GUI
-                        || draggingNode.getType() == NodeType.SENSOR_LOOK_DIRECTION
-                        || draggingNode.isParameterNode()
-                        || draggingNode.isSensorNode();
+                    boolean parameterCandidate = Node.isUsableAsParameterType(draggingNode.getType());
                     if (parameterCandidate) {
                         hideSockets = trySetParameterDropTarget(draggingNode, worldMouseX, worldMouseY, true);
                     }
@@ -2075,15 +2067,7 @@ public class NodeGraph {
         }
         positionNewNode(candidate, worldMouseX, worldMouseY);
         NodeType nodeType = candidate.getType();
-        boolean parameterCandidate = nodeType == NodeType.SENSOR_POSITION_OF
-            || nodeType == NodeType.SENSOR_DISTANCE_BETWEEN
-            || nodeType == NodeType.SENSOR_TARGETED_BLOCK_FACE
-            || nodeType == NodeType.SENSOR_TARGETED_BLOCK
-            || nodeType == NodeType.SENSOR_TARGETED_ENTITY
-            || nodeType == NodeType.SENSOR_CURRENT_GUI
-            || nodeType == NodeType.SENSOR_LOOK_DIRECTION
-            || Node.isParameterType(nodeType)
-            || Node.isSensorType(nodeType);
+        boolean parameterCandidate = Node.isUsableAsParameterType(nodeType);
         if (parameterCandidate && trySetParameterDropTarget(candidate, worldMouseX, worldMouseY, false)) {
             return;
         }
@@ -2288,15 +2272,7 @@ public class NodeGraph {
             assignNewStartNodeNumber(newNode);
         }
 
-        boolean parameterCandidate = nodeType == NodeType.SENSOR_POSITION_OF
-            || nodeType == NodeType.SENSOR_DISTANCE_BETWEEN
-            || nodeType == NodeType.SENSOR_TARGETED_BLOCK_FACE
-            || nodeType == NodeType.SENSOR_TARGETED_BLOCK
-            || nodeType == NodeType.SENSOR_TARGETED_ENTITY
-            || nodeType == NodeType.SENSOR_CURRENT_GUI
-            || nodeType == NodeType.SENSOR_LOOK_DIRECTION
-            || Node.isParameterType(nodeType)
-            || Node.isSensorType(nodeType);
+        boolean parameterCandidate = Node.isUsableAsParameterType(nodeType);
         if (parameterCandidate
             && trySetParameterDropTarget(newNode, worldMouseX, worldMouseY, false)
             && parameterDropTarget != null
@@ -2525,15 +2501,7 @@ public class NodeGraph {
             }
         }
 
-        if ((draggingNode.isParameterNode()
-            || draggingNode.isSensorNode()
-            || draggingNode.getType() == NodeType.SENSOR_POSITION_OF
-            || draggingNode.getType() == NodeType.SENSOR_DISTANCE_BETWEEN
-            || draggingNode.getType() == NodeType.SENSOR_TARGETED_BLOCK_FACE
-            || draggingNode.getType() == NodeType.SENSOR_TARGETED_BLOCK
-            || draggingNode.getType() == NodeType.SENSOR_TARGETED_ENTITY
-            || draggingNode.getType() == NodeType.SENSOR_CURRENT_GUI
-            || draggingNode.getType() == NodeType.SENSOR_LOOK_DIRECTION)
+        if (Node.isUsableAsParameterType(draggingNode.getType())
             && draggingNode.getParentParameterHost() != null) {
             Node parent = draggingNode.getParentParameterHost();
             if (parent != null) {

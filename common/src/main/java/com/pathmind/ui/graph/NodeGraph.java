@@ -545,8 +545,12 @@ public class NodeGraph {
         @Override public void drawNodeText(GuiGraphics context, Font renderer, String text, int x, int y, int color) {
             NodeGraph.this.drawNodeText(context, renderer, text, x, y, color);
         }
-        @Override public void renderNodeSockets(GuiGraphics context, Node node, boolean isOverSidebar, boolean lowDetail) {
-            NodeGraph.this.renderNodeSockets(context, node, isOverSidebar, lowDetail);
+        @Override public boolean shouldRenderNodeSockets(Node node) { return NodeGraph.this.shouldRenderNodeSockets(node); }
+        @Override public Node hoveredSocketNode() { return connectionController.getHoveredSocketNode(); }
+        @Override public int hoveredSocketIndex() { return connectionController.getHoveredSocketIndex(); }
+        @Override public boolean hoveredSocketInput() { return connectionController.isHoveredSocketInput(); }
+        @Override public boolean isSocketActive(Node node, int socketIndex, boolean isInput) {
+            return connectionController.isSocketActive(node, socketIndex, isInput);
         }
         @Override public void renderNodeContent(GuiGraphics context, Font textRenderer, Node node, int mouseX, int mouseY,
                                                 int x, int y, int width, int height, boolean isOverSidebar,
@@ -3141,58 +3145,6 @@ public class NodeGraph {
             || node == connectionController.getConnectionSourceNode()
             || node == connectionController.getHoveredSocketNode()
             || node == connectionController.getHoveredNode();
-    }
-
-    private void renderNodeSockets(GuiGraphics context, Node node, boolean isOverSidebar, boolean lowDetail) {
-        if (!shouldRenderNodeSockets(node)) {
-            return;
-        }
-
-        // Render input sockets
-        for (int i = 0; i < node.getInputSocketCount(); i++) {
-            boolean isHovered = (connectionController.getHoveredSocketNode() == node
-                && connectionController.getHoveredSocketIndex() == i
-                && connectionController.isHoveredSocketInput());
-            boolean isActive = isSocketActive(node, i, true);
-            int socketColor;
-            if (lowDetail && !isOverSidebar) {
-                socketColor = isHovered
-                    ? getSelectedNodeAccentColor()
-                    : (isActive ? UITheme.BORDER_DEFAULT : UITheme.BORDER_SUBTLE);
-            } else {
-                socketColor = isHovered ? getSelectedNodeAccentColor() : node.getColor();
-                if (!isActive && !isHovered) {
-                    socketColor = darkenColor(socketColor, 0.7f); // Darker when unused
-                }
-            }
-            if (isOverSidebar) {
-                socketColor = UITheme.BORDER_HIGHLIGHT; // Grey sockets when over sidebar
-            }
-            renderSocket(context, node.getSocketX(true) - cameraX, node.getSocketY(i, true) - cameraY, true, socketColor);
-        }
-
-        // Render output sockets
-        for (int i = 0; i < node.getOutputSocketCount(); i++) {
-            boolean isHovered = (connectionController.getHoveredSocketNode() == node
-                && connectionController.getHoveredSocketIndex() == i
-                && !connectionController.isHoveredSocketInput());
-            boolean isActive = isSocketActive(node, i, false);
-            int socketColor;
-            if (lowDetail && !isOverSidebar) {
-                socketColor = isHovered
-                    ? getSelectedNodeAccentColor()
-                    : (isActive ? UITheme.BORDER_DEFAULT : UITheme.BORDER_SUBTLE);
-            } else {
-                socketColor = isHovered ? getSelectedNodeAccentColor() : node.getOutputSocketColor(i);
-                if (!isActive && !isHovered) {
-                    socketColor = darkenColor(socketColor, 0.7f); // Darker when unused
-                }
-            }
-            if (isOverSidebar) {
-                socketColor = UITheme.BORDER_HIGHLIGHT; // Grey sockets when over sidebar
-            }
-            renderSocket(context, node.getSocketX(false) - cameraX, node.getSocketY(i, false) - cameraY, false, socketColor);
-        }
     }
 
     private void renderNodeContent(GuiGraphics context, Font textRenderer, Node node, int mouseX, int mouseY,
@@ -8986,33 +8938,7 @@ public class NodeGraph {
     }
 
     private void renderSocket(GuiGraphics context, int x, int y, boolean isInput, int color) {
-        // Socket circle
-        context.fill(x - 3, y - 3, x + 3, y + 3, color);
-        DrawContextBridge.drawBorderInLayer(context, x - 3, y - 3, 6, 6, UITheme.BORDER_SOCKET);
-        
-        // Socket highlight
-        context.fill(x - 1, y - 1, x + 1, y + 1, UITheme.TEXT_PRIMARY);
-    }
-
-    private boolean isSocketConnected(Node node, int socketIndex, boolean isInput) {
-        return connectionController.isSocketConnected(node, socketIndex, isInput);
-    }
-
-    private boolean isSocketActive(Node node, int socketIndex, boolean isInput) {
-        return connectionController.isSocketActive(node, socketIndex, isInput);
-    }
-
-    private int darkenColor(int color, float factor) {
-        int alpha = (color >>> 24) & 0xFF;
-        int red = (color >> 16) & 0xFF;
-        int green = (color >> 8) & 0xFF;
-        int blue = color & 0xFF;
-
-        red = Math.min(255, Math.max(0, Math.round(red * factor)));
-        green = Math.min(255, Math.max(0, Math.round(green * factor)));
-        blue = Math.min(255, Math.max(0, Math.round(blue * factor)));
-
-        return (alpha << 24) | (red << 16) | (green << 8) | blue;
+        NodeRenderer.renderSocket(context, x, y, isInput, color);
     }
 
     private boolean shouldConsiderConnectionForViewport(NodeConnection connection, Set<Node> visibleRoots, int viewportWidth, int viewportHeight) {

@@ -35,7 +35,11 @@ final class NodeRenderer {
         boolean isComparisonOperator(Node node);
         void drawNodeText(GuiGraphics context, Font renderer, Component text, int x, int y, int color);
         void drawNodeText(GuiGraphics context, Font renderer, String text, int x, int y, int color);
-        void renderNodeSockets(GuiGraphics context, Node node, boolean isOverSidebar, boolean lowDetail);
+        boolean shouldRenderNodeSockets(Node node);
+        Node hoveredSocketNode();
+        int hoveredSocketIndex();
+        boolean hoveredSocketInput();
+        boolean isSocketActive(Node node, int socketIndex, boolean isInput);
         void renderNodeContent(GuiGraphics context, Font textRenderer, Node node, int mouseX, int mouseY,
                                int x, int y, int width, int height, boolean isOverSidebar,
                                boolean simpleStyle, boolean lowDetail);
@@ -273,8 +277,82 @@ final class NodeRenderer {
             );
         }
 
-        host.renderNodeSockets(context, node, isOverSidebar, lowDetail);
+        renderNodeSockets(context, node, isOverSidebar, lowDetail);
         host.renderNodeContent(context, textRenderer, node, mouseX, mouseY, x, y, width, height,
             isOverSidebar, simpleStyle, lowDetail);
+    }
+
+    private void renderNodeSockets(GuiGraphics context, Node node, boolean isOverSidebar, boolean lowDetail) {
+        if (!host.shouldRenderNodeSockets(node)) {
+            return;
+        }
+
+        // Render input sockets
+        for (int i = 0; i < node.getInputSocketCount(); i++) {
+            boolean isHovered = (host.hoveredSocketNode() == node
+                && host.hoveredSocketIndex() == i
+                && host.hoveredSocketInput());
+            boolean isActive = host.isSocketActive(node, i, true);
+            int socketColor;
+            if (lowDetail && !isOverSidebar) {
+                socketColor = isHovered
+                    ? host.selectedNodeAccentColor()
+                    : (isActive ? UITheme.BORDER_DEFAULT : UITheme.BORDER_SUBTLE);
+            } else {
+                socketColor = isHovered ? host.selectedNodeAccentColor() : node.getColor();
+                if (!isActive && !isHovered) {
+                    socketColor = darkenColor(socketColor, 0.7f); // Darker when unused
+                }
+            }
+            if (isOverSidebar) {
+                socketColor = UITheme.BORDER_HIGHLIGHT; // Grey sockets when over sidebar
+            }
+            renderSocket(context, node.getSocketX(true) - host.cameraX(), node.getSocketY(i, true) - host.cameraY(), true, socketColor);
+        }
+
+        // Render output sockets
+        for (int i = 0; i < node.getOutputSocketCount(); i++) {
+            boolean isHovered = (host.hoveredSocketNode() == node
+                && host.hoveredSocketIndex() == i
+                && !host.hoveredSocketInput());
+            boolean isActive = host.isSocketActive(node, i, false);
+            int socketColor;
+            if (lowDetail && !isOverSidebar) {
+                socketColor = isHovered
+                    ? host.selectedNodeAccentColor()
+                    : (isActive ? UITheme.BORDER_DEFAULT : UITheme.BORDER_SUBTLE);
+            } else {
+                socketColor = isHovered ? host.selectedNodeAccentColor() : node.getOutputSocketColor(i);
+                if (!isActive && !isHovered) {
+                    socketColor = darkenColor(socketColor, 0.7f); // Darker when unused
+                }
+            }
+            if (isOverSidebar) {
+                socketColor = UITheme.BORDER_HIGHLIGHT; // Grey sockets when over sidebar
+            }
+            renderSocket(context, node.getSocketX(false) - host.cameraX(), node.getSocketY(i, false) - host.cameraY(), false, socketColor);
+        }
+    }
+
+    static void renderSocket(GuiGraphics context, int x, int y, boolean isInput, int color) {
+        // Socket circle
+        context.fill(x - 3, y - 3, x + 3, y + 3, color);
+        DrawContextBridge.drawBorderInLayer(context, x - 3, y - 3, 6, 6, UITheme.BORDER_SOCKET);
+
+        // Socket highlight
+        context.fill(x - 1, y - 1, x + 1, y + 1, UITheme.TEXT_PRIMARY);
+    }
+
+    private static int darkenColor(int color, float factor) {
+        int alpha = (color >>> 24) & 0xFF;
+        int red = (color >> 16) & 0xFF;
+        int green = (color >> 8) & 0xFF;
+        int blue = color & 0xFF;
+
+        red = Math.min(255, Math.max(0, Math.round(red * factor)));
+        green = Math.min(255, Math.max(0, Math.round(green * factor)));
+        blue = Math.min(255, Math.max(0, Math.round(blue * factor)));
+
+        return (alpha << 24) | (red << 16) | (green << 8) | blue;
     }
 }

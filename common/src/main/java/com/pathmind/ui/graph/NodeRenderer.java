@@ -2,6 +2,22 @@ package com.pathmind.ui.graph;
 
 import static com.pathmind.ui.graph.InlineVariableRenderer.buildInlineVariableRender;
 import static com.pathmind.ui.graph.InlineVariableRenderer.isSingleKnownInlineVariableReference;
+import static com.pathmind.ui.graph.ParameterTypeClassifier.isAmountParameter;
+import static com.pathmind.ui.graph.ParameterTypeClassifier.isAttributeDetectionDropdownParameter;
+import static com.pathmind.ui.graph.ParameterTypeClassifier.isBlockFaceParameter;
+import static com.pathmind.ui.graph.ParameterTypeClassifier.isBlockItemParameter;
+import static com.pathmind.ui.graph.ParameterTypeClassifier.isBlockStateParameter;
+import static com.pathmind.ui.graph.ParameterTypeClassifier.isBooleanLiteralParameter;
+import static com.pathmind.ui.graph.ParameterTypeClassifier.isDirectionParameter;
+import static com.pathmind.ui.graph.ParameterTypeClassifier.isEntityStateParameter;
+import static com.pathmind.ui.graph.ParameterTypeClassifier.isFabricEventSensorParameter;
+import static com.pathmind.ui.graph.ParameterTypeClassifier.isGuiParameter;
+import static com.pathmind.ui.graph.ParameterTypeClassifier.isHandParameter;
+import static com.pathmind.ui.graph.ParameterTypeClassifier.isInlineDropdownParameter;
+import static com.pathmind.ui.graph.ParameterTypeClassifier.isMessageParameter;
+import static com.pathmind.ui.graph.ParameterTypeClassifier.isMouseButtonParameter;
+import static com.pathmind.ui.graph.ParameterTypeClassifier.isPlayerParameter;
+import static com.pathmind.ui.graph.ParameterTypeClassifier.isSeedParameter;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -15,6 +31,7 @@ import com.pathmind.nodes.Node;
 import com.pathmind.nodes.NodeParameter;
 import com.pathmind.nodes.NodeType;
 import com.pathmind.nodes.StartLaunchMode;
+import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.graph.InlineVariableRenderer.InlineVariableRender;
 import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
@@ -75,6 +92,44 @@ final class NodeRenderer {
         int parameterSelectionEnd();
         boolean parameterCaretVisible();
         int parameterCaretPosition();
+        boolean shouldShowParameters(Node node);
+        int parameterInputHeight();
+        int parameterInputGap();
+        int directionModeTabHeight();
+        int getParameterFieldLeft(Node node);
+        int getParameterFieldWidth(Node node);
+        int getParameterFieldHeight();
+        int screenToWorldX(int screenX);
+        int screenToWorldY(int screenY);
+        float getTextFieldHighlightProgress(Object key, boolean hovered, boolean active);
+        boolean isCombinedDirectionNode(Node node);
+        void renderDirectionModeTabs(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar,
+                                     int fieldTop, int mouseX, int mouseY);
+        boolean isCombinedBooleanNode(Node node);
+        void renderBooleanModeTabs(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar,
+                                   int fieldTop, int mouseX, int mouseY);
+        String getParameterLabelText(Node node, NodeParameter parameter, Font textRenderer, int maxWidth);
+        int getParameterValueStartX(Node node, NodeParameter parameter, Font textRenderer);
+        boolean isDefaultMouseButtonValue(String value);
+        boolean isDefaultHandValue(String value);
+        boolean isTradeInlinePlaceholder(Node node, NodeParameter parameter, boolean editing);
+        boolean isAnyBlockItemValue(String value);
+        String formatVillagerTradeValue(String rawValue);
+        String formatMouseButtonValue(String value);
+        String formatHandValue(String value);
+        String formatAttributeDetectionInlineValue(Node node, NodeParameter parameter, String value);
+        boolean parameterDropdownOpen();
+        Node parameterDropdownNode();
+        int parameterDropdownIndex();
+        boolean supportsRelativeInlineParameter(Node node, NodeParameter parameter);
+        boolean shouldBuildInlineExpressionRender(String rawText, Set<String> variableNames,
+                                                  boolean allowRelativeMarker);
+        void updateParameterDropdown(Node node, int index, Font textRenderer, int fieldX, int fieldY,
+                                     int fieldWidth, int fieldHeight);
+        void renderRandomRoundingField(GuiGraphics context, Font textRenderer, Node node,
+                                       boolean isOverSidebar);
+        void renderAmountInputField(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar,
+                                    int mouseX, int mouseY);
         void renderParameterSlot(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar,
                                  int slotIndex);
         String getOperatorSymbol(Node node, boolean negated);
@@ -470,6 +525,403 @@ final class NodeRenderer {
             caretX = Math.min(caretX, boxRight - 2);
             int caretBaseline = Math.min(textY + textRenderer.lineHeight - 1, boxBottom - 2);
             UIStyleHelper.drawTextCaretAtBaseline(context, textRenderer, caretX, caretBaseline, boxRight - 2, UITheme.CARET_COLOR);
+        }
+    }
+
+    void renderInlineParameterContent(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar,
+                                      int mouseX, int mouseY, int x, int y, int width, int height) {
+        if (host.shouldShowParameters(node)) {
+            int paramBgColor = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_SIDEBAR; // Grey when over sidebar
+            context.fill(x + 3, y + 16, x + width - 3, y + height - 3, paramBgColor);
+
+            // Render parameters
+            int paramY = y + 18;
+            List<NodeParameter> parameters = node.getParameters();
+            if (host.isEditingParameterField() && host.parameterEditingNode() == node) {
+                host.updateParameterCaretBlink();
+            }
+
+            if (node.supportsModeSelection()) {
+                int fieldLeft = host.getParameterFieldLeft(node) - host.cameraX();
+                int fieldTop = paramY;
+                int fieldWidth = host.getParameterFieldWidth(node);
+                int fieldHeight = host.getParameterFieldHeight();
+                int fieldRight = fieldLeft + fieldWidth;
+                int worldMouseX = host.screenToWorldX(mouseX);
+                int worldMouseY = host.screenToWorldY(mouseY);
+
+                int fieldBackground = isOverSidebar
+                    ? UITheme.BACKGROUND_SECONDARY
+                    : UITheme.BACKGROUND_SIDEBAR;
+                int activeFieldBackground = isOverSidebar ? UITheme.BACKGROUND_TERTIARY : UITheme.NODE_INPUT_BG_ACTIVE;
+                int fieldBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BORDER_DEFAULT;
+                int activeFieldBorder = host.selectedNodeAccentColor();
+                boolean hovered = !isOverSidebar
+                    && worldMouseX >= host.getParameterFieldLeft(node)
+                    && worldMouseX <= host.getParameterFieldLeft(node) + fieldWidth
+                    && worldMouseY >= fieldTop + host.cameraY()
+                    && worldMouseY <= fieldTop + host.cameraY() + fieldHeight;
+                float progress = host.getTextFieldHighlightProgress(node.getId() + "#modeInline", hovered, false);
+                int backgroundColor = isOverSidebar
+                    ? fieldBackground
+                    : AnimationHelper.lerpColor(fieldBackground, activeFieldBackground, progress);
+                int modeFieldBorderColor = isOverSidebar
+                    ? fieldBorder
+                    : AnimationHelper.lerpColor(fieldBorder, activeFieldBorder, progress);
+
+                context.fill(fieldLeft, fieldTop, fieldRight, fieldTop + fieldHeight, backgroundColor);
+                DrawContextBridge.drawBorderInLayer(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, modeFieldBorderColor);
+
+                int labelColor = isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.NODE_LABEL_COLOR;
+                int valueColor = isOverSidebar ? UITheme.TEXT_TERTIARY
+                    : AnimationHelper.lerpColor(UITheme.TEXT_PRIMARY, UITheme.TEXT_HEADER, progress);
+                String labelText = "Mode:";
+                int labelX = fieldLeft + 4;
+                int labelY = fieldTop + (fieldHeight - textRenderer.lineHeight) / 2;
+                host.drawNodeText(context, textRenderer, Component.literal(labelText), labelX, labelY, labelColor);
+
+                String modeValue = node.getMode() != null ? node.getMode().getDisplayName() : "Select Mode";
+                int valueStartX = labelX + textRenderer.width(labelText) + 6;
+                int maxValueWidth = Math.max(0, fieldRight - valueStartX - 4);
+                String displayValue = host.trimTextToWidth(modeValue, textRenderer, maxValueWidth);
+                int valueY = fieldTop + (fieldHeight - textRenderer.lineHeight) / 2;
+                host.drawNodeText(context, textRenderer, Component.literal(displayValue), valueStartX, valueY, valueColor);
+
+                paramY += host.parameterInputHeight() + host.parameterInputGap();
+            }
+
+            if (host.isCombinedDirectionNode(node)) {
+                host.renderDirectionModeTabs(context, textRenderer, node, isOverSidebar, paramY, mouseX, mouseY);
+                paramY += host.directionModeTabHeight() + host.parameterInputGap();
+            }
+
+            if (host.isCombinedBooleanNode(node)) {
+                host.renderBooleanModeTabs(context, textRenderer, node, isOverSidebar, paramY, mouseX, mouseY);
+                paramY += host.directionModeTabHeight() + host.parameterInputGap();
+            }
+
+            for (int i = 0; i < parameters.size(); i++) {
+                NodeParameter param = parameters.get(i);
+                String displayLabel = node.getParameterLabel(param);
+                if (displayLabel == null || displayLabel.isEmpty()) {
+                    continue;
+                }
+
+                boolean editingThis = host.isEditingParameterField()
+                    && host.parameterEditingNode() == node
+                    && host.parameterEditingIndex() == i;
+
+                int fieldLeft = host.getParameterFieldLeft(node) - host.cameraX();
+                int fieldTop = paramY;
+                int fieldWidth = host.getParameterFieldWidth(node);
+                int fieldHeight = host.getParameterFieldHeight();
+                int fieldRight = fieldLeft + fieldWidth;
+                int worldMouseX = host.screenToWorldX(mouseX);
+                int worldMouseY = host.screenToWorldY(mouseY);
+
+                int fieldBackground = isOverSidebar
+                    ? UITheme.BACKGROUND_SECONDARY
+                    : UITheme.BACKGROUND_SIDEBAR;
+                int activeFieldBackground = isOverSidebar ? UITheme.BACKGROUND_TERTIARY : UITheme.NODE_INPUT_BG_ACTIVE;
+                int fieldBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BORDER_DEFAULT;
+                int activeFieldBorder = host.selectedNodeAccentColor();
+
+                int labelColor = isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.NODE_LABEL_COLOR;
+                int valueColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
+
+                int maxLabelWidth = Math.max(0, fieldWidth - 40);
+                String labelText = host.getParameterLabelText(node, param, textRenderer, maxLabelWidth);
+                int labelX = fieldLeft + 4;
+                int labelY = fieldTop + (fieldHeight - textRenderer.lineHeight) / 2;
+
+                int valueStartX = host.getParameterValueStartX(node, param, textRenderer) - host.cameraX();
+                int maxValueWidth = Math.max(0, fieldRight - valueStartX - 4);
+                String value = editingThis ? host.parameterEditBuffer() : param.getStringValue();
+                if (value == null) {
+                    value = "";
+                }
+                boolean isPlayerParam = isPlayerParameter(node, param);
+                boolean isMessageParam = isMessageParameter(node, param);
+                boolean isSeedParam = isSeedParameter(node, param);
+                boolean isGuiParam = isGuiParameter(node, param);
+                boolean isMouseButtonParam = isMouseButtonParameter(node, param);
+                boolean isHandParam = isHandParameter(node, param);
+                boolean isAmountParam = isAmountParameter(node, param);
+                boolean isAttributeDetectionDropdownParam = isAttributeDetectionDropdownParameter(node, i);
+                boolean showPlayerPlaceholder = false;
+                boolean showMessagePlaceholder = false;
+                boolean showSeedPlaceholder = false;
+                boolean showBlockItemPlaceholder = false;
+                boolean showFabricEventPlaceholder = false;
+                boolean showDirectionPlaceholder = false;
+                boolean showBlockFacePlaceholder = false;
+                boolean showGuiPlaceholder = false;
+                boolean showMouseButtonPlaceholder = false;
+                boolean showHandPlaceholder = false;
+                boolean showAmountPlaceholder = false;
+                boolean showTradePlaceholder = false;
+                if (isPlayerParam) {
+                    boolean showPlaceholder = !editingThis
+                        && (value.isEmpty() || (!param.isUserEdited() && "Self".equalsIgnoreCase(value)));
+                    showPlayerPlaceholder = showPlaceholder;
+                }
+                if (isMessageParam) {
+                    showMessagePlaceholder = false;
+                }
+                if (isSeedParam) {
+                    boolean showPlaceholder = !editingThis
+                        && (value.isEmpty() || (!param.isUserEdited() && "Any".equalsIgnoreCase(value)));
+                    showSeedPlaceholder = showPlaceholder;
+                }
+                if (isGuiParam) {
+                    boolean showPlaceholder = !editingThis
+                        && (value.isEmpty() || (!param.isUserEdited() && "Any".equalsIgnoreCase(value)));
+                    showGuiPlaceholder = showPlaceholder;
+                }
+                if (isMouseButtonParam) {
+                    boolean showPlaceholder = !editingThis
+                        && (value.isEmpty() || (!param.isUserEdited() && host.isDefaultMouseButtonValue(value)));
+                    showMouseButtonPlaceholder = showPlaceholder;
+                }
+                if (isHandParam) {
+                    boolean showPlaceholder = !editingThis
+                        && (value.isEmpty() || (!param.isUserEdited() && host.isDefaultHandValue(value)));
+                    showHandPlaceholder = showPlaceholder;
+                }
+                if (isAmountParam) {
+                    boolean showPlaceholder = !editingThis
+                        && (value.isEmpty() || (!param.isUserEdited() && "0".equalsIgnoreCase(value)));
+                    showAmountPlaceholder = showPlaceholder;
+                }
+                if (!editingThis && host.isTradeInlinePlaceholder(node, param, false)) {
+                    showTradePlaceholder = true;
+                }
+                if (isBlockItemParameter(node, i)) {
+                    boolean showPlaceholder = !editingThis
+                        && (value.isEmpty() || (!param.isUserEdited() && host.isAnyBlockItemValue(value)));
+                    showBlockItemPlaceholder = showPlaceholder;
+                }
+                if (isFabricEventSensorParameter(node, i)) {
+                    boolean showPlaceholder = !editingThis
+                        && (value.isEmpty() || (!param.isUserEdited() && "Any".equalsIgnoreCase(value)));
+                    showFabricEventPlaceholder = showPlaceholder;
+                }
+                if (isDirectionParameter(node, i)) {
+                    boolean showPlaceholder = !editingThis
+                        && (value.isEmpty() || (!param.isUserEdited() && "north".equalsIgnoreCase(value)));
+                    showDirectionPlaceholder = showPlaceholder;
+                }
+                if (isBlockFaceParameter(node, i)) {
+                    boolean showPlaceholder = !editingThis
+                        && (value.isEmpty() || (!param.isUserEdited() && "north".equalsIgnoreCase(value)));
+                    showBlockFacePlaceholder = showPlaceholder;
+                }
+                if (!editingThis
+                    && node.getType() == NodeType.PARAM_VILLAGER_TRADE
+                    && ("Item".equalsIgnoreCase(param.getName()) || "Trade".equalsIgnoreCase(param.getName()))) {
+                    value = host.formatVillagerTradeValue(value);
+                }
+                if (!editingThis && (value.isEmpty() || host.isAnyBlockItemValue(value)) && isBlockItemParameter(node, i)) {
+                    value = (isBlockStateParameter(node, i) || isEntityStateParameter(node, i))
+                        ? "Any State"
+                        : "Any";
+                }
+                if (!editingThis && isFabricEventSensorParameter(node, i)
+                    && (value.isEmpty() || "Any".equalsIgnoreCase(value))) {
+                    value = "Any";
+                }
+                if (!editingThis && isMouseButtonParam) {
+                    value = host.formatMouseButtonValue(value);
+                }
+                if (!editingThis && isHandParam) {
+                    value = host.formatHandValue(value);
+                }
+                if (!editingThis && isAttributeDetectionDropdownParam) {
+                    value = host.formatAttributeDetectionInlineValue(node, param, value);
+                }
+                if (!editingThis && isBooleanLiteralParameter(node, i) && value.isEmpty()) {
+                    value = "True";
+                }
+                if (!editingThis && isBooleanLiteralParameter(node, i) && !value.isEmpty()) {
+                    value = Character.toUpperCase(value.charAt(0)) + value.substring(1).toLowerCase(Locale.ROOT);
+                }
+                if (!editingThis && isBlockFaceParameter(node, i) && !value.isEmpty()) {
+                    value = Character.toUpperCase(value.charAt(0)) + value.substring(1).toLowerCase(Locale.ROOT);
+                }
+                if (showPlayerPlaceholder || showMessagePlaceholder || showSeedPlaceholder
+                    || showBlockItemPlaceholder || showFabricEventPlaceholder
+                    || showGuiPlaceholder || showMouseButtonPlaceholder || showHandPlaceholder || showAmountPlaceholder
+                    || showDirectionPlaceholder || showBlockFacePlaceholder || showTradePlaceholder) {
+                    if (isBlockStateParameter(node, i) || isEntityStateParameter(node, i)) {
+                        value = "Any State";
+                    } else if (showPlayerPlaceholder) {
+                        value = "Self";
+                    } else if (showMouseButtonPlaceholder) {
+                        value = "Left";
+                    } else if (showHandPlaceholder) {
+                        value = "Main Hand";
+                    } else if (showTradePlaceholder) {
+                        value = "1";
+                    } else if (showAmountPlaceholder) {
+                        value = "0";
+                    } else if (showBlockFacePlaceholder) {
+                        value = "North";
+                    } else if (showDirectionPlaceholder) {
+                        value = "North";
+                    } else {
+                        value = "Any";
+                    }
+                    valueColor = UITheme.TEXT_TERTIARY;
+                }
+                boolean inlineDropdown = isInlineDropdownParameter(node, i);
+                boolean inlineDropdownOpen = inlineDropdown
+                    && host.parameterDropdownOpen()
+                    && host.parameterDropdownNode() == node
+                    && host.parameterDropdownIndex() == i;
+                boolean hovered = !isOverSidebar
+                    && worldMouseX >= fieldLeft + host.cameraX()
+                    && worldMouseX <= fieldLeft + host.cameraX() + fieldWidth
+                    && worldMouseY >= fieldTop + host.cameraY()
+                    && worldMouseY <= fieldTop + host.cameraY() + fieldHeight;
+                float progress = host.getTextFieldHighlightProgress(
+                    node.getId() + "#param:" + i,
+                    hovered,
+                    editingThis || inlineDropdownOpen
+                );
+                int backgroundColor;
+                int parameterFieldBorderColor;
+                if (host.compactViewportMode() && !isOverSidebar) {
+                    backgroundColor = editingThis || inlineDropdownOpen
+                        ? UITheme.BACKGROUND_INPUT
+                        : UITheme.BACKGROUND_SECONDARY;
+                    parameterFieldBorderColor = editingThis || inlineDropdownOpen
+                        ? host.selectedNodeAccentColor()
+                        : UITheme.BORDER_DEFAULT;
+                } else {
+                    backgroundColor = isOverSidebar
+                        ? fieldBackground
+                        : AnimationHelper.lerpColor(fieldBackground, activeFieldBackground, progress);
+                    parameterFieldBorderColor = isOverSidebar
+                        ? fieldBorder
+                        : AnimationHelper.lerpColor(fieldBorder, activeFieldBorder, progress);
+                }
+                if (inlineDropdownOpen && !isOverSidebar) {
+                    parameterFieldBorderColor = host.selectedNodeAccentColor();
+                }
+
+                context.fill(fieldLeft, fieldTop, fieldRight, fieldTop + fieldHeight, backgroundColor);
+                DrawContextBridge.drawBorderInLayer(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, parameterFieldBorderColor);
+
+                if (!host.compactViewportMode() || isOverSidebar) {
+                    labelColor = isOverSidebar ? labelColor
+                        : AnimationHelper.lerpColor(labelColor, UITheme.TEXT_HEADER, progress * 0.6f);
+                    valueColor = isOverSidebar ? valueColor
+                        : AnimationHelper.lerpColor(valueColor, UITheme.TEXT_HEADER, progress);
+                }
+                if (!labelText.isEmpty()) {
+                    host.drawNodeText(context, textRenderer, Component.literal(labelText), labelX, labelY, labelColor);
+                }
+
+                String arrow = inlineDropdown ? (inlineDropdownOpen ? "v" : "^") : "";
+                int arrowWidth = inlineDropdown ? textRenderer.width(arrow) : 0;
+                if (inlineDropdown) {
+                    maxValueWidth = Math.max(0, maxValueWidth - arrowWidth - 8);
+                }
+                String displayValue = editingThis
+                    ? value
+                    : host.trimTextToWidth(value, textRenderer, maxValueWidth);
+                int paramVariableHighlightColor = isOverSidebar ? host.toGrayscale(host.selectedNodeAccentColor(), 0.85f) : host.selectedNodeAccentColor();
+                Set<String> paramVariableNames = host.collectRuntimeVariableNames(node);
+                InlineVariableRender paramRenderData = null;
+                boolean allowRelativeMarker = host.supportsRelativeInlineParameter(node, param);
+                if (host.shouldBuildInlineExpressionRender(value, paramVariableNames, allowRelativeMarker)) {
+                    InlineVariableRender candidate = buildInlineVariableRender(
+                        value,
+                        paramVariableNames,
+                        valueColor,
+                        paramVariableHighlightColor,
+                        allowRelativeMarker
+                    );
+                    if (editingThis) {
+                        paramRenderData = candidate;
+                        displayValue = paramRenderData.displayText;
+                    } else if (textRenderer.width(candidate.displayText) <= maxValueWidth) {
+                        paramRenderData = candidate;
+                        displayValue = paramRenderData.displayText;
+                    } else if (isSingleKnownInlineVariableReference(value, paramVariableNames)) {
+                        displayValue = host.trimTextToWidth(candidate.displayText, textRenderer, maxValueWidth);
+                        valueColor = paramVariableHighlightColor;
+                    }
+                }
+                int valueY = fieldTop + (fieldHeight - textRenderer.lineHeight) / 2;
+
+                if (editingThis && host.hasParameterSelection()) {
+                    int start = host.parameterSelectionStart();
+                    int end = host.parameterSelectionEnd();
+                    if (paramRenderData != null) {
+                        start = paramRenderData.toDisplayIndex(start);
+                        end = paramRenderData.toDisplayIndex(end);
+                    }
+                    start = Mth.clamp(start, 0, displayValue.length());
+                    end = Mth.clamp(end, 0, displayValue.length());
+                    if (start != end) {
+                        int selectionStartX = valueStartX + textRenderer.width(displayValue.substring(0, start));
+                        int selectionEndX = valueStartX + textRenderer.width(displayValue.substring(0, end));
+                        context.fill(selectionStartX, fieldTop + 2, selectionEndX, fieldTop + fieldHeight - 2, UITheme.TEXT_SELECTION_BG);
+                    }
+                }
+
+                if (paramRenderData != null && host.shouldRenderNodeText()) {
+                    paramRenderData.draw(context, textRenderer, valueStartX, valueY);
+                } else {
+                    host.drawNodeText(context, textRenderer, Component.literal(displayValue), valueStartX, valueY, valueColor);
+                }
+
+                if (inlineDropdown) {
+                    int arrowX = fieldRight - arrowWidth - 4;
+                    host.drawNodeText(context, textRenderer, Component.literal(arrow), arrowX, valueY, valueColor);
+                }
+
+                if (editingThis && host.parameterCaretVisible()) {
+                    int caretIndex = host.parameterCaretPosition();
+                    if (paramRenderData != null) {
+                        caretIndex = paramRenderData.toDisplayIndex(caretIndex);
+                    }
+                    caretIndex = Mth.clamp(caretIndex, 0, displayValue.length());
+                    int caretX = valueStartX + textRenderer.width(displayValue.substring(0, caretIndex));
+                    caretX = Math.min(caretX, fieldRight - 2);
+                    int caretBaseline = Math.min(valueY + textRenderer.lineHeight - 1, fieldTop + fieldHeight - 2);
+                    UIStyleHelper.drawTextCaretAtBaseline(context, textRenderer, caretX, caretBaseline, fieldRight - 2, UITheme.CARET_COLOR);
+                }
+
+                if (editingThis && (isBlockItemParameter(node, i)
+                    || isMouseButtonParameter(node, param)
+                    || isHandParameter(node, param)
+                    || isGuiParameter(node, param)
+                    || isDirectionParameter(node, i)
+                    || isAttributeDetectionDropdownParameter(node, i)
+                    || isBlockFaceParameter(node, i)
+                    || isFabricEventSensorParameter(node, i))) {
+                    host.updateParameterDropdown(node, i, textRenderer, fieldLeft, fieldTop, fieldWidth, fieldHeight);
+                }
+
+                paramY += host.parameterInputHeight() + host.parameterInputGap();
+            }
+            if (node.hasRandomRoundingField()) {
+                host.renderRandomRoundingField(context, textRenderer, node, isOverSidebar);
+            }
+            if (node.hasParameterSlot()) {
+                int slotCount = node.getParameterSlotCount();
+                for (int slotIndex = 0; slotIndex < slotCount; slotIndex++) {
+                    host.renderParameterSlot(context, textRenderer, node, isOverSidebar, slotIndex);
+                }
+            }
+            if (node.hasAmountInputField()) {
+                host.renderAmountInputField(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+            }
+            if (node.hasPopupEditButton()) {
+                host.renderPopupEditButton(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+            }
         }
     }
 

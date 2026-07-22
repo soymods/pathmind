@@ -570,6 +570,36 @@ public class NodeGraph {
         @Override public boolean shouldBuildInlineExpressionRender(String rawText, Set<String> variableNames) {
             return NodeGraph.this.shouldBuildInlineExpressionRender(rawText, variableNames);
         }
+        @Override public boolean hoveringStartButton() { return hoveringStartButton; }
+        @Override public void renderStartLaunchIcon(GuiGraphics context, StartLaunchMode mode, int centerX,
+                                                    int centerY, int color, int nodeTop, int nodeHeight) {
+            NodeGraph.this.renderStartLaunchIcon(context, mode, centerX, centerY, color, nodeTop, nodeHeight);
+        }
+        @Override public void renderStartNodeNumber(GuiGraphics context, Font textRenderer, Node node,
+                                                    int x, int y, boolean isOverSidebar) {
+            NodeGraph.this.renderStartNodeNumber(context, textRenderer, node, x, y, isOverSidebar);
+        }
+        @Override public void renderStartModeButton(GuiGraphics context, Node node, int x, int y,
+                                                    boolean isOverSidebar, int mouseX, int mouseY) {
+            NodeGraph.this.renderStartModeButton(context, node, x, y, isOverSidebar, mouseX, mouseY);
+        }
+        @Override public boolean isEditingParameterField() { return NodeGraph.this.isEditingParameterField(); }
+        @Override public Node parameterEditingNode() { return parameterEditingNode; }
+        @Override public int parameterEditingIndex() { return parameterEditingIndex; }
+        @Override public void updateParameterCaretBlink() { NodeGraph.this.updateParameterCaretBlink(); }
+        @Override public String parameterEditBuffer() { return parameterEditBuffer; }
+        @Override public boolean hasParameterSelection() { return NodeGraph.this.hasParameterSelection(); }
+        @Override public int parameterSelectionStart() { return parameterSelectionStart; }
+        @Override public int parameterSelectionEnd() { return parameterSelectionEnd; }
+        @Override public boolean parameterCaretVisible() { return parameterCaretVisible; }
+        @Override public int parameterCaretPosition() { return parameterCaretPosition; }
+        @Override public void renderParameterSlot(GuiGraphics context, Font textRenderer, Node node,
+                                                  boolean isOverSidebar, int slotIndex) {
+            NodeGraph.this.renderParameterSlot(context, textRenderer, node, isOverSidebar, slotIndex);
+        }
+        @Override public String getOperatorSymbol(Node node, boolean negated) {
+            return NodeGraph.this.getOperatorSymbol(node, negated);
+        }
         @Override public void renderNodeContent(GuiGraphics context, Font textRenderer, Node node, int mouseX, int mouseY,
                                                 int x, int y, int width, int height, boolean isOverSidebar,
                                                 boolean simpleStyle, boolean lowDetail) {
@@ -3198,176 +3228,18 @@ public class NodeGraph {
                                    boolean simpleStyle, boolean lowDetail) {
         // Render node content based on type
         if (node.getType() == NodeType.START) {
-            // START node - green square with play button
-            int greenColor = lowDetail
-                ? (isOverSidebar ? UITheme.NODE_DIMMED_BG : UITheme.BACKGROUND_SECTION)
-                : (isOverSidebar ? toGrayscale(UITheme.NODE_START_BG, 0.7f) : UITheme.NODE_START_BG);
-            context.fill(x + 1, y + 1, x + width - 1, y + height - 1, greenColor);
-            
-            // Draw launch-mode icon - with hover effect
-            int playColor;
-            if (hoveringStartButton) {
-                playColor = isOverSidebar ? UITheme.TEXT_LABEL : UITheme.TEXT_PRIMARY; // Darker when hovered
-            } else {
-                playColor = isOverSidebar ? UITheme.TEXT_PRIMARY : UITheme.TEXT_PRIMARY; // Normal white
-            }
-            int centerX = x + width / 2;
-            int centerY = y + height / 2;
-
-            renderStartLaunchIcon(context, node.getStartLaunchMode(), centerX, centerY, playColor, y, height);
-
-            renderStartNodeNumber(context, textRenderer, node, x, y, isOverSidebar);
-            renderStartModeButton(context, node, x, y, isOverSidebar, mouseX, mouseY);
-            
+            nodeRenderer.renderStartContent(context, textRenderer, node, isOverSidebar, mouseX, mouseY,
+                x, y, width, height, lowDetail);
         } else if (!simpleStyle
             && (node.getType() == NodeType.EVENT_FUNCTION || node.getType() == NodeType.ROUTINE_ENTRY)) {
             nodeRenderer.renderEventDefinitionContent(context, textRenderer, node, isOverSidebar, mouseX, mouseY,
                 x, y, width, height, lowDetail);
         } else if (node.getType() == NodeType.VARIABLE || node.getType() == NodeType.ROUTINE_INPUT) {
-            boolean routineInput = node.getType() == NodeType.ROUTINE_INPUT;
-            int baseColor = lowDetail
-                ? (isOverSidebar ? UITheme.NODE_DIMMED_BG : UITheme.BACKGROUND_SECTION)
-                : (isOverSidebar ? toGrayscale(routineInput ? node.getColor() : UITheme.NODE_VARIABLE_BG, 0.7f)
-                    : (routineInput ? node.getColor() : UITheme.NODE_VARIABLE_BG));
-            context.fill(x + 1, y + 1, x + width - 1, y + height - 1, baseColor);
-
-            int titleColor = isOverSidebar
-                ? toGrayscale(routineInput ? UITheme.NODE_EVENT_TITLE : UITheme.NODE_VARIABLE_TITLE, 0.9f)
-                : (lowDetail ? UITheme.TEXT_SECONDARY : (routineInput ? UITheme.NODE_EVENT_TITLE : UITheme.NODE_VARIABLE_TITLE));
-            drawNodeText(
-                context,
-                textRenderer,
-                routineInput ? Component.literal("Input") : Component.translatable("pathmind.node.type.variable"),
-                x + 6,
-                y + 4,
-                titleColor
-            );
-
-            int boxLeft = x + 6;
-            int boxRight = x + width - 6;
-            int boxHeight = 16;
-            int boxTop = y + height / 2 - boxHeight / 2 + 4;
-            int boxBottom = boxTop + boxHeight;
-            boolean editingThis = isEditingParameterField()
-                && parameterEditingNode == node
-                && parameterEditingIndex == 0;
-            if (editingThis) {
-                updateParameterCaretBlink();
-            }
-            int inputBackground = isOverSidebar
-                ? UITheme.NODE_INPUT_BG_DIMMED
-                : (lowDetail ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_INPUT);
-            int inputBorder = isOverSidebar
-                ? toGrayscale(routineInput ? UITheme.NODE_EVENT_INPUT_BORDER : UITheme.NODE_VARIABLE_INPUT_BORDER, 0.8f)
-                : (lowDetail ? UITheme.BORDER_DEFAULT : UITheme.BORDER_SUBTLE);
-            if (editingThis) {
-                inputBorder = getSelectedNodeAccentColor();
-            }
-            context.fill(boxLeft, boxTop, boxRight, boxBottom, inputBackground);
-            DrawContextBridge.drawBorderInLayer(context, boxLeft, boxTop, boxRight - boxLeft, boxHeight, inputBorder);
-
-            NodeParameter nameParam = node.getParameter(routineInput ? "Label" : "Variable");
-            String value = editingThis
-                ? parameterEditBuffer
-                : (nameParam != null ? nameParam.getStringValue() : "");
-            if (value == null) {
-                value = "";
-            }
-            String display;
-            if (!editingThis && value.isEmpty()) {
-                display = routineInput ? "input" : "enter variable";
-            } else {
-                display = value;
-            }
-            display = editingThis
-                ? display
-                : trimTextToWidth(display, textRenderer, boxRight - boxLeft - 8);
-            int textY = boxTop + (boxHeight - textRenderer.lineHeight) / 2 + 1;
-            int textColor = editingThis
-                ? UITheme.TEXT_EDITING
-                : (isOverSidebar ? toGrayscale(routineInput ? UITheme.NODE_EVENT_TEXT : UITheme.NODE_VARIABLE_TEXT, 0.85f)
-                    : (lowDetail ? UITheme.TEXT_PRIMARY : (routineInput ? UITheme.NODE_EVENT_TEXT : UITheme.NODE_VARIABLE_TEXT)));
-            if (editingThis && hasParameterSelection()) {
-                int start = Mth.clamp(parameterSelectionStart, 0, display.length());
-                int end = Mth.clamp(parameterSelectionEnd, 0, display.length());
-                if (start != end) {
-                    int selectionStartX = boxLeft + 4 + textRenderer.width(display.substring(0, start));
-                    int selectionEndX = boxLeft + 4 + textRenderer.width(display.substring(0, end));
-                    context.fill(selectionStartX, boxTop + 2, selectionEndX, boxBottom - 2, UITheme.TEXT_SELECTION_BG);
-                }
-            }
-            drawNodeText(
-                context,
-                textRenderer,
-                Component.literal(display),
-                boxLeft + 4,
-                textY,
-                textColor
-            );
-            if (editingThis && parameterCaretVisible) {
-                int caretIndex = Mth.clamp(parameterCaretPosition, 0, display.length());
-                int caretX = boxLeft + 4 + textRenderer.width(display.substring(0, caretIndex));
-                caretX = Math.min(caretX, boxRight - 2);
-                int caretBaseline = Math.min(textY + textRenderer.lineHeight - 1, boxBottom - 2);
-                UIStyleHelper.drawTextCaretAtBaseline(context, textRenderer, caretX, caretBaseline, boxRight - 2, UITheme.CARET_COLOR);
-            }
+            nodeRenderer.renderVariableContent(context, textRenderer, node, isOverSidebar,
+                x, y, width, height, lowDetail);
         } else if (!simpleStyle && isComparisonOperator(node) && !node.isExpandableBooleanOperator()) {
-            int accentColor = node.getColor();
-            int baseColor = lowDetail
-                ? (isOverSidebar ? UITheme.NODE_DIMMED_BG : UITheme.BACKGROUND_SECTION)
-                : (isOverSidebar ? toGrayscale(accentColor, 0.7f) : adjustColorBrightness(accentColor, 0.55f));
-            context.fill(x + 1, y + 1, x + width - 1, y + height - 1, baseColor);
-
-            int titleColor = isOverSidebar ? toGrayscale(UITheme.TEXT_LABEL, 0.9f) : UITheme.TEXT_PRIMARY;
-            if (titleColor != 0) {
-                // Intentionally skip title text for operator nodes to keep the symbol clean.
-            }
-
-            renderParameterSlot(context, textRenderer, node, isOverSidebar, 0);
-            renderParameterSlot(context, textRenderer, node, isOverSidebar, 1);
-
-            int leftSlotX = node.getParameterSlotLeft(0) - cameraX;
-            int rightSlotX = node.getParameterSlotLeft(1) - cameraX;
-            int leftSlotWidth = node.getParameterSlotWidth(0);
-            int leftSlotHeight = node.getParameterSlotHeight(0);
-            int rightSlotHeight = node.getParameterSlotHeight(1);
-            int gapCenterX = leftSlotX + leftSlotWidth + (rightSlotX - (leftSlotX + leftSlotWidth)) / 2;
-            String operatorText = getOperatorSymbol(node, false);
-            int operatorWidth = textRenderer.width(operatorText);
-            int operatorX = gapCenterX - operatorWidth / 2;
-            int leftSlotTop = node.getParameterSlotTop(0) - cameraY;
-            int rightSlotTop = node.getParameterSlotTop(1) - cameraY;
-            int leftCenterY = leftSlotTop + leftSlotHeight / 2;
-            int rightCenterY = rightSlotTop + rightSlotHeight / 2;
-            int operatorCenterY = (leftCenterY + rightCenterY) / 2;
-            int operatorY = operatorCenterY - textRenderer.lineHeight / 2;
-            int operatorColor = isOverSidebar
-                ? toGrayscale(UITheme.NODE_OPERATOR_SYMBOL, 0.85f)
-                : (lowDetail ? UITheme.TEXT_SECONDARY : UITheme.NODE_OPERATOR_SYMBOL);
-            if (node.getType() == NodeType.OPERATOR_GREATER || node.getType() == NodeType.OPERATOR_LESS) {
-                int buttonPaddingX = 3;
-                int buttonPaddingY = 4;
-                int maxSymbolWidth = textRenderer.width(">=");
-                int buttonWidth = maxSymbolWidth + buttonPaddingX * 2;
-                int buttonHeight = textRenderer.lineHeight + buttonPaddingY * 2;
-                int buttonLeft = gapCenterX - buttonWidth / 2;
-                int buttonTop = operatorY - buttonPaddingY;
-                int buttonFill = isOverSidebar
-                    ? UITheme.BACKGROUND_SECONDARY
-                    : (lowDetail ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_TERTIARY);
-                int buttonBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BORDER_DEFAULT;
-                context.fill(buttonLeft, buttonTop, buttonLeft + buttonWidth, buttonTop + buttonHeight, buttonFill);
-                DrawContextBridge.drawBorderInLayer(context, buttonLeft, buttonTop, buttonWidth, buttonHeight, buttonBorder);
-                operatorX = buttonLeft + (buttonWidth - operatorWidth) / 2;
-            }
-            drawNodeText(
-                context,
-                textRenderer,
-                Component.literal(operatorText),
-                operatorX,
-                operatorY,
-                operatorColor
-            );
+            nodeRenderer.renderComparisonContent(context, textRenderer, node, isOverSidebar,
+                x, y, width, height, lowDetail);
         } else if (node.getType() == NodeType.EVENT_CALL) {
             nodeRenderer.renderEventCallContent(context, textRenderer, node, isOverSidebar, mouseX, mouseY,
                 x, y, width, height, lowDetail);

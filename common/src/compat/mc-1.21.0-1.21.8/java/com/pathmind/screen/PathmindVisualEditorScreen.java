@@ -1673,6 +1673,17 @@ public class PathmindVisualEditorScreen extends Screen {
                     return true;
                 }
 
+                if (nodeGraph.handleStickyNoteResizeHandleClick(clickedNode, (int) mouseX, (int) mouseY)) {
+                    nodeGraph.focusSelectedNode(clickedNode);
+                    return true;
+                }
+
+                if (nodeGraph.isPointInsideStickyNoteTextArea(clickedNode, (int) mouseX, (int) mouseY)) {
+                    nodeGraph.focusSelectedNode(clickedNode);
+                    nodeGraph.startStickyNoteEditing(clickedNode);
+                    return true;
+                }
+
                 int coordinateAxis = nodeGraph.getCoordinateFieldAxisAt(clickedNode, (int)mouseX, (int)mouseY);
                 if (coordinateAxis != -1) {
                     nodeGraph.focusSelectedNode(clickedNode);
@@ -1762,6 +1773,7 @@ public class PathmindVisualEditorScreen extends Screen {
                 nodeGraph.stopStopTargetEditing(true);
                 nodeGraph.stopVariableEditing(true);
                 nodeGraph.stopMessageEditing(true);
+                nodeGraph.stopStickyNoteEditing(true);
                 nodeGraph.stopParameterEditing(true);
                 nodeGraph.stopEventNameEditing(true);
 
@@ -1837,6 +1849,7 @@ public class PathmindVisualEditorScreen extends Screen {
                     nodeGraph.stopStopTargetEditing(true);
                     nodeGraph.stopVariableEditing(true);
                     nodeGraph.stopMessageEditing(true);
+                    nodeGraph.stopStickyNoteEditing(true);
                     nodeGraph.stopParameterEditing(true);
                     nodeGraph.stopEventNameEditing(true);
                     nodeGraph.beginSelectionBox((int) mouseX, (int) mouseY);
@@ -2381,6 +2394,10 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
+        if (nodeGraph.handleStickyNoteKeyPressed(keyCode, modifiers)) {
+            return true;
+        }
+
         if (nodeGraph.handleParameterKeyPressed(keyCode, modifiers)) {
             return true;
         }
@@ -2504,6 +2521,10 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         if (nodeGraph.handleEventNameCharTyped(chr, modifiers)) {
+            return true;
+        }
+
+        if (nodeGraph.handleStickyNoteCharTyped(chr, modifiers)) {
             return true;
         }
 

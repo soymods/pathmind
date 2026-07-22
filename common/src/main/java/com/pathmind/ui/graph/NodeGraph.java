@@ -288,6 +288,11 @@ public class NodeGraph {
         @Override public void stopParameterEditing(boolean commit) { NodeGraph.this.stopParameterEditing(commit); }
         @Override public void stopStickyNoteEditing(boolean commit) { NodeGraph.this.stopStickyNoteEditing(commit); }
         @Override public void cancelScreenCoordinateCapture() { NodeGraph.this.cancelScreenCoordinateCapture(); }
+        @Override public int screenToWorldX(int screenX) { return NodeGraph.this.screenToWorldX(screenX); }
+        @Override public int screenToWorldY(int screenY) { return NodeGraph.this.screenToWorldY(screenY); }
+        @Override public boolean isScreenCoordinateCaptureActiveFor(Node node) {
+            return NodeGraph.this.isScreenCoordinateCaptureActiveFor(node);
+        }
         @Override public void notifyNodeParametersChanged(Node node) { NodeGraph.this.notifyNodeParametersChanged(node); }
         @Override public boolean isPresetSelectorNode(Node node) { return NodeGraph.this.isPresetSelectorNode(node); }
         @Override public boolean isNumericOrVariableReference(String value, Node node, boolean allowDecimal, boolean allowNegative) {
@@ -6606,47 +6611,11 @@ public class NodeGraph {
     }
 
     public int getCoordinateFieldAxisAt(Node node, int screenX, int screenY) {
-        if (node == null || !node.hasCoordinateInputFields()) {
-            return -1;
-        }
-        if (isScreenCoordinateCaptureActiveFor(node)) {
-            return -1;
-        }
-
-        int worldX = screenToWorldX(screenX);
-        int worldY = screenToWorldY(screenY);
-        int inputTop = node.getCoordinateFieldInputTop();
-        int inputBottom = inputTop + node.getCoordinateFieldHeight();
-        if (worldY < inputTop || worldY > inputBottom) {
-            return -1;
-        }
-
-        int startX = node.getCoordinateFieldStartX();
-        int fieldWidth = node.getCoordinateFieldWidth();
-        int spacing = node.getCoordinateFieldSpacing();
-        String[] axes = getCoordinateAxes(node);
-
-        for (int i = 0; i < axes.length; i++) {
-            int fieldX = startX + i * (fieldWidth + spacing);
-            if (worldX >= fieldX && worldX <= fieldX + fieldWidth) {
-                return i;
-            }
-        }
-        return -1;
+        return inlineFields.getCoordinateFieldAxisAt(node, screenX, screenY);
     }
 
     public boolean isPointInsideScreenCoordinatePickerButton(Node node, int mouseX, int mouseY) {
-        if (node == null || !node.hasScreenCoordinatePickerButton()) {
-            return false;
-        }
-        int worldX = screenToWorldX(mouseX);
-        int worldY = screenToWorldY(mouseY);
-        int buttonLeft = node.getScreenCoordinatePickerButtonLeft();
-        int buttonTop = node.getScreenCoordinatePickerButtonTop();
-        int buttonWidth = node.getScreenCoordinatePickerButtonWidth();
-        int buttonHeight = node.getScreenCoordinatePickerButtonHeight();
-        return worldX >= buttonLeft && worldX <= buttonLeft + buttonWidth
-            && worldY >= buttonTop && worldY <= buttonTop + buttonHeight;
+        return inlineFields.isPointInsideScreenCoordinatePickerButton(node, mouseX, mouseY);
     }
 
     public boolean handleScreenCoordinatePickerClick(Node node, int mouseX, int mouseY) {
@@ -8338,20 +8307,7 @@ public class NodeGraph {
     }
 
     public boolean isPointInsideAmountField(Node node, int screenX, int screenY) {
-        if (node == null || !node.hasAmountInputField()) {
-            return false;
-        }
-
-        int worldX = screenToWorldX(screenX);
-        int worldY = screenToWorldY(screenY);
-        int fieldLeft = node.getAmountFieldLeft();
-        int fieldTop = node.getAmountFieldInputTop();
-        int fieldWidth = node.getAmountFieldWidth();
-        int fieldHeight = node.getAmountFieldHeight();
-
-        boolean inside = worldX >= fieldLeft && worldX <= fieldLeft + fieldWidth
-            && worldY >= fieldTop && worldY <= fieldTop + fieldHeight;
-        return inside && node.isAmountInputEnabled();
+        return inlineFields.isPointInsideAmountField(node, screenX, screenY);
     }
 
     private boolean isPointInsideRandomRoundingField(Node node, int screenX, int screenY) {
@@ -8534,19 +8490,7 @@ public class NodeGraph {
     }
 
     public boolean isPointInsideStopTargetField(Node node, int screenX, int screenY) {
-        if (node == null || !node.hasStopTargetInputField()) {
-            return false;
-        }
-
-        int worldX = screenToWorldX(screenX);
-        int worldY = screenToWorldY(screenY);
-        int fieldLeft = node.getStopTargetFieldLeft();
-        int fieldTop = node.getStopTargetFieldInputTop();
-        int fieldWidth = node.getStopTargetFieldWidth();
-        int fieldHeight = node.getStopTargetFieldHeight();
-
-        return worldX >= fieldLeft && worldX <= fieldLeft + fieldWidth
-            && worldY >= fieldTop && worldY <= fieldTop + fieldHeight;
+        return inlineFields.isPointInsideStopTargetField(node, screenX, screenY);
     }
 
     private String getStopTargetParameterKey(Node node) {
@@ -8607,19 +8551,7 @@ public class NodeGraph {
     }
 
     public boolean isPointInsideVariableField(Node node, int screenX, int screenY) {
-        if (node == null || !node.hasVariableInputField()) {
-            return false;
-        }
-
-        int worldX = screenToWorldX(screenX);
-        int worldY = screenToWorldY(screenY);
-        int fieldLeft = node.getVariableFieldLeft();
-        int fieldTop = node.getVariableFieldInputTop();
-        int fieldWidth = node.getVariableFieldWidth();
-        int fieldHeight = node.getVariableFieldHeight();
-
-        return worldX >= fieldLeft && worldX <= fieldLeft + fieldWidth
-            && worldY >= fieldTop && worldY <= fieldTop + fieldHeight;
+        return inlineFields.isPointInsideVariableField(node, screenX, screenY);
     }
 
     public boolean handleVariableFieldClick(int screenX, int screenY) {
@@ -8635,19 +8567,7 @@ public class NodeGraph {
     }
 
     public boolean isPointInsideEventNameField(Node node, int screenX, int screenY) {
-        if (node == null || (node.getType() != NodeType.EVENT_FUNCTION && node.getType() != NodeType.EVENT_CALL && node.getType() != NodeType.ROUTINE_ENTRY)) {
-            return false;
-        }
-
-        int worldX = screenToWorldX(screenX);
-        int worldY = screenToWorldY(screenY);
-        int fieldLeft = node.getEventNameFieldLeft();
-        int fieldTop = node.getEventNameFieldTop();
-        int fieldWidth = node.getEventNameFieldWidth();
-        int fieldHeight = node.getEventNameFieldHeight();
-
-        return worldX >= fieldLeft && worldX <= fieldLeft + fieldWidth
-            && worldY >= fieldTop && worldY <= fieldTop + fieldHeight;
+        return inlineFields.isPointInsideEventNameField(node, screenX, screenY);
     }
 
     public boolean handleEventNameFieldClick(Node node, int mouseX, int mouseY) {
@@ -8659,23 +8579,7 @@ public class NodeGraph {
     }
 
     public int getMessageFieldIndexAt(Node node, int screenX, int screenY) {
-        if (node == null || !node.hasMessageInputFields()) {
-            return -1;
-        }
-        int worldX = screenToWorldX(screenX);
-        int worldY = screenToWorldY(screenY);
-        int count = node.getMessageFieldCount();
-        int fieldLeft = node.getMessageFieldLeft();
-        int fieldWidth = node.getMessageFieldWidth();
-        for (int i = 0; i < count; i++) {
-            int fieldTop = node.getMessageFieldInputTop(i);
-            int fieldHeight = node.getMessageFieldHeight();
-            if (worldX >= fieldLeft && worldX <= fieldLeft + fieldWidth
-                && worldY >= fieldTop && worldY <= fieldTop + fieldHeight) {
-                return i;
-            }
-        }
-        return -1;
+        return inlineFields.getMessageFieldIndexAt(node, screenX, screenY);
     }
 
     public int getParameterFieldIndexAt(Node node, int screenX, int screenY) {

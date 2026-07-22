@@ -17,6 +17,9 @@ final class InlineFieldController {
         void stopParameterEditing(boolean commit);
         void stopStickyNoteEditing(boolean commit);
         void cancelScreenCoordinateCapture();
+        int screenToWorldX(int screenX);
+        int screenToWorldY(int screenY);
+        boolean isScreenCoordinateCaptureActiveFor(Node node);
         void notifyNodeParametersChanged(Node node);
         boolean isPresetSelectorNode(Node node);
         boolean isNumericOrVariableReference(String value, Node node, boolean allowDecimal, boolean allowNegative);
@@ -165,6 +168,135 @@ final class InlineFieldController {
 
     boolean isEditingCoordinateField() {
         return coordinateEditingNode != null && coordinateEditingAxis >= 0;
+    }
+
+    int getCoordinateFieldAxisAt(Node node, int screenX, int screenY) {
+        if (node == null || !node.hasCoordinateInputFields()) {
+            return -1;
+        }
+        if (host.isScreenCoordinateCaptureActiveFor(node)) {
+            return -1;
+        }
+
+        int worldX = host.screenToWorldX(screenX);
+        int worldY = host.screenToWorldY(screenY);
+        int inputTop = node.getCoordinateFieldInputTop();
+        int inputBottom = inputTop + node.getCoordinateFieldHeight();
+        if (worldY < inputTop || worldY > inputBottom) {
+            return -1;
+        }
+
+        int startX = node.getCoordinateFieldStartX();
+        int fieldWidth = node.getCoordinateFieldWidth();
+        int spacing = node.getCoordinateFieldSpacing();
+        String[] axes = getCoordinateAxes(node);
+
+        for (int i = 0; i < axes.length; i++) {
+            int fieldX = startX + i * (fieldWidth + spacing);
+            if (worldX >= fieldX && worldX <= fieldX + fieldWidth) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    boolean isPointInsideScreenCoordinatePickerButton(Node node, int mouseX, int mouseY) {
+        if (node == null || !node.hasScreenCoordinatePickerButton()) {
+            return false;
+        }
+        int worldX = host.screenToWorldX(mouseX);
+        int worldY = host.screenToWorldY(mouseY);
+        int buttonLeft = node.getScreenCoordinatePickerButtonLeft();
+        int buttonTop = node.getScreenCoordinatePickerButtonTop();
+        int buttonWidth = node.getScreenCoordinatePickerButtonWidth();
+        int buttonHeight = node.getScreenCoordinatePickerButtonHeight();
+        return worldX >= buttonLeft && worldX <= buttonLeft + buttonWidth
+            && worldY >= buttonTop && worldY <= buttonTop + buttonHeight;
+    }
+
+    boolean isPointInsideAmountField(Node node, int screenX, int screenY) {
+        if (node == null || !node.hasAmountInputField()) {
+            return false;
+        }
+
+        int worldX = host.screenToWorldX(screenX);
+        int worldY = host.screenToWorldY(screenY);
+        int fieldLeft = node.getAmountFieldLeft();
+        int fieldTop = node.getAmountFieldInputTop();
+        int fieldWidth = node.getAmountFieldWidth();
+        int fieldHeight = node.getAmountFieldHeight();
+
+        boolean inside = worldX >= fieldLeft && worldX <= fieldLeft + fieldWidth
+            && worldY >= fieldTop && worldY <= fieldTop + fieldHeight;
+        return inside && node.isAmountInputEnabled();
+    }
+
+    boolean isPointInsideStopTargetField(Node node, int screenX, int screenY) {
+        if (node == null || !node.hasStopTargetInputField()) {
+            return false;
+        }
+
+        int worldX = host.screenToWorldX(screenX);
+        int worldY = host.screenToWorldY(screenY);
+        int fieldLeft = node.getStopTargetFieldLeft();
+        int fieldTop = node.getStopTargetFieldInputTop();
+        int fieldWidth = node.getStopTargetFieldWidth();
+        int fieldHeight = node.getStopTargetFieldHeight();
+
+        return worldX >= fieldLeft && worldX <= fieldLeft + fieldWidth
+            && worldY >= fieldTop && worldY <= fieldTop + fieldHeight;
+    }
+
+    boolean isPointInsideVariableField(Node node, int screenX, int screenY) {
+        if (node == null || !node.hasVariableInputField()) {
+            return false;
+        }
+
+        int worldX = host.screenToWorldX(screenX);
+        int worldY = host.screenToWorldY(screenY);
+        int fieldLeft = node.getVariableFieldLeft();
+        int fieldTop = node.getVariableFieldInputTop();
+        int fieldWidth = node.getVariableFieldWidth();
+        int fieldHeight = node.getVariableFieldHeight();
+
+        return worldX >= fieldLeft && worldX <= fieldLeft + fieldWidth
+            && worldY >= fieldTop && worldY <= fieldTop + fieldHeight;
+    }
+
+    boolean isPointInsideEventNameField(Node node, int screenX, int screenY) {
+        if (node == null || (node.getType() != NodeType.EVENT_FUNCTION
+            && node.getType() != NodeType.EVENT_CALL
+            && node.getType() != NodeType.ROUTINE_ENTRY)) {
+            return false;
+        }
+        int worldX = host.screenToWorldX(screenX);
+        int worldY = host.screenToWorldY(screenY);
+        int fieldLeft = node.getEventNameFieldLeft();
+        int fieldTop = node.getEventNameFieldTop();
+        int fieldWidth = node.getEventNameFieldWidth();
+        int fieldHeight = node.getEventNameFieldHeight();
+        return worldX >= fieldLeft && worldX <= fieldLeft + fieldWidth
+            && worldY >= fieldTop && worldY <= fieldTop + fieldHeight;
+    }
+
+    int getMessageFieldIndexAt(Node node, int screenX, int screenY) {
+        if (node == null || !node.hasMessageInputFields()) {
+            return -1;
+        }
+        int worldX = host.screenToWorldX(screenX);
+        int worldY = host.screenToWorldY(screenY);
+        int count = node.getMessageFieldCount();
+        int fieldLeft = node.getMessageFieldLeft();
+        int fieldWidth = node.getMessageFieldWidth();
+        for (int i = 0; i < count; i++) {
+            int fieldTop = node.getMessageFieldInputTop(i);
+            int fieldHeight = node.getMessageFieldHeight();
+            if (worldX >= fieldLeft && worldX <= fieldLeft + fieldWidth
+                && worldY >= fieldTop && worldY <= fieldTop + fieldHeight) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     void startCoordinateEditing(Node node, int axisIndex) {

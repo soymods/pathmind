@@ -99,12 +99,7 @@ final class PathmindMarketplaceGraphPreviewRenderer {
             DrawContextBridge.disableScissor(context);
             return;
         }
-        float viewScale = Math.max(0.08f, Math.min(0.6f, fitScale));
-        if (!interactive && previewModel.galleryThumbnailTexture() != null) {
-            GuiTextureRenderer.drawTexture(context, previewModel.galleryThumbnailTexture(),
-                x + 1, y + 1, Math.max(1, width - 2), Math.max(1, height - 2), 0xFFFFFFFF);
-            return;
-        }
+        float viewScale = Math.max(0.18f, Math.min(1f, fitScale));
         float offsetX = x + width / 2f - (bounds.minX() + bounds.width() / 2f) * viewScale;
         float offsetY = y + height / 2f - (bounds.minY() + bounds.height() / 2f) * viewScale;
         float visibleLeft = (x + 1 - offsetX) / viewScale;

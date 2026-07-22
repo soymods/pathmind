@@ -3498,8 +3498,7 @@ public class PathmindMarketplaceScreen extends Screen {
         List<Node> nodes,
         List<NodeGraphData.ConnectionData> connections,
         Map<String, Node> nodeLookup,
-        GraphBounds bounds,
-        Identifier galleryThumbnailTexture
+        GraphBounds bounds
     ) {
     }
 

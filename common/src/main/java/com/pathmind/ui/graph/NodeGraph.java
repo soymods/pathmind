@@ -366,6 +366,20 @@ public class NodeGraph {
             renderNodeSliderToggle(context, toggleLeft, toggleTop, toggleWidth, toggleHeight,
                 getNodeToggleProgress(amountToggleAnimations, node, amountEnabled), false, isOverSidebar);
         }
+        @Override public boolean isPresetSelectorNode(Node node) { return NodeGraph.this.isPresetSelectorNode(node); }
+        @Override public void renderPresetSelectorField(GuiGraphics context, Font textRenderer, Node node,
+                                                         boolean isOverSidebar, int mouseX, int mouseY) {
+            NodeGraph.this.renderPresetSelectorField(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+        }
+        @Override public boolean isRunPresetDropdownOpenFor(Node node) {
+            return runPresetDropdownOpen && runPresetDropdownNode == node;
+        }
+        @Override public String getStopTargetParameterKey(Node node) {
+            return NodeGraph.this.getStopTargetParameterKey(node);
+        }
+        @Override public String getStopTargetPlaceholder(Node node) {
+            return NodeGraph.this.getStopTargetPlaceholder(node);
+        }
     }, inlineFields);
     private final ScreenCoordinateCaptureController screenCoordinateCapture = new ScreenCoordinateCaptureController(new ScreenCoordinateCaptureController.Host() {
         @Override
@@ -5587,109 +5601,7 @@ public class NodeGraph {
 
     private void renderMessageInputFields(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar,
                                           int mouseX, int mouseY) {
-        int baseLabelColor = isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.NODE_LABEL_COLOR;
-        int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
-        int activeTextColor = UITheme.TEXT_EDITING;
-        int variableHighlightColor = UITheme.ACCENT_AMBER;
-
-        boolean editing = isEditingMessageField() && inlineFields.getMessageEditingNode() == node;
-        if (editing) {
-            inlineFields.getMessageEditor().updateCaretBlink();
-        }
-
-        Set<String> runtimeVariableNames = collectRuntimeVariableNames(node);
-        int fieldCount = node.getMessageFieldCount();
-        for (int i = 0; i < fieldCount; i++) {
-            int labelTop = node.getMessageFieldLabelTop(i) - cameraY;
-            int labelHeight = node.getMessageFieldLabelHeight();
-            int fieldTop = node.getMessageFieldInputTop(i) - cameraY;
-            int fieldHeight = node.getMessageFieldHeight();
-            int fieldLeft = node.getMessageFieldLeft() - cameraX;
-            int fieldWidth = node.getMessageFieldWidth();
-            int worldMouseX = screenToWorldX(mouseX);
-            int worldMouseY = screenToWorldY(mouseY);
-
-            boolean editingThis = editing && inlineFields.getMessageEditingIndex() == i;
-            int labelY = labelTop + Math.max(0, (labelHeight - textRenderer.lineHeight) / 2);
-            String label = node.getMessageFieldLabelText(i);
-            drawNodeText(context, textRenderer, Component.literal(label), fieldLeft + 2, labelY, baseLabelColor);
-
-            int fieldBottom = fieldTop + fieldHeight;
-            boolean hovered = !isOverSidebar
-                && worldMouseX >= node.getMessageFieldLeft()
-                && worldMouseX <= node.getMessageFieldLeft() + fieldWidth
-                && worldMouseY >= node.getMessageFieldInputTop(i)
-                && worldMouseY <= node.getMessageFieldInputTop(i) + fieldHeight;
-            float progress = getTextFieldHighlightProgress(node.getId() + "#message:" + i, hovered, editingThis);
-            UIStyleHelper.FieldPalette palette = getNodeInputPalette(isOverSidebar, getSelectedNodeAccentColor(), progress, editingThis, false);
-            int valueColor = isOverSidebar ? (editingThis ? activeTextColor : textColor)
-                : AnimationHelper.lerpColor(textColor, activeTextColor, progress);
-
-            UIStyleHelper.drawFieldFrame(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, palette);
-
-            String rawValue = editingThis ? inlineFields.getMessageEditor().getBuffer() : node.getMessageLine(i);
-            if (rawValue == null) {
-                rawValue = "";
-            }
-            int textX = fieldLeft + 3;
-            int textY = fieldTop + (fieldHeight - textRenderer.lineHeight) / 2 + 1;
-            String fixedPrefix = "";
-            int expressionTextX = textX;
-            int expressionFieldWidth = Math.max(1, fieldWidth - 6 - textRenderer.width(fixedPrefix));
-            String display = editingThis
-                ? rawValue
-                : trimTextToWidth(rawValue, textRenderer, expressionFieldWidth);
-            InlineVariableRender renderData = null;
-            if (shouldBuildInlineExpressionRender(rawValue, runtimeVariableNames)) {
-                InlineVariableRender candidate = buildInlineVariableRender(rawValue, runtimeVariableNames, valueColor, variableHighlightColor);
-                if (editingThis) {
-                    renderData = candidate;
-                    display = renderData.displayText;
-                } else if (textRenderer.width(candidate.displayText) <= expressionFieldWidth) {
-                    renderData = candidate;
-                    display = renderData.displayText;
-                } else if (isSingleKnownInlineVariableReference(rawValue, runtimeVariableNames)) {
-                    display = trimTextToWidth(candidate.displayText, textRenderer, expressionFieldWidth);
-                    valueColor = variableHighlightColor;
-                }
-            }
-
-            if (!fixedPrefix.isEmpty()) {
-                drawNodeText(context, textRenderer, Component.literal(fixedPrefix), textX, textY, UITheme.TEXT_TERTIARY);
-            }
-            if (editingThis && inlineFields.getMessageEditor().hasSelection()) {
-                int start = inlineFields.getMessageEditor().getSelectionStart();
-                int end = inlineFields.getMessageEditor().getSelectionEnd();
-                if (renderData != null) {
-                    start = renderData.toDisplayIndex(start);
-                    end = renderData.toDisplayIndex(end);
-                }
-                if (start >= 0 && end >= 0 && start <= display.length() && end <= display.length()) {
-                    int selectionStartX = expressionTextX + textRenderer.width(display.substring(0, start));
-                    int selectionEndX = expressionTextX + textRenderer.width(display.substring(0, end));
-                    context.fill(selectionStartX, fieldTop + 2, selectionEndX, fieldBottom - 2, UITheme.TEXT_SELECTION_BG);
-                }
-            }
-            if (renderData != null) {
-                if (shouldRenderNodeText()) {
-                    renderData.draw(context, textRenderer, expressionTextX, textY);
-                }
-            } else {
-                drawNodeText(context, textRenderer, Component.literal(display), expressionTextX, textY, valueColor);
-            }
-
-            if (editingThis && inlineFields.getMessageEditor().isCaretVisible()) {
-                int caretIndex = inlineFields.getMessageEditor().getCaretPosition();
-                if (renderData != null) {
-                    caretIndex = renderData.toDisplayIndex(caretIndex);
-                }
-                caretIndex = Mth.clamp(caretIndex, 0, display.length());
-                int caretX = expressionTextX + textRenderer.width(display.substring(0, caretIndex));
-                caretX = Math.min(caretX, fieldLeft + fieldWidth - 2);
-                int caretBaseline = Math.min(textY + textRenderer.lineHeight - 1, fieldBottom - 2);
-                UIStyleHelper.drawTextCaretAtBaseline(context, textRenderer, caretX, caretBaseline, fieldLeft + fieldWidth - 2, UITheme.CARET_COLOR);
-            }
-        }
+        inlineFieldRenderer.renderMessageInputFields(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
     }
 
     private void renderEventNamePreview(GuiGraphics context, Font textRenderer, String value, int x, int y,
@@ -6377,154 +6289,7 @@ public class NodeGraph {
 
     private void renderStopTargetInputField(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar,
                                             int mouseX, int mouseY) {
-        boolean isRunPresetNode = isPresetSelectorNode(node);
-        if (isRunPresetNode) {
-            renderPresetSelectorField(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
-            return;
-        }
-        int baseLabelColor = isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.NODE_LABEL_COLOR;
-        boolean isActivateNode = node.getType() == NodeType.START_CHAIN;
-        int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_LABEL;
-        int activeTextColor = UITheme.TEXT_LABEL;
-        int caretColor = UITheme.TEXT_LABEL;
-        boolean presetDropdownOpenForNode = isRunPresetNode && runPresetDropdownOpen && runPresetDropdownNode == node;
-        if (isRunPresetNode) {
-            textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
-            activeTextColor = UITheme.TEXT_PRIMARY;
-            caretColor = UITheme.TEXT_PRIMARY;
-        }
-
-        boolean editing = isEditingStopTargetField() && inlineFields.getStopTargetEditingNode() == node;
-        if (editing) {
-            inlineFields.getStopTargetEditor().updateCaretBlink();
-        }
-
-        int fieldTop = node.getStopTargetFieldInputTop() - cameraY;
-        int fieldHeight = node.getStopTargetFieldHeight();
-        int fieldLeft = node.getStopTargetFieldLeft() - cameraX;
-        int fieldWidth = node.getStopTargetFieldWidth();
-
-        int fieldBottom = fieldTop + fieldHeight;
-        boolean activeVisual = isRunPresetNode ? presetDropdownOpenForNode : editing;
-        int worldMouseX = screenToWorldX(mouseX);
-        int worldMouseY = screenToWorldY(mouseY);
-        boolean hovered = !isOverSidebar
-            && worldMouseX >= node.getStopTargetFieldLeft()
-            && worldMouseX <= node.getStopTargetFieldLeft() + fieldWidth
-            && worldMouseY >= node.getStopTargetFieldInputTop()
-            && worldMouseY <= node.getStopTargetFieldInputTop() + fieldHeight;
-        float progress = getTextFieldHighlightProgress(node.getId() + "#stopTarget", hovered, activeVisual);
-        int accentColor = isRunPresetNode ? getSelectedNodeAccentColor() : (isActivateNode ? UITheme.BORDER_HIGHLIGHT : getSelectedNodeAccentColor());
-        UIStyleHelper.FieldPalette palette = getNodeInputPalette(isOverSidebar, accentColor, progress, activeVisual, false);
-        int borderColor = palette.borderColor();
-        int valueColor = isOverSidebar ? (editing ? activeTextColor : textColor)
-            : AnimationHelper.lerpColor(textColor, activeTextColor, progress);
-        if (isActivateNode && isOverSidebar && !activeVisual) {
-            borderColor = UITheme.BORDER_FOCUS;
-        }
-
-        if (isRunPresetNode) {
-            int labelY = fieldTop - textRenderer.lineHeight - 2;
-            if (labelY >= node.getY() - cameraY + 14) {
-                drawNodeText(context, textRenderer, Component.translatable("pathmind.field.preset"), fieldLeft, labelY, baseLabelColor);
-            }
-        }
-
-        UIStyleHelper.drawFieldFrame(
-            context,
-            fieldLeft,
-            fieldTop,
-            fieldWidth,
-            fieldHeight,
-            new UIStyleHelper.FieldPalette(
-                palette.backgroundColor(),
-                borderColor,
-                palette.innerBorderColor(),
-                palette.textColor(),
-                palette.placeholderColor()
-            )
-        );
-
-        String value;
-        if (editing) {
-            value = inlineFields.getStopTargetEditor().getBuffer();
-        } else {
-            NodeParameter targetParam = node.getParameter(getStopTargetParameterKey(node));
-            value = targetParam != null ? targetParam.getStringValue() : "";
-        }
-        if (value == null) {
-            value = "";
-        }
-
-        String display;
-        if (!editing && value.isEmpty()) {
-            display = getStopTargetPlaceholder(node);
-            valueColor = UITheme.TEXT_TERTIARY;
-        } else {
-            display = value;
-        }
-
-        int reservedRightPadding = isRunPresetNode ? 16 : 6;
-        display = editing
-            ? display
-            : trimTextToWidth(display, textRenderer, fieldWidth - reservedRightPadding);
-        int variableHighlightColor = UITheme.ACCENT_AMBER;
-        Set<String> stopTargetVariableNames = collectRuntimeVariableNames(node);
-        InlineVariableRender stopTargetRenderData = null;
-        if (shouldBuildInlineExpressionRender(value, stopTargetVariableNames)) {
-            InlineVariableRender candidate = buildInlineVariableRender(value, stopTargetVariableNames, valueColor, variableHighlightColor);
-            if (editing) {
-                stopTargetRenderData = candidate;
-                display = stopTargetRenderData.displayText;
-            } else if (textRenderer.width(candidate.displayText) <= fieldWidth - 6) {
-                stopTargetRenderData = candidate;
-                display = stopTargetRenderData.displayText;
-            } else if (isSingleKnownInlineVariableReference(value, stopTargetVariableNames)) {
-                display = trimTextToWidth(candidate.displayText, textRenderer, fieldWidth - 6);
-                valueColor = variableHighlightColor;
-            }
-        }
-
-        int textX = fieldLeft + 3;
-        int textY = fieldTop + (fieldHeight - textRenderer.lineHeight) / 2 + 1;
-        if (editing && inlineFields.getStopTargetEditor().hasSelection()) {
-            int start = inlineFields.getStopTargetEditor().getSelectionStart();
-            int end = inlineFields.getStopTargetEditor().getSelectionEnd();
-            if (stopTargetRenderData != null) {
-                start = stopTargetRenderData.toDisplayIndex(start);
-                end = stopTargetRenderData.toDisplayIndex(end);
-            }
-            if (start >= 0 && end >= 0 && start <= display.length() && end <= display.length()) {
-                int selectionStartX = textX + textRenderer.width(display.substring(0, start));
-                int selectionEndX = textX + textRenderer.width(display.substring(0, end));
-                int selectionColor = isRunPresetNode ? UITheme.TEXT_SELECTION_BG : UITheme.TEXT_SELECTION_DANGER_BG;
-                context.fill(selectionStartX, fieldTop + 2, selectionEndX, fieldBottom - 2, selectionColor);
-            }
-        }
-        if (stopTargetRenderData != null && shouldRenderNodeText()) {
-            stopTargetRenderData.draw(context, textRenderer, textX, textY);
-        } else {
-            drawNodeText(context, textRenderer, Component.literal(display), textX, textY, valueColor);
-        }
-
-        if (editing && inlineFields.getStopTargetEditor().isCaretVisible()) {
-            int caretIndex = inlineFields.getStopTargetEditor().getCaretPosition();
-            if (stopTargetRenderData != null) {
-                caretIndex = stopTargetRenderData.toDisplayIndex(caretIndex);
-            }
-            caretIndex = Mth.clamp(caretIndex, 0, display.length());
-            int caretX = textX + textRenderer.width(display.substring(0, caretIndex));
-            caretX = Math.min(caretX, fieldLeft + fieldWidth - 2);
-            UIStyleHelper.drawTextCaret(context, caretX, fieldTop + 2, fieldBottom - 2, caretColor);
-        }
-
-        if (isRunPresetNode) {
-            int arrowX = fieldLeft + fieldWidth - 10;
-            int arrowY = fieldTop + (fieldHeight - textRenderer.lineHeight) / 2 + 1;
-            String arrow = presetDropdownOpenForNode ? ">" : "v";
-            int arrowColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
-            drawNodeText(context, textRenderer, Component.literal(arrow), arrowX, arrowY, arrowColor);
-        }
+        inlineFieldRenderer.renderStopTargetInputField(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
     }
 
     private void renderPresetSelectorField(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar,

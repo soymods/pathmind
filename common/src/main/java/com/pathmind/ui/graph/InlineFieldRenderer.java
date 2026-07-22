@@ -47,6 +47,12 @@ final class InlineFieldRenderer {
                                          String label, boolean includeValue, String value);
         boolean isMoveItemAllAmountValue(String value);
         void renderAmountToggle(GuiGraphics context, Node node, boolean amountEnabled, boolean isOverSidebar);
+        boolean isPresetSelectorNode(Node node);
+        void renderPresetSelectorField(GuiGraphics context, Font textRenderer, Node node,
+                                       boolean isOverSidebar, int mouseX, int mouseY);
+        boolean isRunPresetDropdownOpenFor(Node node);
+        String getStopTargetParameterKey(Node node);
+        String getStopTargetPlaceholder(Node node);
     }
 
     private final Host host;
@@ -358,6 +364,276 @@ final class InlineFieldRenderer {
 
         if (node.hasAmountToggle()) {
             host.renderAmountToggle(context, node, amountEnabled, isOverSidebar);
+        }
+    }
+
+    void renderMessageInputFields(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar,
+                                  int mouseX, int mouseY) {
+        int baseLabelColor = isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.NODE_LABEL_COLOR;
+        int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
+        int activeTextColor = UITheme.TEXT_EDITING;
+        int variableHighlightColor = UITheme.ACCENT_AMBER;
+
+        boolean editing = controller.isEditingMessageField() && controller.getMessageEditingNode() == node;
+        if (editing) {
+            controller.getMessageEditor().updateCaretBlink();
+        }
+
+        int cameraX = host.cameraX();
+        int cameraY = host.cameraY();
+        Set<String> runtimeVariableNames = host.collectRuntimeVariableNames(node);
+        int fieldCount = node.getMessageFieldCount();
+        for (int i = 0; i < fieldCount; i++) {
+            int labelTop = node.getMessageFieldLabelTop(i) - cameraY;
+            int labelHeight = node.getMessageFieldLabelHeight();
+            int fieldTop = node.getMessageFieldInputTop(i) - cameraY;
+            int fieldHeight = node.getMessageFieldHeight();
+            int fieldLeft = node.getMessageFieldLeft() - cameraX;
+            int fieldWidth = node.getMessageFieldWidth();
+            int worldMouseX = host.screenToWorldX(mouseX);
+            int worldMouseY = host.screenToWorldY(mouseY);
+
+            boolean editingThis = editing && controller.getMessageEditingIndex() == i;
+            int labelY = labelTop + Math.max(0, (labelHeight - textRenderer.lineHeight) / 2);
+            String label = node.getMessageFieldLabelText(i);
+            host.drawNodeText(context, textRenderer, Component.literal(label), fieldLeft + 2, labelY, baseLabelColor);
+
+            int fieldBottom = fieldTop + fieldHeight;
+            boolean hovered = !isOverSidebar
+                && worldMouseX >= node.getMessageFieldLeft()
+                && worldMouseX <= node.getMessageFieldLeft() + fieldWidth
+                && worldMouseY >= node.getMessageFieldInputTop(i)
+                && worldMouseY <= node.getMessageFieldInputTop(i) + fieldHeight;
+            float progress = host.textFieldHighlightProgress(node.getId() + "#message:" + i, hovered, editingThis);
+            UIStyleHelper.FieldPalette palette = host.nodeInputPalette(
+                isOverSidebar, host.selectedNodeAccentColor(), progress, editingThis, false);
+            int valueColor = isOverSidebar ? (editingThis ? activeTextColor : textColor)
+                : AnimationHelper.lerpColor(textColor, activeTextColor, progress);
+
+            UIStyleHelper.drawFieldFrame(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, palette);
+
+            String rawValue = editingThis ? controller.getMessageEditor().getBuffer() : node.getMessageLine(i);
+            if (rawValue == null) {
+                rawValue = "";
+            }
+            int textX = fieldLeft + 3;
+            int textY = fieldTop + (fieldHeight - textRenderer.lineHeight) / 2 + 1;
+            String fixedPrefix = "";
+            int expressionTextX = textX;
+            int expressionFieldWidth = Math.max(1, fieldWidth - 6 - textRenderer.width(fixedPrefix));
+            String display = editingThis
+                ? rawValue
+                : host.trimTextToWidth(rawValue, textRenderer, expressionFieldWidth);
+            InlineVariableRender renderData = null;
+            if (host.shouldBuildInlineExpressionRender(rawValue, runtimeVariableNames)) {
+                InlineVariableRender candidate = buildInlineVariableRender(
+                    rawValue, runtimeVariableNames, valueColor, variableHighlightColor);
+                if (editingThis) {
+                    renderData = candidate;
+                    display = renderData.displayText;
+                } else if (textRenderer.width(candidate.displayText) <= expressionFieldWidth) {
+                    renderData = candidate;
+                    display = renderData.displayText;
+                } else if (isSingleKnownInlineVariableReference(rawValue, runtimeVariableNames)) {
+                    display = host.trimTextToWidth(candidate.displayText, textRenderer, expressionFieldWidth);
+                    valueColor = variableHighlightColor;
+                }
+            }
+
+            if (!fixedPrefix.isEmpty()) {
+                host.drawNodeText(context, textRenderer, Component.literal(fixedPrefix), textX, textY, UITheme.TEXT_TERTIARY);
+            }
+            if (editingThis && controller.getMessageEditor().hasSelection()) {
+                int start = controller.getMessageEditor().getSelectionStart();
+                int end = controller.getMessageEditor().getSelectionEnd();
+                if (renderData != null) {
+                    start = renderData.toDisplayIndex(start);
+                    end = renderData.toDisplayIndex(end);
+                }
+                if (start >= 0 && end >= 0 && start <= display.length() && end <= display.length()) {
+                    int selectionStartX = expressionTextX + textRenderer.width(display.substring(0, start));
+                    int selectionEndX = expressionTextX + textRenderer.width(display.substring(0, end));
+                    context.fill(selectionStartX, fieldTop + 2, selectionEndX, fieldBottom - 2, UITheme.TEXT_SELECTION_BG);
+                }
+            }
+            if (renderData != null) {
+                if (host.shouldRenderNodeText()) {
+                    renderData.draw(context, textRenderer, expressionTextX, textY);
+                }
+            } else {
+                host.drawNodeText(context, textRenderer, Component.literal(display), expressionTextX, textY, valueColor);
+            }
+
+            if (editingThis && controller.getMessageEditor().isCaretVisible()) {
+                int caretIndex = controller.getMessageEditor().getCaretPosition();
+                if (renderData != null) {
+                    caretIndex = renderData.toDisplayIndex(caretIndex);
+                }
+                caretIndex = Mth.clamp(caretIndex, 0, display.length());
+                int caretX = expressionTextX + textRenderer.width(display.substring(0, caretIndex));
+                caretX = Math.min(caretX, fieldLeft + fieldWidth - 2);
+                int caretBaseline = Math.min(textY + textRenderer.lineHeight - 1, fieldBottom - 2);
+                UIStyleHelper.drawTextCaretAtBaseline(context, textRenderer, caretX, caretBaseline,
+                    fieldLeft + fieldWidth - 2, UITheme.CARET_COLOR);
+            }
+        }
+    }
+
+    void renderStopTargetInputField(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar,
+                                    int mouseX, int mouseY) {
+        boolean isRunPresetNode = host.isPresetSelectorNode(node);
+        if (isRunPresetNode) {
+            host.renderPresetSelectorField(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+            return;
+        }
+        int baseLabelColor = isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.NODE_LABEL_COLOR;
+        boolean isActivateNode = node.getType() == NodeType.START_CHAIN;
+        int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_LABEL;
+        int activeTextColor = UITheme.TEXT_LABEL;
+        int caretColor = UITheme.TEXT_LABEL;
+        boolean presetDropdownOpenForNode = isRunPresetNode && host.isRunPresetDropdownOpenFor(node);
+        if (isRunPresetNode) {
+            textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
+            activeTextColor = UITheme.TEXT_PRIMARY;
+            caretColor = UITheme.TEXT_PRIMARY;
+        }
+
+        boolean editing = controller.isEditingStopTargetField() && controller.getStopTargetEditingNode() == node;
+        if (editing) {
+            controller.getStopTargetEditor().updateCaretBlink();
+        }
+
+        int cameraX = host.cameraX();
+        int cameraY = host.cameraY();
+        int fieldTop = node.getStopTargetFieldInputTop() - cameraY;
+        int fieldHeight = node.getStopTargetFieldHeight();
+        int fieldLeft = node.getStopTargetFieldLeft() - cameraX;
+        int fieldWidth = node.getStopTargetFieldWidth();
+
+        int fieldBottom = fieldTop + fieldHeight;
+        boolean activeVisual = isRunPresetNode ? presetDropdownOpenForNode : editing;
+        int worldMouseX = host.screenToWorldX(mouseX);
+        int worldMouseY = host.screenToWorldY(mouseY);
+        boolean hovered = !isOverSidebar
+            && worldMouseX >= node.getStopTargetFieldLeft()
+            && worldMouseX <= node.getStopTargetFieldLeft() + fieldWidth
+            && worldMouseY >= node.getStopTargetFieldInputTop()
+            && worldMouseY <= node.getStopTargetFieldInputTop() + fieldHeight;
+        float progress = host.textFieldHighlightProgress(node.getId() + "#stopTarget", hovered, activeVisual);
+        int accentColor = isRunPresetNode ? host.selectedNodeAccentColor()
+            : (isActivateNode ? UITheme.BORDER_HIGHLIGHT : host.selectedNodeAccentColor());
+        UIStyleHelper.FieldPalette palette = host.nodeInputPalette(
+            isOverSidebar, accentColor, progress, activeVisual, false);
+        int borderColor = palette.borderColor();
+        int valueColor = isOverSidebar ? (editing ? activeTextColor : textColor)
+            : AnimationHelper.lerpColor(textColor, activeTextColor, progress);
+        if (isActivateNode && isOverSidebar && !activeVisual) {
+            borderColor = UITheme.BORDER_FOCUS;
+        }
+
+        if (isRunPresetNode) {
+            int labelY = fieldTop - textRenderer.lineHeight - 2;
+            if (labelY >= node.getY() - cameraY + 14) {
+                host.drawNodeText(context, textRenderer, Component.translatable("pathmind.field.preset"),
+                    fieldLeft, labelY, baseLabelColor);
+            }
+        }
+
+        UIStyleHelper.drawFieldFrame(
+            context,
+            fieldLeft,
+            fieldTop,
+            fieldWidth,
+            fieldHeight,
+            new UIStyleHelper.FieldPalette(
+                palette.backgroundColor(),
+                borderColor,
+                palette.innerBorderColor(),
+                palette.textColor(),
+                palette.placeholderColor()
+            )
+        );
+
+        String value;
+        if (editing) {
+            value = controller.getStopTargetEditor().getBuffer();
+        } else {
+            NodeParameter targetParam = node.getParameter(host.getStopTargetParameterKey(node));
+            value = targetParam != null ? targetParam.getStringValue() : "";
+        }
+        if (value == null) {
+            value = "";
+        }
+
+        String display;
+        if (!editing && value.isEmpty()) {
+            display = host.getStopTargetPlaceholder(node);
+            valueColor = UITheme.TEXT_TERTIARY;
+        } else {
+            display = value;
+        }
+
+        int reservedRightPadding = isRunPresetNode ? 16 : 6;
+        display = editing
+            ? display
+            : host.trimTextToWidth(display, textRenderer, fieldWidth - reservedRightPadding);
+        int variableHighlightColor = UITheme.ACCENT_AMBER;
+        Set<String> stopTargetVariableNames = host.collectRuntimeVariableNames(node);
+        InlineVariableRender stopTargetRenderData = null;
+        if (host.shouldBuildInlineExpressionRender(value, stopTargetVariableNames)) {
+            InlineVariableRender candidate = buildInlineVariableRender(
+                value, stopTargetVariableNames, valueColor, variableHighlightColor);
+            if (editing) {
+                stopTargetRenderData = candidate;
+                display = stopTargetRenderData.displayText;
+            } else if (textRenderer.width(candidate.displayText) <= fieldWidth - 6) {
+                stopTargetRenderData = candidate;
+                display = stopTargetRenderData.displayText;
+            } else if (isSingleKnownInlineVariableReference(value, stopTargetVariableNames)) {
+                display = host.trimTextToWidth(candidate.displayText, textRenderer, fieldWidth - 6);
+                valueColor = variableHighlightColor;
+            }
+        }
+
+        int textX = fieldLeft + 3;
+        int textY = fieldTop + (fieldHeight - textRenderer.lineHeight) / 2 + 1;
+        if (editing && controller.getStopTargetEditor().hasSelection()) {
+            int start = controller.getStopTargetEditor().getSelectionStart();
+            int end = controller.getStopTargetEditor().getSelectionEnd();
+            if (stopTargetRenderData != null) {
+                start = stopTargetRenderData.toDisplayIndex(start);
+                end = stopTargetRenderData.toDisplayIndex(end);
+            }
+            if (start >= 0 && end >= 0 && start <= display.length() && end <= display.length()) {
+                int selectionStartX = textX + textRenderer.width(display.substring(0, start));
+                int selectionEndX = textX + textRenderer.width(display.substring(0, end));
+                int selectionColor = isRunPresetNode ? UITheme.TEXT_SELECTION_BG : UITheme.TEXT_SELECTION_DANGER_BG;
+                context.fill(selectionStartX, fieldTop + 2, selectionEndX, fieldBottom - 2, selectionColor);
+            }
+        }
+        if (stopTargetRenderData != null && host.shouldRenderNodeText()) {
+            stopTargetRenderData.draw(context, textRenderer, textX, textY);
+        } else {
+            host.drawNodeText(context, textRenderer, Component.literal(display), textX, textY, valueColor);
+        }
+
+        if (editing && controller.getStopTargetEditor().isCaretVisible()) {
+            int caretIndex = controller.getStopTargetEditor().getCaretPosition();
+            if (stopTargetRenderData != null) {
+                caretIndex = stopTargetRenderData.toDisplayIndex(caretIndex);
+            }
+            caretIndex = Mth.clamp(caretIndex, 0, display.length());
+            int caretX = textX + textRenderer.width(display.substring(0, caretIndex));
+            caretX = Math.min(caretX, fieldLeft + fieldWidth - 2);
+            UIStyleHelper.drawTextCaret(context, caretX, fieldTop + 2, fieldBottom - 2, caretColor);
+        }
+
+        if (isRunPresetNode) {
+            int arrowX = fieldLeft + fieldWidth - 10;
+            int arrowY = fieldTop + (fieldHeight - textRenderer.lineHeight) / 2 + 1;
+            String arrow = presetDropdownOpenForNode ? ">" : "v";
+            int arrowColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
+            host.drawNodeText(context, textRenderer, Component.literal(arrow), arrowX, arrowY, arrowColor);
         }
     }
 

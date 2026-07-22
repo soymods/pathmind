@@ -280,11 +280,30 @@ public class NodeGraph {
     private static final int PARAMETER_INPUT_GAP = 4;
     private static final int DIRECTION_MODE_TAB_HEIGHT = 18;
 
-    private Node coordinateEditingNode = null;
-    private int coordinateEditingAxis = -1;
-    private String coordinateEditOriginalValue = "";
-    private Node amountEditingNode = null;
-    private String amountEditOriginalValue = "";
+    private final InlineFieldController inlineFields = new InlineFieldController(new InlineFieldController.Host() {
+        @Override public Font getClientTextRenderer() { return NodeGraph.this.getClientTextRenderer(); }
+        @Override public void closeSchematicDropdown() { NodeGraph.this.closeSchematicDropdown(); }
+        @Override public void closeRunPresetDropdown() { NodeGraph.this.closeRunPresetDropdown(); }
+        @Override public void closeRandomRoundingDropdown() { NodeGraph.this.closeRandomRoundingDropdown(); }
+        @Override public void stopParameterEditing(boolean commit) { NodeGraph.this.stopParameterEditing(commit); }
+        @Override public void stopStickyNoteEditing(boolean commit) { NodeGraph.this.stopStickyNoteEditing(commit); }
+        @Override public void cancelScreenCoordinateCapture() { NodeGraph.this.cancelScreenCoordinateCapture(); }
+        @Override public void notifyNodeParametersChanged(Node node) { NodeGraph.this.notifyNodeParametersChanged(node); }
+        @Override public boolean isPresetSelectorNode(Node node) { return NodeGraph.this.isPresetSelectorNode(node); }
+        @Override public boolean isNumericOrVariableReference(String value, Node node, boolean allowDecimal, boolean allowNegative) {
+            return NodeGraph.this.isNumericOrVariableReference(value, node, allowDecimal, allowNegative);
+        }
+        @Override public String getStopTargetParameterKey(Node node) { return NodeGraph.this.getStopTargetParameterKey(node); }
+        @Override public String getNumberExpressionErrorMessage() {
+            return tr("pathmind.error.enterNumberExpressionOrVariable");
+        }
+        @Override public boolean isTextShortcutDown(int modifiers) { return NodeGraph.this.isTextShortcutDown(modifiers); }
+        @Override public String getClipboardText() { return NodeGraph.this.getClipboardText(); }
+        @Override public void setClipboardText(String text) { NodeGraph.this.setClipboardText(text); }
+        @Override public int findPreviousWordBoundary(String text, int fromPosition) {
+            return NodeGraph.this.findPreviousWordBoundary(text, fromPosition);
+        }
+    });
     private final ScreenCoordinateCaptureController screenCoordinateCapture = new ScreenCoordinateCaptureController(new ScreenCoordinateCaptureController.Host() {
         @Override
         public void stopOtherEditors() {
@@ -308,83 +327,6 @@ public class NodeGraph {
             NodeGraph.this.drawNodeText(context, renderer, text, x, y, color);
         }
     });
-    private final InlineTextEditor.Host inlineEditorHost = new InlineTextEditor.Host() {
-        @Override
-        public boolean isTextShortcutDown(int modifiers) {
-            return NodeGraph.this.isTextShortcutDown(modifiers);
-        }
-
-        @Override
-        public String getClipboardText() {
-            return NodeGraph.this.getClipboardText();
-        }
-
-        @Override
-        public void setClipboardText(String text) {
-            NodeGraph.this.setClipboardText(text);
-        }
-
-        @Override
-        public int findPreviousWordBoundary(String text, int fromPosition) {
-            return NodeGraph.this.findPreviousWordBoundary(text, fromPosition);
-        }
-    };
-
-    private final InlineTextEditor coordinateEditor = new InlineTextEditor(inlineEditorHost);
-    private final InlineTextEditor.Policy coordinatePolicy = new InlineTextEditor.Policy() {
-        @Override
-        public void onBufferChanged() {
-            updateCoordinateFieldContentWidth(getClientTextRenderer());
-        }
-
-        @Override
-        public void onEnter() {
-            stopCoordinateEditing(true);
-        }
-
-        @Override
-        public void onEscape() {
-            stopCoordinateEditing(true);
-        }
-    };
-    private final InlineTextEditor amountEditor = new InlineTextEditor(inlineEditorHost);
-    private final InlineTextEditor.Policy amountPolicy = new InlineTextEditor.Policy() {
-        @Override
-        public void onBufferChanged() {
-            updateAmountFieldContentWidth(getClientTextRenderer());
-        }
-
-        @Override
-        public void onEnter() {
-            stopAmountEditing(true);
-        }
-
-        @Override
-        public void onEscape() {
-            stopAmountEditing(true);
-        }
-    };
-
-    private Node messageEditingNode = null;
-    private int messageEditingIndex = -1;
-    private String messageEditOriginalValue = "";
-    private final InlineTextEditor messageEditor = new InlineTextEditor(inlineEditorHost);
-    private final InlineTextEditor.Policy messagePolicy = new InlineTextEditor.Policy() {
-        @Override
-        public void onBufferChanged() {
-            updateMessageFieldContentWidth(getClientTextRenderer());
-        }
-
-        @Override
-        public void onEnter() {
-            stopMessageEditing(true);
-        }
-
-        @Override
-        public void onEscape() {
-            stopMessageEditing(true);
-        }
-    };
     private final StickyNoteController stickyNoteController = new StickyNoteController(new StickyNoteHost() {
         @Override
         public int cameraX() {
@@ -492,24 +434,6 @@ public class NodeGraph {
             NodeGraph.this.setClipboardText(text);
         }
     });
-    private Node eventNameEditingNode = null;
-    private String eventNameEditOriginalValue = "";
-    private final InlineTextEditor eventNameEditor = new InlineTextEditor(inlineEditorHost);
-    private final InlineTextEditor.Policy eventNamePolicy = new InlineTextEditor.Policy() {
-        @Override
-        public void onBufferChanged() {
-        }
-
-        @Override
-        public void onEnter() {
-            stopEventNameEditing(true);
-        }
-
-        @Override
-        public void onEscape() {
-            stopEventNameEditing(true);
-        }
-    };
     private Node parameterEditingNode = null;
     private int parameterEditingIndex = -1;
     private String parameterEditBuffer = "";
@@ -520,44 +444,6 @@ public class NodeGraph {
     private int parameterSelectionStart = -1;
     private int parameterSelectionEnd = -1;
     private int parameterSelectionAnchor = -1;
-    private Node stopTargetEditingNode = null;
-    private String stopTargetEditOriginalValue = "";
-    private final InlineTextEditor stopTargetEditor = new InlineTextEditor(inlineEditorHost);
-    private final InlineTextEditor.Policy stopTargetPolicy = new InlineTextEditor.Policy() {
-        @Override
-        public void onBufferChanged() {
-            updateStopTargetFieldContentWidth(getClientTextRenderer());
-        }
-
-        @Override
-        public void onEnter() {
-            stopStopTargetEditing(true);
-        }
-
-        @Override
-        public void onEscape() {
-            stopStopTargetEditing(true);
-        }
-    };
-    private Node variableEditingNode = null;
-    private String variableEditOriginalValue = "";
-    private final InlineTextEditor variableEditor = new InlineTextEditor(inlineEditorHost);
-    private final InlineTextEditor.Policy variablePolicy = new InlineTextEditor.Policy() {
-        @Override
-        public void onBufferChanged() {
-            updateVariableFieldContentWidth(getClientTextRenderer());
-        }
-
-        @Override
-        public void onEnter() {
-            stopVariableEditing(true);
-        }
-
-        @Override
-        public void onEscape() {
-            stopVariableEditing(true);
-        }
-    };
     private Node schematicDropdownNode = null;
     private boolean schematicDropdownOpen = false;
     private final AnimatedValue schematicDropdownAnimation = AnimatedValue.forHover();
@@ -974,20 +860,20 @@ public class NodeGraph {
             return;
         }
 
-        if (coordinateEditingNode == node) {
+        if (inlineFields.getCoordinateEditingNode() == node) {
             stopCoordinateEditing(false);
         }
 
-        if (amountEditingNode == node) {
+        if (inlineFields.getAmountEditingNode() == node) {
             stopAmountEditing(false);
         }
-        if (stopTargetEditingNode == node) {
+        if (inlineFields.getStopTargetEditingNode() == node) {
             stopStopTargetEditing(false);
         }
-        if (variableEditingNode == node) {
+        if (inlineFields.getVariableEditingNode() == node) {
             stopVariableEditing(false);
         }
-        if (messageEditingNode == node) {
+        if (inlineFields.getMessageEditingNode() == node) {
             stopMessageEditing(false);
         }
 
@@ -3484,14 +3370,14 @@ public class NodeGraph {
                 : (lowDetail ? UITheme.BORDER_DEFAULT : UITheme.BORDER_SUBTLE);
             DrawContextBridge.drawBorderInLayer(context, boxLeft, boxTop, boxRight - boxLeft, boxHeight, inputBorder);
 
-            boolean editingEventName = isEditingEventNameField() && eventNameEditingNode == node;
+            boolean editingEventName = isEditingEventNameField() && inlineFields.getEventNameEditingNode() == node;
             if (editingEventName) {
-                eventNameEditor.updateCaretBlink();
+                inlineFields.getEventNameEditor().updateCaretBlink();
             }
 
             NodeParameter nameParam = node.getParameter("Name");
             String value = editingEventName
-                ? eventNameEditor.getBuffer()
+                ? inlineFields.getEventNameEditor().getBuffer()
                 : (nameParam != null ? nameParam.getStringValue() : "");
             if (value == null) {
                 value = "";
@@ -3531,9 +3417,9 @@ public class NodeGraph {
                 textColor = eventNameVariableHighlightColor;
             }
             int textX = boxLeft + 4;
-            if (editingEventName && eventNameEditor.hasSelection()) {
-                int start = eventNameEditor.getSelectionStart();
-                int end = eventNameEditor.getSelectionEnd();
+            if (editingEventName && inlineFields.getEventNameEditor().hasSelection()) {
+                int start = inlineFields.getEventNameEditor().getSelectionStart();
+                int end = inlineFields.getEventNameEditor().getSelectionEnd();
                 if (eventNameRenderData != null) {
                     start = eventNameRenderData.toDisplayIndex(start);
                     end = eventNameRenderData.toDisplayIndex(end);
@@ -3560,8 +3446,8 @@ public class NodeGraph {
                 }
             }
 
-            if (editingEventName && eventNameEditor.isCaretVisible()) {
-                int caretIndex = eventNameEditor.getCaretPosition();
+            if (editingEventName && inlineFields.getEventNameEditor().isCaretVisible()) {
+                int caretIndex = inlineFields.getEventNameEditor().getCaretPosition();
                 if (eventNameRenderData != null) {
                     caretIndex = eventNameRenderData.toDisplayIndex(caretIndex);
                 }
@@ -3750,14 +3636,14 @@ public class NodeGraph {
                 : (lowDetail ? UITheme.BORDER_DEFAULT : UITheme.BORDER_SUBTLE);
             DrawContextBridge.drawBorderInLayer(context, boxLeft, boxTop, boxRight - boxLeft, boxHeight, inputBorder);
 
-            boolean editingEventName = isEditingEventNameField() && eventNameEditingNode == node;
+            boolean editingEventName = isEditingEventNameField() && inlineFields.getEventNameEditingNode() == node;
             if (editingEventName) {
-                eventNameEditor.updateCaretBlink();
+                inlineFields.getEventNameEditor().updateCaretBlink();
             }
 
             NodeParameter nameParam = node.getParameter("Name");
             String value = editingEventName
-                ? eventNameEditor.getBuffer()
+                ? inlineFields.getEventNameEditor().getBuffer()
                 : (nameParam != null ? nameParam.getStringValue() : "");
             if (value == null) {
                 value = "";
@@ -3777,9 +3663,9 @@ public class NodeGraph {
                 textColor = UITheme.TEXT_TERTIARY;
             }
             int textX = boxLeft + 4;
-            if (editingEventName && eventNameEditor.hasSelection()) {
-                int start = Mth.clamp(eventNameEditor.getSelectionStart(), 0, display.length());
-                int end = Mth.clamp(eventNameEditor.getSelectionEnd(), 0, display.length());
+            if (editingEventName && inlineFields.getEventNameEditor().hasSelection()) {
+                int start = Mth.clamp(inlineFields.getEventNameEditor().getSelectionStart(), 0, display.length());
+                int end = Mth.clamp(inlineFields.getEventNameEditor().getSelectionEnd(), 0, display.length());
                 if (start != end) {
                     int selectionStartX = textX + textRenderer.width(display.substring(0, start));
                     int selectionEndX = textX + textRenderer.width(display.substring(0, end));
@@ -3792,8 +3678,8 @@ public class NodeGraph {
                 drawNodeText(context, textRenderer, Component.literal(display), textX, textY, textColor);
             }
 
-            if (editingEventName && eventNameEditor.isCaretVisible()) {
-                int caretIndex = Mth.clamp(eventNameEditor.getCaretPosition(), 0, display.length());
+            if (editingEventName && inlineFields.getEventNameEditor().isCaretVisible()) {
+                int caretIndex = Mth.clamp(inlineFields.getEventNameEditor().getCaretPosition(), 0, display.length());
                 int caretX = textX + textRenderer.width(display.substring(0, caretIndex));
                 caretX = Math.min(caretX, boxRight - 2);
                 int caretBaseline = Math.min(textY + textRenderer.lineHeight - 1, boxBottom - 2);
@@ -5143,8 +5029,8 @@ public class NodeGraph {
             startMessageEditing(node, node.getMessageFieldCount() - 1);
             handled = true;
         } else if (overRemove && node.getMessageFieldCount() > 1) {
-            int targetIndex = (messageEditingNode == node && messageEditingIndex >= 0)
-                ? messageEditingIndex
+            int targetIndex = (inlineFields.getMessageEditingNode() == node && inlineFields.getMessageEditingIndex() >= 0)
+                ? inlineFields.getMessageEditingIndex()
                 : node.getMessageFieldCount() - 1;
             stopMessageEditing(true);
             int removeIndex = Math.min(node.getMessageFieldCount() - 1, targetIndex);
@@ -5523,8 +5409,8 @@ public class NodeGraph {
         int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
         int activeTextColor = UITheme.TEXT_EDITING;
 
-        if (isEditingCoordinateField() && coordinateEditingNode == node) {
-            coordinateEditor.updateCaretBlink();
+        if (isEditingCoordinateField() && inlineFields.getCoordinateEditingNode() == node) {
+            inlineFields.getCoordinateEditor().updateCaretBlink();
         }
 
         int labelTop = node.getCoordinateFieldLabelTop() - cameraY;
@@ -5542,8 +5428,8 @@ public class NodeGraph {
             int fieldX = startX + i * (fieldWidth + spacing);
 
             boolean editingAxis = isEditingCoordinateField()
-                && coordinateEditingNode == node
-                && coordinateEditingAxis == i;
+                && inlineFields.getCoordinateEditingNode() == node
+                && inlineFields.getCoordinateEditingAxis() == i;
 
             String axisLabel = axes[i];
             int labelWidth = textRenderer.width(axisLabel);
@@ -5586,7 +5472,7 @@ public class NodeGraph {
 
             String value;
             if (editingAxis) {
-                value = coordinateEditor.getBuffer();
+                value = inlineFields.getCoordinateEditor().getBuffer();
             } else if (captureActive) {
                 value = Integer.toString(i == 0 ? screenCoordinateCapture.getPreviewX() : screenCoordinateCapture.getPreviewY());
             } else {
@@ -5619,9 +5505,9 @@ public class NodeGraph {
 
             int textX = fieldX + 3;
             int textY = inputTop + (fieldHeight - textRenderer.lineHeight) / 2 + 1;
-            if (editingAxis && coordinateEditor.hasSelection()) {
-                int start = coordinateEditor.getSelectionStart();
-                int end = coordinateEditor.getSelectionEnd();
+            if (editingAxis && inlineFields.getCoordinateEditor().hasSelection()) {
+                int start = inlineFields.getCoordinateEditor().getSelectionStart();
+                int end = inlineFields.getCoordinateEditor().getSelectionEnd();
                 if (coordRenderData != null) {
                     start = coordRenderData.toDisplayIndex(start);
                     end = coordRenderData.toDisplayIndex(end);
@@ -5638,8 +5524,8 @@ public class NodeGraph {
                 drawNodeText(context, textRenderer, Component.literal(display), textX, textY, valueColor);
             }
 
-            if (editingAxis && coordinateEditor.isCaretVisible()) {
-                int caretIndex = coordinateEditor.getCaretPosition();
+            if (editingAxis && inlineFields.getCoordinateEditor().isCaretVisible()) {
+                int caretIndex = inlineFields.getCoordinateEditor().getCaretPosition();
                 if (coordRenderData != null) {
                     caretIndex = coordRenderData.toDisplayIndex(caretIndex);
                 }
@@ -5663,9 +5549,9 @@ public class NodeGraph {
         int activeTextColor = UITheme.TEXT_EDITING;
         boolean amountEnabled = node.isAmountInputEnabled();
 
-        boolean editing = isEditingAmountField() && amountEditingNode == node;
+        boolean editing = isEditingAmountField() && inlineFields.getAmountEditingNode() == node;
         if (editing) {
-            amountEditor.updateCaretBlink();
+            inlineFields.getAmountEditor().updateCaretBlink();
         }
 
         int labelTop = node.getAmountFieldLabelTop() - cameraY;
@@ -5730,7 +5616,7 @@ public class NodeGraph {
 
         String value;
         if (editing && amountEnabled) {
-            value = amountEditor.getBuffer();
+            value = inlineFields.getAmountEditor().getBuffer();
         } else {
             String amountKey = node.getAmountParameterKey();
             NodeParameter amountParam = node.getParameter(amountKey);
@@ -5775,9 +5661,9 @@ public class NodeGraph {
 
         int textX = fieldLeft + 3;
         int textY = fieldTop + (fieldHeight - textRenderer.lineHeight) / 2 + 1;
-        if (editing && amountEnabled && amountEditor.hasSelection()) {
-            int start = amountEditor.getSelectionStart();
-            int end = amountEditor.getSelectionEnd();
+        if (editing && amountEnabled && inlineFields.getAmountEditor().hasSelection()) {
+            int start = inlineFields.getAmountEditor().getSelectionStart();
+            int end = inlineFields.getAmountEditor().getSelectionEnd();
             if (amountRenderData != null) {
                 start = amountRenderData.toDisplayIndex(start);
                 end = amountRenderData.toDisplayIndex(end);
@@ -5794,8 +5680,8 @@ public class NodeGraph {
             drawNodeText(context, textRenderer, Component.literal(display), textX, textY, valueColor);
         }
 
-        if (editing && amountEnabled && amountEditor.isCaretVisible()) {
-            int caretIndex = amountEditor.getCaretPosition();
+        if (editing && amountEnabled && inlineFields.getAmountEditor().isCaretVisible()) {
+            int caretIndex = inlineFields.getAmountEditor().getCaretPosition();
             if (amountRenderData != null) {
                 caretIndex = amountRenderData.toDisplayIndex(caretIndex);
             }
@@ -5934,9 +5820,9 @@ public class NodeGraph {
         int activeTextColor = UITheme.TEXT_EDITING;
         int variableHighlightColor = UITheme.ACCENT_AMBER;
 
-        boolean editing = isEditingMessageField() && messageEditingNode == node;
+        boolean editing = isEditingMessageField() && inlineFields.getMessageEditingNode() == node;
         if (editing) {
-            messageEditor.updateCaretBlink();
+            inlineFields.getMessageEditor().updateCaretBlink();
         }
 
         Set<String> runtimeVariableNames = collectRuntimeVariableNames(node);
@@ -5951,7 +5837,7 @@ public class NodeGraph {
             int worldMouseX = screenToWorldX(mouseX);
             int worldMouseY = screenToWorldY(mouseY);
 
-            boolean editingThis = editing && messageEditingIndex == i;
+            boolean editingThis = editing && inlineFields.getMessageEditingIndex() == i;
             int labelY = labelTop + Math.max(0, (labelHeight - textRenderer.lineHeight) / 2);
             String label = node.getMessageFieldLabelText(i);
             drawNodeText(context, textRenderer, Component.literal(label), fieldLeft + 2, labelY, baseLabelColor);
@@ -5969,7 +5855,7 @@ public class NodeGraph {
 
             UIStyleHelper.drawFieldFrame(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, palette);
 
-            String rawValue = editingThis ? messageEditor.getBuffer() : node.getMessageLine(i);
+            String rawValue = editingThis ? inlineFields.getMessageEditor().getBuffer() : node.getMessageLine(i);
             if (rawValue == null) {
                 rawValue = "";
             }
@@ -5999,9 +5885,9 @@ public class NodeGraph {
             if (!fixedPrefix.isEmpty()) {
                 drawNodeText(context, textRenderer, Component.literal(fixedPrefix), textX, textY, UITheme.TEXT_TERTIARY);
             }
-            if (editingThis && messageEditor.hasSelection()) {
-                int start = messageEditor.getSelectionStart();
-                int end = messageEditor.getSelectionEnd();
+            if (editingThis && inlineFields.getMessageEditor().hasSelection()) {
+                int start = inlineFields.getMessageEditor().getSelectionStart();
+                int end = inlineFields.getMessageEditor().getSelectionEnd();
                 if (renderData != null) {
                     start = renderData.toDisplayIndex(start);
                     end = renderData.toDisplayIndex(end);
@@ -6020,8 +5906,8 @@ public class NodeGraph {
                 drawNodeText(context, textRenderer, Component.literal(display), expressionTextX, textY, valueColor);
             }
 
-            if (editingThis && messageEditor.isCaretVisible()) {
-                int caretIndex = messageEditor.getCaretPosition();
+            if (editingThis && inlineFields.getMessageEditor().isCaretVisible()) {
+                int caretIndex = inlineFields.getMessageEditor().getCaretPosition();
                 if (renderData != null) {
                     caretIndex = renderData.toDisplayIndex(caretIndex);
                 }
@@ -6169,65 +6055,23 @@ public class NodeGraph {
     }
 
     private void updateMessageFieldContentWidth(Font textRenderer) {
-        if (!isEditingMessageField() || messageEditingNode == null || textRenderer == null) {
-            return;
-        }
-        int maxWidth = 0;
-        int fieldCount = messageEditingNode.getMessageFieldCount();
-        for (int i = 0; i < fieldCount; i++) {
-            String line = i == messageEditingIndex ? messageEditor.getBuffer() : messageEditingNode.getMessageLine(i);
-            if (line == null) {
-                line = "";
-            }
-            maxWidth = Math.max(maxWidth, textRenderer.width(line));
-        }
-        messageEditingNode.setMessageFieldTextWidth(maxWidth);
-        messageEditingNode.recalculateDimensions();
+        inlineFields.updateMessageFieldContentWidth(textRenderer);
     }
 
     private void updateCoordinateFieldContentWidth(Font textRenderer) {
-        if (!isEditingCoordinateField() || coordinateEditingNode == null || textRenderer == null) {
-            return;
-        }
-        int maxWidth = 0;
-        String[] axes = getCoordinateAxes(coordinateEditingNode);
-        for (int i = 0; i < axes.length; i++) {
-            NodeParameter parameter = getCoordinateParameter(coordinateEditingNode, i);
-            String value = i == coordinateEditingAxis ? coordinateEditor.getBuffer() : (parameter != null ? parameter.getStringValue() : "");
-            if (value == null) {
-                value = "";
-            }
-            maxWidth = Math.max(maxWidth, textRenderer.width(value));
-        }
-        coordinateEditingNode.setCoordinateFieldTextWidth(maxWidth);
-        coordinateEditingNode.recalculateDimensions();
+        inlineFields.updateCoordinateFieldContentWidth(textRenderer);
     }
 
     private void updateAmountFieldContentWidth(Font textRenderer) {
-        if (!isEditingAmountField() || amountEditingNode == null || textRenderer == null) {
-            return;
-        }
-        String value = amountEditor.getBuffer();
-        amountEditingNode.setAmountFieldTextWidth(textRenderer.width(value));
-        amountEditingNode.recalculateDimensions();
+        inlineFields.updateAmountFieldContentWidth(textRenderer);
     }
 
     private void updateStopTargetFieldContentWidth(Font textRenderer) {
-        if (!isEditingStopTargetField() || stopTargetEditingNode == null || textRenderer == null) {
-            return;
-        }
-        String value = stopTargetEditor.getBuffer();
-        stopTargetEditingNode.setStopTargetFieldTextWidth(textRenderer.width(value));
-        stopTargetEditingNode.recalculateDimensions();
+        inlineFields.updateStopTargetFieldContentWidth(textRenderer);
     }
 
     private void updateVariableFieldContentWidth(Font textRenderer) {
-        if (!isEditingVariableField() || variableEditingNode == null || textRenderer == null) {
-            return;
-        }
-        String value = variableEditor.getBuffer();
-        variableEditingNode.setVariableFieldTextWidth(textRenderer.width(value));
-        variableEditingNode.recalculateDimensions();
+        inlineFields.updateVariableFieldContentWidth(textRenderer);
     }
 
     private void updateParameterFieldContentWidth(Node node, Font textRenderer, int editingIndex, String editingValue) {
@@ -6778,9 +6622,9 @@ public class NodeGraph {
             caretColor = UITheme.TEXT_PRIMARY;
         }
 
-        boolean editing = isEditingStopTargetField() && stopTargetEditingNode == node;
+        boolean editing = isEditingStopTargetField() && inlineFields.getStopTargetEditingNode() == node;
         if (editing) {
-            stopTargetEditor.updateCaretBlink();
+            inlineFields.getStopTargetEditor().updateCaretBlink();
         }
 
         int fieldTop = node.getStopTargetFieldInputTop() - cameraY;
@@ -6831,7 +6675,7 @@ public class NodeGraph {
 
         String value;
         if (editing) {
-            value = stopTargetEditor.getBuffer();
+            value = inlineFields.getStopTargetEditor().getBuffer();
         } else {
             NodeParameter targetParam = node.getParameter(getStopTargetParameterKey(node));
             value = targetParam != null ? targetParam.getStringValue() : "";
@@ -6871,9 +6715,9 @@ public class NodeGraph {
 
         int textX = fieldLeft + 3;
         int textY = fieldTop + (fieldHeight - textRenderer.lineHeight) / 2 + 1;
-        if (editing && stopTargetEditor.hasSelection()) {
-            int start = stopTargetEditor.getSelectionStart();
-            int end = stopTargetEditor.getSelectionEnd();
+        if (editing && inlineFields.getStopTargetEditor().hasSelection()) {
+            int start = inlineFields.getStopTargetEditor().getSelectionStart();
+            int end = inlineFields.getStopTargetEditor().getSelectionEnd();
             if (stopTargetRenderData != null) {
                 start = stopTargetRenderData.toDisplayIndex(start);
                 end = stopTargetRenderData.toDisplayIndex(end);
@@ -6891,8 +6735,8 @@ public class NodeGraph {
             drawNodeText(context, textRenderer, Component.literal(display), textX, textY, valueColor);
         }
 
-        if (editing && stopTargetEditor.isCaretVisible()) {
-            int caretIndex = stopTargetEditor.getCaretPosition();
+        if (editing && inlineFields.getStopTargetEditor().isCaretVisible()) {
+            int caretIndex = inlineFields.getStopTargetEditor().getCaretPosition();
             if (stopTargetRenderData != null) {
                 caretIndex = stopTargetRenderData.toDisplayIndex(caretIndex);
             }
@@ -6917,9 +6761,9 @@ public class NodeGraph {
         int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
         int caretColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.CARET_COLOR;
 
-        boolean editing = isEditingStopTargetField() && stopTargetEditingNode == node;
+        boolean editing = isEditingStopTargetField() && inlineFields.getStopTargetEditingNode() == node;
         if (editing) {
-            stopTargetEditor.updateCaretBlink();
+            inlineFields.getStopTargetEditor().updateCaretBlink();
         }
         boolean open = runPresetDropdownOpen && runPresetDropdownNode == node;
 
@@ -6964,7 +6808,7 @@ public class NodeGraph {
 
         String value;
         if (editing) {
-            value = stopTargetEditor.getBuffer();
+            value = inlineFields.getStopTargetEditor().getBuffer();
         } else {
             NodeParameter targetParam = node.getParameter(getStopTargetParameterKey(node));
             value = targetParam != null ? targetParam.getStringValue() : "";
@@ -6982,9 +6826,9 @@ public class NodeGraph {
         display = editing ? display : trimTextToWidth(display, textRenderer, maxValueWidth);
 
         int textY = fieldTop + (fieldHeight - textRenderer.lineHeight) / 2 + 1;
-        if (editing && stopTargetEditor.hasSelection()) {
-            int start = Mth.clamp(stopTargetEditor.getSelectionStart(), 0, display.length());
-            int end = Mth.clamp(stopTargetEditor.getSelectionEnd(), 0, display.length());
+        if (editing && inlineFields.getStopTargetEditor().hasSelection()) {
+            int start = Mth.clamp(inlineFields.getStopTargetEditor().getSelectionStart(), 0, display.length());
+            int end = Mth.clamp(inlineFields.getStopTargetEditor().getSelectionEnd(), 0, display.length());
             if (start != end) {
                 int selectionStartX = valueTextX + textRenderer.width(display.substring(0, start));
                 int selectionEndX = valueTextX + textRenderer.width(display.substring(0, end));
@@ -6993,8 +6837,8 @@ public class NodeGraph {
         }
         drawNodeText(context, textRenderer, Component.literal(display), valueTextX, textY, valueDrawColor);
 
-        if (editing && stopTargetEditor.isCaretVisible()) {
-            int caretIndex = Mth.clamp(stopTargetEditor.getCaretPosition(), 0, display.length());
+        if (editing && inlineFields.getStopTargetEditor().isCaretVisible()) {
+            int caretIndex = Mth.clamp(inlineFields.getStopTargetEditor().getCaretPosition(), 0, display.length());
             int caretX = valueTextX + textRenderer.width(display.substring(0, caretIndex));
             caretX = Math.min(caretX, fieldLeft + fieldWidth - 2);
             UIStyleHelper.drawTextCaret(context, caretX, fieldTop + 2, fieldBottom - 2, caretColor);
@@ -7010,9 +6854,9 @@ public class NodeGraph {
         int activeTextColor = UITheme.TEXT_LABEL;
         int caretColor = UITheme.TEXT_LABEL;
 
-        boolean editing = isEditingVariableField() && variableEditingNode == node;
+        boolean editing = isEditingVariableField() && inlineFields.getVariableEditingNode() == node;
         if (editing) {
-            variableEditor.updateCaretBlink();
+            inlineFields.getVariableEditor().updateCaretBlink();
         }
 
         int fieldTop = node.getVariableFieldInputTop() - cameraY;
@@ -7037,7 +6881,7 @@ public class NodeGraph {
 
         String value;
         if (editing) {
-            value = variableEditor.getBuffer();
+            value = inlineFields.getVariableEditor().getBuffer();
         } else {
             String keyName = node.getVariableFieldParameterKey();
             NodeParameter variableParam = node.getParameter(keyName);
@@ -7078,9 +6922,9 @@ public class NodeGraph {
 
         int textX = fieldLeft + 3;
         int textY = fieldTop + (fieldHeight - textRenderer.lineHeight) / 2 + 1;
-        if (editing && variableEditor.hasSelection()) {
-            int start = variableEditor.getSelectionStart();
-            int end = variableEditor.getSelectionEnd();
+        if (editing && inlineFields.getVariableEditor().hasSelection()) {
+            int start = inlineFields.getVariableEditor().getSelectionStart();
+            int end = inlineFields.getVariableEditor().getSelectionEnd();
             if (variableFieldRenderData != null) {
                 start = variableFieldRenderData.toDisplayIndex(start);
                 end = variableFieldRenderData.toDisplayIndex(end);
@@ -7097,8 +6941,8 @@ public class NodeGraph {
             drawNodeText(context, textRenderer, Component.literal(display), textX, textY, valueColor);
         }
 
-        if (editing && variableEditor.isCaretVisible()) {
-            int caretIndex = variableEditor.getCaretPosition();
+        if (editing && inlineFields.getVariableEditor().isCaretVisible()) {
+            int caretIndex = inlineFields.getVariableEditor().getCaretPosition();
             if (variableFieldRenderData != null) {
                 caretIndex = variableFieldRenderData.toDisplayIndex(caretIndex);
             }
@@ -7297,7 +7141,7 @@ public class NodeGraph {
     }
 
     public boolean isEditingCoordinateField() {
-        return coordinateEditingNode != null && coordinateEditingAxis >= 0;
+        return inlineFields.isEditingCoordinateField();
     }
 
     public boolean isScreenCoordinateCaptureActive() {
@@ -7378,125 +7222,15 @@ public class NodeGraph {
     }
 
     public void startCoordinateEditing(Node node, int axisIndex) {
-        String[] axes = getCoordinateAxes(node);
-        if (node == null || !node.hasCoordinateInputFields() || axisIndex < 0
-            || axisIndex >= axes.length) {
-            stopCoordinateEditing(false);
-            return;
-        }
-
-        cancelScreenCoordinateCapture();
-
-        closeSchematicDropdown();
-        closeRunPresetDropdown();
-        closeRandomRoundingDropdown();
-        stopAmountEditing(true);
-        stopStopTargetEditing(true);
-        stopVariableEditing(true);
-        stopMessageEditing(true);
-        stopParameterEditing(true);
-        stopEventNameEditing(true);
-
-        if (isEditingCoordinateField()) {
-            if (coordinateEditingNode == node && coordinateEditingAxis == axisIndex) {
-                return;
-            }
-            boolean changed = applyCoordinateEdit();
-            if (changed) {
-                notifyNodeParametersChanged(coordinateEditingNode);
-            }
-        }
-
-        coordinateEditingNode = node;
-        coordinateEditingAxis = axisIndex;
-
-        NodeParameter parameter = getCoordinateParameter(node, axisIndex);
-        coordinateEditOriginalValue = parameter != null ? parameter.getStringValue() : "";
-        coordinateEditor.begin(coordinateEditOriginalValue, coordinateEditOriginalValue.length());
-        updateCoordinateFieldContentWidth(getClientTextRenderer());
+        inlineFields.startCoordinateEditing(node, axisIndex);
     }
 
     public void stopCoordinateEditing(boolean commit) {
-        if (!isEditingCoordinateField()) {
-            return;
-        }
-
-        boolean changed = false;
-        if (commit) {
-            changed = applyCoordinateEdit();
-        } else {
-            revertCoordinateEdit();
-        }
-
-        if (commit && changed) {
-            notifyNodeParametersChanged(coordinateEditingNode);
-        }
-
-        coordinateEditingNode = null;
-        coordinateEditingAxis = -1;
-        coordinateEditOriginalValue = "";
-        coordinateEditor.clear();
-    }
-
-    private boolean applyCoordinateEdit() {
-        if (!isEditingCoordinateField()) {
-            return false;
-        }
-        String value = coordinateEditor.getBuffer().trim();
-        if (!value.isEmpty() && !"-".equals(value) && !isNumericOrVariableReference(value, coordinateEditingNode, false, true)) {
-            coordinateEditingNode.sendNodeErrorMessageToPlayer(tr("pathmind.error.enterNumberExpressionOrVariable"));
-            return false;
-        }
-        if (value.isEmpty() || "-".equals(value)) {
-            value = "0";
-        }
-        String axisName = getCoordinateAxes(coordinateEditingNode)[coordinateEditingAxis];
-        NodeParameter parameter = getCoordinateParameter(coordinateEditingNode, coordinateEditingAxis);
-        String previous = parameter != null ? parameter.getStringValue() : "";
-        coordinateEditingNode.setParameterValueAndPropagate(axisName, value);
-        coordinateEditingNode.recalculateDimensions();
-        return !Objects.equals(previous, value);
-    }
-
-    private void revertCoordinateEdit() {
-        if (!isEditingCoordinateField()) {
-            return;
-        }
-        String axisName = getCoordinateAxes(coordinateEditingNode)[coordinateEditingAxis];
-        coordinateEditingNode.setParameterValueAndPropagate(axisName, coordinateEditOriginalValue);
-        coordinateEditingNode.recalculateDimensions();
-    }
-
-    private NodeParameter getCoordinateParameter(Node node, int axisIndex) {
-        String[] axes = getCoordinateAxes(node);
-        if (node == null || axisIndex < 0 || axisIndex >= axes.length) {
-            return null;
-        }
-        return node.getParameter(axes[axisIndex]);
+        inlineFields.stopCoordinateEditing(commit);
     }
 
     public boolean handleCoordinateKeyPressed(int keyCode, int modifiers) {
-        if (!isEditingCoordinateField()) {
-            return false;
-        }
-        // Coordinate-specific keys the shared engine does not handle:
-        if (keyCode == GLFW.GLFW_KEY_TAB) {
-            Node node = coordinateEditingNode;
-            int direction = (modifiers & GLFW.GLFW_MOD_SHIFT) != 0 ? -1 : 1;
-            int axisCount = getCoordinateAxes(node).length;
-            int nextAxis = (coordinateEditingAxis + direction + axisCount) % axisCount;
-            startCoordinateEditing(node, nextAxis);
-            return true;
-        }
-        if (keyCode == GLFW.GLFW_KEY_V && isTextShortcutDown(modifiers)) {
-            // Smart paste: fills multiple axes from "x, y, z" clipboard content.
-            Font textRenderer = getClientTextRenderer();
-            if (textRenderer != null) {
-                smartPasteCoordinates(getClipboardText(), textRenderer);
-            }
-            return true;
-        }
-        return coordinateEditor.handleKeyPressed(keyCode, modifiers, coordinatePolicy);
+        return inlineFields.handleCoordinateKeyPressed(keyCode, modifiers);
     }
 
     private boolean isTextShortcutDown(int modifiers) {
@@ -7505,345 +7239,67 @@ public class NodeGraph {
     }
 
     public boolean handleCoordinateCharTyped(char chr, int modifiers, Font textRenderer) {
-        if (!isEditingCoordinateField()) {
-            return false;
-        }
-        return coordinateEditor.handleCharTyped(chr, coordinatePolicy);
+        return inlineFields.handleCoordinateCharTyped(chr);
     }
 
     public boolean isEditingAmountField() {
-        return amountEditingNode != null;
+        return inlineFields.isEditingAmountField();
     }
 
     public void startAmountEditing(Node node) {
-        if (node == null || !node.hasAmountInputField() || !node.isAmountInputEnabled()) {
-            stopAmountEditing(false);
-            return;
-        }
-
-        closeSchematicDropdown();
-        closeRunPresetDropdown();
-        if (isEditingAmountField()) {
-            if (amountEditingNode == node) {
-                return;
-            }
-            boolean changed = applyAmountEdit();
-            if (changed) {
-                notifyNodeParametersChanged(amountEditingNode);
-            }
-        }
-
-        stopCoordinateEditing(true);
-        stopStopTargetEditing(true);
-        stopVariableEditing(true);
-        stopMessageEditing(true);
-        stopStickyNoteEditing(true);
-        stopParameterEditing(true);
-        stopEventNameEditing(true);
-
-        amountEditingNode = node;
-        String amountKey = node.getAmountParameterKey();
-        NodeParameter amountParam = node.getParameter(amountKey);
-        String initialBuffer = amountParam != null ? amountParam.getStringValue() : "";
-        if (node.getType() == NodeType.MOVE_ITEM && isMoveItemAllAmountValue(initialBuffer)) {
-            initialBuffer = "";
-        }
-        amountEditOriginalValue = initialBuffer;
-        amountEditor.begin(initialBuffer, initialBuffer.length());
-        updateAmountFieldContentWidth(getClientTextRenderer());
+        inlineFields.startAmountEditing(node);
     }
 
     public void stopAmountEditing(boolean commit) {
-        if (!isEditingAmountField()) {
-            return;
-        }
-
-        boolean changed = false;
-        if (commit) {
-            changed = applyAmountEdit();
-        } else {
-            revertAmountEdit();
-        }
-
-        if (commit && changed) {
-            notifyNodeParametersChanged(amountEditingNode);
-        }
-
-        amountEditingNode = null;
-        amountEditOriginalValue = "";
-        amountEditor.clear();
-    }
-
-    private boolean applyAmountEdit() {
-        if (!isEditingAmountField()) {
-            return false;
-        }
-
-        String value = amountEditor.getBuffer().trim();
-        if ((amountEditingNode.getType() == NodeType.PARAM_DURATION
-            || amountEditingNode.getType() == NodeType.USE
-            || amountEditingNode.getType() == NodeType.SWING)
-            && !value.startsWith("$")) {
-            // Accept locale decimal input like "1,5" for duration-style fields.
-            value = value.replace(',', '.');
-        }
-        if (amountEditingNode.getType() == NodeType.MOVE_ITEM && isMoveItemAllAmountValue(value)) {
-            value = "0";
-        }
-        if (amountEditingNode.getType() != NodeType.PARAM_DURATION
-            && amountEditingNode.getType() != NodeType.USE
-            && amountEditingNode.getType() != NodeType.SWING
-            && !value.isEmpty()
-            && !isNumericOrVariableReference(value, amountEditingNode, true, false)) {
-            amountEditingNode.sendNodeErrorMessageToPlayer(tr("pathmind.error.enterNumberExpressionOrVariable"));
-            return false;
-        }
-        if (value.isEmpty()) {
-            if (amountEditingNode.getType() == NodeType.MOVE_ITEM) {
-                value = "0";
-            } else if (amountEditingNode.getType() == NodeType.TRADE
-                || amountEditingNode.getType() == NodeType.SENSOR_VILLAGER_TRADE
-                || amountEditingNode.getType() == NodeType.SENSOR_IN_STOCK) {
-                value = "1";
-            } else if (amountEditingNode.getType() == NodeType.PARAM_DURATION
-                || amountEditingNode.getType() == NodeType.USE
-                || amountEditingNode.getType() == NodeType.SWING) {
-                value = "";
-            } else {
-                value = amountEditOriginalValue != null && !amountEditOriginalValue.isEmpty()
-                    ? amountEditOriginalValue
-                    : "0";
-            }
-        }
-
-        String amountKey = amountEditingNode.getAmountParameterKey();
-        NodeParameter amountParam = amountEditingNode.getParameter(amountKey);
-        String previous = amountParam != null ? amountParam.getStringValue() : "";
-        amountEditingNode.setParameterValueAndPropagate(amountKey, value);
-        amountEditingNode.recalculateDimensions();
-        return !Objects.equals(previous, value);
-    }
-
-    private void revertAmountEdit() {
-        if (!isEditingAmountField()) {
-            return;
-        }
-        String amountKey = amountEditingNode.getAmountParameterKey();
-        amountEditingNode.setParameterValueAndPropagate(amountKey, amountEditOriginalValue);
-        amountEditingNode.recalculateDimensions();
+        inlineFields.stopAmountEditing(commit);
     }
 
     public boolean handleAmountKeyPressed(int keyCode, int modifiers) {
-        if (!isEditingAmountField()) {
-            return false;
-        }
-        return amountEditor.handleKeyPressed(keyCode, modifiers, amountPolicy);
+        return inlineFields.handleAmountKeyPressed(keyCode, modifiers);
     }
 
     public boolean handleAmountCharTyped(char chr, int modifiers, Font textRenderer) {
-        if (!isEditingAmountField()) {
-            return false;
-        }
-        return amountEditor.handleCharTyped(chr, amountPolicy);
+        return inlineFields.handleAmountCharTyped(chr);
     }
 
     public boolean isEditingStopTargetField() {
-        return stopTargetEditingNode != null;
+        return inlineFields.isEditingStopTargetField();
     }
 
     public void startStopTargetEditing(Node node) {
-        if (node == null || !node.hasStopTargetInputField() || isPresetSelectorNode(node)) {
-            stopStopTargetEditing(false);
-            return;
-        }
-
-        closeSchematicDropdown();
-        closeRunPresetDropdown();
-        if (isEditingStopTargetField()) {
-            if (stopTargetEditingNode == node) {
-                return;
-            }
-            boolean changed = applyStopTargetEdit();
-            if (changed) {
-                notifyNodeParametersChanged(stopTargetEditingNode);
-            }
-        }
-
-        stopCoordinateEditing(true);
-        stopAmountEditing(true);
-        stopMessageEditing(true);
-        stopParameterEditing(true);
-        stopEventNameEditing(true);
-        stopVariableEditing(true);
-        stopStickyNoteEditing(true);
-
-        stopTargetEditingNode = node;
-        NodeParameter targetParam = node.getParameter(getStopTargetParameterKey(node));
-        stopTargetEditOriginalValue = targetParam != null ? targetParam.getStringValue() : "";
-        stopTargetEditor.begin(stopTargetEditOriginalValue, stopTargetEditOriginalValue.length());
-        updateStopTargetFieldContentWidth(getClientTextRenderer());
+        inlineFields.startStopTargetEditing(node);
     }
 
     public void stopStopTargetEditing(boolean commit) {
-        if (!isEditingStopTargetField()) {
-            return;
-        }
-
-        boolean changed = false;
-        if (commit) {
-            changed = applyStopTargetEdit();
-        } else {
-            revertStopTargetEdit();
-        }
-
-        if (commit && changed) {
-            notifyNodeParametersChanged(stopTargetEditingNode);
-        }
-
-        stopTargetEditingNode = null;
-        stopTargetEditOriginalValue = "";
-        stopTargetEditor.clear();
+        inlineFields.stopStopTargetEditing(commit);
     }
 
     public boolean isEditingVariableField() {
-        return variableEditingNode != null;
+        return inlineFields.isEditingVariableField();
     }
 
     public void startVariableEditing(Node node) {
-        if (node == null || !node.hasVariableInputField()) {
-            stopVariableEditing(false);
-            return;
-        }
-
-        closeSchematicDropdown();
-        closeRunPresetDropdown();
-        if (isEditingVariableField()) {
-            if (variableEditingNode == node) {
-                return;
-            }
-            boolean changed = applyVariableEdit();
-            if (changed) {
-                notifyNodeParametersChanged(variableEditingNode);
-            }
-        }
-
-        stopCoordinateEditing(true);
-        stopAmountEditing(true);
-        stopStopTargetEditing(true);
-        stopMessageEditing(true);
-        stopParameterEditing(true);
-        stopEventNameEditing(true);
-        stopStickyNoteEditing(true);
-
-        variableEditingNode = node;
-        String keyName = node.getVariableFieldParameterKey();
-        NodeParameter variableParam = node.getParameter(keyName);
-        variableEditOriginalValue = variableParam != null ? variableParam.getStringValue() : "";
-        variableEditor.begin(variableEditOriginalValue, variableEditOriginalValue.length());
-        updateVariableFieldContentWidth(getClientTextRenderer());
+        inlineFields.startVariableEditing(node);
     }
 
     public void stopVariableEditing(boolean commit) {
-        if (!isEditingVariableField()) {
-            return;
-        }
-
-        boolean changed = false;
-        if (commit) {
-            changed = applyVariableEdit();
-        } else {
-            revertVariableEdit();
-        }
-
-        if (commit && changed) {
-            notifyNodeParametersChanged(variableEditingNode);
-        }
-
-        variableEditingNode = null;
-        variableEditOriginalValue = "";
-        variableEditor.clear();
-    }
-
-    private boolean applyVariableEdit() {
-        if (!isEditingVariableField()) {
-            return false;
-        }
-
-        String value = variableEditor.getBuffer();
-        String keyName = variableEditingNode.getVariableFieldParameterKey();
-        NodeParameter variableParam = variableEditingNode.getParameter(keyName);
-        String previous = variableParam != null ? variableParam.getStringValue() : "";
-        variableEditingNode.setParameterValueAndPropagate(keyName, value);
-        variableEditingNode.recalculateDimensions();
-        return !Objects.equals(previous, value);
-    }
-
-    private void revertVariableEdit() {
-        if (!isEditingVariableField()) {
-            return;
-        }
-        String keyName = variableEditingNode.getVariableFieldParameterKey();
-        variableEditingNode.setParameterValueAndPropagate(keyName, variableEditOriginalValue);
-        variableEditingNode.recalculateDimensions();
+        inlineFields.stopVariableEditing(commit);
     }
 
     public boolean handleVariableKeyPressed(int keyCode, int modifiers) {
-        if (!isEditingVariableField()) {
-            return false;
-        }
-        return variableEditor.handleKeyPressed(keyCode, modifiers, variablePolicy);
+        return inlineFields.handleVariableKeyPressed(keyCode, modifiers);
     }
 
     public boolean handleVariableCharTyped(char chr, int modifiers, Font textRenderer) {
-        if (!isEditingVariableField()) {
-            return false;
-        }
-        return variableEditor.handleCharTyped(chr, variablePolicy);
-    }
-
-    private boolean applyStopTargetEdit() {
-        if (!isEditingStopTargetField()) {
-            return false;
-        }
-
-        String value = stopTargetEditor.getBuffer().trim();
-        if (!isPresetSelectorNode(stopTargetEditingNode)
-            && !value.isEmpty()
-            && !isNumericOrVariableReference(value, stopTargetEditingNode, false, false)) {
-            stopTargetEditingNode.sendNodeErrorMessageToPlayer(tr("pathmind.error.enterNumberExpressionOrVariable"));
-            return false;
-        }
-        String keyName = getStopTargetParameterKey(stopTargetEditingNode);
-        NodeParameter targetParam = stopTargetEditingNode.getParameter(keyName);
-        String previous = targetParam != null ? targetParam.getStringValue() : "";
-        stopTargetEditingNode.setParameterValueAndPropagate(keyName, value);
-        stopTargetEditingNode.recalculateDimensions();
-        return !Objects.equals(previous, value);
-    }
-
-    private void revertStopTargetEdit() {
-        if (!isEditingStopTargetField()) {
-            return;
-        }
-        stopTargetEditingNode.setParameterValueAndPropagate(
-            getStopTargetParameterKey(stopTargetEditingNode),
-            stopTargetEditOriginalValue
-        );
-        stopTargetEditingNode.recalculateDimensions();
+        return inlineFields.handleVariableCharTyped(chr);
     }
 
     public boolean handleStopTargetKeyPressed(int keyCode, int modifiers) {
-        if (!isEditingStopTargetField()) {
-            return false;
-        }
-        return stopTargetEditor.handleKeyPressed(keyCode, modifiers, stopTargetPolicy);
+        return inlineFields.handleStopTargetKeyPressed(keyCode, modifiers);
     }
 
     public boolean handleStopTargetCharTyped(char chr, int modifiers, Font textRenderer) {
-        if (!isEditingStopTargetField()) {
-            return false;
-        }
-        return stopTargetEditor.handleCharTyped(chr, stopTargetPolicy);
+        return inlineFields.handleStopTargetCharTyped(chr);
     }
 
     public boolean isEditingStickyNote() {
@@ -7895,171 +7351,35 @@ public class NodeGraph {
     }
 
     public boolean isEditingMessageField() {
-        return messageEditingNode != null && messageEditingIndex >= 0;
+        return inlineFields.isEditingMessageField();
     }
 
     public void startMessageEditing(Node node, int index) {
-        if (node == null || !node.hasMessageInputFields() || index < 0 || index >= node.getMessageFieldCount()) {
-            stopMessageEditing(false);
-            return;
-        }
-
-        closeSchematicDropdown();
-        closeRunPresetDropdown();
-        if (isEditingMessageField()) {
-            if (messageEditingNode == node && messageEditingIndex == index) {
-                return;
-            }
-            boolean changed = applyMessageEdit();
-            if (changed) {
-                notifyNodeParametersChanged(messageEditingNode);
-            }
-        }
-
-        stopCoordinateEditing(true);
-        stopAmountEditing(true);
-        stopStopTargetEditing(true);
-        stopVariableEditing(true);
-        stopEventNameEditing(true);
-        stopParameterEditing(true);
-
-        messageEditingNode = node;
-        messageEditingIndex = index;
-        messageEditOriginalValue = node.getMessageLine(index);
-        messageEditor.begin(messageEditOriginalValue, messageEditOriginalValue.length());
-        updateMessageFieldContentWidth(getClientTextRenderer());
+        inlineFields.startMessageEditing(node, index);
     }
 
     public void stopMessageEditing(boolean commit) {
-        if (!isEditingMessageField()) {
-            return;
-        }
-
-        boolean changed = false;
-        if (commit) {
-            changed = applyMessageEdit();
-        } else {
-            revertMessageEdit();
-        }
-
-        if (commit && changed) {
-            notifyNodeParametersChanged(messageEditingNode);
-        }
-
-        messageEditingNode = null;
-        messageEditingIndex = -1;
-        messageEditOriginalValue = "";
-        messageEditor.clear();
+        inlineFields.stopMessageEditing(commit);
     }
 
     public boolean isEditingEventNameField() {
-        return eventNameEditingNode != null;
+        return inlineFields.isEditingEventNameField();
     }
 
     public void startEventNameEditing(Node node) {
-        if (node == null || (node.getType() != NodeType.EVENT_FUNCTION && node.getType() != NodeType.EVENT_CALL && node.getType() != NodeType.ROUTINE_ENTRY)) {
-            stopEventNameEditing(false);
-            return;
-        }
-
-        closeSchematicDropdown();
-        if (isEditingEventNameField()) {
-            if (eventNameEditingNode == node) {
-                return;
-            }
-            boolean changed = applyEventNameEdit();
-            if (changed) {
-                notifyNodeParametersChanged(eventNameEditingNode);
-            }
-        }
-
-        stopCoordinateEditing(true);
-        stopAmountEditing(true);
-        stopStopTargetEditing(true);
-        stopVariableEditing(true);
-        stopMessageEditing(true);
-        stopEventNameEditing(true);
-        stopParameterEditing(true);
-        stopStickyNoteEditing(true);
-
-        eventNameEditingNode = node;
-        NodeParameter nameParam = node.getParameter("Name");
-        eventNameEditOriginalValue = nameParam != null ? nameParam.getStringValue() : "";
-        eventNameEditor.begin(eventNameEditOriginalValue, eventNameEditOriginalValue.length());
+        inlineFields.startEventNameEditing(node);
     }
 
     public void stopEventNameEditing(boolean commit) {
-        if (!isEditingEventNameField()) {
-            return;
-        }
-
-        boolean changed = false;
-        if (commit) {
-            changed = applyEventNameEdit();
-        } else {
-            revertEventNameEdit();
-        }
-
-        if (commit && changed) {
-            notifyNodeParametersChanged(eventNameEditingNode);
-        }
-
-        eventNameEditingNode = null;
-        eventNameEditOriginalValue = "";
-        eventNameEditor.clear();
-    }
-
-    private boolean applyEventNameEdit() {
-        if (!isEditingEventNameField()) {
-            return false;
-        }
-        String value = eventNameEditor.getBuffer();
-        NodeParameter nameParam = eventNameEditingNode.getParameter("Name");
-        String previous = nameParam != null ? nameParam.getStringValue() : "";
-        eventNameEditingNode.setParameterValueAndPropagate("Name", value);
-        eventNameEditingNode.recalculateDimensions();
-        return !Objects.equals(previous, value);
-    }
-
-    private void revertEventNameEdit() {
-        if (!isEditingEventNameField()) {
-            return;
-        }
-        eventNameEditingNode.setParameterValueAndPropagate("Name", eventNameEditOriginalValue);
-        eventNameEditingNode.recalculateDimensions();
+        inlineFields.stopEventNameEditing(commit);
     }
 
     public boolean handleEventNameKeyPressed(int keyCode, int modifiers) {
-        if (!isEditingEventNameField()) {
-            return false;
-        }
-        return eventNameEditor.handleKeyPressed(keyCode, modifiers, eventNamePolicy);
+        return inlineFields.handleEventNameKeyPressed(keyCode, modifiers);
     }
 
     public boolean handleEventNameCharTyped(char chr, int modifiers) {
-        if (!isEditingEventNameField()) {
-            return false;
-        }
-        return eventNameEditor.handleCharTyped(chr, eventNamePolicy);
-    }
-
-    private boolean applyMessageEdit() {
-        if (!isEditingMessageField()) {
-            return false;
-        }
-        String value = messageEditor.getBuffer();
-        String previous = messageEditingNode.getMessageLine(messageEditingIndex);
-        messageEditingNode.setMessageLine(messageEditingIndex, value);
-        messageEditingNode.recalculateDimensions();
-        return !Objects.equals(previous, value);
-    }
-
-    private void revertMessageEdit() {
-        if (!isEditingMessageField()) {
-            return;
-        }
-        messageEditingNode.setMessageLine(messageEditingIndex, messageEditOriginalValue);
-        messageEditingNode.recalculateDimensions();
+        return inlineFields.handleEventNameCharTyped(chr);
     }
 
     public boolean isEditingParameterField() {
@@ -8591,17 +7911,11 @@ public class NodeGraph {
     }
 
     public boolean handleMessageKeyPressed(int keyCode, int modifiers) {
-        if (!isEditingMessageField()) {
-            return false;
-        }
-        return messageEditor.handleKeyPressed(keyCode, modifiers, messagePolicy);
+        return inlineFields.handleMessageKeyPressed(keyCode, modifiers);
     }
 
     public boolean handleMessageCharTyped(char chr, int modifiers, Font textRenderer) {
-        if (!isEditingMessageField()) {
-            return false;
-        }
-        return messageEditor.handleCharTyped(chr, messagePolicy);
+        return inlineFields.handleMessageCharTyped(chr);
     }
 
     private boolean hasParameterSelection() {
@@ -8643,61 +7957,6 @@ public class NodeGraph {
         parameterCaretPosition = position;
         resetParameterCaretBlink();
         clearParameterDropdownSuppression();
-    }
-
-    private void smartPasteCoordinates(String clipboardText, Font textRenderer) {
-        if (!isEditingCoordinateField() || textRenderer == null || clipboardText == null || clipboardText.isEmpty()) {
-            return;
-        }
-
-        // Try to parse as multi-coordinate format (e.g., "2313 123 -32131" or "100,200,300")
-        String[] parts = clipboardText.trim().split("[\\s,]+");
-        String[] axes = getCoordinateAxes(coordinateEditingNode);
-        if (parts.length == axes.length) {
-            String[] parsedCoords = new String[axes.length];
-            boolean allValid = true;
-
-            for (int i = 0; i < axes.length; i++) {
-                String trimmed = parts[i].trim();
-                // Remove any non-digit/minus characters
-                StringBuilder cleaned = new StringBuilder();
-                for (int j = 0; j < trimmed.length(); j++) {
-                    char c = trimmed.charAt(j);
-                    if (Character.isDigit(c) || (c == '-' && j == 0)) {
-                        cleaned.append(c);
-                    }
-                }
-
-                String value = cleaned.toString();
-                if (value.isEmpty() || !isValidCoordinateValue(value)) {
-                    allValid = false;
-                    break;
-                }
-                parsedCoords[i] = value;
-            }
-
-            // If we successfully parsed all three coordinates, apply them
-            if (allValid) {
-                // Save reference to node before stopping editing
-                Node node = coordinateEditingNode;
-                if (node == null) {
-                    return;
-                }
-
-                // Stop current coordinate editing
-                stopCoordinateEditing(false);
-
-                for (int i = 0; i < axes.length; i++) {
-                    node.setParameterValueAndPropagate(axes[i], parsedCoords[i]);
-                }
-                node.recalculateDimensions();
-                notifyNodeParametersChanged(node);
-                return;
-            }
-        }
-
-        // Fall back to single-axis paste
-        insertCoordinateText(clipboardText, textRenderer);
     }
 
     private String cleanCoordinateToken(String token) {
@@ -8780,13 +8039,6 @@ public class NodeGraph {
         int nextIndex = (parameterEditingIndex + direction + count) % count;
         startParameterEditing(node, nextIndex);
         return true;
-    }
-
-    private boolean insertCoordinateText(String text, Font textRenderer) {
-        if (!isEditingCoordinateField() || textRenderer == null) {
-            return false;
-        }
-        return coordinateEditor.insert(text, coordinatePolicy);
     }
 
     private int findPreviousWordBoundary(String text, int fromPosition) {
@@ -9769,7 +9021,7 @@ public class NodeGraph {
         node.setAmountInputEnabled(newState);
         getNodeToggleAnimation(amountToggleAnimations, node, newState)
             .animateTo(newState ? 1f : 0f, UITheme.TRANSITION_ANIM_MS, AnimationHelper::easeInOutCubic);
-        if (!newState && isEditingAmountField() && amountEditingNode == node) {
+        if (!newState && isEditingAmountField() && inlineFields.getAmountEditingNode() == node) {
             stopAmountEditing(false);
         }
         node.recalculateDimensions();
@@ -10536,9 +9788,8 @@ public class NodeGraph {
         }
         String keyName = getStopTargetParameterKey(node);
         node.setParameterValueAndPropagate(keyName, value);
-        if (isEditingStopTargetField() && stopTargetEditingNode == node) {
-            stopTargetEditOriginalValue = value;
-            stopTargetEditor.begin(value, value.length());
+        if (isEditingStopTargetField() && inlineFields.getStopTargetEditingNode() == node) {
+            inlineFields.replaceStopTargetEditValue(value);
             updateStopTargetFieldContentWidth(getClientTextRenderer());
         }
         if (node.getType() == NodeType.TEMPLATE) {
@@ -11516,8 +10767,8 @@ public class NodeGraph {
             && node.getParameters().get(parameterEditingIndex) == parameter) {
             value = parameterEditBuffer;
         }
-        if (eventNameEditingNode == node && "Name".equals(parameterName)) {
-            value = eventNameEditor.getBuffer();
+        if (inlineFields.getEventNameEditingNode() == node && "Name".equals(parameterName)) {
+            value = inlineFields.getEventNameEditor().getBuffer();
         }
         return value == null ? "" : value;
     }

@@ -304,6 +304,69 @@ public class NodeGraph {
             return NodeGraph.this.findPreviousWordBoundary(text, fromPosition);
         }
     });
+    private final InlineFieldRenderer inlineFieldRenderer = new InlineFieldRenderer(new InlineFieldRenderer.Host() {
+        @Override public int cameraX() { return cameraX; }
+        @Override public int cameraY() { return cameraY; }
+        @Override public int screenToWorldX(int screenX) { return NodeGraph.this.screenToWorldX(screenX); }
+        @Override public int screenToWorldY(int screenY) { return NodeGraph.this.screenToWorldY(screenY); }
+        @Override public int selectedNodeAccentColor() { return getSelectedNodeAccentColor(); }
+        @Override public float textFieldHighlightProgress(Object key, boolean hovered, boolean active) {
+            return getTextFieldHighlightProgress(key, hovered, active);
+        }
+        @Override public UIStyleHelper.FieldPalette nodeInputPalette(boolean isOverSidebar, int accentColor,
+                                                                     float progress, boolean active, boolean disabled) {
+            return getNodeInputPalette(isOverSidebar, accentColor, progress, active, disabled);
+        }
+        @Override public UIStyleHelper.FieldPalette lowDetailAwareFieldPalette(int backgroundColor, int borderColor,
+                                                                               int innerBorderColor, int textColor,
+                                                                               int placeholderColor, boolean isOverSidebar) {
+            return getLowDetailAwareFieldPalette(backgroundColor, borderColor, innerBorderColor, textColor,
+                placeholderColor, isOverSidebar);
+        }
+        @Override public void drawNodeText(GuiGraphics context, Font renderer, Component text,
+                                           int x, int y, int color) {
+            NodeGraph.this.drawNodeText(context, renderer, text, x, y, color);
+        }
+        @Override public String trimTextToWidth(String text, Font renderer, int maxWidth) {
+            return NodeGraph.this.trimTextToWidth(text, renderer, maxWidth);
+        }
+        @Override public Set<String> collectRuntimeVariableNames(Node node) {
+            return NodeGraph.this.collectRuntimeVariableNames(node);
+        }
+        @Override public boolean shouldBuildInlineExpressionRender(String rawText, Set<String> variableNames) {
+            return NodeGraph.this.shouldBuildInlineExpressionRender(rawText, variableNames);
+        }
+        @Override public boolean shouldRenderNodeText() { return NodeGraph.this.shouldRenderNodeText(); }
+        @Override public boolean isCompactViewportMode() { return compactViewportMode; }
+        @Override public boolean isScreenCoordinateCaptureActiveFor(Node node) {
+            return NodeGraph.this.isScreenCoordinateCaptureActiveFor(node);
+        }
+        @Override public int screenCoordinatePreviewX() { return screenCoordinateCapture.getPreviewX(); }
+        @Override public int screenCoordinatePreviewY() { return screenCoordinateCapture.getPreviewY(); }
+        @Override public void renderScreenCoordinatePickerButton(GuiGraphics context, Font textRenderer, Node node,
+                                                                  boolean isOverSidebar, int mouseX, int mouseY) {
+            NodeGraph.this.renderScreenCoordinatePickerButton(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+        }
+        @Override public void renderDropdownSelectorField(GuiGraphics context, Font textRenderer, Node node,
+                                                           boolean isOverSidebar, int mouseX, int mouseY,
+                                                           int fieldLeft, int fieldTop, int fieldWidth, int fieldHeight,
+                                                           String label, boolean includeValue, String value) {
+            NodeGraph.this.renderDropdownSelectorField(context, textRenderer, node, isOverSidebar, mouseX, mouseY,
+                fieldLeft, fieldTop, fieldWidth, fieldHeight, label, includeValue, value);
+        }
+        @Override public boolean isMoveItemAllAmountValue(String value) {
+            return NodeGraph.this.isMoveItemAllAmountValue(value);
+        }
+        @Override public void renderAmountToggle(GuiGraphics context, Node node, boolean amountEnabled,
+                                                  boolean isOverSidebar) {
+            int toggleLeft = node.getAmountToggleLeft() - cameraX;
+            int toggleTop = node.getAmountToggleTop() - cameraY;
+            int toggleWidth = node.getAmountToggleWidth();
+            int toggleHeight = node.getAmountToggleHeight();
+            renderNodeSliderToggle(context, toggleLeft, toggleTop, toggleWidth, toggleHeight,
+                getNodeToggleProgress(amountToggleAnimations, node, amountEnabled), false, isOverSidebar);
+        }
+    }, inlineFields);
     private final ScreenCoordinateCaptureController screenCoordinateCapture = new ScreenCoordinateCaptureController(new ScreenCoordinateCaptureController.Host() {
         @Override
         public void stopOtherEditors() {
@@ -5404,303 +5467,12 @@ public class NodeGraph {
 
     private void renderCoordinateInputFields(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar,
                                              int mouseX, int mouseY) {
-        String[] axes = getCoordinateAxes(node);
-        int baseLabelColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_SECONDARY;
-        int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
-        int activeTextColor = UITheme.TEXT_EDITING;
-
-        if (isEditingCoordinateField() && inlineFields.getCoordinateEditingNode() == node) {
-            inlineFields.getCoordinateEditor().updateCaretBlink();
-        }
-
-        int labelTop = node.getCoordinateFieldLabelTop() - cameraY;
-        int labelHeight = node.getCoordinateFieldLabelHeight();
-        int inputTop = node.getCoordinateFieldInputTop() - cameraY;
-        int fieldHeight = node.getCoordinateFieldHeight();
-        int fieldWidth = node.getCoordinateFieldWidth();
-        int spacing = node.getCoordinateFieldSpacing();
-        int startX = node.getCoordinateFieldStartX() - cameraX;
-        boolean captureActive = isScreenCoordinateCaptureActiveFor(node);
-        int worldMouseX = screenToWorldX(mouseX);
-        int worldMouseY = screenToWorldY(mouseY);
-
-        for (int i = 0; i < axes.length; i++) {
-            int fieldX = startX + i * (fieldWidth + spacing);
-
-            boolean editingAxis = isEditingCoordinateField()
-                && inlineFields.getCoordinateEditingNode() == node
-                && inlineFields.getCoordinateEditingAxis() == i;
-
-            String axisLabel = axes[i];
-            int labelWidth = textRenderer.width(axisLabel);
-            int labelX = fieldX + Math.max(0, (fieldWidth - labelWidth) / 2);
-            int labelY = labelTop + Math.max(0, (labelHeight - textRenderer.lineHeight) / 2);
-            int labelColor = editingAxis ? UITheme.TEXT_EDITING_LABEL : baseLabelColor;
-            drawNodeText(context, textRenderer, Component.literal(axisLabel), labelX, labelY, labelColor);
-
-            int inputBottom = inputTop + fieldHeight;
-            boolean hovered = !isOverSidebar
-                && worldMouseX >= fieldX + cameraX
-                && worldMouseX <= fieldX + cameraX + fieldWidth
-                && worldMouseY >= inputTop + cameraY
-                && worldMouseY <= inputTop + cameraY + fieldHeight;
-            float progress = getTextFieldHighlightProgress(node.getId() + "#coord:" + i, hovered, editingAxis);
-            UIStyleHelper.FieldPalette palette = getNodeInputPalette(isOverSidebar, getSelectedNodeAccentColor(), progress, editingAxis, false);
-            int borderColor = palette.borderColor();
-            int valueColor = isOverSidebar ? (editingAxis ? activeTextColor : textColor)
-                : AnimationHelper.lerpColor(textColor, activeTextColor, progress);
-            if (captureActive && !editingAxis) {
-                borderColor = getSelectedNodeAccentColor();
-                valueColor = UITheme.TEXT_TERTIARY;
-            }
-
-            UIStyleHelper.drawFieldFrame(
-                context,
-                fieldX,
-                inputTop,
-                fieldWidth,
-                fieldHeight,
-                getLowDetailAwareFieldPalette(
-                    palette.backgroundColor(),
-                    borderColor,
-                    palette.innerBorderColor(),
-                    palette.textColor(),
-                    palette.placeholderColor(),
-                    isOverSidebar
-                )
-            );
-
-            String value;
-            if (editingAxis) {
-                value = inlineFields.getCoordinateEditor().getBuffer();
-            } else if (captureActive) {
-                value = Integer.toString(i == 0 ? screenCoordinateCapture.getPreviewX() : screenCoordinateCapture.getPreviewY());
-            } else {
-                NodeParameter parameter = node.getParameter(axisLabel);
-                value = parameter != null ? parameter.getStringValue() : "";
-            }
-            if (value == null) {
-                value = "";
-            }
-
-            String display = editingAxis
-                ? value
-                : trimTextToWidth(value, textRenderer, fieldWidth - 6);
-            int variableHighlightColor = UITheme.ACCENT_AMBER;
-            Set<String> coordVariableNames = collectRuntimeVariableNames(node);
-            InlineVariableRender coordRenderData = null;
-            if (shouldBuildInlineExpressionRender(value, coordVariableNames)) {
-                InlineVariableRender candidate = buildInlineVariableRender(value, coordVariableNames, valueColor, variableHighlightColor);
-                if (editingAxis) {
-                    coordRenderData = candidate;
-                    display = coordRenderData.displayText;
-                } else if (textRenderer.width(candidate.displayText) <= fieldWidth - 6) {
-                    coordRenderData = candidate;
-                    display = coordRenderData.displayText;
-                } else if (isSingleKnownInlineVariableReference(value, coordVariableNames)) {
-                    display = trimTextToWidth(candidate.displayText, textRenderer, fieldWidth - 6);
-                    valueColor = variableHighlightColor;
-                }
-            }
-
-            int textX = fieldX + 3;
-            int textY = inputTop + (fieldHeight - textRenderer.lineHeight) / 2 + 1;
-            if (editingAxis && inlineFields.getCoordinateEditor().hasSelection()) {
-                int start = inlineFields.getCoordinateEditor().getSelectionStart();
-                int end = inlineFields.getCoordinateEditor().getSelectionEnd();
-                if (coordRenderData != null) {
-                    start = coordRenderData.toDisplayIndex(start);
-                    end = coordRenderData.toDisplayIndex(end);
-                }
-                if (start >= 0 && end >= 0 && start <= display.length() && end <= display.length()) {
-                    int selectionStartX = textX + textRenderer.width(display.substring(0, start));
-                    int selectionEndX = textX + textRenderer.width(display.substring(0, end));
-                    context.fill(selectionStartX, inputTop + 2, selectionEndX, inputBottom - 2, UITheme.TEXT_SELECTION_BG);
-                }
-            }
-            if (coordRenderData != null && shouldRenderNodeText()) {
-                coordRenderData.draw(context, textRenderer, textX, textY);
-            } else {
-                drawNodeText(context, textRenderer, Component.literal(display), textX, textY, valueColor);
-            }
-
-            if (editingAxis && inlineFields.getCoordinateEditor().isCaretVisible()) {
-                int caretIndex = inlineFields.getCoordinateEditor().getCaretPosition();
-                if (coordRenderData != null) {
-                    caretIndex = coordRenderData.toDisplayIndex(caretIndex);
-                }
-                caretIndex = Mth.clamp(caretIndex, 0, display.length());
-                int caretX = textX + textRenderer.width(display.substring(0, caretIndex));
-                caretX = Math.min(caretX, fieldX + fieldWidth - 2);
-                int caretBaseline = Math.min(textY + textRenderer.lineHeight - 1, inputBottom - 2);
-                UIStyleHelper.drawTextCaretAtBaseline(context, textRenderer, caretX, caretBaseline, fieldX + fieldWidth - 2, UITheme.CARET_COLOR);
-            }
-        }
-
-        if (node.hasScreenCoordinatePickerButton()) {
-            renderScreenCoordinatePickerButton(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
-        }
+        inlineFieldRenderer.renderCoordinateInputFields(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
     }
 
     private void renderAmountInputField(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar,
                                         int mouseX, int mouseY) {
-        int baseLabelColor = isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.NODE_LABEL_COLOR;
-        int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
-        int activeTextColor = UITheme.TEXT_EDITING;
-        boolean amountEnabled = node.isAmountInputEnabled();
-
-        boolean editing = isEditingAmountField() && inlineFields.getAmountEditingNode() == node;
-        if (editing) {
-            inlineFields.getAmountEditor().updateCaretBlink();
-        }
-
-        int labelTop = node.getAmountFieldLabelTop() - cameraY;
-        int labelHeight = node.getAmountFieldLabelHeight();
-        int fieldTop = node.getAmountFieldInputTop() - cameraY;
-        int fieldHeight = node.getAmountFieldHeight();
-        int fieldLeft = node.getAmountFieldLeft() - cameraX;
-        int fieldWidth = node.getAmountFieldWidth();
-        int worldMouseX = screenToWorldX(mouseX);
-        int worldMouseY = screenToWorldY(mouseY);
-
-        if ((node.getType() == NodeType.WAIT || node.getType() == NodeType.PARAM_DURATION) && node.supportsModeSelection()) {
-            int dropdownLeft = fieldLeft;
-            int dropdownTop = labelTop;
-            int dropdownWidth = fieldWidth;
-            int dropdownHeight = labelHeight;
-            String unitLabel = node.getAmountFieldLabel();
-            renderDropdownSelectorField(
-                context, textRenderer, node, isOverSidebar, mouseX, mouseY,
-                dropdownLeft, dropdownTop, dropdownWidth, dropdownHeight,
-                unitLabel, false, null
-            );
-        } else {
-            int labelY = labelTop + Math.max(0, (labelHeight - textRenderer.lineHeight) / 2);
-            drawNodeText(context, textRenderer, Component.literal(node.getAmountFieldLabel()), fieldLeft + 2, labelY, baseLabelColor);
-        }
-
-        int fieldBottom = fieldTop + fieldHeight;
-        int disabledBg = isOverSidebar ? UITheme.BACKGROUND_TERTIARY
-            : (compactViewportMode ? UITheme.BACKGROUND_SECONDARY : UITheme.BUTTON_DEFAULT_BG);
-        boolean hovered = !isOverSidebar
-            && worldMouseX >= node.getAmountFieldLeft()
-            && worldMouseX <= node.getAmountFieldLeft() + fieldWidth
-            && worldMouseY >= node.getAmountFieldInputTop()
-            && worldMouseY <= node.getAmountFieldInputTop() + fieldHeight;
-        float progress = amountEnabled
-            ? getTextFieldHighlightProgress(node.getId() + "#amount", hovered, editing)
-            : 0f;
-        UIStyleHelper.FieldPalette palette = getNodeInputPalette(isOverSidebar, getSelectedNodeAccentColor(), progress, editing, !amountEnabled);
-        int valueColor = amountEnabled
-            ? (isOverSidebar ? ((editing && amountEnabled) ? activeTextColor : textColor)
-                : AnimationHelper.lerpColor(textColor, activeTextColor, progress))
-            : UITheme.TEXT_SECONDARY;
-
-        UIStyleHelper.drawFieldFrame(
-            context,
-            fieldLeft,
-            fieldTop,
-            fieldWidth,
-            fieldHeight,
-            amountEnabled
-                ? palette
-                : getLowDetailAwareFieldPalette(
-                    disabledBg,
-                    isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BORDER_DEFAULT,
-                    UITheme.PANEL_INNER_BORDER,
-                    palette.textColor(),
-                    palette.placeholderColor(),
-                    isOverSidebar
-                )
-        );
-
-        String value;
-        if (editing && amountEnabled) {
-            value = inlineFields.getAmountEditor().getBuffer();
-        } else {
-            String amountKey = node.getAmountParameterKey();
-            NodeParameter amountParam = node.getParameter(amountKey);
-            value = amountParam != null ? amountParam.getStringValue() : "";
-            if (node.getType() == NodeType.MOVE_ITEM && isMoveItemAllAmountValue(value)) {
-                value = "";
-            }
-        }
-
-        boolean showPlaceholder = amountEnabled && value.isEmpty();
-        String display = editing
-            ? value
-            : trimTextToWidth(value, textRenderer, fieldWidth - 6);
-        if (showPlaceholder) {
-            if (node.getType() == NodeType.MOVE_ITEM) {
-                display = "All";
-            } else if (node.getType() == NodeType.TRADE
-                || node.getType() == NodeType.SENSOR_VILLAGER_TRADE
-                || node.getType() == NodeType.SENSOR_IN_STOCK) {
-                display = "1";
-            } else {
-                display = "0";
-            }
-            valueColor = UITheme.TEXT_TERTIARY;
-        }
-            int variableHighlightColor = UITheme.ACCENT_AMBER;
-        Set<String> amountVariableNames = collectRuntimeVariableNames(node);
-        InlineVariableRender amountRenderData = null;
-        if (amountEnabled && !showPlaceholder && shouldBuildInlineExpressionRender(value, amountVariableNames)) {
-            InlineVariableRender candidate = buildInlineVariableRender(value, amountVariableNames, valueColor, variableHighlightColor);
-            if (editing && amountEnabled) {
-                amountRenderData = candidate;
-                display = amountRenderData.displayText;
-            } else if (textRenderer.width(candidate.displayText) <= fieldWidth - 6) {
-                amountRenderData = candidate;
-                display = amountRenderData.displayText;
-            } else if (isSingleKnownInlineVariableReference(value, amountVariableNames)) {
-                display = trimTextToWidth(candidate.displayText, textRenderer, fieldWidth - 6);
-                valueColor = variableHighlightColor;
-            }
-        }
-
-        int textX = fieldLeft + 3;
-        int textY = fieldTop + (fieldHeight - textRenderer.lineHeight) / 2 + 1;
-        if (editing && amountEnabled && inlineFields.getAmountEditor().hasSelection()) {
-            int start = inlineFields.getAmountEditor().getSelectionStart();
-            int end = inlineFields.getAmountEditor().getSelectionEnd();
-            if (amountRenderData != null) {
-                start = amountRenderData.toDisplayIndex(start);
-                end = amountRenderData.toDisplayIndex(end);
-            }
-            if (start >= 0 && end >= 0 && start <= display.length() && end <= display.length()) {
-                int selectionStartX = textX + textRenderer.width(display.substring(0, start));
-                int selectionEndX = textX + textRenderer.width(display.substring(0, end));
-                context.fill(selectionStartX, fieldTop + 2, selectionEndX, fieldBottom - 2, UITheme.TEXT_SELECTION_BG);
-            }
-        }
-        if (amountRenderData != null && shouldRenderNodeText()) {
-            amountRenderData.draw(context, textRenderer, textX, textY);
-        } else {
-            drawNodeText(context, textRenderer, Component.literal(display), textX, textY, valueColor);
-        }
-
-        if (editing && amountEnabled && inlineFields.getAmountEditor().isCaretVisible()) {
-            int caretIndex = inlineFields.getAmountEditor().getCaretPosition();
-            if (amountRenderData != null) {
-                caretIndex = amountRenderData.toDisplayIndex(caretIndex);
-            }
-            caretIndex = Mth.clamp(caretIndex, 0, display.length());
-            int caretX = textX + textRenderer.width(display.substring(0, caretIndex));
-            caretX = Math.min(caretX, fieldLeft + fieldWidth - 2);
-            int caretBaseline = Math.min(textY + textRenderer.lineHeight - 1, fieldBottom - 2);
-            UIStyleHelper.drawTextCaretAtBaseline(context, textRenderer, caretX, caretBaseline, fieldLeft + fieldWidth - 2, UITheme.CARET_COLOR);
-        }
-
-        if (node.hasAmountToggle()) {
-            int toggleLeft = node.getAmountToggleLeft() - cameraX;
-            int toggleTop = node.getAmountToggleTop() - cameraY;
-            int toggleWidth = node.getAmountToggleWidth();
-            int toggleHeight = node.getAmountToggleHeight();
-            renderNodeSliderToggle(context, toggleLeft, toggleTop, toggleWidth, toggleHeight,
-                getNodeToggleProgress(amountToggleAnimations, node, amountEnabled), false, isOverSidebar);
-        }
-
+        inlineFieldRenderer.renderAmountInputField(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
     }
 
     private void renderRandomRoundingField(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar) {
@@ -6850,107 +6622,7 @@ public class NodeGraph {
 
     private void renderVariableInputField(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar,
                                           int mouseX, int mouseY) {
-        int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_LABEL;
-        int activeTextColor = UITheme.TEXT_LABEL;
-        int caretColor = UITheme.TEXT_LABEL;
-
-        boolean editing = isEditingVariableField() && inlineFields.getVariableEditingNode() == node;
-        if (editing) {
-            inlineFields.getVariableEditor().updateCaretBlink();
-        }
-
-        int fieldTop = node.getVariableFieldInputTop() - cameraY;
-        int fieldHeight = node.getVariableFieldHeight();
-        int fieldLeft = node.getVariableFieldLeft() - cameraX;
-        int fieldWidth = node.getVariableFieldWidth();
-        int worldMouseX = screenToWorldX(mouseX);
-        int worldMouseY = screenToWorldY(mouseY);
-
-        int fieldBottom = fieldTop + fieldHeight;
-        boolean hovered = !isOverSidebar
-            && worldMouseX >= node.getVariableFieldLeft()
-            && worldMouseX <= node.getVariableFieldLeft() + fieldWidth
-            && worldMouseY >= node.getVariableFieldInputTop()
-            && worldMouseY <= node.getVariableFieldInputTop() + fieldHeight;
-        float progress = getTextFieldHighlightProgress(node.getId() + "#variable", hovered, editing);
-        UIStyleHelper.FieldPalette palette = getNodeInputPalette(isOverSidebar, getSelectedNodeAccentColor(), progress, editing, false);
-        int valueColor = isOverSidebar ? (editing ? activeTextColor : textColor)
-            : AnimationHelper.lerpColor(textColor, activeTextColor, progress);
-
-        UIStyleHelper.drawFieldFrame(context, fieldLeft, fieldTop, fieldWidth, fieldHeight, palette);
-
-        String value;
-        if (editing) {
-            value = inlineFields.getVariableEditor().getBuffer();
-        } else {
-            String keyName = node.getVariableFieldParameterKey();
-            NodeParameter variableParam = node.getParameter(keyName);
-            value = variableParam != null ? variableParam.getStringValue() : "";
-        }
-        if (value == null) {
-            value = "";
-        }
-
-        String display;
-        if (!editing && value.isEmpty()) {
-            String keyName = node.getVariableFieldParameterKey();
-            display = "List".equalsIgnoreCase(keyName) ? "list" : "Label".equalsIgnoreCase(keyName) ? "input" : "variable";
-            valueColor = UITheme.TEXT_TERTIARY;
-        } else {
-            display = value;
-        }
-
-        display = editing
-            ? display
-            : trimTextToWidth(display, textRenderer, fieldWidth - 6);
-        int variableHighlightColor = UITheme.ACCENT_AMBER;
-        Set<String> variableFieldVariableNames = collectRuntimeVariableNames(node);
-        InlineVariableRender variableFieldRenderData = null;
-        if (shouldBuildInlineExpressionRender(value, variableFieldVariableNames)) {
-            InlineVariableRender candidate = buildInlineVariableRender(value, variableFieldVariableNames, valueColor, variableHighlightColor);
-            if (editing) {
-                variableFieldRenderData = candidate;
-                display = variableFieldRenderData.displayText;
-            } else if (textRenderer.width(candidate.displayText) <= fieldWidth - 6) {
-                variableFieldRenderData = candidate;
-                display = variableFieldRenderData.displayText;
-            } else if (isSingleKnownInlineVariableReference(value, variableFieldVariableNames)) {
-                display = trimTextToWidth(candidate.displayText, textRenderer, fieldWidth - 6);
-                valueColor = variableHighlightColor;
-            }
-        }
-
-        int textX = fieldLeft + 3;
-        int textY = fieldTop + (fieldHeight - textRenderer.lineHeight) / 2 + 1;
-        if (editing && inlineFields.getVariableEditor().hasSelection()) {
-            int start = inlineFields.getVariableEditor().getSelectionStart();
-            int end = inlineFields.getVariableEditor().getSelectionEnd();
-            if (variableFieldRenderData != null) {
-                start = variableFieldRenderData.toDisplayIndex(start);
-                end = variableFieldRenderData.toDisplayIndex(end);
-            }
-            if (start >= 0 && end >= 0 && start <= display.length() && end <= display.length()) {
-                int selectionStartX = textX + textRenderer.width(display.substring(0, start));
-                int selectionEndX = textX + textRenderer.width(display.substring(0, end));
-                context.fill(selectionStartX, fieldTop + 2, selectionEndX, fieldBottom - 2, UITheme.TEXT_SELECTION_BG);
-            }
-        }
-        if (variableFieldRenderData != null && shouldRenderNodeText()) {
-            variableFieldRenderData.draw(context, textRenderer, textX, textY);
-        } else {
-            drawNodeText(context, textRenderer, Component.literal(display), textX, textY, valueColor);
-        }
-
-        if (editing && inlineFields.getVariableEditor().isCaretVisible()) {
-            int caretIndex = inlineFields.getVariableEditor().getCaretPosition();
-            if (variableFieldRenderData != null) {
-                caretIndex = variableFieldRenderData.toDisplayIndex(caretIndex);
-            }
-            caretIndex = Mth.clamp(caretIndex, 0, display.length());
-            int caretX = textX + textRenderer.width(display.substring(0, caretIndex));
-            caretX = Math.min(caretX, fieldLeft + fieldWidth - 2);
-            UIStyleHelper.drawTextCaret(context, caretX, fieldTop + 2, fieldBottom - 2, caretColor);
-        }
+        inlineFieldRenderer.renderVariableInputField(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
     }
 
     private void renderSchematicDropdownField(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar,

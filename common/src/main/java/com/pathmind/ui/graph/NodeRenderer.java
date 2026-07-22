@@ -1,5 +1,8 @@
 package com.pathmind.ui.graph;
 
+import static com.pathmind.ui.graph.InlineVariableRenderer.buildInlineVariableRender;
+import static com.pathmind.ui.graph.InlineVariableRenderer.isSingleKnownInlineVariableReference;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -11,6 +14,7 @@ import java.util.Set;
 import com.pathmind.nodes.Node;
 import com.pathmind.nodes.NodeParameter;
 import com.pathmind.nodes.NodeType;
+import com.pathmind.ui.graph.InlineVariableRenderer.InlineVariableRender;
 import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.DrawContextBridge;
@@ -50,6 +54,9 @@ final class NodeRenderer {
                                     int color, int maxWidth);
         void renderPopupEditButton(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar,
                                    int mouseX, int mouseY);
+        Set<String> collectRuntimeVariableNames(Node node);
+        boolean shouldRenderNodeText();
+        boolean shouldBuildInlineExpressionRender(String rawText, Set<String> variableNames);
         void renderNodeContent(GuiGraphics context, Font textRenderer, Node node, int mouseX, int mouseY,
                                int x, int y, int width, int height, boolean isOverSidebar,
                                boolean simpleStyle, boolean lowDetail);
@@ -342,6 +349,132 @@ final class NodeRenderer {
             }
             renderSocket(context, node.getSocketX(false) - host.cameraX(), node.getSocketY(i, false) - host.cameraY(), false, socketColor);
         }
+    }
+
+    void renderEventDefinitionContent(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar,
+                                      int mouseX, int mouseY, int x, int y, int width, int height,
+                                      boolean lowDetail) {
+        int baseColor = lowDetail
+            ? (isOverSidebar ? UITheme.NODE_DIMMED_BG : UITheme.BACKGROUND_SECTION)
+            : (isOverSidebar ? host.toGrayscale(UITheme.NODE_EVENT_BG, 0.7f) : UITheme.NODE_EVENT_BG);
+        context.fill(x + 1, y + 1, x + width - 1, y + height - 1, baseColor);
+
+        int titleColor = isOverSidebar
+            ? host.toGrayscale(UITheme.NODE_EVENT_TITLE, 0.9f)
+            : (lowDetail ? UITheme.TEXT_SECONDARY : UITheme.NODE_EVENT_TITLE);
+        host.drawNodeText(
+            context,
+            textRenderer,
+            Component.translatable("pathmind.node.type.eventFunction"),
+            x + 6,
+            y + 4,
+            titleColor
+        );
+
+        int boxLeft = node.getEventNameFieldLeft() - host.cameraX();
+        int boxTop = node.getEventNameFieldTop() - host.cameraY();
+        int boxWidth = node.getEventNameFieldWidth();
+        int boxHeight = node.getEventNameFieldHeight();
+        int boxRight = boxLeft + boxWidth;
+        int boxBottom = boxTop + boxHeight;
+        int inputBackground = isOverSidebar
+            ? UITheme.NODE_INPUT_BG_DIMMED
+            : (lowDetail ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_INPUT);
+        context.fill(boxLeft, boxTop, boxRight, boxBottom, inputBackground);
+        int inputBorder = isOverSidebar
+            ? host.toGrayscale(UITheme.NODE_EVENT_INPUT_BORDER, 0.8f)
+            : (lowDetail ? UITheme.BORDER_DEFAULT : UITheme.BORDER_SUBTLE);
+        DrawContextBridge.drawBorderInLayer(context, boxLeft, boxTop, boxRight - boxLeft, boxHeight, inputBorder);
+
+        InlineTextEditor eventNameEditor = host.eventNameEditor();
+        boolean editingEventName = host.isEditingEventNameField() && host.eventNameEditingNode() == node;
+        if (editingEventName) {
+            eventNameEditor.updateCaretBlink();
+        }
+
+        NodeParameter nameParam = node.getParameter("Name");
+        String value = editingEventName
+            ? eventNameEditor.getBuffer()
+            : (nameParam != null ? nameParam.getStringValue() : "");
+        if (value == null) {
+            value = "";
+        }
+        String display;
+        boolean showPlaceholder = !editingEventName && value.isEmpty();
+        if (showPlaceholder) {
+            display = "enter name";
+        } else {
+            display = value;
+        }
+        int eventNameVariableHighlightColor = isOverSidebar ? host.toGrayscale(host.selectedNodeAccentColor(), 0.85f) : host.selectedNodeAccentColor();
+        Set<String> eventNameVariableNames = host.collectRuntimeVariableNames(node);
+        InlineVariableRender eventNameRenderData = null;
+        boolean highlightPlainEventName = false;
+        if (host.shouldBuildInlineExpressionRender(value, eventNameVariableNames)) {
+            InlineVariableRender candidate = buildInlineVariableRender(value, eventNameVariableNames, isOverSidebar ? host.toGrayscale(UITheme.NODE_EVENT_TEXT, 0.85f) : UITheme.NODE_EVENT_TEXT, eventNameVariableHighlightColor);
+            if (editingEventName) {
+                eventNameRenderData = candidate;
+                display = eventNameRenderData.displayText;
+            } else if (textRenderer.width(candidate.displayText) <= boxRight - boxLeft - 8) {
+                eventNameRenderData = candidate;
+                display = eventNameRenderData.displayText;
+            } else if (isSingleKnownInlineVariableReference(value, eventNameVariableNames)) {
+                display = host.trimTextToWidth(candidate.displayText, textRenderer, boxRight - boxLeft - 8);
+                highlightPlainEventName = true;
+            }
+        }
+        int textY = boxTop + (boxHeight - textRenderer.lineHeight) / 2 + 1;
+        int textColor = isOverSidebar
+            ? host.toGrayscale(UITheme.NODE_EVENT_TEXT, 0.85f)
+            : (lowDetail ? UITheme.TEXT_PRIMARY : UITheme.NODE_EVENT_TEXT);
+        if (showPlaceholder) {
+            textColor = UITheme.TEXT_TERTIARY;
+        }
+        if (highlightPlainEventName) {
+            textColor = eventNameVariableHighlightColor;
+        }
+        int textX = boxLeft + 4;
+        if (editingEventName && eventNameEditor.hasSelection()) {
+            int start = eventNameEditor.getSelectionStart();
+            int end = eventNameEditor.getSelectionEnd();
+            if (eventNameRenderData != null) {
+                start = eventNameRenderData.toDisplayIndex(start);
+                end = eventNameRenderData.toDisplayIndex(end);
+            }
+            start = Mth.clamp(start, 0, display.length());
+            end = Mth.clamp(end, 0, display.length());
+            if (start != end) {
+                int selectionStartX = textX + textRenderer.width(display.substring(0, start));
+                int selectionEndX = textX + textRenderer.width(display.substring(0, end));
+                context.fill(selectionStartX, boxTop + 2, selectionEndX, boxBottom - 2, UITheme.TEXT_SELECTION_BG);
+            }
+        }
+        if (!editingEventName) {
+            if (eventNameRenderData != null && host.shouldRenderNodeText()) {
+                eventNameRenderData.draw(context, textRenderer, textX, textY);
+            } else {
+                host.renderEventNamePreview(context, textRenderer, display, textX, textY, textColor, boxRight - boxLeft - 8);
+            }
+        } else {
+            if (eventNameRenderData != null && host.shouldRenderNodeText()) {
+                eventNameRenderData.draw(context, textRenderer, textX, textY);
+            } else {
+                host.drawNodeText(context, textRenderer, Component.literal(display), textX, textY, textColor);
+            }
+        }
+
+        if (editingEventName && eventNameEditor.isCaretVisible()) {
+            int caretIndex = eventNameEditor.getCaretPosition();
+            if (eventNameRenderData != null) {
+                caretIndex = eventNameRenderData.toDisplayIndex(caretIndex);
+            }
+            caretIndex = Mth.clamp(caretIndex, 0, display.length());
+            int caretX = textX + textRenderer.width(display.substring(0, caretIndex));
+            caretX = Math.min(caretX, boxRight - 2);
+            int caretBaseline = Math.min(textY + textRenderer.lineHeight - 1, boxBottom - 2);
+            UIStyleHelper.drawTextCaretAtBaseline(context, textRenderer, caretX, caretBaseline, boxRight - 2, UITheme.CARET_COLOR);
+        }
+        host.renderPopupEditButton(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
     }
 
     void renderEventCallContent(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar,

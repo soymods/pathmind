@@ -1,6 +1,5 @@
 package com.pathmind.compat;
 
-import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -49,7 +48,7 @@ public final class VillagerTradeCatalog {
             VillagerTrades.ItemListing[] factories = levelEntry.getValue();
             if (factories == null) continue;
             for (VillagerTrades.ItemListing factory : factories) {
-                MerchantOffer offer = createOffer(factory, serverLevel, clientLevel, villager, random);
+                MerchantOffer offer = VillagerTradeOfferBridge.create(factory, serverLevel, villager, random);
                 if (offer == null || offer.getResult().isEmpty()) continue;
                 result.add(new Offer(levelEntry.getIntKey(), offer.getCostA(), offer.getCostB(), offer.getResult()));
             }
@@ -91,31 +90,4 @@ public final class VillagerTradeCatalog {
         return key instanceof Identifier id ? id : null;
     }
 
-    private static MerchantOffer createOffer(
-        VillagerTrades.ItemListing factory,
-        ServerLevel serverLevel,
-        Level clientLevel,
-        Villager villager,
-        RandomSource random
-    ) {
-        if (factory == null) return null;
-        try {
-            for (Method method : VillagerTrades.ItemListing.class.getMethods()) {
-                if (!method.getName().equals("create") && !method.getName().equals("getOffer")) continue;
-                Class<?>[] parameters = method.getParameterTypes();
-                if (parameters.length == 3 && parameters[1].isInstance(villager)) {
-                    Object level = serverLevel != null && parameters[0].isInstance(serverLevel) ? serverLevel : clientLevel;
-                    if (level != null && parameters[0].isInstance(level)) {
-                        Object value = method.invoke(factory, level, villager, random);
-                        if (value instanceof MerchantOffer offer) return offer;
-                    }
-                } else if (parameters.length == 2 && parameters[0].isInstance(villager)) {
-                    Object value = method.invoke(factory, villager, random);
-                    if (value instanceof MerchantOffer offer) return offer;
-                }
-            }
-        } catch (ReflectiveOperationException ignored) {
-        }
-        return null;
-    }
 }

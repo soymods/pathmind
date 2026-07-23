@@ -451,7 +451,15 @@ final class NodeComparisonEvaluator {
             return Optional.empty();
         }
         if (!leftIsTrade || !rightIsTrade) {
-            return Optional.of(false);
+            // A trade compared against a plain item node matches on the sold item.
+            Map<String, String> tradeValues = leftIsTrade ? leftValues : rightValues;
+            Map<String, String> itemValues = leftIsTrade ? rightValues : leftValues;
+            List<String> soldItems = resolveComparableVillagerTradeSellItems(tradeValues);
+            List<String> itemSelections = resolveComparableItemSelections(itemValues);
+            if (soldItems.isEmpty() || itemSelections.isEmpty()) {
+                return Optional.empty();
+            }
+            return Optional.of(selectionsOverlap(soldItems, itemSelections));
         }
         String leftVariant = owner.getRuntimeValue(leftValues, "variant");
         String rightVariant = owner.getRuntimeValue(rightValues, "variant");
@@ -497,6 +505,17 @@ final class NodeComparisonEvaluator {
         }
         int countSeparator = sellPart.indexOf('@');
         return countSeparator >= 0 ? sellPart.substring(0, countSeparator) : sellPart;
+    }
+
+    private List<String> resolveComparableVillagerTradeSellItems(Map<String, String> values) {
+        List<String> sellItems = new ArrayList<>();
+        for (String trade : resolveComparableVillagerTrades(values)) {
+            String sellItem = getVillagerTradeSellItemId(trade);
+            if (!sellItem.isEmpty()) {
+                owner.addItemIdentifier(sellItems, sellItem);
+            }
+        }
+        return sellItems;
     }
 
     private List<String> resolveComparableVillagerTrades(Map<String, String> values) {

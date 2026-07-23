@@ -219,6 +219,10 @@ final class NodeComparisonEvaluator {
             if (inventorySlotComparison.isPresent()) {
                 return inventorySlotComparison;
             }
+            Optional<Boolean> villagerTradeComparison = compareVillagerTradeValues(left, leftValues, right, rightValues);
+            if (villagerTradeComparison.isPresent()) {
+                return villagerTradeComparison;
+            }
             Optional<Boolean> itemComparison = compareItemSelectionValues(leftValues, rightValues);
             if (itemComparison.isPresent()) {
                 return itemComparison;
@@ -437,6 +441,42 @@ final class NodeComparisonEvaluator {
         String leftState = owner.getRuntimeValue(leftValues, "state");
         String rightState = owner.getRuntimeValue(rightValues, "state");
         return Optional.of(statesMatch(leftState, rightState));
+    }
+
+    private Optional<Boolean> compareVillagerTradeValues(Node left, Map<String, String> leftValues,
+                                                         Node right, Map<String, String> rightValues) {
+        boolean leftIsTrade = owner.providesTrait(left, NodeValueTrait.VILLAGER_TRADE);
+        boolean rightIsTrade = owner.providesTrait(right, NodeValueTrait.VILLAGER_TRADE);
+        if (!leftIsTrade && !rightIsTrade) {
+            return Optional.empty();
+        }
+        if (!leftIsTrade || !rightIsTrade) {
+            return Optional.of(false);
+        }
+        List<String> leftTrades = resolveComparableVillagerTrades(leftValues);
+        List<String> rightTrades = resolveComparableVillagerTrades(rightValues);
+        if (leftTrades.isEmpty() || rightTrades.isEmpty()) {
+            return Optional.of(false);
+        }
+        for (String leftTrade : leftTrades) {
+            for (String rightTrade : rightTrades) {
+                if (leftTrade.equalsIgnoreCase(rightTrade)) {
+                    return Optional.of(true);
+                }
+            }
+        }
+        return Optional.of(false);
+    }
+
+    private List<String> resolveComparableVillagerTrades(Map<String, String> values) {
+        String tradeValue = owner.getRuntimeValue(values, "trade");
+        if (tradeValue.isEmpty()) {
+            tradeValue = owner.getRuntimeValue(values, "item");
+        }
+        if (tradeValue.isEmpty()) {
+            tradeValue = owner.getRuntimeValue(values, "items");
+        }
+        return owner.splitMultiValueList(tradeValue);
     }
 
     private Optional<Boolean> compareItemSelectionValues(Map<String, String> leftValues, Map<String, String> rightValues) {

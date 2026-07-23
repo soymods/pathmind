@@ -6,6 +6,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
@@ -36,10 +38,6 @@ final class NodeVillagerTradeSensorEvaluator {
         return tradeIndex >= 0 && tradeIndex < tradeOffers.size() && tradeOffers.get(tradeIndex) != null;
     }
 
-    boolean evaluateFindTrade() {
-        return findTradeNumber() > 0;
-    }
-
     boolean evaluateInStock() {
         MerchantOffers tradeOffers = getOpenTradeOffers();
         if (tradeOffers == null || tradeOffers.isEmpty()) {
@@ -55,13 +53,48 @@ final class NodeVillagerTradeSensorEvaluator {
             && !tradeOffers.get(tradeIndex).isOutOfStock();
     }
 
-    int findTradeNumber() {
+    void exportTradeSlotValues(Map<String, String> values) {
+        if (values == null) {
+            return;
+        }
         MerchantOffers tradeOffers = getOpenTradeOffers();
         if (tradeOffers == null || tradeOffers.isEmpty()) {
-            return 0;
+            return;
         }
-        int tradeIndex = findTradeIndexFromItemSelection(tradeOffers, false, false);
-        return tradeIndex >= 0 ? tradeIndex + 1 : 0;
+        Node numberNode = owner.resolveSensorParameterNode(owner.getAttachedParameter(0), 0);
+        if (numberNode == null) {
+            Minecraft client = Minecraft.getInstance();
+            if (client != null) {
+                owner.sendNodeErrorMessage(client, tr("pathmind.error.requiresParameterNode", owner.getType().getDisplayName()));
+            }
+            return;
+        }
+        if (!owner.providesTrait(numberNode, NodeValueTrait.NUMBER)) {
+            owner.sendIncompatibleParameterMessage(numberNode);
+            return;
+        }
+        Optional<Double> resolvedNumber = owner.resolveComparableNumber(numberNode);
+        int tradeNumber = resolvedNumber.map(value -> Math.max(1, (int) Math.round(value))).orElse(1);
+        int tradeIndex = tradeNumber - 1;
+        if (tradeIndex < 0 || tradeIndex >= tradeOffers.size() || tradeOffers.get(tradeIndex) == null) {
+            Minecraft client = Minecraft.getInstance();
+            if (client != null) {
+                owner.sendNodeErrorMessage(client, tr("pathmind.error.tradeUnavailable", tradeNumber));
+            }
+            return;
+        }
+        MerchantOffer offer = tradeOffers.get(tradeIndex);
+        String tradeKey = buildTradeKey(
+            offer.getCostA(),
+            offer.getCostB(),
+            offer.getResult()
+        );
+        values.put("Trade", tradeKey);
+        values.put(Node.normalizeParameterKey("Trade"), tradeKey);
+        values.put("Item", tradeKey);
+        values.put(Node.normalizeParameterKey("Item"), tradeKey);
+        values.put("Items", tradeKey);
+        values.put(Node.normalizeParameterKey("Items"), tradeKey);
     }
 
     private MerchantOffers getOpenTradeOffers() {
@@ -117,52 +150,6 @@ final class NodeVillagerTradeSensorEvaluator {
     int findTradeIndexFromLegacySelection(MerchantOffers tradeOffers, boolean requireInStock, boolean requireAffordable) {
         List<Integer> matches = findTradeIndexesFromLegacySelection(tradeOffers, requireInStock, requireAffordable);
         return matches.isEmpty() ? -1 : matches.getFirst();
-    }
-
-    int findTradeIndexFromItemSelection(MerchantOffers tradeOffers, boolean requireInStock, boolean requireAffordable) {
-        if (tradeOffers == null || tradeOffers.isEmpty()) {
-            return -1;
-        }
-        Node parameterNode = owner.resolveSensorParameterNode(owner.getAttachedParameter(0), 0);
-        if (parameterNode == null || !owner.providesTrait(parameterNode, NodeValueTrait.ITEM)) {
-            Minecraft client = Minecraft.getInstance();
-            if (client != null) {
-                owner.sendNodeErrorMessage(client, tr("pathmind.error.requiresItemParameter", owner.getType().getDisplayName()));
-            }
-            return -1;
-        }
-        List<String> itemIds = owner.resolveItemIdsFromParameter(parameterNode);
-        if (itemIds.isEmpty()) {
-            Minecraft client = Minecraft.getInstance();
-            if (client != null) {
-                owner.sendNodeErrorMessage(client, tr("pathmind.error.noItemSpecifiedForNode", owner.getType().getDisplayName()));
-            }
-            return -1;
-        }
-
-        Minecraft client = Minecraft.getInstance();
-        MerchantMenu screenHandler = null;
-        if (client != null && client.screen instanceof MerchantScreen merchantScreen) {
-            screenHandler = merchantScreen.getMenu();
-        }
-
-        for (int i = 0; i < tradeOffers.size(); i++) {
-            MerchantOffer offer = tradeOffers.get(i);
-            if (offer == null) {
-                continue;
-            }
-            if (requireInStock && offer.isOutOfStock()) {
-                continue;
-            }
-            if (requireAffordable && (client == null || client.player == null || screenHandler == null
-                || !owner.canAffordTrade(client.player, screenHandler, offer))) {
-                continue;
-            }
-            if (matchesSellItem(offer.getResult(), itemIds)) {
-                return i;
-            }
-        }
-        return -1;
     }
 
     @SuppressWarnings("unused")
@@ -300,7 +287,4 @@ final class NodeVillagerTradeSensorEvaluator {
         return desiredSelection.equals(getTradeKeySellItemId(offerKey));
     }
 
-    private boolean matchesSellItem(ItemStack stack, List<String> itemIds) {
-        return new NodeInventorySensorEvaluator(owner).stackMatchesAnyItem(stack, itemIds);
-    }
 }

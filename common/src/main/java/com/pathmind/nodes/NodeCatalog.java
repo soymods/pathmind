@@ -303,7 +303,6 @@ public final class NodeCatalog {
             NodeType.PLACE_HAND,
             NodeType.TEMPLATE,
             NodeType.STICKY_NOTE,
-            NodeType.PARAM_VILLAGER_TRADE,
             NodeType.SENSOR_VILLAGER_TRADE,
             NodeType.DROP_SLOT,
             NodeType.PARAM_ROTATION,
@@ -600,6 +599,7 @@ public final class NodeCatalog {
             NodeType.PARAM_SCHEMATIC);
         sidebar(NodeCategory.PARAMETERS, "pathmind.sidebar.group.inventoryGui",
             NodeType.PARAM_INVENTORY_SLOT,
+            NodeType.PARAM_VILLAGER_TRADE,
             NodeType.PARAM_HAND,
             NodeType.PARAM_GUI);
         sidebar(NodeCategory.PARAMETERS, "pathmind.sidebar.group.inputText",
@@ -693,7 +693,7 @@ public final class NodeCatalog {
         provided(NodeType.OPERATOR_BOOLEAN_AND, NodeValueTrait.BOOLEAN);
         provided(NodeType.OPERATOR_BOOLEAN_XOR, NodeValueTrait.BOOLEAN);
         provided(NodeType.SENSOR_SLOT_ITEM_COUNT, NodeValueTrait.NUMBER);
-        provided(NodeType.SENSOR_FIND_TRADE, NodeValueTrait.NUMBER);
+        provided(NodeType.SENSOR_FIND_TRADE, NodeValueTrait.VILLAGER_TRADE);
         provided(NodeType.LIST_ITEM,
             NodeValueTrait.LIST_ITEM,
             NodeValueTrait.ANY,
@@ -777,7 +777,7 @@ public final class NodeCatalog {
         parameterHost(NodeType.SENSOR_ITEM_IN_INVENTORY, NodeValueTrait.ITEM, NodeValueTrait.NUMBER);
         parameterHost(NodeType.SENSOR_ITEM_IN_SLOT, slot("Item", true, NodeValueTrait.ITEM), slot("Selection", true, NodeValueTrait.INVENTORY_SLOT));
         parameterHost(NodeType.SENSOR_SLOT_ITEM_COUNT, "Slot", NodeValueTrait.INVENTORY_SLOT);
-        parameterHost(NodeType.SENSOR_FIND_TRADE, "Item", NodeValueTrait.ITEM);
+        parameterHost(NodeType.SENSOR_FIND_TRADE, "Number", NodeValueTrait.NUMBER);
         parameterHost(NodeType.SENSOR_ATTRIBUTE_DETECTION, "Target", NodeValueTrait.ENTITY, NodeValueTrait.PLAYER, NodeValueTrait.ITEM);
         parameterHost(NodeType.SENSOR_VILLAGER_TRADE, "Villager Trade", NodeValueTrait.VILLAGER_TRADE);
         parameterHost(NodeType.SENSOR_IN_STOCK, "Villager Trade", NodeValueTrait.VILLAGER_TRADE);
@@ -1200,8 +1200,7 @@ public final class NodeCatalog {
             NodeType.SENSOR_TARGETED_ENTITY,
             NodeType.SENSOR_LOOK_DIRECTION,
             NodeType.SENSOR_CURRENT_HAND,
-            NodeType.SENSOR_TARGETED_BLOCK_FACE,
-            NodeType.SENSOR_FIND_TRADE);
+            NodeType.SENSOR_TARGETED_BLOCK_FACE);
         route(ExecutionRoute.CREATE_LIST, NodeType.CREATE_LIST);
         route(ExecutionRoute.ADD_TO_LIST, NodeType.ADD_TO_LIST);
         route(ExecutionRoute.REMOVE_FIRST_FROM_LIST, NodeType.REMOVE_FIRST_FROM_LIST);

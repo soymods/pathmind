@@ -128,7 +128,7 @@ public enum NodeType {
     SENSOR_ITEM_IN_INVENTORY,
     SENSOR_ITEM_IN_SLOT,
     SENSOR_SLOT_ITEM_COUNT,
-    SENSOR_FIND_TRADE,
+    SENSOR_FIND_TRADE, // Serialized legacy ID for the Trade Slot value node.
     SENSOR_VILLAGER_TRADE,
     SENSOR_IN_STOCK,
     SENSOR_IS_SWIMMING,

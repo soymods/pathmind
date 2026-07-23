@@ -1530,7 +1530,8 @@ public class Node {
             case SENSOR_LOOK_DIRECTION -> isSensorLookSingleAxisMode() ? NodeType.PARAM_AMOUNT : NodeType.PARAM_ROTATION;
             case SENSOR_CURRENT_HAND -> NodeType.PARAM_INVENTORY_SLOT;
             case SENSOR_CURRENT_GUI -> NodeType.PARAM_GUI;
-            case SENSOR_SLOT_ITEM_COUNT, SENSOR_FIND_TRADE, LIST_LENGTH, OPERATOR_RANDOM, OPERATOR_MOD -> NodeType.PARAM_AMOUNT;
+            case SENSOR_SLOT_ITEM_COUNT, LIST_LENGTH, OPERATOR_RANDOM, OPERATOR_MOD -> NodeType.PARAM_AMOUNT;
+            case SENSOR_FIND_TRADE -> NodeType.PARAM_VILLAGER_TRADE;
             case CALCULATE -> NodeType.PARAM_AMOUNT;
             default -> type;
         };
@@ -3147,16 +3148,7 @@ public class Node {
                 values.put(normalizeParameterKey("Value"), countValue);
             }
             case SENSOR_FIND_TRADE -> {
-                int tradeNumber = villagerTradeSensorEvaluator().findTradeNumber();
-                String tradeValue = Integer.toString(Math.max(0, tradeNumber));
-                values.put("Amount", tradeValue);
-                values.put(normalizeParameterKey("Amount"), tradeValue);
-                values.put("Count", tradeValue);
-                values.put(normalizeParameterKey("Count"), tradeValue);
-                values.put("Value", tradeValue);
-                values.put(normalizeParameterKey("Value"), tradeValue);
-                values.put("Number", tradeValue);
-                values.put(normalizeParameterKey("Number"), tradeValue);
+                villagerTradeSensorEvaluator().exportTradeSlotValues(values);
             }
         }
 
@@ -7415,7 +7407,6 @@ public class Node {
             case SENSOR_KEY_PRESSED -> basicSensorEvaluator().evaluateKeyPressed();
             case SENSOR_IS_RENDERED -> visibilitySensorEvaluator().evaluateRendered();
             case SENSOR_IS_VISIBLE -> visibilitySensorEvaluator().evaluateVisible();
-            case SENSOR_FIND_TRADE -> villagerTradeSensorEvaluator().evaluateFindTrade();
             case SENSOR_VILLAGER_TRADE -> villagerTradeSensorEvaluator().evaluateVillagerTrade();
             case SENSOR_IN_STOCK -> villagerTradeSensorEvaluator().evaluateInStock();
             case SENSOR_CHAT_MESSAGE -> eventSensorEvaluator().evaluateChatMessage();

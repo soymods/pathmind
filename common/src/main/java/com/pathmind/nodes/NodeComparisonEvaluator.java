@@ -453,6 +453,13 @@ final class NodeComparisonEvaluator {
         if (!leftIsTrade || !rightIsTrade) {
             return Optional.of(false);
         }
+        String leftVariant = owner.getRuntimeValue(leftValues, "variant");
+        String rightVariant = owner.getRuntimeValue(rightValues, "variant");
+        if (!leftVariant.isEmpty()
+            && !rightVariant.isEmpty()
+            && !leftVariant.equalsIgnoreCase(rightVariant)) {
+            return Optional.of(false);
+        }
         List<String> leftTrades = resolveComparableVillagerTrades(leftValues);
         List<String> rightTrades = resolveComparableVillagerTrades(rightValues);
         if (leftTrades.isEmpty() || rightTrades.isEmpty()) {

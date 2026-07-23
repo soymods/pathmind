@@ -9,10 +9,15 @@ import java.util.Set;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.MerchantScreen;
+import net.minecraft.core.Holder;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.inventory.MerchantMenu;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.enchantment.Enchantment;
+import net.minecraft.world.item.enchantment.ItemEnchantments;
 import net.minecraft.world.item.trading.MerchantOffer;
 import net.minecraft.world.item.trading.MerchantOffers;
 
@@ -75,6 +80,29 @@ final class NodeVillagerTradeSensorEvaluator {
         values.put(Node.normalizeParameterKey("Item"), tradeKey);
         values.put("Items", tradeKey);
         values.put(Node.normalizeParameterKey("Items"), tradeKey);
+        String variant = getTradeVariant(offer.getResult());
+        values.put("Variant", variant);
+        values.put(Node.normalizeParameterKey("Variant"), variant);
+    }
+
+    private String getTradeVariant(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) {
+            return "";
+        }
+        ItemEnchantments enchantments = stack.get(DataComponents.STORED_ENCHANTMENTS);
+        if (enchantments == null || enchantments.isEmpty()) {
+            enchantments = stack.get(DataComponents.ENCHANTMENTS);
+        }
+        if (enchantments == null || enchantments.isEmpty()) {
+            return "";
+        }
+        for (Holder<Enchantment> enchantment : enchantments.keySet()) {
+            ResourceKey<Enchantment> key = enchantment.unwrapKey().orElse(null);
+            if (key != null) {
+                return key.identifier().toString();
+            }
+        }
+        return "";
     }
 
     private MerchantOffers getOpenTradeOffers() {

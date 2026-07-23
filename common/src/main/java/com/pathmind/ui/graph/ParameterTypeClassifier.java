@@ -88,6 +88,15 @@ final class ParameterTypeClassifier {
             || "Trade".equalsIgnoreCase(parameter.getName());
     }
 
+    static boolean isVillagerTradeVariantParameter(Node node, int index) {
+        if (node == null || node.getType() != NodeType.PARAM_VILLAGER_TRADE
+            || index < 0 || index >= node.getParameters().size()) {
+            return false;
+        }
+        NodeParameter parameter = node.getParameters().get(index);
+        return parameter != null && "Variant".equalsIgnoreCase(parameter.getName());
+    }
+
     static boolean isGuiParameter(Node node, NodeParameter parameter) {
         if (node == null) {
             return false;

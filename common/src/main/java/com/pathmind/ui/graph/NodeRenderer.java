@@ -20,6 +20,7 @@ import static com.pathmind.ui.graph.ParameterTypeClassifier.isPlayerParameter;
 import static com.pathmind.ui.graph.ParameterTypeClassifier.isSeedParameter;
 import static com.pathmind.ui.graph.ParameterTypeClassifier.isVillagerProfessionParameter;
 import static com.pathmind.ui.graph.ParameterTypeClassifier.isVillagerTradeParameter;
+import static com.pathmind.ui.graph.ParameterTypeClassifier.isVillagerTradeVariantParameter;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -905,7 +906,8 @@ final class NodeRenderer {
                     || isBlockFaceParameter(node, i)
                     || isFabricEventSensorParameter(node, i)
                     || isVillagerProfessionParameter(node, i)
-                    || isVillagerTradeParameter(node, i))) {
+                    || isVillagerTradeParameter(node, i)
+                    || isVillagerTradeVariantParameter(node, i))) {
                     host.updateParameterDropdown(node, i, textRenderer, fieldLeft, fieldTop, fieldWidth, fieldHeight);
                 }
 

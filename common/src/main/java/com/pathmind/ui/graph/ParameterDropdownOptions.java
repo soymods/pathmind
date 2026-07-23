@@ -15,8 +15,10 @@ import static com.pathmind.ui.graph.ParameterTypeClassifier.isItemParameter;
 import static com.pathmind.ui.graph.ParameterTypeClassifier.isMouseButtonParameter;
 import static com.pathmind.ui.graph.ParameterTypeClassifier.isVillagerProfessionParameter;
 import static com.pathmind.ui.graph.ParameterTypeClassifier.isVillagerTradeParameter;
+import static com.pathmind.ui.graph.ParameterTypeClassifier.isVillagerTradeVariantParameter;
 import static com.pathmind.util.PathmindI18n.tr;
 
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -44,6 +46,7 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.SpawnEggItem;
+import net.minecraft.world.item.enchantment.Enchantments;
 
 /**
  * Pure builders that turn a node + parameter index + query into the list of
@@ -77,6 +80,9 @@ final class ParameterDropdownOptions {
         }
         if (isVillagerTradeParameter(node, index)) {
             return getVillagerTradeDropdownOptions(node, lowered);
+        }
+        if (isVillagerTradeVariantParameter(node, index)) {
+            return getVillagerTradeVariantDropdownOptions(lowered);
         }
         if (isBlockStateParameter(node, index)) {
             return getBlockStateDropdownOptions(node, lowered);
@@ -377,9 +383,20 @@ final class ParameterDropdownOptions {
             || isEntityStateParameter(node, index)) {
             return ItemStack.EMPTY;
         }
-        String iconValue = isVillagerTradeParameter(node, index)
-            ? getTradeKeySellItemId(optionValue)
-            : optionValue;
+        String iconValue;
+        if (isVillagerTradeVariantParameter(node, index)) {
+            NodeParameter tradeParameter = node.getParameter("Item");
+            if (tradeParameter == null) {
+                tradeParameter = node.getParameter("Trade");
+            }
+            iconValue = tradeParameter != null
+                ? getTradeKeySellItemId(tradeParameter.getStringValue())
+                : "";
+        } else {
+            iconValue = isVillagerTradeParameter(node, index)
+                ? getTradeKeySellItemId(optionValue)
+                : optionValue;
+        }
         String fullId = iconValue.contains(":") ? iconValue : "minecraft:" + iconValue;
         Identifier id = Identifier.tryParse(fullId);
         if (id == null) {
@@ -396,7 +413,9 @@ final class ParameterDropdownOptions {
             }
             return new ItemStack(item);
         }
-        if (isItemParameter(node, index) || isVillagerTradeParameter(node, index)) {
+        if (isItemParameter(node, index)
+            || isVillagerTradeParameter(node, index)
+            || isVillagerTradeVariantParameter(node, index)) {
             Item item = BuiltInRegistries.ITEM.getOptional(id).orElse(null);
             if (item == null || item == Items.AIR) {
                 return ItemStack.EMPTY;
@@ -493,6 +512,27 @@ final class ParameterDropdownOptions {
                     "Lvl " + preview.level() + ": " + sell.getHoverName().getString(),
                     sellId.toString()
                 ));
+            }
+        }
+        result.sort((left, right) -> left.label().compareToIgnoreCase(right.label()));
+        return filterDropdownOptions(result, loweredQuery);
+    }
+
+    private static List<ParameterDropdownOption> getVillagerTradeVariantDropdownOptions(String loweredQuery) {
+        List<ParameterDropdownOption> result = new ArrayList<>();
+        for (Field field : Enchantments.class.getFields()) {
+            if (!ResourceKey.class.isAssignableFrom(field.getType())) {
+                continue;
+            }
+            try {
+                Object value = field.get(null);
+                if (!(value instanceof ResourceKey<?> key)) {
+                    continue;
+                }
+                Identifier id = key.identifier();
+                result.add(new ParameterDropdownOption(titleCase(id.getPath()), id.toString()));
+            } catch (IllegalAccessException ignored) {
+                // Public vanilla enchantment keys should always be accessible.
             }
         }
         result.sort((left, right) -> left.label().compareToIgnoreCase(right.label()));

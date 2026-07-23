@@ -109,6 +109,11 @@ final class NodeAttributeParameters {
                 return "";
             }
         }
+        if (type == NodeType.PARAM_VILLAGER_TRADE
+            && "Variant".equalsIgnoreCase(parameter.getName())
+            && !isEnchantedBookTrade(node)) {
+            return "";
+        }
         if (node.isRandomRoundingParameter(parameter)) {
             return "";
         }
@@ -155,6 +160,28 @@ final class NodeAttributeParameters {
         }
         int maxContentLength = Math.max(0, node.getMaxParameterLabelLength() - 3);
         return text.substring(0, maxContentLength) + "...";
+    }
+
+    private static boolean isEnchantedBookTrade(Node node) {
+        NodeParameter tradeParameter = node.getParameter("Item");
+        if (tradeParameter == null) {
+            tradeParameter = node.getParameter("Trade");
+        }
+        if (tradeParameter == null) {
+            return false;
+        }
+        String tradeValue = tradeParameter.getStringValue();
+        if (tradeValue == null || tradeValue.isEmpty()) {
+            return false;
+        }
+        String[] parts = tradeValue.split("\\|");
+        String sellPart = parts[parts.length - 1];
+        int countSeparator = sellPart.indexOf('@');
+        if (countSeparator >= 0) {
+            sellPart = sellPart.substring(0, countSeparator);
+        }
+        return "enchanted_book".equalsIgnoreCase(sellPart)
+            || "minecraft:enchanted_book".equalsIgnoreCase(sellPart);
     }
 
     static boolean isAttributeDetectionSensor(Node node) {

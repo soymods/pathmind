@@ -1064,7 +1064,8 @@ public final class NodeCatalog {
         typeParameters(NodeType.PARAM_ITEM, of("Item", ParameterType.STRING, ""));
         typeParameters(NodeType.PARAM_VILLAGER_TRADE,
             of("Profession", ParameterType.STRING, "librarian"),
-            of("Item", ParameterType.STRING, "book"));
+            of("Item", ParameterType.STRING, "book"),
+            of("Variant", ParameterType.STRING, ""));
         typeParameters(NodeType.PARAM_ENTITY,
             of("Entity", ParameterType.STRING, ""),
             of("State", ParameterType.STRING, ""));

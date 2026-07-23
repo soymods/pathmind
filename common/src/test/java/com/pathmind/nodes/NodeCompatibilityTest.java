@@ -474,6 +474,34 @@ class NodeCompatibilityTest {
         assertFalse(equals.evaluateSensor());
     }
 
+    @Test
+    void villagerTradeComparisonDistinguishesEnchantedBookVariants() {
+        Node equals = new Node(NodeType.OPERATOR_EQUALS, 0, 0);
+        Node left = new Node(NodeType.PARAM_VILLAGER_TRADE, 0, 0);
+        Node right = new Node(NodeType.PARAM_VILLAGER_TRADE, 0, 0);
+
+        left.getParameter("Item").setStringValue("minecraft:enchanted_book");
+        right.getParameter("Item").setStringValue("minecraft:enchanted_book");
+        left.getParameter("Variant").setStringValue("minecraft:mending");
+        right.getParameter("Variant").setStringValue("minecraft:unbreaking");
+
+        assertTrue(equals.attachParameter(left, 0));
+        assertTrue(equals.attachParameter(right, 1));
+        assertFalse(equals.evaluateSensor());
+    }
+
+    @Test
+    void villagerTradeVariantFieldOnlyAppearsForEnchantedBooks() {
+        Node trade = new Node(NodeType.PARAM_VILLAGER_TRADE, 0, 0);
+        NodeParameter variant = trade.getParameter("Variant");
+
+        trade.getParameter("Item").setStringValue("minecraft:emerald");
+        assertEquals("", trade.getParameterLabel(variant));
+
+        trade.getParameter("Item").setStringValue("minecraft:emerald@5|minecraft:book@1|minecraft:enchanted_book@1");
+        assertTrue(trade.getParameterLabel(variant).startsWith("Variant:"));
+    }
+
     private static final class DummyDisplayEntry {
         private final Object display;
 

@@ -22,6 +22,7 @@ import static com.pathmind.ui.graph.ParameterTypeClassifier.isMessageParameter;
 import static com.pathmind.ui.graph.ParameterTypeClassifier.isMouseButtonParameter;
 import static com.pathmind.ui.graph.ParameterTypeClassifier.isVillagerProfessionParameter;
 import static com.pathmind.ui.graph.ParameterTypeClassifier.isVillagerTradeParameter;
+import static com.pathmind.ui.graph.ParameterTypeClassifier.isVillagerTradeVariantParameter;
 import static com.pathmind.ui.graph.ParameterTypeClassifier.isPlayerParameter;
 import static com.pathmind.ui.graph.ParameterTypeClassifier.isSeedParameter;
 import static com.pathmind.ui.graph.ParameterTypeClassifier.isTradeInlineParameter;
@@ -6656,13 +6657,16 @@ public class NodeGraph {
             && !isBlockFaceParameter(node, index)
             && !isFabricEventSensorParameter(node, index)
             && !isVillagerProfessionParameter(node, index)
-            && !isVillagerTradeParameter(node, index)) {
+            && !isVillagerTradeParameter(node, index)
+            && !isVillagerTradeVariantParameter(node, index)) {
             closeParameterDropdown();
             return;
         }
         ParameterSegment segment = getParameterSegment(parameterEditBuffer, parameterCaretPosition);
         String query = segment.trimmedSegment == null ? "" : segment.trimmedSegment.trim();
-        if ((isVillagerProfessionParameter(node, index) || isVillagerTradeParameter(node, index))
+        if ((isVillagerProfessionParameter(node, index)
+            || isVillagerTradeParameter(node, index)
+            || isVillagerTradeVariantParameter(node, index))
             && index < node.getParameters().size()
             && Objects.equals(parameterEditBuffer, node.getParameters().get(index).getStringValue())) {
             query = "";

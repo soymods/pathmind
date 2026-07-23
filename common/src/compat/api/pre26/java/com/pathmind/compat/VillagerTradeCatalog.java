@@ -100,8 +100,8 @@ public final class VillagerTradeCatalog {
     ) {
         if (factory == null) return null;
         try {
-            for (Method method : factory.getClass().getMethods()) {
-                if (!method.getName().equals("create")) continue;
+            for (Method method : VillagerTrades.ItemListing.class.getMethods()) {
+                if (!method.getName().equals("create") && !method.getName().equals("getOffer")) continue;
                 Class<?>[] parameters = method.getParameterTypes();
                 if (parameters.length == 3 && parameters[1].isInstance(villager)) {
                     Object level = serverLevel != null && parameters[0].isInstance(serverLevel) ? serverLevel : clientLevel;

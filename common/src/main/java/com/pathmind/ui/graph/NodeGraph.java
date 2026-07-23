@@ -6662,6 +6662,11 @@ public class NodeGraph {
         }
         ParameterSegment segment = getParameterSegment(parameterEditBuffer, parameterCaretPosition);
         String query = segment.trimmedSegment == null ? "" : segment.trimmedSegment.trim();
+        if ((isVillagerProfessionParameter(node, index) || isVillagerTradeParameter(node, index))
+            && index < node.getParameters().size()
+            && Objects.equals(parameterEditBuffer, node.getParameters().get(index).getStringValue())) {
+            query = "";
+        }
         boolean isStateParameter = isBlockStateParameter(node, index);
 
         if (isParameterDropdownSuppressed(node, index, query)) {

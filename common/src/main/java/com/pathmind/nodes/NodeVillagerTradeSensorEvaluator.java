@@ -1,7 +1,5 @@
 package com.pathmind.nodes;
 
-import static com.pathmind.util.PathmindI18n.tr;
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
@@ -63,10 +61,6 @@ final class NodeVillagerTradeSensorEvaluator {
         int tradeNumber = Math.max(1, owner.getIntParameter("Number", 1));
         int tradeIndex = tradeNumber - 1;
         if (tradeIndex < 0 || tradeIndex >= tradeOffers.size() || tradeOffers.get(tradeIndex) == null) {
-            Minecraft client = Minecraft.getInstance();
-            if (client != null) {
-                owner.sendNodeErrorMessage(client, tr("pathmind.error.tradeUnavailable", tradeNumber));
-            }
             return;
         }
         MerchantOffer offer = tradeOffers.get(tradeIndex);
@@ -91,7 +85,6 @@ final class NodeVillagerTradeSensorEvaluator {
         }
         Screen currentScreen = client.screen;
         if (!(currentScreen instanceof MerchantScreen merchantScreen)) {
-            owner.sendNodeErrorMessage(client, tr("pathmind.error.noVillagerTradingScreen"));
             return null;
         }
         MerchantMenu screenHandler = merchantScreen.getMenu();

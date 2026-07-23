@@ -176,7 +176,7 @@ class NodeCatalogTest {
     @Test
     void catalogOwnsParameterTraitSchema() {
         assertEquals(EnumSet.of(NodeValueTrait.NUMBER), NodeCatalog.providedTraits(NodeType.CALCULATE));
-        assertEquals(EnumSet.of(NodeValueTrait.NUMBER), NodeCatalog.providedTraits(NodeType.SENSOR_FIND_TRADE));
+        assertEquals(EnumSet.of(NodeValueTrait.VILLAGER_TRADE), NodeCatalog.providedTraits(NodeType.SENSOR_FIND_TRADE));
         assertEquals(EnumSet.of(NodeValueTrait.DIRECTION), NodeCatalog.providedTraits(NodeType.PARAM_BLOCK_FACE));
 
         assertFalse(NodeCatalog.canHostParameter(NodeType.CALCULATE));
@@ -186,8 +186,7 @@ class NodeCatalogTest {
         assertEquals("Direction", NodeCatalog.parameterSlotLabel(NodeType.WALK, 0));
         assertEquals(EnumSet.of(NodeValueTrait.DURATION, NodeValueTrait.DISTANCE), NodeCatalog.acceptedTraits(NodeType.WALK, 1));
 
-        assertEquals("Item", NodeCatalog.parameterSlotLabel(NodeType.SENSOR_FIND_TRADE, 0));
-        assertEquals(EnumSet.of(NodeValueTrait.ITEM), NodeCatalog.acceptedTraits(NodeType.SENSOR_FIND_TRADE, 0));
+        assertFalse(NodeCatalog.canHostParameter(NodeType.SENSOR_FIND_TRADE));
         assertEquals(EnumSet.of(NodeValueTrait.GUI), NodeCatalog.acceptedTraits(NodeType.SENSOR_GUI_FILLED, 0));
     }
 

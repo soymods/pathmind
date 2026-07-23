@@ -7,7 +7,6 @@ import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
@@ -61,20 +60,7 @@ final class NodeVillagerTradeSensorEvaluator {
         if (tradeOffers == null || tradeOffers.isEmpty()) {
             return;
         }
-        Node numberNode = owner.resolveSensorParameterNode(owner.getAttachedParameter(0), 0);
-        if (numberNode == null) {
-            Minecraft client = Minecraft.getInstance();
-            if (client != null) {
-                owner.sendNodeErrorMessage(client, tr("pathmind.error.requiresParameterNode", owner.getType().getDisplayName()));
-            }
-            return;
-        }
-        if (!owner.providesTrait(numberNode, NodeValueTrait.NUMBER)) {
-            owner.sendIncompatibleParameterMessage(numberNode);
-            return;
-        }
-        Optional<Double> resolvedNumber = owner.resolveComparableNumber(numberNode);
-        int tradeNumber = resolvedNumber.map(value -> Math.max(1, (int) Math.round(value))).orElse(1);
+        int tradeNumber = Math.max(1, owner.getIntParameter("Number", 1));
         int tradeIndex = tradeNumber - 1;
         if (tradeIndex < 0 || tradeIndex >= tradeOffers.size() || tradeOffers.get(tradeIndex) == null) {
             Minecraft client = Minecraft.getInstance();

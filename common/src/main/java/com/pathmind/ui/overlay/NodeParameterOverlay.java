@@ -6,7 +6,6 @@ import com.pathmind.nodes.NodeParameter;
 import com.pathmind.nodes.NodeType;
 import com.pathmind.nodes.ParameterType;
 import com.pathmind.ui.control.InventorySlotSelector;
-import com.pathmind.ui.control.VillagerTradeSelector;
 import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.animation.HoverAnimator;
 import com.pathmind.ui.animation.PopupAnimationHandler;
@@ -174,10 +173,6 @@ public class NodeParameterOverlay {
     private final InventorySlotSelector inventorySlotSelector;
     private Boolean inventorySlotSelectionIsPlayer = null;
     private boolean suppressInventorySelectorCallbacks = false;
-    private final boolean villagerTradeEditorActive;
-    private final int villagerTradeParamIndex;
-    private final int villagerProfessionParamIndex;
-    private final VillagerTradeSelector villagerTradeSelector;
     private int textLineHeight = 9;
     private final List<Integer> caretPositions = new ArrayList<>();
     private final List<Integer> selectionStarts = new ArrayList<>();
@@ -202,8 +197,6 @@ public class NodeParameterOverlay {
 
         int slotIndex = -1;
         int modeIndex = -1;
-        int tradeIndex = -1;
-        int professionIndex = -1;
         List<NodeParameter> params = node.getParameters();
         if (node.getType() == NodeType.PARAM_INVENTORY_SLOT) {
             for (int i = 0; i < params.size(); i++) {
@@ -216,20 +209,6 @@ public class NodeParameterOverlay {
                     slotIndex = i;
                 } else if ("Mode".equalsIgnoreCase(name)) {
                     modeIndex = i;
-                }
-            }
-        }
-        if (node.getType() == NodeType.PARAM_VILLAGER_TRADE) {
-            for (int i = 0; i < params.size(); i++) {
-                NodeParameter param = params.get(i);
-                if (param == null) {
-                    continue;
-                }
-                String name = param.getName();
-                if ("Trade".equalsIgnoreCase(name) || "Item".equalsIgnoreCase(name)) {
-                    tradeIndex = i;
-                } else if ("Profession".equalsIgnoreCase(name)) {
-                    professionIndex = i;
                 }
             }
         }
@@ -272,35 +251,6 @@ public class NodeParameterOverlay {
             this.inventorySlotSelector = null;
         }
 
-        this.villagerTradeParamIndex = tradeIndex;
-        this.villagerProfessionParamIndex = professionIndex;
-        this.villagerTradeEditorActive = tradeIndex >= 0;
-        if (villagerTradeEditorActive) {
-            this.villagerTradeSelector = new VillagerTradeSelector(new VillagerTradeSelector.Listener() {
-                @Override
-                public void onProfessionChanged(String professionId) {
-                    if (villagerProfessionParamIndex >= 0 && villagerProfessionParamIndex < parameterValues.size()) {
-                        setParameterValue(villagerProfessionParamIndex, professionId);
-                    }
-                }
-
-                @Override
-                public void onTradeChanged(String tradeItemId) {
-                    if (villagerTradeParamIndex >= 0 && villagerTradeParamIndex < parameterValues.size()) {
-                        setParameterValue(villagerTradeParamIndex, tradeItemId);
-                    }
-                }
-
-                @Override
-                public void requestLayoutRefresh() {
-                    updatePopupDimensions();
-                    recreateButtons();
-                }
-            });
-        } else {
-            this.villagerTradeSelector = null;
-        }
-
         updatePopupDimensions();
     }
 
@@ -334,15 +284,6 @@ public class NodeParameterOverlay {
             }
             persistInventorySlotModeValue();
         }
-        if (villagerTradeEditorActive && villagerTradeSelector != null) {
-            if (villagerProfessionParamIndex >= 0 && villagerProfessionParamIndex < parameterValues.size()) {
-                villagerTradeSelector.setProfessionById(parameterValues.get(villagerProfessionParamIndex));
-            }
-            if (villagerTradeParamIndex >= 0 && villagerTradeParamIndex < parameterValues.size()) {
-                villagerTradeSelector.setSelectedTradeKey(parameterValues.get(villagerTradeParamIndex));
-            }
-        }
-
         updatePopupDimensions();
         recreateButtons();
         scrollOffset = Math.min(scrollOffset, maxScroll);
@@ -440,12 +381,6 @@ public class NodeParameterOverlay {
                 sectionY = fieldY + selectorHeight + SECTION_SPACING;
                 continue;
             }
-            if (villagerTradeEditorActive && i == villagerTradeParamIndex && villagerTradeSelector != null) {
-                int selectorHeight = villagerTradeSelector.render(context, textRenderer, fieldX, fieldY, fieldWidth, mouseX, mouseY, popupAlpha);
-                sectionY = fieldY + selectorHeight + SECTION_SPACING;
-                continue;
-            }
-
             if (usesButtonSelectorForIndex(i)) {
                 int selectorHeight = renderButtonSelector(context, textRenderer, fieldX, fieldY, fieldWidth, mouseX, mouseY, i, popupAlpha);
                 sectionY = fieldY + selectorHeight + SECTION_SPACING;
@@ -774,9 +709,6 @@ public class NodeParameterOverlay {
         if (inventorySlotEditorActive && index == inventoryModeParamIndex) {
             return false;
         }
-        if (villagerTradeEditorActive && index == villagerProfessionParamIndex) {
-            return false;
-        }
         return true;
     }
 
@@ -797,11 +729,6 @@ public class NodeParameterOverlay {
             inventorySlotSelector.mouseClicked(adjustedMouseX, adjustedMouseY);
             return true;
         }
-        if (villagerTradeEditorActive && villagerTradeSelector != null && villagerTradeSelector.isDropdownOpen()) {
-            villagerTradeSelector.mouseClicked(adjustedMouseX, adjustedMouseY);
-            return true;
-        }
-
         if (saveButton != null && saveButton.isMouseOver(adjustedMouseX, adjustedMouseY)) {
             saveParameters();
             return true;
@@ -816,12 +743,6 @@ public class NodeParameterOverlay {
                 return true;
             }
         }
-        if (villagerTradeEditorActive && villagerTradeSelector != null) {
-            if (villagerTradeSelector.mouseClicked(adjustedMouseX, adjustedMouseY)) {
-                return true;
-            }
-        }
-
         int contentTop = getScrollAreaTop();
         int contentBottom = getScrollAreaBottom();
         int labelY = contentTop - scrollOffset;
@@ -894,12 +815,6 @@ public class NodeParameterOverlay {
                 return true;
             }
         }
-        if (villagerTradeEditorActive && villagerTradeSelector != null) {
-            if (villagerTradeSelector.mouseScrolled(mouseX, mouseY, verticalAmount)) {
-                return true;
-            }
-        }
-
         if (mouseX < popupX || mouseX > popupX + popupWidth || mouseY < popupY || mouseY > popupY + popupHeight) {
             return true;
         }
@@ -921,12 +836,6 @@ public class NodeParameterOverlay {
 
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         if (!popupAnimation.isVisible()) return false;
-
-        if (villagerTradeEditorActive && villagerTradeSelector != null && villagerTradeSelector.hasFocusedInput()) {
-            if (villagerTradeSelector.keyPressed(keyCode, modifiers)) {
-                return true;
-            }
-        }
 
         boolean handledFieldInput = false;
         if (focusedFieldIndex >= 0
@@ -958,12 +867,6 @@ public class NodeParameterOverlay {
 
     public boolean charTyped(char chr, int modifiers) {
         if (!popupAnimation.isVisible()) return false;
-
-        if (villagerTradeEditorActive && villagerTradeSelector != null && villagerTradeSelector.hasFocusedInput()) {
-            if (villagerTradeSelector.charTyped(chr, modifiers)) {
-                return true;
-            }
-        }
 
         if (focusedFieldIndex >= 0
             && focusedFieldIndex < parameterValues.size()) {
@@ -1052,9 +955,6 @@ public class NodeParameterOverlay {
         focusedFieldIndex = -1;
         if (inventorySlotSelector != null) {
             inventorySlotSelector.closeDropdown();
-        }
-        if (villagerTradeSelector != null) {
-            villagerTradeSelector.closeDropdown();
         }
     }
 
@@ -1209,9 +1109,6 @@ public class NodeParameterOverlay {
             }
             if (inventorySlotEditorActive && i == inventorySlotParamIndex && inventorySlotSelector != null) {
                 int estimatedHeight = inventorySlotSelector.getEstimatedHeight(textLineHeight);
-                contentHeight += LABEL_TO_FIELD_OFFSET + estimatedHeight;
-            } else if (villagerTradeEditorActive && i == villagerTradeParamIndex && villagerTradeSelector != null) {
-                int estimatedHeight = villagerTradeSelector.getEstimatedHeight(textLineHeight);
                 contentHeight += LABEL_TO_FIELD_OFFSET + estimatedHeight;
             } else if (usesButtonSelectorForIndex(i)) {
                 contentHeight += LABEL_TO_FIELD_OFFSET + getButtonSelectorHeight();

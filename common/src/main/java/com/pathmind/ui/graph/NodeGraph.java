@@ -20,6 +20,8 @@ import static com.pathmind.ui.graph.ParameterTypeClassifier.isItemParameter;
 import static com.pathmind.ui.graph.ParameterTypeClassifier.isListIndexParameter;
 import static com.pathmind.ui.graph.ParameterTypeClassifier.isMessageParameter;
 import static com.pathmind.ui.graph.ParameterTypeClassifier.isMouseButtonParameter;
+import static com.pathmind.ui.graph.ParameterTypeClassifier.isVillagerProfessionParameter;
+import static com.pathmind.ui.graph.ParameterTypeClassifier.isVillagerTradeParameter;
 import static com.pathmind.ui.graph.ParameterTypeClassifier.isPlayerParameter;
 import static com.pathmind.ui.graph.ParameterTypeClassifier.isSeedParameter;
 import static com.pathmind.ui.graph.ParameterTypeClassifier.isTradeInlineParameter;
@@ -3263,6 +3265,10 @@ public class NodeGraph {
         return null;
     }
 
+    boolean shouldRenderConnectionInDraggedPass(NodeConnection connection) {
+        return connectionRenderer.shouldRenderConnectionInDraggedPass(connection);
+    }
+
     private boolean rendersInlineParameters(Node node) {
         if (node == null) {
             return false;
@@ -3283,7 +3289,6 @@ public class NodeGraph {
             && node.getType() != NodeType.SENSOR_LOOK_DIRECTION
             && node.getType() != NodeType.SENSOR_DISTANCE_BETWEEN
             && node.getType() != NodeType.SENSOR_CURRENT_GUI
-            && node.getType() != NodeType.SENSOR_FIND_TRADE
             && node.getType() != NodeType.SENSOR_SLOT_ITEM_COUNT;
     }
 
@@ -6649,7 +6654,9 @@ public class NodeGraph {
             && !isBooleanLiteralParameter(node, index)
             && !isAttributeDetectionDropdownParameter(node, index)
             && !isBlockFaceParameter(node, index)
-            && !isFabricEventSensorParameter(node, index)) {
+            && !isFabricEventSensorParameter(node, index)
+            && !isVillagerProfessionParameter(node, index)
+            && !isVillagerTradeParameter(node, index)) {
             closeParameterDropdown();
             return;
         }

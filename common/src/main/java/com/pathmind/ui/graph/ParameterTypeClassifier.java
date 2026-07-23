@@ -66,6 +66,28 @@ final class ParameterTypeClassifier {
         return "Count".equalsIgnoreCase(parameter.getName());
     }
 
+    static boolean isVillagerProfessionParameter(Node node, int index) {
+        if (node == null || node.getType() != NodeType.PARAM_VILLAGER_TRADE
+            || index < 0 || index >= node.getParameters().size()) {
+            return false;
+        }
+        NodeParameter parameter = node.getParameters().get(index);
+        return parameter != null && "Profession".equalsIgnoreCase(parameter.getName());
+    }
+
+    static boolean isVillagerTradeParameter(Node node, int index) {
+        if (node == null || node.getType() != NodeType.PARAM_VILLAGER_TRADE
+            || index < 0 || index >= node.getParameters().size()) {
+            return false;
+        }
+        NodeParameter parameter = node.getParameters().get(index);
+        if (parameter == null) {
+            return false;
+        }
+        return "Item".equalsIgnoreCase(parameter.getName())
+            || "Trade".equalsIgnoreCase(parameter.getName());
+    }
+
     static boolean isGuiParameter(Node node, NodeParameter parameter) {
         if (node == null) {
             return false;

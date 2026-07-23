@@ -895,7 +895,6 @@ public class Node {
 					|| type == NodeType.PARAM_BLOCK_FACE
 					|| type == NodeType.SENSOR_POSITION_OF
 					|| type == NodeType.SENSOR_DISTANCE_BETWEEN
-					|| type == NodeType.SENSOR_FIND_TRADE
 					|| type == NodeType.SENSOR_SLOT_ITEM_COUNT;
 		}
 

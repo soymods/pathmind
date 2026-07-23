@@ -13,6 +13,8 @@ import static com.pathmind.ui.graph.ParameterTypeClassifier.isFabricEventSensorP
 import static com.pathmind.ui.graph.ParameterTypeClassifier.isHandParameter;
 import static com.pathmind.ui.graph.ParameterTypeClassifier.isItemParameter;
 import static com.pathmind.ui.graph.ParameterTypeClassifier.isMouseButtonParameter;
+import static com.pathmind.ui.graph.ParameterTypeClassifier.isVillagerProfessionParameter;
+import static com.pathmind.ui.graph.ParameterTypeClassifier.isVillagerTradeParameter;
 import static com.pathmind.util.PathmindI18n.tr;
 
 import java.util.ArrayList;
@@ -24,14 +26,20 @@ import com.pathmind.nodes.AttributeDetectionConfig;
 import com.pathmind.nodes.Node;
 import com.pathmind.nodes.NodeParameter;
 import com.pathmind.nodes.NodeType;
+import com.pathmind.compat.VillagerTradeCatalog;
 import com.pathmind.util.BlockSelection;
 import com.pathmind.util.EntityStateOptions;
 import com.pathmind.util.FabricEventTracker;
 import com.pathmind.util.GuiSelectionMode;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.npc.villager.VillagerProfession;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -63,6 +71,12 @@ final class ParameterDropdownOptions {
             result.add(new ParameterDropdownOption(tr("pathmind.option.true"), "true"));
             result.add(new ParameterDropdownOption(tr("pathmind.option.false"), "false"));
             return filterDropdownOptions(result, lowered);
+        }
+        if (isVillagerProfessionParameter(node, index)) {
+            return getVillagerProfessionDropdownOptions(lowered);
+        }
+        if (isVillagerTradeParameter(node, index)) {
+            return getVillagerTradeDropdownOptions(node, lowered);
         }
         if (isBlockStateParameter(node, index)) {
             return getBlockStateDropdownOptions(node, lowered);
@@ -363,7 +377,10 @@ final class ParameterDropdownOptions {
             || isEntityStateParameter(node, index)) {
             return ItemStack.EMPTY;
         }
-        String fullId = optionValue.contains(":") ? optionValue : "minecraft:" + optionValue;
+        String iconValue = isVillagerTradeParameter(node, index)
+            ? getTradeKeySellItemId(optionValue)
+            : optionValue;
+        String fullId = iconValue.contains(":") ? iconValue : "minecraft:" + iconValue;
         Identifier id = Identifier.tryParse(fullId);
         if (id == null) {
             return ItemStack.EMPTY;
@@ -379,7 +396,7 @@ final class ParameterDropdownOptions {
             }
             return new ItemStack(item);
         }
-        if (isItemParameter(node, index)) {
+        if (isItemParameter(node, index) || isVillagerTradeParameter(node, index)) {
             Item item = BuiltInRegistries.ITEM.getOptional(id).orElse(null);
             if (item == null || item == Items.AIR) {
                 return ItemStack.EMPTY;
@@ -402,5 +419,127 @@ final class ParameterDropdownOptions {
             }
         }
         return ItemStack.EMPTY;
+    }
+
+    private static List<ParameterDropdownOption> getVillagerProfessionDropdownOptions(String loweredQuery) {
+        List<ParameterDropdownOption> result = new ArrayList<>();
+        for (VillagerProfession profession : BuiltInRegistries.VILLAGER_PROFESSION) {
+            Identifier id = BuiltInRegistries.VILLAGER_PROFESSION.getKey(profession);
+            if (id == null || "none".equals(id.getPath())) {
+                continue;
+            }
+            String professionId = id.getPath();
+            result.add(new ParameterDropdownOption(titleCase(professionId), professionId));
+        }
+        result.sort((left, right) -> left.label().compareToIgnoreCase(right.label()));
+        return filterDropdownOptions(result, loweredQuery);
+    }
+
+    private static List<ParameterDropdownOption> getVillagerTradeDropdownOptions(Node node, String loweredQuery) {
+        Minecraft client = Minecraft.getInstance();
+        if (client == null || node == null) {
+            return Collections.emptyList();
+        }
+        NodeParameter professionParameter = node.getParameter("Profession");
+        String professionId = professionParameter != null ? professionParameter.getStringValue() : "";
+        if (professionId == null || professionId.isBlank()) {
+            return Collections.emptyList();
+        }
+        String normalizedProfession = professionId.contains(":")
+            ? professionId.substring(professionId.indexOf(':') + 1)
+            : professionId;
+        Identifier professionIdentifier = Identifier.tryParse("minecraft:" + normalizedProfession.toLowerCase(Locale.ROOT));
+        if (professionIdentifier == null) {
+            return Collections.emptyList();
+        }
+        VillagerProfession profession = BuiltInRegistries.VILLAGER_PROFESSION.getOptional(professionIdentifier).orElse(null);
+        if (profession == null) {
+            return Collections.emptyList();
+        }
+        Holder<VillagerProfession> professionHolder = BuiltInRegistries.VILLAGER_PROFESSION.wrapAsHolder(profession);
+        ResourceKey<VillagerProfession> professionKey = professionHolder.unwrapKey()
+            .orElse(ResourceKey.create(Registries.VILLAGER_PROFESSION, professionIdentifier));
+        ServerLevel serverLevel = client.getSingleplayerServer() != null
+            ? client.getSingleplayerServer().overworld()
+            : null;
+        List<ParameterDropdownOption> result = new ArrayList<>();
+        for (VillagerTradeCatalog.Offer offer : VillagerTradeCatalog.load(
+            normalizedProfession,
+            professionKey,
+            professionHolder,
+            serverLevel,
+            client.level
+        )) {
+            String tradeKey = buildTradeKey(offer.firstBuy(), offer.secondBuy(), offer.sell());
+            result.add(new ParameterDropdownOption(
+                formatTradeOption(offer.level(), offer.firstBuy(), offer.secondBuy(), offer.sell()),
+                tradeKey
+            ));
+        }
+        result.sort((left, right) -> left.label().compareToIgnoreCase(right.label()));
+        return filterDropdownOptions(result, loweredQuery);
+    }
+
+    private static String formatTradeOption(int level, ItemStack firstBuy, ItemStack secondBuy, ItemStack sell) {
+        StringBuilder label = new StringBuilder("Lvl ").append(level).append(": ");
+        appendTradeStack(label, firstBuy);
+        if (secondBuy != null && !secondBuy.isEmpty()) {
+            label.append(" + ");
+            appendTradeStack(label, secondBuy);
+        }
+        label.append(" -> ");
+        appendTradeStack(label, sell);
+        return label.toString();
+    }
+
+    private static void appendTradeStack(StringBuilder label, ItemStack stack) {
+        if (stack == null || stack.isEmpty()) {
+            return;
+        }
+        if (stack.getCount() > 1) {
+            label.append(stack.getCount()).append("x ");
+        }
+        label.append(stack.getHoverName().getString());
+    }
+
+    private static String buildTradeKey(ItemStack firstBuy, ItemStack secondBuy, ItemStack sell) {
+        return buildTradeKeyPart(firstBuy) + "|"
+            + buildTradeKeyPart(secondBuy) + "|"
+            + buildTradeKeyPart(sell);
+    }
+
+    private static String buildTradeKeyPart(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) {
+            return "none@0";
+        }
+        Identifier id = BuiltInRegistries.ITEM.getKey(stack.getItem());
+        return (id != null ? id.toString() : "unknown") + "@" + stack.getCount();
+    }
+
+    private static String getTradeKeySellItemId(String tradeKey) {
+        if (tradeKey == null || tradeKey.isEmpty()) {
+            return "";
+        }
+        String[] parts = tradeKey.split("\\|");
+        String sellPart = parts[parts.length - 1];
+        int countSeparator = sellPart.indexOf('@');
+        return countSeparator >= 0 ? sellPart.substring(0, countSeparator) : sellPart;
+    }
+
+    private static String titleCase(String value) {
+        StringBuilder result = new StringBuilder();
+        for (String part : value.split("_")) {
+            if (part.isEmpty()) {
+                continue;
+            }
+            if (!result.isEmpty()) {
+                result.append(' ');
+            }
+            result.append(Character.toUpperCase(part.charAt(0)));
+            if (part.length() > 1) {
+                result.append(part.substring(1));
+            }
+        }
+        return result.toString();
     }
 }

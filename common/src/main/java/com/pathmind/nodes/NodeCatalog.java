@@ -403,7 +403,6 @@ public final class NodeCatalog {
             NodeType.SENSOR_DISTANCE_BETWEEN,
             NodeType.SENSOR_ITEM_IN_INVENTORY,
             NodeType.SENSOR_ITEM_IN_SLOT,
-            NodeType.SENSOR_FIND_TRADE,
             NodeType.SENSOR_SLOT_ITEM_COUNT,
             NodeType.SENSOR_ATTRIBUTE_DETECTION,
             NodeType.SENSOR_CHAT_MESSAGE,
@@ -455,8 +454,7 @@ public final class NodeCatalog {
 
         tag(NodeFlag.POPUP_EDIT_BUTTON,
             NodeType.PARAM_INVENTORY_SLOT,
-            NodeType.PARAM_KEY,
-            NodeType.PARAM_VILLAGER_TRADE);
+            NodeType.PARAM_KEY);
 
         tag(NodeFlag.PARAMETER_NODE, NodeType.ROUTINE_INPUT);
 
@@ -777,7 +775,6 @@ public final class NodeCatalog {
         parameterHost(NodeType.SENSOR_ITEM_IN_INVENTORY, NodeValueTrait.ITEM, NodeValueTrait.NUMBER);
         parameterHost(NodeType.SENSOR_ITEM_IN_SLOT, slot("Item", true, NodeValueTrait.ITEM), slot("Selection", true, NodeValueTrait.INVENTORY_SLOT));
         parameterHost(NodeType.SENSOR_SLOT_ITEM_COUNT, "Slot", NodeValueTrait.INVENTORY_SLOT);
-        parameterHost(NodeType.SENSOR_FIND_TRADE, "Number", NodeValueTrait.NUMBER);
         parameterHost(NodeType.SENSOR_ATTRIBUTE_DETECTION, "Target", NodeValueTrait.ENTITY, NodeValueTrait.PLAYER, NodeValueTrait.ITEM);
         parameterHost(NodeType.SENSOR_VILLAGER_TRADE, "Villager Trade", NodeValueTrait.VILLAGER_TRADE);
         parameterHost(NodeType.SENSOR_IN_STOCK, "Villager Trade", NodeValueTrait.VILLAGER_TRADE);
@@ -1043,6 +1040,8 @@ public final class NodeCatalog {
             of("UseAmount", ParameterType.BOOLEAN, "false"));
         typeParameters(List.of(NodeType.SENSOR_VILLAGER_TRADE, NodeType.SENSOR_IN_STOCK),
             of("trade_number", "Number", ParameterType.INTEGER, "1"));
+        typeParameters(NodeType.SENSOR_FIND_TRADE,
+            of("trade_number", "Number", ParameterType.INTEGER, "1"));
         typeParameters(NodeType.SENSOR_HEALTH_BELOW, of("Amount", ParameterType.DOUBLE, "10.0"));
         typeParameters(NodeType.SENSOR_HUNGER_BELOW, of("Amount", ParameterType.INTEGER, "10"));
         typeParameters(NodeType.SENSOR_IS_FALLING, of("Distance", ParameterType.DOUBLE, "0.25"));
@@ -1181,6 +1180,7 @@ public final class NodeCatalog {
             NodeType.SENSOR_HUNGER_BELOW,
             NodeType.SENSOR_ITEM_IN_INVENTORY,
             NodeType.SENSOR_ITEM_IN_SLOT,
+            NodeType.SENSOR_FIND_TRADE,
             NodeType.SENSOR_VILLAGER_TRADE,
             NodeType.SENSOR_IN_STOCK,
             NodeType.SENSOR_IS_SWIMMING,
@@ -1312,7 +1312,6 @@ public final class NodeCatalog {
             && type != NodeType.SENSOR_DISTANCE_BETWEEN
             && type != NodeType.SENSOR_LOOK_DIRECTION
             && type != NodeType.SENSOR_CURRENT_GUI
-            && type != NodeType.SENSOR_FIND_TRADE
             && type != NodeType.SENSOR_SLOT_ITEM_COUNT;
     }
 

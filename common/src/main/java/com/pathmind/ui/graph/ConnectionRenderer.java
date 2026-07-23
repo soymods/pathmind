@@ -186,7 +186,7 @@ final class ConnectionRenderer {
             || host.isNodeOverSidebarForRender(inputNode, inputScreenX, inputNode.getWidth());
     }
 
-    private boolean shouldRenderConnectionInDraggedPass(NodeConnection connection) {
+    boolean shouldRenderConnectionInDraggedPass(NodeConnection connection) {
         if (connection == null) {
             return false;
         }

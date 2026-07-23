@@ -3283,6 +3283,7 @@ public class NodeGraph {
             && node.getType() != NodeType.SENSOR_LOOK_DIRECTION
             && node.getType() != NodeType.SENSOR_DISTANCE_BETWEEN
             && node.getType() != NodeType.SENSOR_CURRENT_GUI
+            && node.getType() != NodeType.SENSOR_FIND_TRADE
             && node.getType() != NodeType.SENSOR_SLOT_ITEM_COUNT;
     }
 

@@ -476,6 +476,25 @@ final class ParameterDropdownOptions {
                 tradeKey
             ));
         }
+        if (result.isEmpty()) {
+            for (VillagerTradeCatalog.Preview preview : VillagerTradeCatalog.loadPreviews(
+                normalizedProfession,
+                professionKey,
+                professionHolder
+            )) {
+                ItemStack sell = preview.sell();
+                Identifier sellId = sell == null || sell.isEmpty()
+                    ? null
+                    : BuiltInRegistries.ITEM.getKey(sell.getItem());
+                if (sellId == null) {
+                    continue;
+                }
+                result.add(new ParameterDropdownOption(
+                    "Lvl " + preview.level() + ": " + sell.getHoverName().getString(),
+                    sellId.toString()
+                ));
+            }
+        }
         result.sort((left, right) -> left.label().compareToIgnoreCase(right.label()));
         return filterDropdownOptions(result, loweredQuery);
     }

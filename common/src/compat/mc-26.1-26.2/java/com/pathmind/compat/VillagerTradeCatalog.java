@@ -29,6 +29,9 @@ public final class VillagerTradeCatalog {
     public record Offer(int level, ItemStack firstBuy, ItemStack secondBuy, ItemStack sell) {
     }
 
+    public record Preview(int level, ItemStack sell) {
+    }
+
     public static List<Offer> load(
         String professionId,
         ResourceKey<VillagerProfession> professionKey,
@@ -63,5 +66,13 @@ public final class VillagerTradeCatalog {
             }
         }
         return result;
+    }
+
+    public static List<Preview> loadPreviews(
+        String professionId,
+        ResourceKey<VillagerProfession> professionKey,
+        Holder<VillagerProfession> profession
+    ) {
+        return List.of();
     }
 }

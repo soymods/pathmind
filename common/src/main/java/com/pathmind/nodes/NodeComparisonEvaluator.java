@@ -463,9 +463,33 @@ final class NodeComparisonEvaluator {
                 if (leftTrade.equalsIgnoreCase(rightTrade)) {
                     return Optional.of(true);
                 }
+                String leftSellItem = getVillagerTradeSellItemId(leftTrade);
+                String rightSellItem = getVillagerTradeSellItemId(rightTrade);
+                if ((!isFullVillagerTradeKey(leftTrade) || !isFullVillagerTradeKey(rightTrade))
+                    && !leftSellItem.isEmpty()
+                    && leftSellItem.equalsIgnoreCase(rightSellItem)) {
+                    return Optional.of(true);
+                }
             }
         }
         return Optional.of(false);
+    }
+
+    private boolean isFullVillagerTradeKey(String value) {
+        return value != null && value.contains("|") && value.contains("@");
+    }
+
+    private String getVillagerTradeSellItemId(String value) {
+        if (value == null || value.isEmpty()) {
+            return "";
+        }
+        String sellPart = value;
+        if (value.contains("|")) {
+            String[] parts = value.split("\\|");
+            sellPart = parts[parts.length - 1];
+        }
+        int countSeparator = sellPart.indexOf('@');
+        return countSeparator >= 0 ? sellPart.substring(0, countSeparator) : sellPart;
     }
 
     private List<String> resolveComparableVillagerTrades(Map<String, String> values) {

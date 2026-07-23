@@ -1,6 +1,8 @@
 package com.pathmind.compat;
 
+import java.lang.reflect.Field;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import net.minecraft.core.Holder;
@@ -14,6 +16,8 @@ import net.minecraft.world.entity.npc.villager.Villager;
 import net.minecraft.world.entity.npc.villager.VillagerProfession;
 import net.minecraft.world.entity.npc.villager.VillagerTrades;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.item.trading.MerchantOffer;
 import net.minecraft.world.level.Level;
 
@@ -23,6 +27,9 @@ public final class VillagerTradeCatalog {
     }
 
     public record Offer(int level, ItemStack firstBuy, ItemStack secondBuy, ItemStack sell) {
+    }
+
+    public record Preview(int level, ItemStack sell) {
     }
 
     public static List<Offer> load(
@@ -54,6 +61,97 @@ public final class VillagerTradeCatalog {
             }
         }
         return result;
+    }
+
+    public static List<Preview> loadPreviews(
+        String professionId,
+        ResourceKey<VillagerProfession> professionKey,
+        Holder<VillagerProfession> profession
+    ) {
+        var levels = resolveLevels(VillagerTrades.TRADES, professionId, professionKey, profession);
+        if ((levels == null || levels.isEmpty()) && VillagerTrades.EXPERIMENTAL_TRADES != null) {
+            levels = resolveLevels(VillagerTrades.EXPERIMENTAL_TRADES, professionId, professionKey, profession);
+        }
+        if (levels == null || levels.isEmpty()) {
+            return List.of();
+        }
+        Map<String, Preview> previews = new LinkedHashMap<>();
+        for (var levelEntry : levels.int2ObjectEntrySet()) {
+            VillagerTrades.ItemListing[] factories = levelEntry.getValue();
+            if (factories == null) {
+                continue;
+            }
+            for (VillagerTrades.ItemListing factory : factories) {
+                for (ItemStack sell : extractPreviewSellStacks(factory)) {
+                    Identifier id = BuiltInRegistries.ITEM.getKey(sell.getItem());
+                    if (id != null && !sell.isEmpty()) {
+                        previews.putIfAbsent(id.toString(), new Preview(levelEntry.getIntKey(), sell));
+                    }
+                }
+            }
+        }
+        return new ArrayList<>(previews.values());
+    }
+
+    private static List<ItemStack> extractPreviewSellStacks(VillagerTrades.ItemListing factory) {
+        if (factory == null) {
+            return List.of();
+        }
+        List<ItemStack> stacks = new ArrayList<>();
+        List<Item> items = new ArrayList<>();
+        boolean hasItemCost = false;
+        boolean hasStewEffects = false;
+        boolean hasTag = false;
+        boolean hasHolder = false;
+        boolean hasString = false;
+        for (Field field : factory.getClass().getDeclaredFields()) {
+            try {
+                if (!field.trySetAccessible()) {
+                    continue;
+                }
+                Object value = field.get(factory);
+                if (value instanceof ItemStack stack && !stack.isEmpty()) {
+                    stacks.add(new ItemStack(stack.getItem(), stack.getCount()));
+                } else if (value instanceof Item item && item != Items.AIR) {
+                    items.add(item);
+                } else if (value instanceof Map<?, ?> map) {
+                    for (Object mappedValue : map.values()) {
+                        if (mappedValue instanceof Item item && item != Items.AIR) {
+                            items.add(item);
+                        }
+                    }
+                }
+                String typeName = field.getType().getSimpleName();
+                hasItemCost |= "ItemCost".equals(typeName);
+                hasStewEffects |= "SuspiciousStewEffects".equals(typeName);
+                hasTag |= "TagKey".equals(typeName);
+                hasHolder |= "Holder".equals(typeName);
+                hasString |= field.getType() == String.class;
+            } catch (IllegalAccessException ignored) {
+            }
+        }
+        if (!stacks.isEmpty()) {
+            return stacks;
+        }
+        if (!items.isEmpty()) {
+            for (Item item : items) {
+                stacks.add(new ItemStack(item));
+            }
+            return stacks;
+        }
+        if (hasStewEffects) {
+            return List.of(new ItemStack(Items.SUSPICIOUS_STEW));
+        }
+        if (hasTag && hasHolder && hasString) {
+            return List.of(new ItemStack(Items.FILLED_MAP));
+        }
+        if (hasTag) {
+            return List.of(new ItemStack(Items.ENCHANTED_BOOK));
+        }
+        if (hasItemCost) {
+            return List.of(new ItemStack(Items.EMERALD));
+        }
+        return List.of();
     }
 
     private static it.unimi.dsi.fastutil.ints.Int2ObjectMap<VillagerTrades.ItemListing[]> resolveLevels(

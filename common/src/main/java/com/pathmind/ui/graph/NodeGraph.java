@@ -278,7 +278,6 @@ public class NodeGraph {
     private String activeRoutineWorkspaceId = "";
     private final Set<Node> cascadeDeletionPreviewNodes;
 
-    private static final long COORDINATE_CARET_BLINK_INTERVAL_MS = 500;
     private static final int PARAMETER_INPUT_HEIGHT = 16;
     private static final int PARAMETER_INPUT_GAP = 4;
     private static final int DIRECTION_MODE_TAB_HEIGHT = 18;
@@ -309,7 +308,7 @@ public class NodeGraph {
         @Override public String getClipboardText() { return NodeGraph.this.getClipboardText(); }
         @Override public void setClipboardText(String text) { NodeGraph.this.setClipboardText(text); }
         @Override public int findPreviousWordBoundary(String text, int fromPosition) {
-            return NodeGraph.this.findPreviousWordBoundary(text, fromPosition);
+            return ParameterTextEditorController.findPreviousWordBoundary(text, fromPosition);
         }
     });
     private final InlineFieldRenderer inlineFieldRenderer = new InlineFieldRenderer(new InlineFieldRenderer.Host() {
@@ -363,7 +362,7 @@ public class NodeGraph {
                 fieldLeft, fieldTop, fieldWidth, fieldHeight, label, includeValue, value);
         }
         @Override public boolean isMoveItemAllAmountValue(String value) {
-            return NodeGraph.this.isMoveItemAllAmountValue(value);
+            return ParameterTextEditorController.isMoveItemAllAmountValue(value);
         }
         @Override public void renderAmountToggle(GuiGraphics context, Node node, boolean amountEnabled,
                                                   boolean isOverSidebar) {
@@ -587,15 +586,19 @@ public class NodeGraph {
             NodeGraph.this.renderStartModeButton(context, node, x, y, isOverSidebar, mouseX, mouseY);
         }
         @Override public boolean isEditingParameterField() { return NodeGraph.this.isEditingParameterField(); }
-        @Override public Node parameterEditingNode() { return parameterEditingNode; }
-        @Override public int parameterEditingIndex() { return parameterEditingIndex; }
-        @Override public void updateParameterCaretBlink() { NodeGraph.this.updateParameterCaretBlink(); }
-        @Override public String parameterEditBuffer() { return parameterEditBuffer; }
-        @Override public boolean hasParameterSelection() { return NodeGraph.this.hasParameterSelection(); }
-        @Override public int parameterSelectionStart() { return parameterSelectionStart; }
-        @Override public int parameterSelectionEnd() { return parameterSelectionEnd; }
-        @Override public boolean parameterCaretVisible() { return parameterCaretVisible; }
-        @Override public int parameterCaretPosition() { return parameterCaretPosition; }
+        @Override public Node parameterEditingNode() { return parameterEditor.getNode(); }
+        @Override public int parameterEditingIndex() { return parameterEditor.getIndex(); }
+        @Override public void updateParameterCaretBlink() { parameterEditor.updateCaretBlink(); }
+        @Override public String parameterEditBuffer() { return parameterEditor.getBuffer(); }
+        @Override public boolean hasParameterSelection() {
+            return parameterEditor.getSelectionStart() >= 0
+                && parameterEditor.getSelectionEnd() >= 0
+                && parameterEditor.getSelectionStart() != parameterEditor.getSelectionEnd();
+        }
+        @Override public int parameterSelectionStart() { return parameterEditor.getSelectionStart(); }
+        @Override public int parameterSelectionEnd() { return parameterEditor.getSelectionEnd(); }
+        @Override public boolean parameterCaretVisible() { return parameterEditor.isCaretVisible(); }
+        @Override public int parameterCaretPosition() { return parameterEditor.getCaretPosition(); }
         @Override public boolean shouldShowParameters(Node node) { return NodeGraph.this.shouldShowParameters(node); }
         @Override public int parameterInputHeight() { return PARAMETER_INPUT_HEIGHT; }
         @Override public int parameterInputGap() { return PARAMETER_INPUT_GAP; }
@@ -715,28 +718,51 @@ public class NodeGraph {
             NodeGraph.this.renderRunPresetDropdownList(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
         }
     });
-    private Node parameterEditingNode = null;
-    private int parameterEditingIndex = -1;
-    private String parameterEditBuffer = "";
-    private String parameterEditOriginalValue = "";
-    private long parameterCaretLastToggleTime = 0L;
-    private boolean parameterCaretVisible = true;
-    private int parameterCaretPosition = 0;
-    private int parameterSelectionStart = -1;
-    private int parameterSelectionEnd = -1;
-    private int parameterSelectionAnchor = -1;
+    private final ParameterTextEditorController parameterEditor = new ParameterTextEditorController(
+        new ParameterTextEditorController.Host() {
+            @Override public boolean canEditInlineParameterFields(Node node) {
+                return NodeGraph.this.canEditInlineParameterFields(node);
+            }
+            @Override public void closeModeDropdown() { NodeGraph.this.closeModeDropdown(); }
+            @Override public void closeSchematicDropdown() { NodeGraph.this.closeSchematicDropdown(); }
+            @Override public void closeRunPresetDropdown() { NodeGraph.this.closeRunPresetDropdown(); }
+            @Override public void closeRandomRoundingDropdown() { NodeGraph.this.closeRandomRoundingDropdown(); }
+            @Override public void closeParameterDropdown() { parameterDropdown.close(); }
+            @Override public void clearParameterDropdownSuppression() { parameterDropdown.clearSuppression(); }
+            @Override public void stopCoordinateEditing(boolean commit) { NodeGraph.this.stopCoordinateEditing(commit); }
+            @Override public void stopAmountEditing(boolean commit) { NodeGraph.this.stopAmountEditing(commit); }
+            @Override public void stopStopTargetEditing(boolean commit) { NodeGraph.this.stopStopTargetEditing(commit); }
+            @Override public void stopMessageEditing(boolean commit) { NodeGraph.this.stopMessageEditing(commit); }
+            @Override public void stopVariableEditing(boolean commit) { NodeGraph.this.stopVariableEditing(commit); }
+            @Override public void stopEventNameEditing(boolean commit) { NodeGraph.this.stopEventNameEditing(commit); }
+            @Override public void stopStickyNoteEditing(boolean commit) { NodeGraph.this.stopStickyNoteEditing(commit); }
+            @Override public void notifyNodeParametersChanged(Node node) {
+                NodeGraph.this.notifyNodeParametersChanged(node);
+            }
+            @Override public void updateParameterFieldContentWidth(
+                Node node, Font renderer, int index, String value
+            ) {
+                NodeGraph.this.updateParameterFieldContentWidth(node, renderer, index, value);
+            }
+            @Override public Font getClientTextRenderer() { return NodeGraph.this.getClientTextRenderer(); }
+            @Override public boolean isTextShortcutDown(int modifiers) {
+                return NodeGraph.this.isTextShortcutDown(modifiers);
+            }
+            @Override public String getClipboardText() { return NodeGraph.this.getClipboardText(); }
+            @Override public void setClipboardText(String text) { NodeGraph.this.setClipboardText(text); }
+        }
+    );
     private final ParameterDropdownController parameterDropdown = new ParameterDropdownController(
         new ParameterDropdownController.Host() {
             @Override public boolean isEditingParameterField() {
                 return NodeGraph.this.isEditingParameterField();
             }
-            @Override public Node parameterEditingNode() { return parameterEditingNode; }
-            @Override public int parameterEditingIndex() { return parameterEditingIndex; }
-            @Override public String parameterEditBuffer() { return parameterEditBuffer; }
-            @Override public int parameterCaretPosition() { return parameterCaretPosition; }
+            @Override public Node parameterEditingNode() { return parameterEditor.getNode(); }
+            @Override public int parameterEditingIndex() { return parameterEditor.getIndex(); }
+            @Override public String parameterEditBuffer() { return parameterEditor.getBuffer(); }
+            @Override public int parameterCaretPosition() { return parameterEditor.getCaretPosition(); }
             @Override public void replaceParameterEditBuffer(String value, int caretPosition) {
-                parameterEditBuffer = value;
-                setParameterCaretPosition(caretPosition);
+                parameterEditor.replaceBuffer(value, caretPosition);
             }
             @Override public void updateParameterFieldContentWidth(
                 Node node, Font textRenderer, int index, String value
@@ -744,10 +770,10 @@ public class NodeGraph {
                 NodeGraph.this.updateParameterFieldContentWidth(node, textRenderer, index, value);
             }
             @Override public void refreshStateParameterPreview() {
-                NodeGraph.this.refreshStateParameterPreview();
+                parameterEditor.refreshStatePreview();
             }
             @Override public boolean applyParameterEdit() {
-                return NodeGraph.this.applyParameterEdit();
+                return parameterEditor.apply();
             }
             @Override public void notifyNodeParametersChanged(Node node) {
                 NodeGraph.this.notifyNodeParametersChanged(node);
@@ -5788,531 +5814,55 @@ public class NodeGraph {
     }
 
     public boolean isEditingParameterField() {
-        return parameterEditingNode != null && parameterEditingIndex >= 0;
+        return parameterEditor.isEditing();
     }
 
     private void updateParameterCaretBlink() {
-        long now = System.currentTimeMillis();
-        if (now - parameterCaretLastToggleTime >= COORDINATE_CARET_BLINK_INTERVAL_MS) {
-            parameterCaretVisible = !parameterCaretVisible;
-            parameterCaretLastToggleTime = now;
-        }
-    }
-
-    private void resetParameterCaretBlink() {
-        parameterCaretVisible = true;
-        parameterCaretLastToggleTime = System.currentTimeMillis();
+        parameterEditor.updateCaretBlink();
     }
 
     public void startParameterEditing(Node node, int index) {
-        if (node == null || !canEditInlineParameterFields(node)
-            || index < 0 || index >= node.getParameters().size()) {
-            stopParameterEditing(false);
-            return;
-        }
-
-        closeModeDropdown();
-        closeSchematicDropdown();
-        closeRunPresetDropdown();
-        closeRandomRoundingDropdown();
-        if (isEditingParameterField()) {
-            if (parameterEditingNode == node && parameterEditingIndex == index) {
-                clearParameterDropdownSuppression();
-                return;
-            }
-            boolean changed = applyParameterEdit();
-            if (changed) {
-                notifyNodeParametersChanged(parameterEditingNode);
-            }
-        }
-
-        stopCoordinateEditing(true);
-        stopAmountEditing(true);
-        stopStopTargetEditing(true);
-        stopMessageEditing(true);
-        stopVariableEditing(true);
-        stopEventNameEditing(true);
-        stopStickyNoteEditing(true);
-
-        parameterEditingNode = node;
-        parameterEditingIndex = index;
-        NodeParameter parameter = node.getParameters().get(index);
-        String originalValue = parameter != null ? parameter.getStringValue() : "";
-        parameterEditBuffer = originalValue;
-        if (parameter != null && (isPlayerParameter(node, parameter)
-            || isMessageParameter(node, parameter)
-            || isSeedParameter(node, parameter)
-            || isAmountParameter(node, parameter)
-            || isTradeInlineParameter(node, parameter)
-            || isMouseButtonParameter(node, parameter)
-            || isHandParameter(node, parameter)
-            || isGuiParameter(node, parameter)
-            || isDirectionParameter(node, index)
-            || isAttributeDetectionBooleanValueParameter(node, index)
-            || isBlockFaceParameter(node, index)
-            || isBlockItemParameter(node, index)
-            || isFabricEventSensorParameter(node, index))) {
-            if (parameterEditBuffer == null || parameterEditBuffer.isEmpty()
-                || "Any".equalsIgnoreCase(parameterEditBuffer)
-                || "Self".equalsIgnoreCase(parameterEditBuffer)
-                || "Any State".equalsIgnoreCase(parameterEditBuffer)
-                || "North".equalsIgnoreCase(parameterEditBuffer)
-                || "True".equalsIgnoreCase(parameterEditBuffer)
-                || "Main".equalsIgnoreCase(parameterEditBuffer)
-                || isDefaultMouseButtonValue(parameterEditBuffer)
-                || "0".equals(parameterEditBuffer)
-                || (isTradeInlineParameter(node, parameter) && "1".equals(parameterEditBuffer))) {
-                parameterEditBuffer = "";
-            }
-        }
-        parameterEditOriginalValue = originalValue != null ? originalValue : "";
-        resetParameterCaretBlink();
-        parameterCaretPosition = parameterEditBuffer.length();
-        parameterSelectionAnchor = -1;
-        parameterSelectionStart = -1;
-        parameterSelectionEnd = -1;
-        clearParameterDropdownSuppression();
-        updateParameterFieldContentWidth(parameterEditingNode, getClientTextRenderer(), parameterEditingIndex, parameterEditBuffer);
+        parameterEditor.start(node, index);
     }
 
     public void stopParameterEditing(boolean commit) {
-        if (!isEditingParameterField()) {
-            return;
-        }
-
-        boolean changed = false;
-        if (commit) {
-            changed = applyParameterEdit();
-        } else {
-            revertParameterEdit();
-        }
-
-        if (commit && changed) {
-            notifyNodeParametersChanged(parameterEditingNode);
-        }
-
-        updateParameterFieldContentWidth(parameterEditingNode, getClientTextRenderer(), -1, null);
-        parameterEditingNode = null;
-        parameterEditingIndex = -1;
-        parameterEditBuffer = "";
-        parameterEditOriginalValue = "";
-        parameterCaretVisible = true;
-        parameterCaretPosition = 0;
-        parameterSelectionAnchor = -1;
-        parameterSelectionStart = -1;
-        parameterSelectionEnd = -1;
-        closeParameterDropdown();
-        clearParameterDropdownSuppression();
+        parameterEditor.stop(commit);
     }
 
     private boolean applyParameterEdit() {
-        if (!isEditingParameterField()) {
-            return false;
-        }
-        if (parameterEditingIndex < 0 || parameterEditingIndex >= parameterEditingNode.getParameters().size()) {
-            return false;
-        }
-        NodeParameter parameter = parameterEditingNode.getParameters().get(parameterEditingIndex);
-        String value = parameterEditBuffer == null ? "" : parameterEditBuffer;
-        String previous = parameter != null ? parameter.getStringValue() : "";
-        String appliedValue = value;
-        if (parameter != null) {
-            boolean isPlayerParam = isPlayerParameter(parameterEditingNode, parameter);
-            boolean isDirectionParam = isDirectionParameter(parameterEditingNode, parameterEditingIndex);
-            boolean isAnyLikeParam = isSeedParameter(parameterEditingNode, parameter)
-                || isGuiParameter(parameterEditingNode, parameter)
-                || isFabricEventSensorParameter(parameterEditingNode, parameterEditingIndex);
-            boolean isBlockFaceParam = isBlockFaceParameter(parameterEditingNode, parameterEditingIndex);
-            boolean isBooleanLiteralParam = isBooleanLiteralParameter(parameterEditingNode, parameterEditingIndex);
-            boolean isAttributeDetectionAttributeParam = isAttributeDetectionAttributeParameter(parameterEditingNode, parameterEditingIndex);
-            boolean isAttributeDetectionBooleanValueParam = isAttributeDetectionBooleanValueParameter(parameterEditingNode, parameterEditingIndex);
-            boolean isMouseButtonParam = isMouseButtonParameter(parameterEditingNode, parameter);
-            boolean isHandParam = isHandParameter(parameterEditingNode, parameter);
-            boolean isAmountParam = isAmountParameter(parameterEditingNode, parameter);
-            boolean isTradeInlineParam = isTradeInlineParameter(parameterEditingNode, parameter);
-            boolean isBlockItemParam = isBlockItemParameter(parameterEditingNode, parameterEditingIndex);
-            if (isAmountParam) {
-                String trimmed = value.trim();
-                if (trimmed.isEmpty()) {
-                    appliedValue = "0";
-                    parameter.setStringValue(appliedValue);
-                    parameter.setUserEdited(false);
-                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), appliedValue);
-                } else {
-                    parameter.setStringValueFromUser(value);
-                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), value);
-                }
-            } else if (isTradeInlineParam) {
-                String trimmed = value.trim();
-                if (trimmed.isEmpty() || "1".equals(trimmed)) {
-                    appliedValue = "1";
-                    parameter.setStringValue(appliedValue);
-                    parameter.setUserEdited(false);
-                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), appliedValue);
-                } else {
-                    parameter.setStringValueFromUser(value);
-                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), value);
-                }
-            } else if (isPlayerParam) {
-                String trimmed = value.trim();
-                boolean isDefaultSelf = trimmed.isEmpty() || "Self".equalsIgnoreCase(trimmed);
-                if (isDefaultSelf) {
-                    appliedValue = "Self";
-                    parameter.setStringValue(appliedValue);
-                    parameter.setUserEdited(false);
-                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), appliedValue);
-                } else {
-                    parameter.setStringValueFromUser(value);
-                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), value);
-                }
-            } else if (isMouseButtonParam) {
-                String trimmed = value.trim();
-                if (trimmed.isEmpty() || isDefaultMouseButtonValue(trimmed)) {
-                    appliedValue = "Left";
-                    parameter.setStringValue(appliedValue);
-                    parameter.setUserEdited(false);
-                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), appliedValue);
-                } else {
-                    parameter.setStringValueFromUser(value);
-                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), value);
-                }
-            } else if (isHandParam) {
-                String trimmed = value.trim();
-                if (trimmed.isEmpty() || isDefaultHandValue(trimmed)) {
-                    appliedValue = "main";
-                    parameter.setStringValue(appliedValue);
-                    parameter.setUserEdited(false);
-                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), appliedValue);
-                } else {
-                    String normalized = trimmed.toLowerCase(Locale.ROOT);
-                    if ("offhand".equals(normalized)
-                        || "off_hand".equals(normalized)
-                        || "off-hand".equals(normalized)
-                        || "off hand".equals(normalized)
-                        || "off".equals(normalized)) {
-                        normalized = "offhand";
-                    } else if ("main_hand".equals(normalized)
-                        || "main-hand".equals(normalized)
-                        || "main hand".equals(normalized)
-                        || "mainhand".equals(normalized)) {
-                        normalized = "main";
-                    }
-                    parameter.setStringValueFromUser(normalized);
-                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), normalized);
-                }
-            } else if (isBlockFaceParam) {
-                String trimmed = value.trim();
-                if (trimmed.isEmpty() || "North".equalsIgnoreCase(trimmed) || "north".equalsIgnoreCase(trimmed)) {
-                    appliedValue = "north";
-                    parameter.setStringValue(appliedValue);
-                    parameter.setUserEdited(false);
-                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), appliedValue);
-                } else {
-                    parameter.setStringValueFromUser(trimmed.toLowerCase(Locale.ROOT));
-                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), trimmed.toLowerCase(Locale.ROOT));
-                }
-            } else if (isDirectionParam) {
-                String trimmed = value.trim();
-                if (trimmed.isEmpty()) {
-                    appliedValue = "north";
-                    parameter.setStringValue(appliedValue);
-                    parameter.setUserEdited(false);
-                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), appliedValue);
-                } else {
-                    parameter.setStringValueFromUser(trimmed.toLowerCase(Locale.ROOT));
-                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), trimmed.toLowerCase(Locale.ROOT));
-                }
-            } else if (isBooleanLiteralParam) {
-                String trimmed = value.trim();
-                if (trimmed.isEmpty() || "true".equalsIgnoreCase(trimmed)) {
-                    appliedValue = "true";
-                    parameter.setStringValue(appliedValue);
-                    parameter.setUserEdited(false);
-                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), appliedValue);
-                } else if ("1".equals(trimmed)) {
-                    appliedValue = "true";
-                    parameter.setStringValueFromUser(appliedValue);
-                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), appliedValue);
-                } else if ("0".equals(trimmed)) {
-                    appliedValue = "false";
-                    parameter.setStringValueFromUser(appliedValue);
-                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), appliedValue);
-                } else {
-                    String normalized = trimmed.toLowerCase(Locale.ROOT);
-                    parameter.setStringValueFromUser(normalized);
-                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), normalized);
-                }
-            } else if (isAttributeDetectionAttributeParam) {
-                String trimmed = value.trim();
-                AttributeDetectionConfig.TargetKind targetKind = getAttributeDetectionTargetKind(parameterEditingNode);
-                AttributeDetectionConfig.AttributeOption attribute = AttributeDetectionConfig.getAttribute(trimmed);
-                if (attribute == null || (targetKind != null && !attribute.supports(targetKind))) {
-                    attribute = AttributeDetectionConfig.getDefaultAttribute(targetKind);
-                    appliedValue = attribute.id();
-                    parameter.setStringValue(appliedValue);
-                    parameter.setUserEdited(false);
-                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), appliedValue);
-                } else {
-                    appliedValue = attribute.id();
-                    parameter.setStringValueFromUser(appliedValue);
-                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), appliedValue);
-                }
-            } else if (isAttributeDetectionBooleanValueParam) {
-                String trimmed = value.trim();
-                String normalized = (trimmed.isEmpty() || "true".equalsIgnoreCase(trimmed) || "1".equals(trimmed))
-                    ? "true"
-                    : ("false".equalsIgnoreCase(trimmed) || "0".equals(trimmed) ? "false" : trimmed.toLowerCase(Locale.ROOT));
-                if (!"true".equals(normalized) && !"false".equals(normalized)) {
-                    normalized = "true";
-                }
-                appliedValue = normalized;
-                if ("true".equals(normalized) && trimmed.isEmpty()) {
-                    parameter.setStringValue(appliedValue);
-                    parameter.setUserEdited(false);
-                } else {
-                    parameter.setStringValueFromUser(appliedValue);
-                }
-                parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), appliedValue);
-            } else if (isAnyLikeParam || isBlockItemParam) {
-                String trimmed = value.trim();
-                boolean isEmptyOrAny = trimmed.isEmpty()
-                    || "Any".equalsIgnoreCase(trimmed)
-                    || "Any State".equalsIgnoreCase(trimmed);
-                if (isEmptyOrAny) {
-                    appliedValue = (isBlockItemParam && (isBlockStateParameter(parameterEditingNode, parameterEditingIndex)
-                        || isEntityStateParameter(parameterEditingNode, parameterEditingIndex)))
-                        ? "Any State"
-                        : "Any";
-                    parameter.setStringValue(appliedValue);
-                    parameter.setUserEdited(false);
-                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), appliedValue);
-                } else {
-                    parameter.setStringValueFromUser(value);
-                    parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), value);
-                }
-            } else {
-                parameter.setStringValueFromUser(value);
-                parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), value);
-            }
-        }
-        parameterEditingNode.recalculateDimensions();
-        return !Objects.equals(previous, appliedValue);
+        return parameterEditor.apply();
     }
 
     private void refreshStateParameterPreview() {
-        if (!isEditingParameterField() || parameterEditingNode == null) {
-            return;
-        }
-        if (parameterEditingIndex < 0 || parameterEditingIndex >= parameterEditingNode.getParameters().size()) {
-            return;
-        }
-        if (!isBlockParameter(parameterEditingNode, parameterEditingIndex)
-            && !isEntityParameter(parameterEditingNode, parameterEditingIndex)) {
-            return;
-        }
-        NodeParameter parameter = parameterEditingNode.getParameters().get(parameterEditingIndex);
-        if (parameter == null) {
-            return;
-        }
-        String value = parameterEditBuffer == null ? "" : parameterEditBuffer;
-        parameter.setStringValueFromUser(value);
-        parameterEditingNode.recalculateDimensions();
+        parameterEditor.refreshStatePreview();
     }
 
     private boolean isTradeInlinePlaceholder(Node node, NodeParameter parameter, boolean editing) {
-        if (!isTradeInlineParameter(node, parameter)) {
-            return false;
-        }
-        String value = parameter.getStringValue();
-        if (editing && isEditingParameterField() && parameterEditingNode == node && parameterEditingIndex >= 0
-            && parameterEditingIndex < node.getParameters().size() && node.getParameters().get(parameterEditingIndex) == parameter) {
-            value = parameterEditBuffer;
-        }
-        return value == null || value.isEmpty() || (!parameter.isUserEdited() && "1".equals(value));
+        return parameterEditor.isTradeInlinePlaceholder(node, parameter, editing);
     }
 
     private boolean isDefaultMouseButtonValue(String value) {
-        return value == null
-            || value.isEmpty()
-            || "GLFW_MOUSE_BUTTON_LEFT".equalsIgnoreCase(value)
-            || "LEFT".equalsIgnoreCase(value);
+        return ParameterTextEditorController.isDefaultMouseButtonValue(value);
     }
 
     private boolean isDefaultHandValue(String value) {
-        return value == null
-            || value.isEmpty()
-            || "main".equalsIgnoreCase(value)
-            || "main_hand".equalsIgnoreCase(value)
-            || "main-hand".equalsIgnoreCase(value)
-            || "main hand".equalsIgnoreCase(value);
+        return ParameterTextEditorController.isDefaultHandValue(value);
     }
 
     private String formatMouseButtonValue(String value) {
-        if (value == null || value.isEmpty()) {
-            return "Left";
-        }
-        return switch (value.toUpperCase(Locale.ROOT)) {
-            case "GLFW_MOUSE_BUTTON_LEFT", "LEFT" -> "Left";
-            case "GLFW_MOUSE_BUTTON_RIGHT", "RIGHT" -> "Right";
-            case "GLFW_MOUSE_BUTTON_MIDDLE", "MIDDLE" -> "Middle";
-            case "GLFW_MOUSE_BUTTON_4", "BUTTON_4" -> "Button 4";
-            case "GLFW_MOUSE_BUTTON_5", "BUTTON_5" -> "Button 5";
-            case "GLFW_MOUSE_BUTTON_6", "BUTTON_6" -> "Button 6";
-            case "GLFW_MOUSE_BUTTON_7", "BUTTON_7" -> "Button 7";
-            case "GLFW_MOUSE_BUTTON_8", "BUTTON_8" -> "Button 8";
-            default -> value;
-        };
+        return ParameterTextEditorController.formatMouseButtonValue(value);
     }
 
     private String formatHandValue(String value) {
-        if (isDefaultHandValue(value)) {
-            return "Main Hand";
-        }
-        if (value == null || value.isEmpty()) {
-            return "Main Hand";
-        }
-        String normalized = value.trim().toLowerCase(Locale.ROOT);
-        if ("off".equals(normalized)
-            || "offhand".equals(normalized)
-            || "off_hand".equals(normalized)
-            || "off-hand".equals(normalized)
-            || "off hand".equals(normalized)) {
-            return "Offhand";
-        }
-        return value;
-    }
-
-    private void revertParameterEdit() {
-        if (!isEditingParameterField()) {
-            return;
-        }
-        if (parameterEditingIndex < 0 || parameterEditingIndex >= parameterEditingNode.getParameters().size()) {
-            return;
-        }
-        NodeParameter parameter = parameterEditingNode.getParameters().get(parameterEditingIndex);
-        if (parameter != null) {
-            parameter.setStringValue(parameterEditOriginalValue);
-            parameterEditingNode.setParameterValueAndPropagate(parameter.getName(), parameterEditOriginalValue);
-        }
-        parameterEditingNode.recalculateDimensions();
+        return ParameterTextEditorController.formatHandValue(value);
     }
 
     public boolean handleParameterKeyPressed(int keyCode, int modifiers) {
-        if (!isEditingParameterField()) {
-            return false;
-        }
-
-        boolean shiftHeld = (modifiers & GLFW.GLFW_MOD_SHIFT) != 0;
-        boolean controlHeld = isTextShortcutDown(modifiers);
-
-        switch (keyCode) {
-            case GLFW.GLFW_KEY_BACKSPACE:
-                if (deleteParameterSelection()) {
-                    return true;
-                }
-                if (controlHeld && parameterCaretPosition > 0) {
-                    // CTRL+Backspace: delete to previous word boundary
-                    int deleteToPos = findPreviousWordBoundary(parameterEditBuffer, parameterCaretPosition);
-                    parameterEditBuffer = parameterEditBuffer.substring(0, deleteToPos)
-                        + parameterEditBuffer.substring(parameterCaretPosition);
-                    setParameterCaretPosition(deleteToPos);
-                    updateParameterFieldContentWidth(parameterEditingNode, getClientTextRenderer(), parameterEditingIndex, parameterEditBuffer);
-                    refreshStateParameterPreview();
-                    clearParameterDropdownSuppression();
-                } else if (parameterCaretPosition > 0 && !parameterEditBuffer.isEmpty()) {
-                    parameterEditBuffer = parameterEditBuffer.substring(0, parameterCaretPosition - 1)
-                        + parameterEditBuffer.substring(parameterCaretPosition);
-                    setParameterCaretPosition(parameterCaretPosition - 1);
-                    updateParameterFieldContentWidth(parameterEditingNode, getClientTextRenderer(), parameterEditingIndex, parameterEditBuffer);
-                    refreshStateParameterPreview();
-                    clearParameterDropdownSuppression();
-                }
-                return true;
-            case GLFW.GLFW_KEY_DELETE:
-                if (deleteParameterSelection()) {
-                    return true;
-                }
-                if (parameterCaretPosition < parameterEditBuffer.length()) {
-                    parameterEditBuffer = parameterEditBuffer.substring(0, parameterCaretPosition)
-                        + parameterEditBuffer.substring(parameterCaretPosition + 1);
-                    setParameterCaretPosition(parameterCaretPosition);
-                    updateParameterFieldContentWidth(parameterEditingNode, getClientTextRenderer(), parameterEditingIndex, parameterEditBuffer);
-                    refreshStateParameterPreview();
-                    clearParameterDropdownSuppression();
-                }
-                return true;
-            case GLFW.GLFW_KEY_LEFT:
-                moveParameterCaretTo(parameterCaretPosition - 1, shiftHeld);
-                return true;
-            case GLFW.GLFW_KEY_RIGHT:
-                moveParameterCaretTo(parameterCaretPosition + 1, shiftHeld);
-                return true;
-            case GLFW.GLFW_KEY_HOME:
-                moveParameterCaretTo(0, shiftHeld);
-                return true;
-            case GLFW.GLFW_KEY_END:
-                moveParameterCaretTo(parameterEditBuffer.length(), shiftHeld);
-                return true;
-            case GLFW.GLFW_KEY_ENTER:
-            case GLFW.GLFW_KEY_KP_ENTER:
-                stopParameterEditing(true);
-                return true;
-            case GLFW.GLFW_KEY_ESCAPE:
-                stopParameterEditing(true);
-                return true;
-            case GLFW.GLFW_KEY_A:
-                if (controlHeld) {
-                    selectAllParameterText();
-                    return true;
-                }
-                break;
-            case GLFW.GLFW_KEY_C:
-                if (controlHeld) {
-                    if (isCoordinateParameterNode(parameterEditingNode) && !hasParameterSelection()) {
-                        copyCoordinateParameterValues();
-                    } else {
-                        copyParameterSelection();
-                    }
-                    return true;
-                }
-                break;
-            case GLFW.GLFW_KEY_X:
-                if (controlHeld) {
-                    cutParameterSelection();
-                    return true;
-                }
-                break;
-            case GLFW.GLFW_KEY_V:
-                if (controlHeld) {
-                    Font textRenderer = getClientTextRenderer();
-                    if (textRenderer != null) {
-                        String clipboard = getClipboardText();
-                        if (!smartPasteCoordinateParameter(clipboard)) {
-                            insertParameterText(clipboard, textRenderer);
-                        }
-                    }
-                    return true;
-                }
-                break;
-            case GLFW.GLFW_KEY_TAB:
-                if (cycleCoordinateParameterAxis(shiftHeld)) {
-                    return true;
-                }
-                break;
-            default:
-                return false;
-        }
-        return false;
+        return parameterEditor.handleKeyPressed(keyCode, modifiers);
     }
 
     public boolean handleParameterCharTyped(char chr, int modifiers, Font textRenderer) {
-        if (!isEditingParameterField()) {
-            return false;
-        }
-        if (chr == '\n' || chr == '\r') {
-            return false;
-        }
-        return insertParameterText(String.valueOf(chr), textRenderer);
+        return parameterEditor.handleCharTyped(chr, textRenderer);
     }
 
     public boolean handleMessageKeyPressed(int keyCode, int modifiers) {
@@ -6323,324 +5873,8 @@ public class NodeGraph {
         return inlineFields.handleMessageCharTyped(chr);
     }
 
-    private boolean hasParameterSelection() {
-        return parameterSelectionStart >= 0
-            && parameterSelectionEnd >= 0
-            && parameterSelectionStart != parameterSelectionEnd;
-    }
-
-    private void resetParameterSelectionRange() {
-        parameterSelectionStart = -1;
-        parameterSelectionEnd = -1;
-    }
-
-    private void setParameterCaretPosition(int position) {
-        parameterCaretPosition = Mth.clamp(position, 0, parameterEditBuffer.length());
-        parameterSelectionAnchor = -1;
-        resetParameterSelectionRange();
-        resetParameterCaretBlink();
-    }
-
-    private void moveParameterCaretTo(int position, boolean extendSelection) {
-        position = Mth.clamp(position, 0, parameterEditBuffer.length());
-        if (extendSelection) {
-            if (parameterSelectionAnchor == -1) {
-                parameterSelectionAnchor = parameterCaretPosition;
-            }
-            int start = Math.min(parameterSelectionAnchor, position);
-            int end = Math.max(parameterSelectionAnchor, position);
-            if (start == end) {
-                resetParameterSelectionRange();
-            } else {
-                parameterSelectionStart = start;
-                parameterSelectionEnd = end;
-            }
-        } else {
-            parameterSelectionAnchor = -1;
-            resetParameterSelectionRange();
-        }
-        parameterCaretPosition = position;
-        resetParameterCaretBlink();
-        clearParameterDropdownSuppression();
-    }
-
-    private String cleanCoordinateToken(String token) {
-        StringBuilder cleaned = new StringBuilder();
-        for (int j = 0; j < token.length(); j++) {
-            char c = token.charAt(j);
-            if (Character.isDigit(c) || (c == '-' && j == 0)) {
-                cleaned.append(c);
-            }
-        }
-        return cleaned.toString();
-    }
-
-    private boolean isCoordinateParameterNode(Node node) {
-        return node != null && node.getType() == NodeType.PARAM_COORDINATE;
-    }
-
-    /**
-     * When editing a PARAM_COORDINATE axis, paste "x, y, z" (or "x y z") across all
-     * three axis parameters at once. Returns false (so the caller falls back to a
-     * normal single-field paste) unless the clipboard holds exactly one valid
-     * integer per axis.
-     */
-    private boolean smartPasteCoordinateParameter(String clipboardText) {
-        if (!isEditingParameterField() || !isCoordinateParameterNode(parameterEditingNode)
-            || clipboardText == null || clipboardText.isEmpty()) {
-            return false;
-        }
-        List<NodeParameter> parameters = parameterEditingNode.getParameters();
-        String[] parts = clipboardText.trim().split("[\\s,]+");
-        if (parts.length != parameters.size()) {
-            return false;
-        }
-        String[] parsed = new String[parameters.size()];
-        for (int i = 0; i < parameters.size(); i++) {
-            String cleaned = cleanCoordinateToken(parts[i].trim());
-            if (cleaned.isEmpty() || !isValidCoordinateValue(cleaned)) {
-                return false;
-            }
-            parsed[i] = cleaned;
-        }
-        Node node = parameterEditingNode;
-        stopParameterEditing(false);
-        for (int i = 0; i < parameters.size(); i++) {
-            node.setParameterValueAndPropagate(parameters.get(i).getName(), parsed[i]);
-        }
-        node.recalculateDimensions();
-        notifyNodeParametersChanged(node);
-        return true;
-    }
-
-    /** Copy all axes of the PARAM_COORDINATE being edited as a single "x, y, z" string. */
-    private void copyCoordinateParameterValues() {
-        if (!isEditingParameterField() || !isCoordinateParameterNode(parameterEditingNode)) {
-            return;
-        }
-        List<NodeParameter> parameters = parameterEditingNode.getParameters();
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < parameters.size(); i++) {
-            if (i > 0) {
-                sb.append(", ");
-            }
-            // Reflect the in-progress edit buffer for the axis currently being edited.
-            String value = i == parameterEditingIndex ? parameterEditBuffer : parameters.get(i).getStringValue();
-            sb.append(value == null ? "" : value);
-        }
-        setClipboardText(sb.toString());
-    }
-
-    private boolean cycleCoordinateParameterAxis(boolean backward) {
-        if (!isEditingParameterField() || !isCoordinateParameterNode(parameterEditingNode)) {
-            return false;
-        }
-        Node node = parameterEditingNode;
-        int count = node.getParameters().size();
-        if (count <= 1) {
-            return false;
-        }
-        int direction = backward ? -1 : 1;
-        int nextIndex = (parameterEditingIndex + direction + count) % count;
-        startParameterEditing(node, nextIndex);
-        return true;
-    }
-
-    private int findPreviousWordBoundary(String text, int fromPosition) {
-        if (text == null || fromPosition <= 0) {
-            return 0;
-        }
-        int pos = fromPosition - 1;
-
-        // Skip any whitespace immediately before the caret
-        while (pos > 0 && Character.isWhitespace(text.charAt(pos))) {
-            pos--;
-        }
-
-        // If we're on alphanumeric, skip back to start of word
-        if (pos >= 0 && Character.isLetterOrDigit(text.charAt(pos))) {
-            while (pos > 0 && Character.isLetterOrDigit(text.charAt(pos - 1))) {
-                pos--;
-            }
-        }
-        // If we're on non-alphanumeric (like punctuation), skip similar characters
-        else if (pos >= 0) {
-            char startChar = text.charAt(pos);
-            while (pos > 0 && !Character.isLetterOrDigit(text.charAt(pos - 1))
-                   && !Character.isWhitespace(text.charAt(pos - 1))) {
-                pos--;
-            }
-        }
-
-        return pos;
-    }
-
-    private boolean isValidCoordinateValue(String value) {
-        if (value.isEmpty()) {
-            return true;
-        }
-        if ("-".equals(value)) {
-            return true;
-        }
-        int startIndex = 0;
-        if (value.charAt(0) == '-') {
-            startIndex = 1;
-            if (startIndex >= value.length()) {
-                return false;
-            }
-        }
-        for (int i = startIndex; i < value.length(); i++) {
-            if (!Character.isDigit(value.charAt(i))) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private boolean deleteParameterSelection() {
-        if (!hasParameterSelection()) {
-            return false;
-        }
-        parameterEditBuffer = parameterEditBuffer.substring(0, parameterSelectionStart)
-            + parameterEditBuffer.substring(parameterSelectionEnd);
-        setParameterCaretPosition(parameterSelectionStart);
-        updateParameterFieldContentWidth(parameterEditingNode, getClientTextRenderer(), parameterEditingIndex, parameterEditBuffer);
-        refreshStateParameterPreview();
-        clearParameterDropdownSuppression();
-        return true;
-    }
-
-    private void selectAllParameterText() {
-        if (!isEditingParameterField()) {
-            return;
-        }
-        parameterSelectionAnchor = 0;
-        if (parameterEditBuffer.isEmpty()) {
-            resetParameterSelectionRange();
-        } else {
-            parameterSelectionStart = 0;
-            parameterSelectionEnd = parameterEditBuffer.length();
-        }
-        parameterCaretPosition = parameterEditBuffer.length();
-        resetParameterCaretBlink();
-    }
-
-    private void copyParameterSelection() {
-        if (!hasParameterSelection()) {
-            return;
-        }
-        setClipboardText(parameterEditBuffer.substring(parameterSelectionStart, parameterSelectionEnd));
-    }
-
-    private void cutParameterSelection() {
-        if (!hasParameterSelection()) {
-            return;
-        }
-        copyParameterSelection();
-        deleteParameterSelection();
-    }
-
-    private boolean isValidSignedAmountInput(String value) {
-        if (value == null || value.isEmpty()) {
-            return true;
-        }
-        int index = 0;
-        if (value.charAt(0) == '-') {
-            if (value.length() == 1) {
-                return true;
-            }
-            index = 1;
-        }
-        boolean dotSeen = false;
-        boolean digitSeen = false;
-        for (; index < value.length(); index++) {
-            char c = value.charAt(index);
-            if (c == '.') {
-                if (dotSeen) {
-                    return false;
-                }
-                dotSeen = true;
-            } else if (c >= '0' && c <= '9') {
-                digitSeen = true;
-            } else {
-                return false;
-            }
-        }
-        return digitSeen || dotSeen;
-    }
-
-    private boolean isMoveItemAllAmountValue(String value) {
-        if (value == null) {
-            return false;
-        }
-        String trimmed = value.trim();
-        return trimmed.isEmpty()
-            || "0".equals(trimmed)
-            || "all".equalsIgnoreCase(trimmed)
-            || "any".equalsIgnoreCase(trimmed);
-    }
-
-    private boolean insertParameterText(String text, Font textRenderer) {
-        if (!isEditingParameterField() || textRenderer == null || text == null || text.isEmpty()) {
-            return false;
-        }
-
-        String filtered = text.replace("\r", "").replace("\n", "");
-        if (filtered.isEmpty()) {
-            return false;
-        }
-
-        String originalBuffer = parameterEditBuffer;
-        int originalCaret = parameterCaretPosition;
-        int originalSelectionStart = parameterSelectionStart;
-        int originalSelectionEnd = parameterSelectionEnd;
-        int originalSelectionAnchor = parameterSelectionAnchor;
-
-        String working = parameterEditBuffer;
-        int caret = parameterCaretPosition;
-
-        if (hasParameterSelection()) {
-            int start = parameterSelectionStart;
-            int end = parameterSelectionEnd;
-            working = working.substring(0, start) + working.substring(end);
-            caret = start;
-        }
-
-        boolean inserted = false;
-
-        for (int i = 0; i < filtered.length(); i++) {
-            char c = filtered.charAt(i);
-            String candidate = working.substring(0, caret) + c + working.substring(caret);
-            working = candidate;
-            caret++;
-            inserted = true;
-        }
-
-        if (inserted) {
-            parameterEditBuffer = working;
-            setParameterCaretPosition(caret);
-            updateParameterFieldContentWidth(parameterEditingNode, textRenderer, parameterEditingIndex, parameterEditBuffer);
-            refreshStateParameterPreview();
-            clearParameterDropdownSuppression();
-            return true;
-        }
-
-        parameterEditBuffer = originalBuffer;
-        parameterCaretPosition = originalCaret;
-        parameterSelectionStart = originalSelectionStart;
-        parameterSelectionEnd = originalSelectionEnd;
-        parameterSelectionAnchor = originalSelectionAnchor;
-        return false;
-    }
-
     private boolean isAnyBlockItemValue(String value) {
-        if (value == null) {
-            return true;
-        }
-        String trimmed = value.trim();
-        return trimmed.isEmpty()
-            || "Any".equalsIgnoreCase(trimmed)
-            || "Any State".equalsIgnoreCase(trimmed);
+        return ParameterTextEditorController.isAnyBlockItemValue(value);
     }
 
     private List<ParameterDropdownOption> getRandomRoundingDropdownOptions() {
@@ -8673,10 +7907,10 @@ public class NodeGraph {
     private String liveRoutineParameterValue(Node node, String parameterName) {
         NodeParameter parameter = node.getParameter(parameterName);
         String value = parameter == null ? "" : parameter.getStringValue();
-        if (parameterEditingNode == node && parameterEditingIndex >= 0
-            && parameterEditingIndex < node.getParameters().size()
-            && node.getParameters().get(parameterEditingIndex) == parameter) {
-            value = parameterEditBuffer;
+        if (parameterEditor.getNode() == node && parameterEditor.getIndex() >= 0
+            && parameterEditor.getIndex() < node.getParameters().size()
+            && node.getParameters().get(parameterEditor.getIndex()) == parameter) {
+            value = parameterEditor.getBuffer();
         }
         if (inlineFields.getEventNameEditingNode() == node && "Name".equals(parameterName)) {
             value = inlineFields.getEventNameEditor().getBuffer();

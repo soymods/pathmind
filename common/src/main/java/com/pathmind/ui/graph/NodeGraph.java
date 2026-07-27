@@ -651,9 +651,9 @@ public class NodeGraph {
         @Override public String formatAttributeDetectionInlineValue(Node node, NodeParameter parameter, String value) {
             return NodeGraph.this.formatAttributeDetectionInlineValue(node, parameter, value);
         }
-        @Override public boolean parameterDropdownOpen() { return parameterDropdownOpen; }
-        @Override public Node parameterDropdownNode() { return parameterDropdownNode; }
-        @Override public int parameterDropdownIndex() { return parameterDropdownIndex; }
+        @Override public boolean parameterDropdownOpen() { return parameterDropdown.isOpen(); }
+        @Override public Node parameterDropdownNode() { return parameterDropdown.getNode(); }
+        @Override public int parameterDropdownIndex() { return parameterDropdown.getIndex(); }
         @Override public boolean supportsRelativeInlineParameter(Node node, NodeParameter parameter) {
             return NodeGraph.this.supportsRelativeInlineParameter(node, parameter);
         }
@@ -725,6 +725,85 @@ public class NodeGraph {
     private int parameterSelectionStart = -1;
     private int parameterSelectionEnd = -1;
     private int parameterSelectionAnchor = -1;
+    private final ParameterDropdownController parameterDropdown = new ParameterDropdownController(
+        new ParameterDropdownController.Host() {
+            @Override public boolean isEditingParameterField() {
+                return NodeGraph.this.isEditingParameterField();
+            }
+            @Override public Node parameterEditingNode() { return parameterEditingNode; }
+            @Override public int parameterEditingIndex() { return parameterEditingIndex; }
+            @Override public String parameterEditBuffer() { return parameterEditBuffer; }
+            @Override public int parameterCaretPosition() { return parameterCaretPosition; }
+            @Override public void replaceParameterEditBuffer(String value, int caretPosition) {
+                parameterEditBuffer = value;
+                setParameterCaretPosition(caretPosition);
+            }
+            @Override public void updateParameterFieldContentWidth(
+                Node node, Font textRenderer, int index, String value
+            ) {
+                NodeGraph.this.updateParameterFieldContentWidth(node, textRenderer, index, value);
+            }
+            @Override public void refreshStateParameterPreview() {
+                NodeGraph.this.refreshStateParameterPreview();
+            }
+            @Override public boolean applyParameterEdit() {
+                return NodeGraph.this.applyParameterEdit();
+            }
+            @Override public void notifyNodeParametersChanged(Node node) {
+                NodeGraph.this.notifyNodeParametersChanged(node);
+            }
+            @Override public void closeModeDropdown() { NodeGraph.this.closeModeDropdown(); }
+            @Override public void closeSchematicDropdown() { NodeGraph.this.closeSchematicDropdown(); }
+            @Override public void closeRunPresetDropdown() { NodeGraph.this.closeRunPresetDropdown(); }
+            @Override public void closeRandomRoundingDropdown() {
+                NodeGraph.this.closeRandomRoundingDropdown();
+            }
+            @Override public void stopParameterEditing(boolean commit) {
+                NodeGraph.this.stopParameterEditing(commit);
+            }
+            @Override public int parameterFieldLeft(Node node) {
+                return getParameterFieldLeft(node);
+            }
+            @Override public int inlineParameterFieldTop(Node node, int index) {
+                return getInlineParameterFieldTop(node, index);
+            }
+            @Override public int parameterFieldWidth(Node node) {
+                return getParameterFieldWidth(node);
+            }
+            @Override public int parameterFieldHeight() { return getParameterFieldHeight(); }
+            @Override public int cameraX() { return cameraX; }
+            @Override public int cameraY() { return cameraY; }
+            @Override public int screenToUiX(int screenX) {
+                return NodeGraph.this.screenToUiX(screenX);
+            }
+            @Override public int screenToUiY(int screenY) {
+                return NodeGraph.this.screenToUiY(screenY);
+            }
+            @Override public float zoomScale() { return getZoomScale(); }
+            @Override public Font getClientTextRenderer() {
+                return NodeGraph.this.getClientTextRenderer();
+            }
+            @Override public float dropdownAnimationProgress(AnimatedValue animation, boolean open) {
+                return getDropdownAnimationProgress(animation, open);
+            }
+            @Override public int selectedNodeAccentColor() {
+                return getSelectedNodeAccentColor();
+            }
+            @Override public void enableDropdownScissor(
+                GuiGraphics context, int x, int y, int width, int height
+            ) {
+                NodeGraph.this.enableDropdownScissor(context, x, y, width, height);
+            }
+            @Override public String trimTextToWidth(String text, Font renderer, int maxWidth) {
+                return NodeGraph.this.trimTextToWidth(text, renderer, maxWidth);
+            }
+            @Override public void drawNodeText(
+                GuiGraphics context, Font renderer, Component text, int x, int y, int color
+            ) {
+                NodeGraph.this.drawNodeText(context, renderer, text, x, y, color);
+            }
+        }
+    );
     private Node schematicDropdownNode = null;
     private boolean schematicDropdownOpen = false;
     private final AnimatedValue schematicDropdownAnimation = AnimatedValue.forHover();
@@ -740,21 +819,6 @@ public class NodeGraph {
     private static final int SCHEMATIC_DROPDOWN_MAX_ROWS = 8;
     private static final int SCHEMATIC_DROPDOWN_ROW_HEIGHT = 16;
     private static final int RANDOM_ROUNDING_DROPDOWN_MAX_ROWS = 4;
-    private Node parameterDropdownNode = null;
-    private int parameterDropdownIndex = -1;
-    private boolean parameterDropdownOpen = false;
-    private final AnimatedValue parameterDropdownAnimation = AnimatedValue.forHover();
-    private int parameterDropdownHoverIndex = -1;
-    private int parameterDropdownScrollOffset = 0;
-    private int parameterDropdownFieldX = 0;
-    private int parameterDropdownFieldY = 0;
-    private int parameterDropdownFieldWidth = 0;
-    private int parameterDropdownFieldHeight = 0;
-    private String parameterDropdownQuery = "";
-    private final java.util.List<ParameterDropdownOption> parameterDropdownOptions = new java.util.ArrayList<>();
-    private Node parameterDropdownSuppressedNode = null;
-    private int parameterDropdownSuppressedIndex = -1;
-    private String parameterDropdownSuppressedQuery = "";
     private Node randomRoundingDropdownNode = null;
     private boolean randomRoundingDropdownOpen = false;
     private final AnimatedValue randomRoundingDropdownAnimation = AnimatedValue.forHover();
@@ -788,10 +852,8 @@ public class NodeGraph {
         }
     );
     private static final int PARAMETER_DROPDOWN_MAX_ROWS = 8;
-    private static final int PARAMETER_DROPDOWN_ROW_HEIGHT = 16;
     private static final int DROPDOWN_SIDE_PADDING = 6;
     private static final int DROPDOWN_SCROLLBAR_ALLOWANCE = 8;
-    private static final int PARAMETER_DROPDOWN_ICON_ALLOWANCE = 24;
     private boolean workspaceDirty = false;
     private int nextStartNodeNumber = 1;
     private boolean validationDirty = true;
@@ -6581,52 +6643,12 @@ public class NodeGraph {
             || "Any State".equalsIgnoreCase(trimmed);
     }
 
-    private static int findSegmentStart(String value, int caret) {
-        int idx = value.lastIndexOf(',', Math.max(0, caret - 1));
-        return idx == -1 ? 0 : idx + 1;
-    }
-
-    private static int findSegmentEnd(String value, int caret) {
-        int idx = value.indexOf(',', Math.max(0, caret));
-        return idx == -1 ? value.length() : idx;
-    }
-
-    private static final class ParameterSegment {
-        private final int start;
-        private final int end;
-        private final String leadingWhitespace;
-        private final String trimmedSegment;
-
-        private ParameterSegment(int start, int end, String leadingWhitespace, String trimmedSegment) {
-            this.start = start;
-            this.end = end;
-            this.leadingWhitespace = leadingWhitespace;
-            this.trimmedSegment = trimmedSegment;
-        }
-    }
-
-
     private List<ParameterDropdownOption> getRandomRoundingDropdownOptions() {
         List<ParameterDropdownOption> options = new ArrayList<>(3);
         options.add(new ParameterDropdownOption(tr("pathmind.option.round"), "round"));
         options.add(new ParameterDropdownOption(tr("pathmind.option.floor"), "floor"));
         options.add(new ParameterDropdownOption(tr("pathmind.option.ceil"), "ceil"));
         return options;
-    }
-
-    private ParameterSegment getParameterSegment(String value, int caret) {
-        String working = value != null ? value : "";
-        int clamped = Mth.clamp(caret, 0, working.length());
-        int start = findSegmentStart(working, clamped);
-        int end = findSegmentEnd(working, clamped);
-        String segment = working.substring(start, end);
-        int leadingEnd = 0;
-        while (leadingEnd < segment.length() && Character.isWhitespace(segment.charAt(leadingEnd))) {
-            leadingEnd++;
-        }
-        String leading = segment.substring(0, leadingEnd);
-        String trimmed = segment.substring(leadingEnd);
-        return new ParameterSegment(start, end, leading, trimmed);
     }
 
     private String formatAttributeDetectionInlineValue(Node node, NodeParameter parameter, String value) {
@@ -6644,402 +6666,35 @@ public class NodeGraph {
     }
 
     private void updateParameterDropdown(Node node, int index, Font textRenderer, int fieldX, int fieldY, int fieldWidth, int fieldHeight) {
-        if (!isEditingParameterField() || parameterEditingNode != node || parameterEditingIndex != index) {
-            return;
-        }
-        if (!isBlockItemParameter(node, index)
-            && !isGuiParameter(node, null)
-            && !isMouseButtonParameter(node, null)
-            && !isHandParameter(node, null)
-            && !isDirectionParameter(node, index)
-            && !isBooleanLiteralParameter(node, index)
-            && !isAttributeDetectionDropdownParameter(node, index)
-            && !isBlockFaceParameter(node, index)
-            && !isFabricEventSensorParameter(node, index)
-            && !isVillagerProfessionParameter(node, index)
-            && !isVillagerTradeParameter(node, index)
-            && !isVillagerTradeVariantParameter(node, index)) {
-            closeParameterDropdown();
-            return;
-        }
-        ParameterSegment segment = getParameterSegment(parameterEditBuffer, parameterCaretPosition);
-        String query = segment.trimmedSegment == null ? "" : segment.trimmedSegment.trim();
-        if ((isVillagerProfessionParameter(node, index)
-            || isVillagerTradeParameter(node, index)
-            || isVillagerTradeVariantParameter(node, index))
-            && index < node.getParameters().size()
-            && Objects.equals(parameterEditBuffer, node.getParameters().get(index).getStringValue())) {
-            query = "";
-        }
-        boolean isStateParameter = isBlockStateParameter(node, index);
-
-        if (isParameterDropdownSuppressed(node, index, query)) {
-            closeParameterDropdown();
-            return;
-        }
-
-        List<ParameterDropdownOption> options = getParameterDropdownOptions(node, index, query);
-        if (!parameterEditBuffer.trim().isEmpty()) {
-            options.removeIf(option -> option.value().isEmpty());
-        }
-        boolean changed = node != parameterDropdownNode
-            || index != parameterDropdownIndex
-            || !Objects.equals(parameterDropdownQuery, query);
-
-        if (changed) {
-            parameterDropdownScrollOffset = 0;
-            parameterDropdownHoverIndex = -1;
-        }
-
-        parameterDropdownNode = node;
-        parameterDropdownIndex = index;
-        parameterDropdownFieldX = fieldX;
-        parameterDropdownFieldY = fieldY;
-        parameterDropdownFieldWidth = fieldWidth;
-        parameterDropdownFieldHeight = fieldHeight;
-        parameterDropdownQuery = query;
-        parameterDropdownOptions.clear();
-        parameterDropdownOptions.addAll(options);
-        parameterDropdownOpen = true;
+        parameterDropdown.update(node, index, textRenderer, fieldX, fieldY, fieldWidth, fieldHeight);
     }
 
     private void closeParameterDropdown() {
-        parameterDropdownOpen = false;
-        parameterDropdownHoverIndex = -1;
-    }
-
-    private void suppressParameterDropdown(Node node, int index, String query) {
-        parameterDropdownSuppressedNode = node;
-        parameterDropdownSuppressedIndex = index;
-        parameterDropdownSuppressedQuery = query == null ? "" : query;
+        parameterDropdown.close();
     }
 
     private void clearParameterDropdownSuppression() {
-        parameterDropdownSuppressedNode = null;
-        parameterDropdownSuppressedIndex = -1;
-        parameterDropdownSuppressedQuery = "";
-    }
-
-    private boolean isParameterDropdownSuppressed(Node node, int index, String query) {
-        if (parameterDropdownSuppressedNode == null) {
-            return false;
-        }
-        if (parameterDropdownSuppressedNode != node || parameterDropdownSuppressedIndex != index) {
-            return false;
-        }
-        String normalizedQuery = query == null ? "" : query;
-        if (Objects.equals(parameterDropdownSuppressedQuery, normalizedQuery)) {
-            return true;
-        }
-        clearParameterDropdownSuppression();
-        return false;
-    }
-
-    private boolean applyParameterDropdownSelection(int optionIndex) {
-        if (!parameterDropdownOpen || parameterDropdownOptions.isEmpty()) {
-            return false;
-        }
-        if (optionIndex < 0 || optionIndex >= parameterDropdownOptions.size()) {
-            return false;
-        }
-        if (!isEditingParameterField()) {
-            if (parameterDropdownNode == null || !isInlineDropdownParameter(parameterDropdownNode, parameterDropdownIndex)) {
-                return false;
-            }
-            ParameterDropdownOption option = parameterDropdownOptions.get(optionIndex);
-            NodeParameter parameter = parameterDropdownNode.getParameters().get(parameterDropdownIndex);
-            if (parameter == null || option == null) {
-                return false;
-            }
-            parameter.setStringValueFromUser(option.value());
-            parameterDropdownNode.setParameterValueAndPropagate(parameter.getName(), option.value());
-            parameterDropdownNode.recalculateDimensions();
-            notifyNodeParametersChanged(parameterDropdownNode);
-            closeParameterDropdown();
-            return true;
-        }
-        ParameterDropdownOption option = parameterDropdownOptions.get(optionIndex);
-        ParameterSegment segment = getParameterSegment(parameterEditBuffer, parameterCaretPosition);
-        String prefix = parameterEditBuffer.substring(0, segment.start);
-        String suffix = parameterEditBuffer.substring(segment.end);
-        boolean keepMouseButtonDefaultPlaceholder = isMouseButtonParameter(parameterEditingNode, null)
-            && "Left".equalsIgnoreCase(option.value())
-            && (segment.trimmedSegment == null || segment.trimmedSegment.trim().isEmpty());
-        boolean keepHandDefaultPlaceholder = isHandParameter(parameterEditingNode, null)
-            && "main".equalsIgnoreCase(option.value())
-            && (segment.trimmedSegment == null || segment.trimmedSegment.trim().isEmpty());
-        boolean keepDirectionDefaultPlaceholder = isDirectionParameter(parameterEditingNode, parameterEditingIndex)
-            && "north".equalsIgnoreCase(option.value());
-        boolean keepBooleanDefaultPlaceholder = isBooleanLiteralParameter(parameterEditingNode, parameterEditingIndex)
-            && "true".equalsIgnoreCase(option.value());
-        String replacement = (keepMouseButtonDefaultPlaceholder || keepHandDefaultPlaceholder || keepDirectionDefaultPlaceholder || keepBooleanDefaultPlaceholder)
-            ? ""
-            : segment.leadingWhitespace + option.value();
-        parameterEditBuffer = prefix + replacement + suffix;
-        setParameterCaretPosition(prefix.length() + replacement.length());
-        updateParameterFieldContentWidth(parameterEditingNode, getClientTextRenderer(), parameterEditingIndex, parameterEditBuffer);
-        refreshStateParameterPreview();
-        boolean changed = applyParameterEdit();
-        if (changed) {
-            notifyNodeParametersChanged(parameterEditingNode);
-        }
-        ParameterSegment updatedSegment = getParameterSegment(parameterEditBuffer, parameterCaretPosition);
-        String updatedQuery = updatedSegment.trimmedSegment == null ? "" : updatedSegment.trimmedSegment.trim();
-        suppressParameterDropdown(parameterEditingNode, parameterEditingIndex, updatedQuery);
-        closeParameterDropdown();
-        return true;
-    }
-
-    private int getParameterDropdownListTop() {
-        return parameterDropdownFieldY + parameterDropdownFieldHeight;
+        parameterDropdown.clearSuppression();
     }
 
     private void openInlineParameterDropdown(Node node, int index) {
-        if (node == null || !isInlineDropdownParameter(node, index)) {
-            return;
-        }
-        closeModeDropdown();
-        closeSchematicDropdown();
-        closeRunPresetDropdown();
-        closeRandomRoundingDropdown();
-        stopParameterEditing(false);
-        parameterDropdownNode = node;
-        parameterDropdownIndex = index;
-        parameterDropdownFieldX = getParameterFieldLeft(node) - cameraX;
-        parameterDropdownFieldY = getInlineParameterFieldTop(node, index) - cameraY;
-        parameterDropdownFieldWidth = getParameterFieldWidth(node);
-        parameterDropdownFieldHeight = getParameterFieldHeight();
-        parameterDropdownQuery = "";
-        parameterDropdownScrollOffset = 0;
-        parameterDropdownHoverIndex = -1;
-        parameterDropdownOptions.clear();
-        parameterDropdownOptions.addAll(getParameterDropdownOptions(node, index, ""));
-        parameterDropdownOpen = true;
-    }
-
-    private int getDropdownWidth() {
-        Font textRenderer = getClientTextRenderer();
-        if (textRenderer == null) {
-            return parameterDropdownFieldWidth;
-        }
-        int longestLabelWidth = textRenderer.width(tr("pathmind.dropdown.noMatches"));
-        for (ParameterDropdownOption option : parameterDropdownOptions) {
-            if (option != null && option.label() != null) {
-                longestLabelWidth = Math.max(longestLabelWidth, textRenderer.width(option.label()));
-            }
-        }
-        return longestLabelWidth + PARAMETER_DROPDOWN_ICON_ALLOWANCE + DROPDOWN_SIDE_PADDING * 2 + DROPDOWN_SCROLLBAR_ALLOWANCE;
+        parameterDropdown.openInline(node, index);
     }
 
     private int getDropdownRowHeight() {
-        return PARAMETER_DROPDOWN_ROW_HEIGHT;
-    }
-
-    private DropdownLayoutHelper.Layout getParameterDropdownLayout() {
-        int optionCount = Math.max(1, parameterDropdownOptions.size());
-        int listTop = getParameterDropdownListTop();
-        // Convert screen height to transformed space since dropdown is rendered in transformed coordinates
-        float zoom = Math.max(0.01f, getZoomScale());
-        int transformedScreenHeight = Math.round(Minecraft.getInstance().getWindow().getGuiScaledHeight() / zoom);
-        int rowHeight = getDropdownRowHeight();
-        return DropdownLayoutHelper.calculate(
-            optionCount,
-            rowHeight,
-            PARAMETER_DROPDOWN_MAX_ROWS,
-            listTop,
-            transformedScreenHeight
-        );
-    }
-
-    private boolean isPointInsideParameterDropdownList(int screenX, int screenY) {
-        if (!parameterDropdownOpen) {
-            return false;
-        }
-        // Transform mouse coordinates from screen space to transformed space
-        float zoom = getZoomScale();
-        int transformedX = Math.round(screenX / zoom);
-        int transformedY = Math.round(screenY / zoom);
-
-        int dropdownWidth = getDropdownWidth();
-        DropdownLayoutHelper.Layout layout = getParameterDropdownLayout();
-        int listTop = getParameterDropdownListTop();
-        int listLeft = parameterDropdownFieldX;
-        return transformedX >= listLeft && transformedX <= listLeft + dropdownWidth
-            && transformedY >= listTop && transformedY <= listTop + layout.height;
-    }
-
-    private int getParameterDropdownIndexAt(int screenX, int screenY) {
-        if (!parameterDropdownOpen) {
-            return -1;
-        }
-        // Transform mouse coordinates from screen space to transformed space
-        float zoom = getZoomScale();
-        int transformedY = Math.round(screenY / zoom);
-
-        int rowHeight = getDropdownRowHeight();
-        DropdownLayoutHelper.Layout layout = getParameterDropdownLayout();
-        int listTop = getParameterDropdownListTop();
-        int row = (transformedY - listTop) / rowHeight;
-        if (row < 0 || row >= layout.visibleCount) {
-            return -1;
-        }
-        int index = parameterDropdownScrollOffset + row;
-        if (parameterDropdownOptions.isEmpty()) {
-            return -1;
-        }
-        return index;
+        return SCHEMATIC_DROPDOWN_ROW_HEIGHT;
     }
 
     public boolean handleParameterDropdownClick(double screenX, double screenY) {
-        if (!parameterDropdownOpen) {
-            return false;
-        }
-        int x = (int) screenX;
-        int y = (int) screenY;
-        if (isPointInsideParameterDropdownList(x, y)) {
-            int index = getParameterDropdownIndexAt(x, y);
-            if (index >= 0) {
-                applyParameterDropdownSelection(index);
-            }
-            return true;
-        }
-        int transformedX = screenToUiX(x);
-        int transformedY = screenToUiY(y);
-        int fieldLeft = parameterDropdownFieldX;
-        int fieldTop = parameterDropdownFieldY;
-        if (transformedX >= fieldLeft && transformedX <= fieldLeft + parameterDropdownFieldWidth
-            && transformedY >= fieldTop && transformedY <= fieldTop + parameterDropdownFieldHeight) {
-            if (!isEditingParameterField()
-                && parameterDropdownNode != null
-                && isInlineDropdownParameter(parameterDropdownNode, parameterDropdownIndex)) {
-                closeParameterDropdown();
-            }
-            return true;
-        }
-        if (isEditingParameterField()) {
-            ParameterSegment segment = getParameterSegment(parameterEditBuffer, parameterCaretPosition);
-            String query = segment.trimmedSegment == null ? "" : segment.trimmedSegment.trim();
-            suppressParameterDropdown(parameterEditingNode, parameterEditingIndex, query);
-        }
-        closeParameterDropdown();
-        return false;
+        return parameterDropdown.handleClick(screenX, screenY);
     }
 
     public boolean handleParameterDropdownScroll(double screenX, double screenY, double verticalAmount) {
-        if (!parameterDropdownOpen) {
-            return false;
-        }
-        if (!isPointInsideParameterDropdownList((int) screenX, (int) screenY)) {
-            return false;
-        }
-        DropdownLayoutHelper.Layout layout = getParameterDropdownLayout();
-        if (layout.maxScrollOffset <= 0) {
-            return false;
-        }
-        int delta = (int) Math.signum(verticalAmount);
-        if (delta == 0) {
-            return false;
-        }
-        parameterDropdownScrollOffset = Mth.clamp(parameterDropdownScrollOffset - delta, 0, layout.maxScrollOffset);
-        return true;
+        return parameterDropdown.handleScroll(screenX, screenY, verticalAmount);
     }
 
     private void renderParameterDropdownList(GuiGraphics context, Font textRenderer, int mouseX, int mouseY) {
-        float animProgress = getDropdownAnimationProgress(parameterDropdownAnimation, parameterDropdownOpen);
-        if (parameterDropdownNode == null) {
-            return;
-        }
-        if (animProgress <= 0.001f) {
-            clearParameterDropdownState();
-            return;
-        }
-        List<ParameterDropdownOption> options = parameterDropdownOptions;
-        int optionCount = Math.max(1, options.size());
-        // Transform mouse coordinates from screen space to transformed space
-        float zoom = getZoomScale();
-        int transformedMouseX = Math.round(mouseX / zoom);
-        int transformedMouseY = Math.round(mouseY / zoom);
-
-        int rowHeight = getDropdownRowHeight();
-        int dropdownWidth = getDropdownWidth();
-        DropdownLayoutHelper.Layout layout = getParameterDropdownLayout();
-        int listTop = getParameterDropdownListTop();
-        int listLeft = parameterDropdownFieldX;
-        int listRight = listLeft + dropdownWidth;
-        int listHeight = layout.height;
-        int listBottom = listTop + listHeight;
-        int animatedHeight = Math.max(1, (int) (listHeight * animProgress));
-        int accentColor = getSelectedNodeAccentColor();
-        UIStyleHelper.ScrollContainerPalette containerPalette = UIStyleHelper.getScrollContainerPalette(accentColor, animProgress, true, false);
-
-        enableDropdownScissor(context, listLeft, listTop, dropdownWidth, animatedHeight);
-        UIStyleHelper.drawScrollContainer(context, listLeft, listTop, dropdownWidth, listHeight, containerPalette);
-
-        parameterDropdownScrollOffset = Mth.clamp(parameterDropdownScrollOffset, 0, layout.maxScrollOffset);
-        parameterDropdownHoverIndex = -1;
-        if (animProgress >= 1f
-            && transformedMouseX >= listLeft && transformedMouseX <= listRight
-            && transformedMouseY >= listTop && transformedMouseY <= listBottom) {
-            int row = (transformedMouseY - listTop) / rowHeight;
-            if (row >= 0 && row < layout.visibleCount) {
-                parameterDropdownHoverIndex = parameterDropdownScrollOffset + row;
-            }
-        }
-
-        int visibleCount = layout.visibleCount;
-        int iconSize = 16;
-        int padding = 4;
-
-        for (int row = 0; row < visibleCount; row++) {
-            int optionIndex = parameterDropdownScrollOffset + row;
-            String optionLabel = options.isEmpty() ? tr("pathmind.dropdown.noMatches") : options.get(optionIndex).label();
-            int rowTop = listTop + row * rowHeight;
-            int rowBottom = rowTop + rowHeight;
-            boolean hovered = options.isEmpty() ? row == 0 && parameterDropdownHoverIndex >= 0 : optionIndex == parameterDropdownHoverIndex;
-            UIStyleHelper.DropdownRowPalette rowPalette = UIStyleHelper.getDropdownRowPalette(accentColor, hovered ? 1f : 0f, false, false);
-            if (hovered) {
-                UIStyleHelper.drawDropdownRow(context, listLeft + 1, rowTop + 1, dropdownWidth - 2, rowHeight - 1, rowPalette);
-            }
-            int iconX = listLeft + padding;
-            int iconY = rowTop + (rowHeight - iconSize) / 2;
-            String optionValue = options.isEmpty() ? "" : options.get(optionIndex).value();
-            ItemStack icon = resolveParameterDropdownIcon(parameterDropdownNode, parameterDropdownIndex, optionValue);
-            if (!icon.isEmpty()) {
-                context.renderItem(icon, iconX, iconY);
-            }
-            int textPadding = 3;
-            int textX = listLeft + textPadding;
-            if (!icon.isEmpty()) {
-                textX = iconX + iconSize + padding;
-            }
-            int maxTextWidth = dropdownWidth - (textX - listLeft) - textPadding - DROPDOWN_SCROLLBAR_ALLOWANCE;
-            String rowText = trimTextToWidth(optionLabel, textRenderer, Math.max(0, maxTextWidth));
-            int textOffsetY = 4;
-            drawNodeText(context, textRenderer, Component.literal(rowText), textX, rowTop + textOffsetY, hovered ? rowPalette.textColor() : UITheme.TEXT_PRIMARY);
-        }
-
-        DropdownLayoutHelper.drawScrollBar(
-            context,
-            listLeft,
-            listTop,
-            dropdownWidth,
-            listHeight,
-            optionCount,
-            layout.visibleCount,
-            parameterDropdownScrollOffset,
-            layout.maxScrollOffset,
-            containerPalette.trackColor(),
-            containerPalette.thumbColor()
-        );
-        DropdownLayoutHelper.drawOutline(
-            context,
-            listLeft,
-            listTop,
-            dropdownWidth,
-            listHeight,
-            containerPalette.borderColor()
-        );
-        context.disableScissor();
+        parameterDropdown.render(context, textRenderer, mouseX, mouseY);
     }
 
     public boolean handleModeDropdownClick(double screenX, double screenY) {
@@ -7600,10 +7255,12 @@ public class NodeGraph {
     }
 
     public boolean handleBooleanLiteralDropdownClick(Node node, int mouseX, int mouseY) {
-        if (parameterDropdownOpen && !isEditingParameterField()
-            && parameterDropdownNode != null
-            && isInlineDropdownParameter(parameterDropdownNode, parameterDropdownIndex)) {
-            if (isPointInsideInlineDropdownField(parameterDropdownNode, parameterDropdownIndex, mouseX, mouseY)) {
+        if (parameterDropdown.isOpen() && !isEditingParameterField()
+            && parameterDropdown.getNode() != null
+            && isInlineDropdownParameter(parameterDropdown.getNode(), parameterDropdown.getIndex())) {
+            if (isPointInsideInlineDropdownField(
+                parameterDropdown.getNode(), parameterDropdown.getIndex(), mouseX, mouseY
+            )) {
                 closeParameterDropdown();
                 return true;
             }
@@ -8050,15 +7707,7 @@ public class NodeGraph {
     }
 
     private void clearParameterDropdownState() {
-        if (parameterDropdownOpen) {
-            return;
-        }
-        parameterDropdownNode = null;
-        parameterDropdownIndex = -1;
-        parameterDropdownHoverIndex = -1;
-        parameterDropdownScrollOffset = 0;
-        parameterDropdownQuery = "";
-        parameterDropdownOptions.clear();
+        parameterDropdown.clearState();
     }
 
     private void applySchematicSelection(Node node, String value) {

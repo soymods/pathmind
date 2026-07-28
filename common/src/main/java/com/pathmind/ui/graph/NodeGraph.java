@@ -167,9 +167,9 @@ public class NodeGraph {
             return NodeGraph.this.isNodeOverSidebarForRender(node, screenX, screenWidth);
         }
         @Override public int toGrayscale(int color, float brightnessFactor) {
-            return NodeGraph.this.toGrayscale(color, brightnessFactor);
+            return nodeControls.toGrayscale(color, brightnessFactor);
         }
-        @Override public int getSelectedNodeAccentColor() { return NodeGraph.this.getSelectedNodeAccentColor(); }
+        @Override public int getSelectedNodeAccentColor() { return nodeControls.getSelectedNodeAccentColor(); }
         @Override public void renderSocket(GuiGraphics context, int x, int y, boolean isInput, int color) {
             NodeGraph.this.renderSocket(context, x, y, isInput, color);
         }
@@ -223,7 +223,7 @@ public class NodeGraph {
             Minecraft client = Minecraft.getInstance();
             return client != null && client.getWindow() != null ? client.getWindow().getGuiScaledHeight() : 0;
         }
-        @Override public int getSelectedNodeAccentColor() { return NodeGraph.this.getSelectedNodeAccentColor(); }
+        @Override public int getSelectedNodeAccentColor() { return nodeControls.getSelectedNodeAccentColor(); }
         @Override public Node findStartModeButtonAt(int mouseX, int mouseY) { return NodeGraph.this.findStartModeButtonAt(mouseX, mouseY); }
         @Override public int getStartModeButtonWorldX(Node node) { return NodeGraph.this.getStartModeButtonWorldX(node); }
         @Override public int getStartModeButtonWorldY(Node node) { return NodeGraph.this.getStartModeButtonWorldY(node); }
@@ -236,8 +236,6 @@ public class NodeGraph {
     private Node actionDropTarget = null;
     private Node parameterDropTarget = null;
     private Integer parameterDropSlotIndex = null;
-    private final Map<Node, AnimatedValue> messageScopeAnimations = new WeakHashMap<>();
-    private final Map<Node, AnimatedValue> booleanToggleAnimations = new WeakHashMap<>();
     private final Map<Node, AnimatedValue> amountToggleAnimations = new WeakHashMap<>();
     private final Map<Node, AnimatedValue> randomRoundingToggleAnimations = new WeakHashMap<>();
 
@@ -262,7 +260,6 @@ public class NodeGraph {
     private boolean denseViewportMode = false;
     private int visibleNodeCountForFrame = 0;
     private final Map<TrimKey, String> trimmedTextCache = new HashMap<>();
-    private final Map<Node, Map<String, ParameterLayoutCacheEntry>> parameterLayoutCache = new WeakHashMap<>();
     private final Map<String, Set<String>> runtimeVariableNamesFrameCache = new HashMap<>();
     private Set<String> cachedBaseRuntimeVariableNames = null;
     private int cachedVisibleNodeCount = 0;
@@ -316,7 +313,7 @@ public class NodeGraph {
         @Override public int cameraY() { return cameraY; }
         @Override public int screenToWorldX(int screenX) { return NodeGraph.this.screenToWorldX(screenX); }
         @Override public int screenToWorldY(int screenY) { return NodeGraph.this.screenToWorldY(screenY); }
-        @Override public int selectedNodeAccentColor() { return getSelectedNodeAccentColor(); }
+        @Override public int selectedNodeAccentColor() { return nodeControls.getSelectedNodeAccentColor(); }
         @Override public float textFieldHighlightProgress(Object key, boolean hovered, boolean active) {
             return getTextFieldHighlightProgress(key, hovered, active);
         }
@@ -370,8 +367,8 @@ public class NodeGraph {
             int toggleTop = node.getAmountToggleTop() - cameraY;
             int toggleWidth = node.getAmountToggleWidth();
             int toggleHeight = node.getAmountToggleHeight();
-            renderNodeSliderToggle(context, toggleLeft, toggleTop, toggleWidth, toggleHeight,
-                getNodeToggleProgress(amountToggleAnimations, node, amountEnabled), false, isOverSidebar);
+            nodeControls.renderNodeSliderToggle(context, toggleLeft, toggleTop, toggleWidth, toggleHeight,
+                nodeControls.getNodeToggleProgress(amountToggleAnimations, node, amountEnabled), false, isOverSidebar);
         }
         @Override public boolean isPresetSelectorNode(Node node) { return NodeGraph.this.isPresetSelectorNode(node); }
         @Override public void renderPresetSelectorField(GuiGraphics context, Font textRenderer, Node node,
@@ -439,7 +436,7 @@ public class NodeGraph {
 
         @Override
         public int selectedNodeAccentColor() {
-            return getSelectedNodeAccentColor();
+            return nodeControls.getSelectedNodeAccentColor();
         }
 
         @Override
@@ -518,6 +515,68 @@ public class NodeGraph {
             NodeGraph.this.setClipboardText(text);
         }
     });
+    private final NodeControlController nodeControls = new NodeControlController(
+        new NodeControlController.Host() {
+            @Override public int cameraX() { return cameraX; }
+            @Override public int cameraY() { return cameraY; }
+            @Override public int screenToWorldX(int screenX) {
+                return NodeGraph.this.screenToWorldX(screenX);
+            }
+            @Override public int screenToWorldY(int screenY) {
+                return NodeGraph.this.screenToWorldY(screenY);
+            }
+            @Override public float zoomScale() { return getZoomScale(); }
+            @Override public boolean compactViewportMode() { return compactViewportMode; }
+            @Override public Node sensorDropTarget() { return sensorDropTarget; }
+            @Override public Node actionDropTarget() { return actionDropTarget; }
+            @Override public Node parameterDropTarget() { return parameterDropTarget; }
+            @Override public Integer parameterDropSlotIndex() { return parameterDropSlotIndex; }
+            @Override public Node nodeAt(int screenX, int screenY) {
+                return NodeGraph.this.getNodeAt(screenX, screenY);
+            }
+            @Override public int getStartModeButtonWorldX(Node node) {
+                return NodeGraph.this.getStartModeButtonWorldX(node);
+            }
+            @Override public int getStartModeButtonWorldY(Node node) {
+                return NodeGraph.this.getStartModeButtonWorldY(node);
+            }
+            @Override public boolean isPointInsideStartModeButton(
+                Node node, int screenX, int screenY
+            ) {
+                return NodeGraph.this.isPointInsideStartModeButton(node, screenX, screenY);
+            }
+            @Override public void pushUndoState() { NodeGraph.this.pushUndoState(); }
+            @Override public void notifyNodeParametersChanged(Node node) {
+                NodeGraph.this.notifyNodeParametersChanged(node);
+            }
+            @Override public void stopMessageEditing(boolean commit) {
+                NodeGraph.this.stopMessageEditing(commit);
+            }
+            @Override public void startMessageEditing(Node node, int index) {
+                NodeGraph.this.startMessageEditing(node, index);
+            }
+            @Override public Node messageEditingNode() {
+                return inlineFields.getMessageEditingNode();
+            }
+            @Override public int messageEditingIndex() {
+                return inlineFields.getMessageEditingIndex();
+            }
+            @Override public String translate(String key) { return tr(key); }
+            @Override public String trimTextToWidth(String text, Font renderer, int maxWidth) {
+                return NodeGraph.this.trimTextToWidth(text, renderer, maxWidth);
+            }
+            @Override public void drawNodeText(
+                GuiGraphics context, Font renderer, Component text, int x, int y, int color
+            ) {
+                NodeGraph.this.drawNodeText(context, renderer, text, x, y, color);
+            }
+            @Override public void drawNodeText(
+                GuiGraphics context, Font renderer, String text, int x, int y, int color
+            ) {
+                NodeGraph.this.drawNodeText(context, renderer, text, x, y, color);
+            }
+        }
+    );
     private final NodeRenderer nodeRenderer = new NodeRenderer(new NodeRenderer.Host() {
         @Override public int cameraX() { return cameraX; }
         @Override public int cameraY() { return cameraY; }
@@ -530,17 +589,17 @@ public class NodeGraph {
                                                int width, int height, boolean isOverSidebar) {
             stickyNoteController.render(context, textRenderer, node, x, y, width, height, isOverSidebar);
         }
-        @Override public int selectedNodeAccentColor() { return getSelectedNodeAccentColor(); }
+        @Override public int selectedNodeAccentColor() { return nodeControls.getSelectedNodeAccentColor(); }
         @Override public int toGrayscale(int color, float brightnessFactor) {
-            return NodeGraph.this.toGrayscale(color, brightnessFactor);
+            return nodeControls.toGrayscale(color, brightnessFactor);
         }
         @Override public int adjustColorBrightness(int color, float factor) {
-            return NodeGraph.this.adjustColorBrightness(color, factor);
+            return nodeControls.adjustColorBrightness(color, factor);
         }
         @Override public String trimTextToWidth(String text, Font renderer, int maxWidth) {
             return NodeGraph.this.trimTextToWidth(text, renderer, maxWidth);
         }
-        @Override public boolean isComparisonOperator(Node node) { return NodeGraph.this.isComparisonOperator(node); }
+        @Override public boolean isComparisonOperator(Node node) { return nodeControls.isComparisonOperator(node); }
         @Override public void drawNodeText(GuiGraphics context, Font renderer, Component text, int x, int y, int color) {
             NodeGraph.this.drawNodeText(context, renderer, text, x, y, color);
         }
@@ -563,7 +622,7 @@ public class NodeGraph {
         }
         @Override public void renderPopupEditButton(GuiGraphics context, Font textRenderer, Node node,
                                                     boolean isOverSidebar, int mouseX, int mouseY) {
-            NodeGraph.this.renderPopupEditButton(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+            nodeControls.renderPopupEditButton(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
         }
         @Override public Set<String> collectRuntimeVariableNames(Node node) {
             return NodeGraph.this.collectRuntimeVariableNames(node);
@@ -575,15 +634,15 @@ public class NodeGraph {
         @Override public boolean hoveringStartButton() { return hoveringStartButton; }
         @Override public void renderStartLaunchIcon(GuiGraphics context, StartLaunchMode mode, int centerX,
                                                     int centerY, int color, int nodeTop, int nodeHeight) {
-            NodeGraph.this.renderStartLaunchIcon(context, mode, centerX, centerY, color, nodeTop, nodeHeight);
+            nodeControls.renderStartLaunchIcon(context, mode, centerX, centerY, color, nodeTop, nodeHeight);
         }
         @Override public void renderStartNodeNumber(GuiGraphics context, Font textRenderer, Node node,
                                                     int x, int y, boolean isOverSidebar) {
-            NodeGraph.this.renderStartNodeNumber(context, textRenderer, node, x, y, isOverSidebar);
+            nodeControls.renderStartNodeNumber(context, textRenderer, node, x, y, isOverSidebar);
         }
         @Override public void renderStartModeButton(GuiGraphics context, Node node, int x, int y,
                                                     boolean isOverSidebar, int mouseX, int mouseY) {
-            NodeGraph.this.renderStartModeButton(context, node, x, y, isOverSidebar, mouseX, mouseY);
+            nodeControls.renderStartModeButton(context, node, x, y, isOverSidebar, mouseX, mouseY);
         }
         @Override public boolean isEditingParameterField() { return NodeGraph.this.isEditingParameterField(); }
         @Override public Node parameterEditingNode() { return parameterEditor.getNode(); }
@@ -603,34 +662,34 @@ public class NodeGraph {
         @Override public int parameterInputHeight() { return PARAMETER_INPUT_HEIGHT; }
         @Override public int parameterInputGap() { return PARAMETER_INPUT_GAP; }
         @Override public int directionModeTabHeight() { return DIRECTION_MODE_TAB_HEIGHT; }
-        @Override public int getParameterFieldLeft(Node node) { return NodeGraph.this.getParameterFieldLeft(node); }
-        @Override public int getParameterFieldWidth(Node node) { return NodeGraph.this.getParameterFieldWidth(node); }
-        @Override public int getParameterFieldHeight() { return NodeGraph.this.getParameterFieldHeight(); }
+        @Override public int getParameterFieldLeft(Node node) { return nodeControls.getParameterFieldLeft(node); }
+        @Override public int getParameterFieldWidth(Node node) { return nodeControls.getParameterFieldWidth(node); }
+        @Override public int getParameterFieldHeight() { return nodeControls.getParameterFieldHeight(); }
         @Override public int screenToWorldX(int screenX) { return NodeGraph.this.screenToWorldX(screenX); }
         @Override public int screenToWorldY(int screenY) { return NodeGraph.this.screenToWorldY(screenY); }
         @Override public float getTextFieldHighlightProgress(Object key, boolean hovered, boolean active) {
             return NodeGraph.this.getTextFieldHighlightProgress(key, hovered, active);
         }
         @Override public boolean isCombinedDirectionNode(Node node) {
-            return NodeGraph.this.isCombinedDirectionNode(node);
+            return nodeControls.isCombinedDirectionNode(node);
         }
         @Override public void renderDirectionModeTabs(GuiGraphics context, Font textRenderer, Node node,
                                                       boolean isOverSidebar, int fieldTop, int mouseX, int mouseY) {
-            NodeGraph.this.renderDirectionModeTabs(context, textRenderer, node, isOverSidebar, fieldTop, mouseX, mouseY);
+            nodeControls.renderDirectionModeTabs(context, textRenderer, node, isOverSidebar, fieldTop, mouseX, mouseY);
         }
         @Override public boolean isCombinedBooleanNode(Node node) {
-            return NodeGraph.this.isCombinedBooleanNode(node);
+            return nodeControls.isCombinedBooleanNode(node);
         }
         @Override public void renderBooleanModeTabs(GuiGraphics context, Font textRenderer, Node node,
                                                     boolean isOverSidebar, int fieldTop, int mouseX, int mouseY) {
-            NodeGraph.this.renderBooleanModeTabs(context, textRenderer, node, isOverSidebar, fieldTop, mouseX, mouseY);
+            nodeControls.renderBooleanModeTabs(context, textRenderer, node, isOverSidebar, fieldTop, mouseX, mouseY);
         }
         @Override public String getParameterLabelText(Node node, NodeParameter parameter, Font textRenderer,
                                                       int maxWidth) {
-            return NodeGraph.this.getParameterLabelText(node, parameter, textRenderer, maxWidth);
+            return nodeControls.getParameterLabelText(node, parameter, textRenderer, maxWidth);
         }
         @Override public int getParameterValueStartX(Node node, NodeParameter parameter, Font textRenderer) {
-            return NodeGraph.this.getParameterValueStartX(node, parameter, textRenderer);
+            return nodeControls.getParameterValueStartX(node, parameter, textRenderer);
         }
         @Override public boolean isDefaultMouseButtonValue(String value) {
             return NodeGraph.this.isDefaultMouseButtonValue(value);
@@ -645,7 +704,7 @@ public class NodeGraph {
             return NodeGraph.this.isAnyBlockItemValue(value);
         }
         @Override public String formatVillagerTradeValue(String rawValue) {
-            return NodeGraph.this.formatVillagerTradeValue(rawValue);
+            return nodeControls.formatVillagerTradeValue(rawValue);
         }
         @Override public String formatMouseButtonValue(String value) {
             return NodeGraph.this.formatMouseButtonValue(value);
@@ -678,10 +737,10 @@ public class NodeGraph {
         }
         @Override public void renderParameterSlot(GuiGraphics context, Font textRenderer, Node node,
                                                   boolean isOverSidebar, int slotIndex) {
-            NodeGraph.this.renderParameterSlot(context, textRenderer, node, isOverSidebar, slotIndex);
+            nodeControls.renderParameterSlot(context, textRenderer, node, isOverSidebar, slotIndex);
         }
         @Override public String getOperatorSymbol(Node node, boolean negated) {
-            return NodeGraph.this.getOperatorSymbol(node, negated);
+            return nodeControls.getOperatorSymbol(node, negated);
         }
         @Override public void renderNodeContent(GuiGraphics context, Font textRenderer, Node node, int mouseX, int mouseY,
                                                 int x, int y, int width, int height, boolean isOverSidebar,
@@ -694,7 +753,7 @@ public class NodeGraph {
         @Override public int cameraX() { return cameraX; }
         @Override public int cameraY() { return cameraY; }
         @Override public int adjustColorBrightness(int color, float factor) {
-            return NodeGraph.this.adjustColorBrightness(color, factor);
+            return nodeControls.adjustColorBrightness(color, factor);
         }
         @Override public void drawNodeText(GuiGraphics context, Font renderer, String text, int x, int y, int color) {
             NodeGraph.this.drawNodeText(context, renderer, text, x, y, color);
@@ -788,15 +847,15 @@ public class NodeGraph {
                 NodeGraph.this.stopParameterEditing(commit);
             }
             @Override public int parameterFieldLeft(Node node) {
-                return getParameterFieldLeft(node);
+                return nodeControls.getParameterFieldLeft(node);
             }
             @Override public int inlineParameterFieldTop(Node node, int index) {
                 return getInlineParameterFieldTop(node, index);
             }
             @Override public int parameterFieldWidth(Node node) {
-                return getParameterFieldWidth(node);
+                return nodeControls.getParameterFieldWidth(node);
             }
-            @Override public int parameterFieldHeight() { return getParameterFieldHeight(); }
+            @Override public int parameterFieldHeight() { return nodeControls.getParameterFieldHeight(); }
             @Override public int cameraX() { return cameraX; }
             @Override public int cameraY() { return cameraY; }
             @Override public int screenToUiX(int screenX) {
@@ -813,7 +872,7 @@ public class NodeGraph {
                 return getDropdownAnimationProgress(animation, open);
             }
             @Override public int selectedNodeAccentColor() {
-                return getSelectedNodeAccentColor();
+                return nodeControls.getSelectedNodeAccentColor();
             }
             @Override public void enableDropdownScissor(
                 GuiGraphics context, int x, int y, int width, int height
@@ -893,7 +952,7 @@ public class NodeGraph {
                 return NodeGraph.this.shouldRenderNodeText();
             }
             @Override public int selectedNodeAccentColor() {
-                return getSelectedNodeAccentColor();
+                return nodeControls.getSelectedNodeAccentColor();
             }
             @Override public String translate(String key) { return tr(key); }
             @Override public String trimTextToWidth(String text, Font renderer, int maxWidth) {
@@ -924,9 +983,9 @@ public class NodeGraph {
                 GuiGraphics context, Node node, int left, int top, int width, int height,
                 boolean enabled, boolean isOverSidebar
             ) {
-                renderNodeSliderToggle(
+                nodeControls.renderNodeSliderToggle(
                     context, left, top, width, height,
-                    getNodeToggleProgress(randomRoundingToggleAnimations, node, enabled),
+                    nodeControls.getNodeToggleProgress(randomRoundingToggleAnimations, node, enabled),
                     false, isOverSidebar
                 );
             }
@@ -936,7 +995,7 @@ public class NodeGraph {
                 return getDropdownAnimationProgress(animation, open);
             }
             @Override public void animateToggle(Node node, boolean enabled) {
-                getNodeToggleAnimation(randomRoundingToggleAnimations, node, enabled)
+                nodeControls.getNodeToggleAnimation(randomRoundingToggleAnimations, node, enabled)
                     .animateTo(
                         enabled ? 1f : 0f,
                         UITheme.TRANSITION_ANIM_MS,
@@ -957,7 +1016,7 @@ public class NodeGraph {
         @Override public int screenToUiX(int screenX) { return NodeGraph.this.screenToUiX(screenX); }
         @Override public int screenToUiY(int screenY) { return NodeGraph.this.screenToUiY(screenY); }
         @Override public int getDropdownRowHeight() { return NodeGraph.this.getDropdownRowHeight(); }
-        @Override public int getSelectedNodeAccentColor() { return NodeGraph.this.getSelectedNodeAccentColor(); }
+        @Override public int getSelectedNodeAccentColor() { return nodeControls.getSelectedNodeAccentColor(); }
         @Override public Font getTextRenderer() { return getClientTextRenderer(); }
         @Override public int getGuiScaledHeight() { return Minecraft.getInstance().getWindow().getGuiScaledHeight(); }
         @Override public String trimTextToWidth(String text, Font renderer, int maxWidth) { return NodeGraph.this.trimTextToWidth(text, renderer, maxWidth); }
@@ -1621,7 +1680,7 @@ public class NodeGraph {
         invalidateHierarchyCache();
         invalidateConnectionIndex();
         trimmedTextCache.clear();
-        parameterLayoutCache.clear();
+        nodeControls.clearParameterLayoutCache();
         runtimeVariableNamesFrameCache.clear();
         cachedBaseRuntimeVariableNames = null;
     }
@@ -3346,7 +3405,7 @@ public class NodeGraph {
 
         if (!onlyDragged) {
             DrawContextBridge.startNewRootLayer(context);
-            renderRuntimeScopeTooltip(context, textRenderer, mouseX, mouseY);
+            nodeControls.renderRuntimeScopeTooltip(context, textRenderer, mouseX, mouseY);
         }
         MatrixStackBridge.pop(matrices);
         compactViewportMode = false;
@@ -3510,7 +3569,7 @@ public class NodeGraph {
         } else if (node.getType() == NodeType.VARIABLE || node.getType() == NodeType.ROUTINE_INPUT) {
             nodeRenderer.renderVariableContent(context, textRenderer, node, isOverSidebar,
                 x, y, width, height, lowDetail);
-        } else if (!simpleStyle && isComparisonOperator(node) && !node.isExpandableBooleanOperator()) {
+        } else if (!simpleStyle && nodeControls.isComparisonOperator(node) && !node.isExpandableBooleanOperator()) {
             nodeRenderer.renderComparisonContent(context, textRenderer, node, isOverSidebar,
                 x, y, width, height, lowDetail);
         } else if (node.getType() == NodeType.EVENT_CALL) {
@@ -3538,7 +3597,7 @@ public class NodeGraph {
                 if (node.hasParameterSlot()) {
                     int slotCount = node.getParameterSlotCount();
                     for (int slotIndex = 0; slotIndex < slotCount; slotIndex++) {
-                        renderParameterSlot(context, textRenderer, node, isOverSidebar, slotIndex);
+                        nodeControls.renderParameterSlot(context, textRenderer, node, isOverSidebar, slotIndex);
                     }
                     if (node.hasCoordinateInputFields()) {
                         renderCoordinateInputFields(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
@@ -3554,15 +3613,15 @@ public class NodeGraph {
                 if (node.hasMessageInputFields()) {
                     renderMessageInputFields(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
                     if (node.hasMessageScopeToggle()) {
-                        renderMessageScopeToggle(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+                        nodeControls.renderMessageScopeToggle(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
                     }
-                    renderMessageButtons(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+                    nodeControls.renderMessageButtons(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
                 }
                 if (node.isExpandableBooleanOperator()) {
-                    renderBooleanOperatorButtons(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+                    nodeControls.renderBooleanOperatorButtons(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
                 }
                 if (node.hasBookTextInput()) {
-                    renderBookTextInput(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+                    nodeControls.renderBookTextInput(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
                 }
                 if (node.hasSchematicDropdownField()) {
                     renderSchematicDropdownList(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
@@ -3573,17 +3632,17 @@ public class NodeGraph {
             }
 
             if (node.hasBooleanToggle()) {
-                renderBooleanToggleButton(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+                nodeControls.renderBooleanToggleButton(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
             }
             if (node.hasSensorSlot()) {
-                renderSensorSlot(context, textRenderer, node, isOverSidebar);
+                nodeControls.renderSensorSlot(context, textRenderer, node, isOverSidebar);
             }
             if (node.hasActionSlot()) {
-                renderActionSlot(context, textRenderer, node, isOverSidebar);
+                nodeControls.renderActionSlot(context, textRenderer, node, isOverSidebar);
             }
         }
         if (node.supportsRuntimeValueScope()) {
-            renderRuntimeScopeButton(context, node, isOverSidebar, mouseX, mouseY);
+            nodeControls.renderRuntimeScopeButton(context, node, isOverSidebar, mouseX, mouseY);
         }
         if (hasRunPresetSelection(node)) {
             renderRunPresetOpenButton(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
@@ -3605,165 +3664,48 @@ public class NodeGraph {
 
     private void renderRunPresetOpenButton(GuiGraphics context, Font textRenderer, Node node,
                                            boolean dimmed, int mouseX, int mouseY) {
-        renderNodeHeaderTextButton(context, textRenderer, getRunPresetOpenButtonWorldX(node),
+        nodeControls.renderNodeHeaderTextButton(context, textRenderer, getRunPresetOpenButtonWorldX(node),
             getRunPresetOpenButtonWorldY(node), NODE_HEADER_BUTTON_SIZE, "↗", dimmed, true,
-            getSelectedNodeAccentColor(), mouseX, mouseY);
+            nodeControls.getSelectedNodeAccentColor(), mouseX, mouseY);
     }
 
-    private int getRuntimeScopeButtonWorldX(Node node) {
-        return node.getX() + node.getWidth() - NODE_HEADER_BUTTON_SIZE - 2;
-    }
 
-    private int getRuntimeScopeButtonWorldY(Node node) {
-        return node.getY() + 2;
-    }
 
-    public boolean isPointInsideRuntimeScopeButton(Node node, int screenX, int screenY) {
-        if (node == null || !node.supportsRuntimeValueScope()) {
-            return false;
-        }
-        return isPointInsideNodeHeaderButton(getRuntimeScopeButtonWorldX(node),
-            getRuntimeScopeButtonWorldY(node), NODE_HEADER_BUTTON_SIZE, screenX, screenY);
-    }
 
-    private void renderRuntimeScopeButton(GuiGraphics context, Node node, boolean dimmed, int mouseX, int mouseY) {
-        NodeHeaderButtonVisual visual = renderNodeHeaderButtonFrame(context, getRuntimeScopeButtonWorldX(node),
-            getRuntimeScopeButtonWorldY(node), NODE_HEADER_BUTTON_SIZE, dimmed, true,
-            getSelectedNodeAccentColor(), mouseX, mouseY);
-        int iconX = visual.left() + 3;
-        int iconY = visual.top() + 3;
-        if (node.getRuntimeValueScope() == RuntimeValueScope.GLOBAL) {
-            PathmindIconRenderer.drawGlobalScope(context, iconX, iconY, 7, visual.iconColor());
-        } else {
-            PathmindIconRenderer.drawLocalScope(context, iconX, iconY, 7, visual.iconColor());
-        }
-    }
 
-    private NodeHeaderButtonVisual renderNodeHeaderButtonFrame(GuiGraphics context, int worldLeft, int worldTop,
-                                                                int size, boolean dimmed, boolean enabled,
-                                                                int hoverBorder, int mouseX, int mouseY) {
-        // Node bodies are batched on modern versions, so header controls render in a later root layer.
-        DrawContextBridge.startNewRootLayer(context);
-        int left = worldLeft - cameraX;
-        int top = worldTop - cameraY;
-        boolean hovered = enabled && !dimmed
-            && isPointInsideNodeHeaderButton(worldLeft, worldTop, size, mouseX, mouseY);
-        int baseFill = dimmed ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_PRIMARY;
-        int fill = hovered ? adjustColorBrightness(baseFill, 1.15f) : baseFill;
-        int border = hovered ? hoverBorder : dimmed ? UITheme.BORDER_SUBTLE : UITheme.BORDER_DEFAULT;
-        int iconColor = !enabled ? UITheme.NODE_LABEL_DIMMED
-            : dimmed ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
-        context.fill(left, top, left + size, top + size, fill);
-        DrawContextBridge.drawBorderInLayer(context, left, top, size, size, border);
-        return new NodeHeaderButtonVisual(left, top, iconColor);
-    }
 
-    private void renderNodeHeaderTextButton(GuiGraphics context, Font textRenderer,
-                                            int worldLeft, int worldTop, int size, String label,
-                                            boolean dimmed, boolean enabled, int hoverBorder,
-                                            int mouseX, int mouseY) {
-        NodeHeaderButtonVisual visual = renderNodeHeaderButtonFrame(context, worldLeft, worldTop, size,
-            dimmed, enabled, hoverBorder, mouseX, mouseY);
-        int textX = visual.left() + (size - textRenderer.width(label)) / 2;
-        int textY = visual.top() + (size - textRenderer.lineHeight) / 2 + 1;
-        drawNodeText(context, textRenderer, Component.literal(label), textX, textY, visual.iconColor());
-    }
 
-    private boolean isPointInsideNodeHeaderButton(int worldLeft, int worldTop, int size,
-                                                   int screenX, int screenY) {
-        return isPointInsideNodeHeaderButtonWorld(worldLeft, worldTop, size,
-            screenToWorldX(screenX), screenToWorldY(screenY));
-    }
 
-    private static boolean isPointInsideNodeHeaderButtonWorld(int worldLeft, int worldTop, int size,
-                                                              int worldX, int worldY) {
-        return worldX >= worldLeft && worldX < worldLeft + size
-            && worldY >= worldTop && worldY < worldTop + size;
-    }
 
-    private record NodeHeaderButtonVisual(int left, int top, int iconColor) {}
 
-    private void renderRuntimeScopeTooltip(GuiGraphics context, Font textRenderer, int mouseX, int mouseY) {
-        Node node = getNodeAt(mouseX, mouseY);
-        if (!isPointInsideRuntimeScopeButton(node, mouseX, mouseY)) {
-            return;
-        }
-        String key = switch (node.getRuntimeValueScope()) {
-            case GLOBAL -> "pathmind.runtimeScope.global.short";
-            case CHAIN -> "pathmind.runtimeScope.local.short";
-        };
-        Minecraft client = Minecraft.getInstance();
-        if (client == null || client.getWindow() == null) {
-            return;
-        }
-        float scale = Math.max(0.01f, getZoomScale());
-        int scaledMouseX = Math.round(mouseX / scale);
-        int scaledMouseY = Math.round(mouseY / scale);
-        int scaledWidth = Math.round(client.getWindow().getGuiScaledWidth() / scale);
-        int scaledHeight = Math.round(client.getWindow().getGuiScaledHeight() / scale);
-        TooltipRenderer.render(context, textRenderer, tr(key), scaledMouseX, scaledMouseY,
-            scaledWidth, scaledHeight);
-    }
 
-    public boolean handleRuntimeScopeButtonClick(Node node, int mouseX, int mouseY) {
-        if (!isPointInsideRuntimeScopeButton(node, mouseX, mouseY)) {
-            return false;
-        }
-        pushUndoState();
-        node.toggleRuntimeValueScope();
-        notifyNodeParametersChanged(node);
-        return true;
-    }
 
-    private int getParameterFieldLeft(Node node) {
-        return node.getX() + 5;
-    }
 
-    private boolean isCombinedDirectionNode(Node node) {
-        return node != null && node.getType() == NodeType.PARAM_DIRECTION;
-    }
 
-    private boolean isCombinedBooleanNode(Node node) {
-        return node != null && node.getType() == NodeType.PARAM_BOOLEAN;
-    }
 
-    private int getDirectionModeTabTop(Node node) {
-        int top = node.getY() + 18;
-        if (node != null && node.supportsModeSelection()) {
-            top += PARAMETER_INPUT_HEIGHT + PARAMETER_INPUT_GAP;
-        }
-        return top;
-    }
 
-    private int getBooleanModeTabTop(Node node) {
-        int top = node.getY() + 18;
-        if (node != null && node.supportsModeSelection()) {
-            top += PARAMETER_INPUT_HEIGHT + PARAMETER_INPUT_GAP;
-        }
-        return top;
-    }
 
-    private int getInlineParameterFieldsTop(Node node) {
-        int top = node.getY() + 18;
-        if (node != null && node.supportsModeSelection()) {
-            top += PARAMETER_INPUT_HEIGHT + PARAMETER_INPUT_GAP;
-        }
-        if (isCombinedDirectionNode(node)) {
-            top += DIRECTION_MODE_TAB_HEIGHT + PARAMETER_INPUT_GAP;
-        }
-        if (isCombinedBooleanNode(node)) {
-            top += DIRECTION_MODE_TAB_HEIGHT + PARAMETER_INPUT_GAP;
-        }
-        return top;
-    }
 
-    private int getParameterFieldWidth(Node node) {
-        return Math.max(20, node.getWidth() - 10);
-    }
 
-    private int getParameterFieldHeight() {
-        return PARAMETER_INPUT_HEIGHT;
-    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     private void renderModeField(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar,
                                  int mouseX, int mouseY) {
@@ -3798,7 +3740,7 @@ public class NodeGraph {
         boolean open = modeDropdown.isOpen() && modeDropdown.getNode() == node;
 
         float hoverProgress = getAnimatedHoverProgress(node.getId() + "#selector:" + fieldLeft + ":" + fieldTop, hovered || open);
-        int accentColor = isOverSidebar ? toGrayscale(getSelectedNodeAccentColor(), 0.8f) : getSelectedNodeAccentColor();
+        int accentColor = isOverSidebar ? nodeControls.toGrayscale(nodeControls.getSelectedNodeAccentColor(), 0.8f) : nodeControls.getSelectedNodeAccentColor();
         UIStyleHelper.FieldPalette palette;
         if (compactViewportMode && !isOverSidebar) {
             palette = new UIStyleHelper.FieldPalette(
@@ -3894,542 +3836,60 @@ public class NodeGraph {
         return new UIStyleHelper.FieldPalette(backgroundColor, borderColor, innerBorderColor, textColor, placeholderColor);
     }
 
-    private void renderDirectionModeTabs(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar,
-                                         int fieldTop, int mouseX, int mouseY) {
-        if (!isCombinedDirectionNode(node)) {
-            return;
-        }
-        int fieldLeft = getParameterFieldLeft(node) - cameraX;
-        int fieldWidth = getParameterFieldWidth(node);
-        int fieldHeight = DIRECTION_MODE_TAB_HEIGHT;
-        int splitX = fieldLeft + fieldWidth / 2;
-        int accentColor = getSelectedNodeAccentColor();
-        int inactiveBackground = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_SIDEBAR;
-        int inactiveBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BORDER_DEFAULT;
-        int activeBackground = isOverSidebar ? adjustColorBrightness(accentColor, 0.72f) : adjustColorBrightness(accentColor, 0.84f);
-        int activeText = UITheme.TEXT_EDITING;
-        int inactiveText = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
-        boolean exactMode = node.isDirectionModeExact();
 
-        int worldMouseX = screenToWorldX(mouseX);
-        int worldMouseY = screenToWorldY(mouseY);
-        int worldLeft = getParameterFieldLeft(node);
-        int worldTop = fieldTop + cameraY;
-        int halfWidth = Math.max(1, fieldWidth / 2);
-        boolean hoverExact = !isOverSidebar
-            && worldMouseX >= worldLeft
-            && worldMouseX < worldLeft + halfWidth
-            && worldMouseY >= worldTop
-            && worldMouseY <= worldTop + fieldHeight;
-        boolean hoverCardinal = !isOverSidebar
-            && worldMouseX >= worldLeft + halfWidth
-            && worldMouseX <= worldLeft + fieldWidth
-            && worldMouseY >= worldTop
-            && worldMouseY <= worldTop + fieldHeight;
 
-        int exactLeft = fieldLeft;
-        int exactWidth = Math.max(1, halfWidth);
-        int cardinalLeft = splitX;
-        int cardinalWidth = Math.max(1, fieldLeft + fieldWidth - splitX);
 
-        int exactBackground = exactMode ? activeBackground : inactiveBackground;
-        int cardinalBackground = exactMode ? inactiveBackground : activeBackground;
-        int exactBorder = exactMode ? accentColor : inactiveBorder;
-        int cardinalBorder = exactMode ? inactiveBorder : accentColor;
-        if (hoverExact && !exactMode) {
-            exactBackground = UITheme.BACKGROUND_TERTIARY;
-        }
-        if (hoverCardinal && exactMode) {
-            cardinalBackground = UITheme.BACKGROUND_TERTIARY;
-        }
 
-        context.fill(exactLeft, fieldTop, exactLeft + exactWidth, fieldTop + fieldHeight, exactBackground);
-        DrawContextBridge.drawBorderInLayer(context, exactLeft, fieldTop, exactWidth, fieldHeight, exactBorder);
-        context.fill(cardinalLeft, fieldTop, cardinalLeft + cardinalWidth, fieldTop + fieldHeight, cardinalBackground);
-        DrawContextBridge.drawBorderInLayer(context, cardinalLeft, fieldTop, cardinalWidth, fieldHeight, cardinalBorder);
 
-        String exactLabel = tr("pathmind.option.directionMode.exact");
-        String cardinalLabel = tr("pathmind.option.directionMode.cardinal");
-        int exactLabelX = exactLeft + Math.max(0, (exactWidth - textRenderer.width(exactLabel)) / 2);
-        int cardinalLabelX = cardinalLeft + Math.max(0, (cardinalWidth - textRenderer.width(cardinalLabel)) / 2);
-        int labelY = fieldTop + (fieldHeight - textRenderer.lineHeight) / 2 + 1;
-        drawNodeText(context, textRenderer, Component.literal(exactLabel), exactLabelX, labelY, exactMode ? activeText : inactiveText);
-        drawNodeText(context, textRenderer, Component.literal(cardinalLabel), cardinalLabelX, labelY, exactMode ? inactiveText : activeText);
-    }
 
-    private void renderBooleanModeTabs(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar,
-                                       int fieldTop, int mouseX, int mouseY) {
-        if (!isCombinedBooleanNode(node)) {
-            return;
-        }
-        int fieldLeft = getParameterFieldLeft(node) - cameraX;
-        int fieldWidth = getParameterFieldWidth(node);
-        int fieldHeight = DIRECTION_MODE_TAB_HEIGHT;
-        int splitX = fieldLeft + fieldWidth / 2;
-        int accentColor = getSelectedNodeAccentColor();
-        int inactiveBackground = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_SIDEBAR;
-        int inactiveBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BORDER_DEFAULT;
-        int activeBackground = isOverSidebar ? adjustColorBrightness(accentColor, 0.72f) : adjustColorBrightness(accentColor, 0.84f);
-        int activeText = UITheme.TEXT_EDITING;
-        int inactiveText = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
-        boolean literalMode = node.isBooleanModeLiteral();
 
-        int worldMouseX = screenToWorldX(mouseX);
-        int worldMouseY = screenToWorldY(mouseY);
-        int worldLeft = getParameterFieldLeft(node);
-        int worldTop = fieldTop + cameraY;
-        int halfWidth = Math.max(1, fieldWidth / 2);
-        boolean hoverLiteral = !isOverSidebar
-            && worldMouseX >= worldLeft
-            && worldMouseX < worldLeft + halfWidth
-            && worldMouseY >= worldTop
-            && worldMouseY <= worldTop + fieldHeight;
-        boolean hoverVariable = !isOverSidebar
-            && worldMouseX >= worldLeft + halfWidth
-            && worldMouseX <= worldLeft + fieldWidth
-            && worldMouseY >= worldTop
-            && worldMouseY <= worldTop + fieldHeight;
 
-        int literalLeft = fieldLeft;
-        int literalWidth = Math.max(1, halfWidth);
-        int variableLeft = splitX;
-        int variableWidth = Math.max(1, fieldLeft + fieldWidth - splitX);
 
-        int literalBackground = literalMode ? activeBackground : inactiveBackground;
-        int variableBackground = literalMode ? inactiveBackground : activeBackground;
-        int literalBorder = literalMode ? accentColor : inactiveBorder;
-        int variableBorder = literalMode ? inactiveBorder : accentColor;
-        if (hoverLiteral && !literalMode) {
-            literalBackground = UITheme.BACKGROUND_TERTIARY;
-        }
-        if (hoverVariable && literalMode) {
-            variableBackground = UITheme.BACKGROUND_TERTIARY;
-        }
 
-        context.fill(literalLeft, fieldTop, literalLeft + literalWidth, fieldTop + fieldHeight, literalBackground);
-        DrawContextBridge.drawBorderInLayer(context, literalLeft, fieldTop, literalWidth, fieldHeight, literalBorder);
-        context.fill(variableLeft, fieldTop, variableLeft + variableWidth, fieldTop + fieldHeight, variableBackground);
-        DrawContextBridge.drawBorderInLayer(context, variableLeft, fieldTop, variableWidth, fieldHeight, variableBorder);
 
-        String literalLabel = tr("pathmind.option.booleanMode.literal");
-        String variableLabel = tr("pathmind.option.booleanMode.variable");
-        int literalLabelX = literalLeft + Math.max(0, (literalWidth - textRenderer.width(literalLabel)) / 2);
-        int variableLabelX = variableLeft + Math.max(0, (variableWidth - textRenderer.width(variableLabel)) / 2);
-        int labelY = fieldTop + (fieldHeight - textRenderer.lineHeight) / 2 + 1;
-        drawNodeText(context, textRenderer, Component.literal(literalLabel), literalLabelX, labelY, literalMode ? activeText : inactiveText);
-        drawNodeText(context, textRenderer, Component.literal(variableLabel), variableLabelX, labelY, literalMode ? inactiveText : activeText);
-    }
 
-    private String getParameterLabelText(Node node, NodeParameter parameter, Font textRenderer, int maxWidth) {
-        ParameterLayoutCacheEntry layout = getParameterLayoutCacheEntry(node, parameter, textRenderer);
-        if (layout == null || layout.displayName().isEmpty()) {
-            return "";
-        }
-        return layout.labelText();
-    }
 
-    private boolean isStandaloneParameterNode(Node node) {
-        if (node == null || node.getType() == null) {
-            return false;
-        }
-        return node.getType().name().startsWith("PARAM_") && node.getParameters().size() <= 1;
-    }
 
-    private boolean shouldLeftAlignParameterValue(Node node) {
-        return false;
-    }
 
-    private int getParameterValueStartX(Node node, NodeParameter parameter, Font textRenderer) {
-        int fieldLeft = getParameterFieldLeft(node);
-        if (shouldLeftAlignParameterValue(node)) {
-            return fieldLeft + 4;
-        }
-        ParameterLayoutCacheEntry layout = getParameterLayoutCacheEntry(node, parameter, textRenderer);
-        if (layout == null) {
-            return fieldLeft + 8;
-        }
-        return layout.valueStartX();
-    }
 
-    private ParameterLayoutCacheEntry getParameterLayoutCacheEntry(Node node, NodeParameter parameter, Font textRenderer) {
-        if (node == null || parameter == null) {
-            return null;
-        }
-        String parameterKey = parameter.getName();
-        Map<String, ParameterLayoutCacheEntry> nodeCache = parameterLayoutCache.computeIfAbsent(node, ignored -> new HashMap<>());
-        String displayName = node.getParameterDisplayName(parameter);
-        if (displayName == null) {
-            displayName = "";
-        }
-        int fieldLeft = getParameterFieldLeft(node);
-        int fieldWidth = getParameterFieldWidth(node);
-        int maxLabelWidth = Math.max(0, fieldWidth - 40);
-        boolean leftAligned = shouldLeftAlignParameterValue(node);
-        ParameterLayoutCacheEntry cached = nodeCache.get(parameterKey);
-        if (cached != null
-            && cached.fieldLeft() == fieldLeft
-            && cached.fieldWidth() == fieldWidth
-            && cached.maxLabelWidth() == maxLabelWidth
-            && cached.leftAligned() == leftAligned
-            && cached.displayName().equals(displayName)) {
-            return cached;
-        }
 
-        String label = displayName.isEmpty() ? "" : displayName + ":";
-        String labelText = label;
-        int labelWidth = 0;
-        if (textRenderer != null && !label.isEmpty()) {
-            labelText = maxLabelWidth > 0 ? trimTextToWidth(label, textRenderer, maxLabelWidth) : label;
-            labelWidth = textRenderer.width(labelText);
-        }
-        int valueStartX = leftAligned ? fieldLeft + 4 : fieldLeft + 4 + labelWidth + 4;
-        ParameterLayoutCacheEntry entry = new ParameterLayoutCacheEntry(displayName, fieldLeft, fieldWidth, maxLabelWidth, leftAligned, labelText, valueStartX);
-        nodeCache.put(parameterKey, entry);
-        return entry;
-    }
 
-    private String formatVillagerTradeValue(String rawValue) {
-        if (rawValue == null || rawValue.isEmpty()) {
-            return "";
-        }
-        if (!rawValue.contains("|") || !rawValue.contains("@")) {
-            return rawValue;
-        }
-        String[] parts = rawValue.split("\\|");
-        if (parts.length < 1) {
-            return rawValue;
-        }
-        TradeKeyPart first = parseTradeKeyPart(parts[0]);
-        TradeKeyPart second = parts.length > 1 ? parseTradeKeyPart(parts[1]) : null;
-        TradeKeyPart sell = parts.length > 2 ? parseTradeKeyPart(parts[2]) : null;
-        if (sell == null || sell.name == null || sell.name.isEmpty()) {
-            return rawValue;
-        }
-        StringBuilder builder = new StringBuilder();
-        if (first != null && first.isValid()) {
-            builder.append(first.format());
-        }
-        if (second != null && second.isValid()) {
-            if (builder.length() > 0) {
-                builder.append(" + ");
-            }
-            builder.append(second.format());
-        }
-        if (builder.length() > 0) {
-            builder.append(" -> ");
-        }
-        builder.append(sell.format());
-        return builder.toString();
-    }
 
-    private TradeKeyPart parseTradeKeyPart(String part) {
-        if (part == null || part.isEmpty() || "none@0".equals(part)) {
-            return TradeKeyPart.empty();
-        }
-        int atIndex = part.indexOf('@');
-        if (atIndex <= 0) {
-            return TradeKeyPart.empty();
-        }
-        String itemId = part.substring(0, atIndex);
-        String countRaw = part.substring(atIndex + 1);
-        int count = 1;
-        try {
-            count = Math.max(1, Integer.parseInt(countRaw));
-        } catch (NumberFormatException ignored) {
-            count = 1;
-        }
-        Identifier identifier = Identifier.tryParse(itemId);
-        if (identifier == null || !BuiltInRegistries.ITEM.containsKey(identifier)) {
-            return TradeKeyPart.empty();
-        }
-        Item item = BuiltInRegistries.ITEM.getOptional(identifier).orElse(null);
-        return new TradeKeyPart(new ItemStack(item).getHoverName().getString(), count);
-    }
 
-    private static final class TradeKeyPart {
-        private static final TradeKeyPart EMPTY = new TradeKeyPart("", 0);
-        private final String name;
-        private final int count;
 
-        private TradeKeyPart(String name, int count) {
-            this.name = name;
-            this.count = count;
-        }
 
-        private static TradeKeyPart empty() {
-            return EMPTY;
-        }
 
-        private boolean isValid() {
-            return name != null && !name.isEmpty() && count > 0;
-        }
 
-        private String format() {
-            if (count > 1) {
-                return count + "x " + name;
-            }
-            return name;
-        }
-    }
 
-    private void renderStartNodeNumber(GuiGraphics context, Font textRenderer, Node node, int x, int y, boolean isOverSidebar) {
-        int number = node.getStartNodeNumber();
-        if (number <= 0) {
-            return;
-        }
 
-        String label = String.valueOf(number);
-        int textColor = isOverSidebar ? UITheme.TEXT_LABEL : UITheme.TEXT_PRIMARY;
-        drawNodeText(context, textRenderer, label, x + 4, y + 4, textColor);
-    }
 
-    private void renderStartLaunchIcon(GuiGraphics context, StartLaunchMode mode, int centerX, int centerY,
-                                       int color, int nodeY, int nodeHeight) {
-        StartLaunchMode effectiveMode = mode == null ? StartLaunchMode.MANUAL : mode;
-        if (effectiveMode == StartLaunchMode.CLIENT_LAUNCH) {
-            context.fill(centerX - 2, centerY - 8, centerX + 3, centerY + 5, color);
-            context.fill(centerX - 6, centerY + 2, centerX + 7, centerY + 6, color);
-            context.fill(centerX - 4, centerY - 5, centerX + 5, centerY - 1, color);
-            return;
-        }
-        if (effectiveMode == StartLaunchMode.WORLD_JOIN) {
-            context.fill(centerX - 7, centerY - 5, centerX + 8, centerY + 6, color);
-            context.fill(centerX - 4, centerY - 8, centerX + 5, centerY + 9, color);
-            context.fill(centerX - 9, centerY - 2, centerX + 10, centerY + 3, color);
-            return;
-        }
-        if (effectiveMode == StartLaunchMode.MAIN_MENU_OPEN) {
-            context.fill(centerX - 8, centerY - 7, centerX + 9, centerY - 3, color);
-            context.fill(centerX - 8, centerY - 1, centerX + 9, centerY + 3, color);
-            context.fill(centerX - 8, centerY + 5, centerX + 9, centerY + 9, color);
-            return;
-        }
-        if (effectiveMode == StartLaunchMode.SCREEN_OPENED) {
-            context.fill(centerX - 9, centerY - 7, centerX + 10, centerY + 8, color);
-            context.fill(centerX - 5, centerY - 3, centerX + 6, centerY + 4, UITheme.NODE_START_BG);
-            context.fill(centerX - 4, centerY + 10, centerX + 5, centerY + 13, color);
-            return;
-        }
 
-        int triangleSize = 13;
-        for (int i = 0; i < triangleSize; i++) {
-            int lineWidth = Math.max(3, i + 2);
-            int startX = centerX - 5;
-            int lineY = centerY - triangleSize / 2 + i;
-            if (lineY >= nodeY + 2 && lineY <= nodeY + nodeHeight - 3) {
-                context.fill(startX, lineY, startX + lineWidth, lineY + 2, color);
-            }
-        }
-    }
 
-    private void renderStartModeButton(GuiGraphics context, Node node, int x, int y, boolean isOverSidebar,
-                                       int mouseX, int mouseY) {
-        int buttonX = getStartModeButtonWorldX(node) - cameraX;
-        int buttonY = getStartModeButtonWorldY(node) - cameraY;
-        int color = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
-        boolean hovered = isPointInsideStartModeButton(node, mouseX, mouseY);
-        if (hovered && !isOverSidebar) {
-            context.fill(buttonX - 1, buttonY - 1, buttonX + 10, buttonY + 7, 0x33000000);
-        }
-        for (int i = 0; i < 3; i++) {
-            int dotX = buttonX + 2 + (i * 3);
-            context.fill(dotX, buttonY + 2, dotX + 1, buttonY + 3, color);
-        }
-    }
 
-    private void renderBooleanToggleButton(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar, int mouseX, int mouseY) {
-        if (node == null || node.getType() == NodeType.PARAM_BOOLEAN) {
-            return;
-        }
-        int buttonLeft = node.getBooleanToggleLeft() - cameraX;
-        int buttonTop = node.getBooleanToggleTop() - cameraY;
-        int buttonWidth = node.getBooleanToggleWidth();
-        int buttonHeight = node.getBooleanToggleHeight();
 
-        boolean hovered = isPointInsideBooleanToggle(node, mouseX, mouseY);
-        int borderColor;
-        int fillColor;
-        int textColor;
-        if (isOverSidebar) {
-            borderColor = UITheme.BORDER_HIGHLIGHT;
-            fillColor = UITheme.BACKGROUND_SECONDARY;
-            textColor = UITheme.TEXT_TERTIARY;
-        } else {
-            float progress = getNodeToggleProgress(booleanToggleAnimations, node, node.getBooleanToggleValue());
-            int accentColor = getSelectedNodeAccentColor();
-            int onBorder = adjustColorBrightness(accentColor, 1.12f);
-            int onFill = adjustColorBrightness(accentColor, 0.22f);
-            borderColor = AnimationHelper.lerpColor(UITheme.TOGGLE_OFF_BORDER, onBorder, progress);
-            fillColor = AnimationHelper.lerpColor(UITheme.BOOL_TOGGLE_OFF_FILL, onFill, progress);
-            if (hovered) {
-                fillColor = adjustColorBrightness(fillColor, 1.12f);
-                borderColor = adjustColorBrightness(borderColor, 1.05f);
-            }
-            textColor = UITheme.TEXT_PRIMARY;
-        }
 
-        context.fill(buttonLeft, buttonTop, buttonLeft + buttonWidth, buttonTop + buttonHeight, fillColor);
-        DrawContextBridge.drawBorderInLayer(context, buttonLeft, buttonTop, buttonWidth, buttonHeight, borderColor);
 
-        String label = node.getBooleanToggleValue() ? "TRUE" : "FALSE";
-        int textWidth = textRenderer.width(label);
-        int textX = buttonLeft + Math.max(2, (buttonWidth - textWidth) / 2);
-        int textY = buttonTop + (buttonHeight - textRenderer.lineHeight) / 2 + 1;
-        drawNodeText(context, textRenderer, Component.literal(label), textX, textY, textColor);
-    }
 
-    private void renderSensorSlot(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar) {
-        int slotX = node.getSensorSlotLeft() - cameraX;
-        int slotY = node.getSensorSlotTop() - cameraY;
-        int slotWidth = node.getSensorSlotWidth();
-        int slotHeight = node.getSensorSlotHeight();
-        boolean useLogicSlotTitle = usesLogicSensorSlotTitle(node);
 
-        int backgroundColor = node.hasAttachedSensor() ? UITheme.BACKGROUND_TERTIARY : UITheme.BACKGROUND_PRIMARY;
-        if (isOverSidebar) {
-            backgroundColor = UITheme.NODE_INPUT_BG_DIMMED;
-        }
 
-        int borderColor = node.hasAttachedSensor() ? UITheme.BORDER_HIGHLIGHT : UITheme.BORDER_DEFAULT;
-        if (sensorDropTarget == node) {
-            backgroundColor = UITheme.DROP_HIGHLIGHT_BLUE;
-            borderColor = getSelectedNodeAccentColor();
-        }
 
-        context.fill(slotX, slotY, slotX + slotWidth, slotY + slotHeight, backgroundColor);
-        DrawContextBridge.drawBorderInLayer(context, slotX, slotY, slotWidth, slotHeight, borderColor);
 
-        if (useLogicSlotTitle) {
-            String titleDisplay = trimTextToWidth(getLogicSensorSlotTitle(node), textRenderer, slotWidth - 4);
-            int titleY = slotY - textRenderer.lineHeight - 2;
-            int titleColor = sensorDropTarget == node ? getSelectedNodeAccentColor() : (isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_SECONDARY);
-            drawNodeText(context, textRenderer, Component.literal(titleDisplay), slotX + 2, titleY, titleColor);
-        }
 
-        if (!node.hasAttachedSensor()) {
-            if (useLogicSlotTitle) {
-                return;
-            }
-            String placeholder = "Drag a sensor here";
-            String display = trimTextToWidth(placeholder, textRenderer, slotWidth - 8);
-            int textWidth = textRenderer.width(display);
-            int textX = slotX + Math.max(4, (slotWidth - textWidth) / 2);
-            int textY = slotY + (slotHeight - textRenderer.lineHeight) / 2;
-            int textColor = sensorDropTarget == node ? getSelectedNodeAccentColor() : UITheme.TEXT_TERTIARY;
-            drawNodeText(context, textRenderer, Component.literal(display), textX, textY, textColor);
-        }
-    }
 
-    private void renderActionSlot(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar) {
-        int slotX = node.getActionSlotLeft() - cameraX;
-        int slotY = node.getActionSlotTop() - cameraY;
-        int slotWidth = node.getActionSlotWidth();
-        int slotHeight = node.getActionSlotHeight();
-        boolean useLogicSlotTitle = usesLogicActionSlotTitle(node);
 
-        int backgroundColor = node.hasAttachedActionNode() ? UITheme.BACKGROUND_TERTIARY : UITheme.BACKGROUND_PRIMARY;
-        if (isOverSidebar) {
-            backgroundColor = UITheme.NODE_INPUT_BG_DIMMED;
-        }
 
-        int borderColor = node.hasAttachedActionNode() ? UITheme.BORDER_HIGHLIGHT : UITheme.BORDER_DEFAULT;
-        if (actionDropTarget == node) {
-            backgroundColor = UITheme.DROP_HIGHLIGHT_GREEN;
-            borderColor = UITheme.DROP_ACCENT_GREEN;
-        }
 
-        context.fill(slotX, slotY, slotX + slotWidth, slotY + slotHeight, backgroundColor);
-        DrawContextBridge.drawBorderInLayer(context, slotX, slotY, slotWidth, slotHeight, borderColor);
-
-        if (useLogicSlotTitle) {
-            String title = getLogicActionSlotTitle(node);
-            int titleColor = actionDropTarget == node ? UITheme.DROP_ACCENT_GREEN : (isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_SECONDARY);
-            int titleY = slotY - textRenderer.lineHeight - 2;
-            String titleDisplay = trimTextToWidth(title, textRenderer, slotWidth - 4);
-            drawNodeText(context, textRenderer, Component.literal(titleDisplay), slotX + 2, titleY, titleColor);
-        }
-
-        if (!node.hasAttachedActionNode()) {
-            if (useLogicSlotTitle) {
-                return;
-            }
-            String placeholder = tr("pathmind.node.slot.dragNodeHere");
-            String display = trimTextToWidth(placeholder, textRenderer, slotWidth - 8);
-            int textWidth = textRenderer.width(display);
-            int textX = slotX + Math.max(4, (slotWidth - textWidth) / 2);
-            int textY = slotY + (slotHeight - textRenderer.lineHeight) / 2;
-            int textColor = actionDropTarget == node ? UITheme.DROP_ACCENT_GREEN : UITheme.TEXT_TERTIARY;
-            drawNodeText(context, textRenderer, Component.literal(display), textX, textY, textColor);
-        }
-    }
-
-    private boolean usesLogicSensorSlotTitle(Node node) {
-        if (node == null) {
-            return false;
-        }
-        NodeType type = node.getType();
-        return type == NodeType.CONTROL_IF
-            || type == NodeType.CONTROL_IF_ELSE
-            || type == NodeType.CONTROL_REPEAT_UNTIL
-            || type == NodeType.CONTROL_WAIT_UNTIL;
-    }
-
-    private boolean usesLogicActionSlotTitle(Node node) {
-        if (node == null) {
-            return false;
-        }
-        NodeType type = node.getType();
-        return type == NodeType.CONTROL_REPEAT
-            || type == NodeType.CONTROL_REPEAT_UNTIL
-            || type == NodeType.CONTROL_FOREVER;
-    }
-
-    private String getLogicSensorSlotTitle(Node node) {
-        return "Condition";
-    }
-
-    private String getLogicActionSlotTitle(Node node) {
-        if (node != null && node.getType() == NodeType.CONTROL_REPEAT) {
-            return "Repeat Body";
-        }
-        return "Loop Body";
-    }
-
-    private boolean isPointInsideBooleanToggle(Node node, int mouseX, int mouseY) {
-        if (node == null || !node.hasBooleanToggle() || node.getType() == NodeType.PARAM_BOOLEAN) {
-            return false;
-        }
-        int worldMouseX = screenToWorldX(mouseX);
-        int worldMouseY = screenToWorldY(mouseY);
-        int buttonLeft = node.getBooleanToggleLeft();
-        int buttonTop = node.getBooleanToggleTop();
-        int buttonWidth = node.getBooleanToggleWidth();
-        int buttonHeight = node.getBooleanToggleHeight();
-        return worldMouseX >= buttonLeft && worldMouseX <= buttonLeft + buttonWidth &&
-               worldMouseY >= buttonTop && worldMouseY <= buttonTop + buttonHeight;
-    }
-
-    public boolean handleBooleanToggleClick(Node node, int mouseX, int mouseY) {
-        if (!isPointInsideBooleanToggle(node, mouseX, mouseY)) {
-            return false;
-        }
-        node.toggleBooleanToggleValue();
-        getNodeToggleAnimation(booleanToggleAnimations, node, node.getBooleanToggleValue())
-            .animateTo(node.getBooleanToggleValue() ? 1f : 0f, UITheme.TRANSITION_ANIM_MS, AnimationHelper::easeInOutCubic);
-        notifyNodeParametersChanged(node);
-        return true;
-    }
 
     public boolean handleBooleanModeTabClick(Node ignoredNode, int screenX, int screenY) {
         int worldX = screenToWorldX(screenX);
         int worldY = screenToWorldY(screenY);
         Node node = findBooleanModeNodeAt(worldX, worldY);
-        if (!isCombinedBooleanNode(node)) {
+        if (!nodeControls.isCombinedBooleanNode(node)) {
             return false;
         }
-        int fieldLeft = getParameterFieldLeft(node);
-        int fieldTop = getBooleanModeTabTop(node);
-        int fieldWidth = getParameterFieldWidth(node);
+        int fieldLeft = nodeControls.getParameterFieldLeft(node);
+        int fieldTop = nodeControls.getBooleanModeTabTop(node);
+        int fieldWidth = nodeControls.getParameterFieldWidth(node);
         if (worldX < fieldLeft || worldX > fieldLeft + fieldWidth
             || worldY < fieldTop || worldY > fieldTop + DIRECTION_MODE_TAB_HEIGHT) {
             return false;
@@ -4447,354 +3907,39 @@ public class NodeGraph {
         return true;
     }
 
-    public boolean handleMessageButtonClick(Node node, int mouseX, int mouseY) {
-        if (node == null || !node.hasMessageInputFields()) {
-            return false;
-        }
-        int size = node.getMessageButtonSize();
-        int top = node.getMessageButtonTop();
-        int addLeft = node.getMessageAddButtonLeft();
-        int removeLeft = node.getMessageRemoveButtonLeft();
-        boolean handled = false;
 
-        boolean overAdd = isPointInsideNodeHeaderButton(addLeft, top, size, mouseX, mouseY);
-        boolean overRemove = isPointInsideNodeHeaderButton(removeLeft, top, size, mouseX, mouseY);
 
-        if (overAdd) {
-            stopMessageEditing(true);
-            node.addMessageLine("");
-            node.recalculateDimensions();
-            notifyNodeParametersChanged(node);
-            startMessageEditing(node, node.getMessageFieldCount() - 1);
-            handled = true;
-        } else if (overRemove && node.getMessageFieldCount() > 1) {
-            int targetIndex = (inlineFields.getMessageEditingNode() == node && inlineFields.getMessageEditingIndex() >= 0)
-                ? inlineFields.getMessageEditingIndex()
-                : node.getMessageFieldCount() - 1;
-            stopMessageEditing(true);
-            int removeIndex = Math.min(node.getMessageFieldCount() - 1, targetIndex);
-            node.removeMessageLine(removeIndex);
-            node.recalculateDimensions();
-            notifyNodeParametersChanged(node);
-            int nextIndex = Math.max(0, Math.min(removeIndex, node.getMessageFieldCount() - 1));
-            startMessageEditing(node, nextIndex);
-            handled = true;
-        }
 
-        return handled;
-    }
 
-    public boolean handleBooleanOperatorButtonClick(Node node, int mouseX, int mouseY) {
-        if (node == null || !node.isExpandableBooleanOperator()) {
-            return false;
-        }
-        int size = node.getBooleanOperatorButtonSize();
-        int top = node.getBooleanOperatorButtonTop();
-        int addLeft = node.getBooleanOperatorAddButtonLeft();
-        int removeLeft = node.getBooleanOperatorRemoveButtonLeft();
 
-        boolean overAdd = isPointInsideNodeHeaderButton(addLeft, top, size, mouseX, mouseY);
-        boolean overRemove = isPointInsideNodeHeaderButton(removeLeft, top, size, mouseX, mouseY);
 
-        if (overAdd) {
-            if (node.addBooleanOperatorSlot()) {
-                notifyNodeParametersChanged(node);
-            }
-            return true;
-        }
-        if (overRemove && node.getParameterSlotCount() > 2) {
-            if (node.removeBooleanOperatorSlot()) {
-                notifyNodeParametersChanged(node);
-            }
-            return true;
-        }
-        return false;
-    }
 
-    private boolean isPointInsideMessageScopeToggle(Node node, int mouseX, int mouseY) {
-        if (node == null || !node.hasMessageScopeToggle()) {
-            return false;
-        }
-        int worldMouseX = screenToWorldX(mouseX);
-        int worldMouseY = screenToWorldY(mouseY);
-        int left = node.getMessageScopeToggleLeft();
-        int top = node.getMessageScopeToggleTop();
-        int width = node.getMessageScopeToggleWidth();
-        int height = node.getMessageScopeToggleHeight();
-        return worldMouseX >= left && worldMouseX <= left + width
-            && worldMouseY >= top && worldMouseY <= top + height;
-    }
 
-    public boolean handleMessageScopeToggleClick(Node node, int mouseX, int mouseY) {
-        if (node == null || !node.hasMessageScopeToggle()) {
-            return false;
-        }
-        if (!isPointInsideMessageScopeToggle(node, mouseX, mouseY)) {
-            return false;
-        }
-        stopMessageEditing(true);
-        node.toggleMessageClientSide();
-        AnimatedValue animation = getMessageScopeAnimation(node);
-        animation.animateTo(node.isMessageClientSide() ? 1f : 0f, UITheme.TRANSITION_ANIM_MS, AnimationHelper::easeInOutCubic);
-        notifyNodeParametersChanged(node);
-        return true;
-    }
 
-    private AnimatedValue getMessageScopeAnimation(Node node) {
-        boolean clientSide = node != null && node.isMessageClientSide();
-        return messageScopeAnimations.computeIfAbsent(node, key -> AnimatedValue.forToggle(clientSide));
-    }
 
-    private AnimatedValue getNodeToggleAnimation(Map<Node, AnimatedValue> animations, Node node, boolean enabled) {
-        return animations.computeIfAbsent(node, key -> AnimatedValue.forToggle(enabled));
-    }
 
-    private float getNodeToggleProgress(Map<Node, AnimatedValue> animations, Node node, boolean enabled) {
-        AnimatedValue animation = getNodeToggleAnimation(animations, node, enabled);
-        animation.animateTo(enabled ? 1f : 0f, UITheme.TRANSITION_ANIM_MS, AnimationHelper::easeInOutCubic);
-        animation.tick();
-        return AnimationHelper.easeInOutCubic(animation.getValue());
-    }
 
-    private void renderNodeSliderToggle(GuiGraphics context, int toggleLeft, int toggleTop, int toggleWidth, int toggleHeight,
-                                        float progress, boolean hovered, boolean isOverSidebar) {
-        int accentColor = isOverSidebar ? toGrayscale(getSelectedNodeAccentColor(), 0.8f) : getSelectedNodeAccentColor();
-        UIStyleHelper.TogglePalette palette = UIStyleHelper.getTogglePalette(accentColor, progress, hovered, false);
-        if (isOverSidebar) {
-            palette = new UIStyleHelper.TogglePalette(UITheme.BACKGROUND_SECONDARY, UITheme.BORDER_HIGHLIGHT, UITheme.TOGGLE_KNOB);
-        }
-        UIStyleHelper.drawToggleSwitch(context, toggleLeft, toggleTop, toggleWidth, toggleHeight, progress, palette);
-    }
 
-    private int adjustColorBrightness(int color, float factor) {
-        int a = (color >>> 24) & 0xFF;
-        int r = (color >> 16) & 0xFF;
-        int g = (color >> 8) & 0xFF;
-        int b = color & 0xFF;
-        r = Mth.clamp((int) (r * factor), 0, 255);
-        g = Mth.clamp((int) (g * factor), 0, 255);
-        b = Mth.clamp((int) (b * factor), 0, 255);
-        return (a << 24) | (r << 16) | (g << 8) | b;
-    }
 
-    private int getSelectedNodeAccentColor() {
-        SettingsManager.Settings settings = SettingsManager.getCurrent();
-        if (settings == null || settings.accentColor == null) {
-            return UITheme.ACCENT_DEFAULT;
-        }
-        switch (settings.accentColor.toLowerCase(Locale.ROOT)) {
-            case "sky":
-                return UITheme.ACCENT_SKY;
-            case "mint":
-                return UITheme.ACCENT_MINT;
-            case "amber":
-                return UITheme.ACCENT_AMBER;
-            default:
-                return UITheme.ACCENT_DEFAULT;
-        }
-    }
 
-    private int toGrayscale(int color, float brightnessFactor) {
-        int a = (color >>> 24) & 0xFF;
-        int r = (color >> 16) & 0xFF;
-        int g = (color >> 8) & 0xFF;
-        int b = color & 0xFF;
-        int gray = Mth.clamp((int) ((0.299f * r + 0.587f * g + 0.114f * b) * brightnessFactor), 0, 255);
-        return (a << 24) | (gray << 16) | (gray << 8) | gray;
-    }
 
-    private void renderParameterSlot(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar, int slotIndex) {
-        int slotX = node.getParameterSlotLeft(slotIndex) - cameraX;
-        int slotY = node.getParameterSlotTop(slotIndex) - cameraY;
-        int slotWidth = node.getParameterSlotWidth(slotIndex);
-        int slotHeight = node.getParameterSlotHeight(slotIndex);
 
-        Node parameterNode = node.getAttachedParameter(slotIndex);
-        boolean occupied = parameterNode != null;
-        boolean isDropTarget = parameterDropTarget == node && parameterDropSlotIndex != null && parameterDropSlotIndex == slotIndex;
 
-        int backgroundColor = occupied ? UITheme.BACKGROUND_TERTIARY : UITheme.BACKGROUND_PRIMARY;
-        if (isOverSidebar) {
-            backgroundColor = occupied ? UITheme.NODE_INPUT_BG_DIMMED : UITheme.BACKGROUND_PRIMARY;
-        }
 
-        int borderColor = occupied ? UITheme.BORDER_HIGHLIGHT : UITheme.BORDER_DEFAULT;
-        if (isDropTarget) {
-            backgroundColor = UITheme.DROP_HIGHLIGHT_BLUE;
-            borderColor = getSelectedNodeAccentColor();
-        }
 
-        context.fill(slotX, slotY, slotX + slotWidth, slotY + slotHeight, backgroundColor);
-        DrawContextBridge.drawBorderInLayer(context, slotX, slotY, slotWidth, slotHeight, borderColor);
 
-        String headerText = node.getParameterSlotLabel(slotIndex);
-        int headerColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_SECONDARY;
-        int headerY = slotY - textRenderer.lineHeight - 2;
-        if (headerY > node.getY() - cameraY + 14) {
-            drawNodeText(context, textRenderer, Component.literal(headerText), slotX + 2, headerY, headerColor);
-        }
 
-        if (!occupied && isDropTarget) {
-            // Provide a minimal visual cue when dragging to an empty slot without adding text.
-            DrawContextBridge.drawBorderInLayer(context, slotX + 2, slotY + 2, slotWidth - 4, slotHeight - 4, getSelectedNodeAccentColor());
-        }
 
-        if (node.usesMinimalNodePresentation()
-            && isComparisonOperator(node)
-            && !node.isExpandableBooleanOperator()
-            && slotIndex == 0) {
-            int leftSlotX = node.getParameterSlotLeft(0) - cameraX;
-            int rightSlotX = node.getParameterSlotLeft(1) - cameraX;
-            int leftSlotWidth = node.getParameterSlotWidth(0);
-            int leftSlotHeight = node.getParameterSlotHeight(0);
-            int rightSlotHeight = node.getParameterSlotHeight(1);
-            int gapCenterX = leftSlotX + leftSlotWidth + (rightSlotX - (leftSlotX + leftSlotWidth)) / 2;
-            String operatorText = getOperatorSymbol(node, true);
-            int operatorWidth = textRenderer.width(operatorText);
-            int operatorX = gapCenterX - operatorWidth / 2;
-            int leftSlotTop = node.getParameterSlotTop(0) - cameraY;
-            int rightSlotTop = node.getParameterSlotTop(1) - cameraY;
-            int leftCenterY = leftSlotTop + leftSlotHeight / 2;
-            int rightCenterY = rightSlotTop + rightSlotHeight / 2;
-            int operatorCenterY = (leftCenterY + rightCenterY) / 2;
-            int operatorY = operatorCenterY - textRenderer.lineHeight / 2;
-            int operatorColor = isOverSidebar ? toGrayscale(UITheme.NODE_OPERATOR_SYMBOL, 0.85f) : UITheme.NODE_OPERATOR_SYMBOL;
-            if (node.getType() == NodeType.OPERATOR_GREATER || node.getType() == NodeType.OPERATOR_LESS) {
-                int buttonPaddingX = 3;
-                int buttonPaddingY = 4;
-                int maxSymbolWidth = textRenderer.width(">=");
-                int buttonWidth = maxSymbolWidth + buttonPaddingX * 2;
-                int buttonHeight = textRenderer.lineHeight + buttonPaddingY * 2;
-                int buttonLeft = gapCenterX - buttonWidth / 2;
-                int buttonTop = operatorY - buttonPaddingY;
-                int buttonFill = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_TERTIARY;
-                int buttonBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BORDER_DEFAULT;
-                context.fill(buttonLeft, buttonTop, buttonLeft + buttonWidth, buttonTop + buttonHeight, buttonFill);
-                DrawContextBridge.drawBorderInLayer(context, buttonLeft, buttonTop, buttonWidth, buttonHeight, buttonBorder);
-                operatorX = buttonLeft + (buttonWidth - operatorWidth) / 2;
-            }
-            drawNodeText(
-                context,
-                textRenderer,
-                Component.literal(operatorText),
-                operatorX,
-                operatorY,
-                operatorColor
-            );
-        }
-    }
 
-    private boolean isComparisonOperator(Node node) {
-        if (node == null || node.getType() == null) {
-            return false;
-        }
-        switch (node.getType()) {
-            case OPERATOR_EQUALS:
-            case OPERATOR_NOT:
-            case OPERATOR_BOOLEAN_OR:
-            case OPERATOR_BOOLEAN_AND:
-            case OPERATOR_BOOLEAN_XOR:
-            case OPERATOR_GREATER:
-            case OPERATOR_LESS:
-                return true;
-            default:
-                return false;
-        }
-    }
 
-    private boolean isOperatorInclusive(Node node) {
-        if (node == null) {
-            return false;
-        }
-        NodeParameter param = node.getParameter("Inclusive");
-        if (param == null) {
-            return false;
-        }
-        if (param.getType() == ParameterType.BOOLEAN) {
-            return param.getBoolValue();
-        }
-        String value = param.getStringValue();
-        return value != null && Boolean.parseBoolean(value.trim());
-    }
 
-    private String getOperatorSymbol(Node node, boolean minimalStyle) {
-        if (node == null || node.getType() == null) {
-            return "";
-        }
-        switch (node.getType()) {
-            case OPERATOR_EQUALS:
-                return "=";
-            case OPERATOR_NOT:
-                return minimalStyle ? "=/" : "!=";
-            case OPERATOR_BOOLEAN_OR:
-                return "OR";
-            case OPERATOR_BOOLEAN_AND:
-                return "AND";
-            case OPERATOR_BOOLEAN_XOR:
-                return "XOR";
-            case OPERATOR_GREATER:
-                return isOperatorInclusive(node) ? ">=" : ">";
-            case OPERATOR_LESS:
-                return isOperatorInclusive(node) ? "<=" : "<";
-            default:
-                return "";
-        }
-    }
 
-    private boolean isOperatorToggleHit(Node node, Font textRenderer, int mouseX, int mouseY) {
-        if (!isComparisonOperator(node)) {
-            return false;
-        }
-        int worldMouseX = screenToWorldX(mouseX);
-        int worldMouseY = screenToWorldY(mouseY);
-        int leftSlotX = node.getParameterSlotLeft(0);
-        int rightSlotX = node.getParameterSlotLeft(1);
-        int leftSlotWidth = node.getParameterSlotWidth(0);
-        int leftSlotHeight = node.getParameterSlotHeight(0);
-        int rightSlotHeight = node.getParameterSlotHeight(1);
-        int gapCenterX = leftSlotX + leftSlotWidth + (rightSlotX - (leftSlotX + leftSlotWidth)) / 2;
 
-        int leftSlotTop = node.getParameterSlotTop(0);
-        int rightSlotTop = node.getParameterSlotTop(1);
-        int leftCenterY = leftSlotTop + leftSlotHeight / 2;
-        int rightCenterY = rightSlotTop + rightSlotHeight / 2;
-        int operatorCenterY = (leftCenterY + rightCenterY) / 2;
 
-        String operatorText = getOperatorSymbol(node, node.usesMinimalNodePresentation());
-        int textWidth = textRenderer.width(operatorText);
-        int textHeight = textRenderer.lineHeight;
-        int padding = 4;
-        int hitLeft = gapCenterX - textWidth / 2 - padding;
-        int hitRight = gapCenterX + textWidth / 2 + padding;
-        int hitTop = operatorCenterY - textHeight / 2 - padding;
-        int hitBottom = operatorCenterY + textHeight / 2 + padding;
 
-        return worldMouseX >= hitLeft && worldMouseX <= hitRight && worldMouseY >= hitTop && worldMouseY <= hitBottom;
-    }
 
-    public boolean handleOperatorToggleClick(Font textRenderer, int mouseX, int mouseY) {
-        if (textRenderer == null) {
-            return false;
-        }
-        Node node = getNodeAt(mouseX, mouseY);
-        if (node == null || node.getType() == null) {
-            return false;
-        }
-        if (node.getType() != NodeType.OPERATOR_GREATER && node.getType() != NodeType.OPERATOR_LESS) {
-            return false;
-        }
-        if (!isOperatorToggleHit(node, textRenderer, mouseX, mouseY)) {
-            return false;
-        }
-        NodeParameter param = node.getParameter("Inclusive");
-        if (param == null) {
-            return false;
-        }
-        boolean next = !isOperatorInclusive(node);
-        param.setStringValueFromUser(Boolean.toString(next));
-        node.recalculateDimensions();
-        return true;
-    }
+
+
 
     private String[] getCoordinateAxes(Node node) {
         if (node == null) {
@@ -4825,10 +3970,10 @@ public class NodeGraph {
         int buttonBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BUTTON_DEFAULT_BORDER;
         if (isScreenCoordinateCaptureActiveFor(node)) {
             buttonFill = isOverSidebar ? UITheme.BACKGROUND_TERTIARY : UITheme.BUTTON_DEFAULT_HOVER;
-            buttonBorder = getSelectedNodeAccentColor();
+            buttonBorder = nodeControls.getSelectedNodeAccentColor();
         } else if (hovered) {
             buttonFill = UITheme.BUTTON_DEFAULT_HOVER;
-            buttonBorder = getSelectedNodeAccentColor();
+            buttonBorder = nodeControls.getSelectedNodeAccentColor();
         }
 
         context.fill(buttonLeft, buttonTop, buttonLeft + buttonWidth, buttonTop + buttonHeight, buttonFill);
@@ -4892,7 +4037,7 @@ public class NodeGraph {
             return;
         }
         int tailX = x + maxWidth - tailTextWidth;
-        int hintColor = toGrayscale(baseColor, 0.85f);
+        int hintColor = nodeControls.toGrayscale(baseColor, 0.85f);
         drawNodeText(context, textRenderer, Component.literal(tailText), tailX, y, hintColor);
     }
 
@@ -5046,7 +4191,7 @@ public class NodeGraph {
             }
             if (node.getType() == NodeType.PARAM_VILLAGER_TRADE
                 && ("Item".equalsIgnoreCase(param.getName()) || "Trade".equalsIgnoreCase(param.getName()))) {
-                value = formatVillagerTradeValue(value);
+                value = nodeControls.formatVillagerTradeValue(value);
             }
             int labelWidth = textRenderer.width(label);
             int valueWidth = textRenderer.width(value);
@@ -5057,188 +4202,15 @@ public class NodeGraph {
         node.recalculateDimensions();
     }
 
-    private void renderMessageButtons(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar, int mouseX, int mouseY) {
-        int size = node.getMessageButtonSize();
-        int worldTop = node.getMessageButtonTop();
-        int worldAddLeft = node.getMessageAddButtonLeft();
-        int worldRemoveLeft = node.getMessageRemoveButtonLeft();
 
-        boolean canRemove = node.getMessageFieldCount() > 1;
-        renderNodeHeaderTextButton(context, textRenderer, worldAddLeft, worldTop, size, "+",
-            isOverSidebar, true, getSelectedNodeAccentColor(), mouseX, mouseY);
-        renderNodeHeaderTextButton(context, textRenderer, worldRemoveLeft, worldTop, size, "-",
-            isOverSidebar, canRemove, UITheme.BORDER_DANGER, mouseX, mouseY);
-    }
 
-    private void renderBooleanOperatorButtons(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar, int mouseX, int mouseY) {
-        int size = node.getBooleanOperatorButtonSize();
-        int worldTop = node.getBooleanOperatorButtonTop();
-        int worldAddLeft = node.getBooleanOperatorAddButtonLeft();
-        int worldRemoveLeft = node.getBooleanOperatorRemoveButtonLeft();
 
-        boolean canRemove = node.getParameterSlotCount() > 2;
-        renderNodeHeaderTextButton(context, textRenderer, worldAddLeft, worldTop, size, "+",
-            isOverSidebar, true, getSelectedNodeAccentColor(), mouseX, mouseY);
-        renderNodeHeaderTextButton(context, textRenderer, worldRemoveLeft, worldTop, size, "-",
-            isOverSidebar, canRemove, UITheme.BORDER_DANGER, mouseX, mouseY);
-    }
 
-    private void renderMessageScopeToggle(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar, int mouseX, int mouseY) {
-        if (!node.hasMessageScopeToggle()) {
-            return;
-        }
-        int labelColor = isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.NODE_LABEL_COLOR;
-        int fieldBackground = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_SIDEBAR;
-        int borderColor = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BORDER_DEFAULT;
-        int accentColor = getSelectedNodeAccentColor();
-        int activeBackground = isOverSidebar ? adjustColorBrightness(accentColor, 0.72f) : adjustColorBrightness(accentColor, 0.84f);
-        int activeBorderColor = accentColor;
-        int activeTextColor = UITheme.TEXT_EDITING;
-        int inactiveTextColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
-        int optionGap = 4;
 
-        int labelLeft = node.getMessageScopeToggleLeft() - cameraX;
-        int labelTop = node.getMessageScopeLabelTop() - cameraY;
-        int labelY = labelTop + Math.max(0, (node.getMessageScopeLabelHeight() - textRenderer.lineHeight) / 2);
-        drawNodeText(context, textRenderer, Component.translatable("pathmind.field.visibility"), labelLeft + 2, labelY, labelColor);
 
-        int left = node.getMessageScopeToggleLeft() - cameraX;
-        int top = node.getMessageScopeToggleTop() - cameraY;
-        int width = node.getMessageScopeToggleWidth();
-        int height = node.getMessageScopeToggleHeight();
-        int segmentWidth = Math.max(1, (width - optionGap) / 2);
-        boolean hovered = !isOverSidebar && isPointInsideMessageScopeToggle(node, mouseX, mouseY);
-        int worldMouseX = screenToWorldX(mouseX);
-        int worldMouseY = screenToWorldY(mouseY);
-        int worldLeft = node.getMessageScopeToggleLeft();
-        int worldTop = node.getMessageScopeToggleTop();
-        AnimatedValue animation = getMessageScopeAnimation(node);
-        float target = node.isMessageClientSide() ? 1f : 0f;
-        if (Math.abs(animation.getTargetValue() - target) > 0.001f) {
-            animation.setValue(target);
-        }
-        animation.tick();
-        float progress = animation.getValue();
 
-        int globalLeft = left;
-        int clientLeft = left + segmentWidth + optionGap;
-        int globalWorldLeft = worldLeft;
-        int clientWorldLeft = worldLeft + segmentWidth + optionGap;
-        boolean globalHovered = hovered
-            && worldMouseX >= globalWorldLeft && worldMouseX <= globalWorldLeft + segmentWidth
-            && worldMouseY >= worldTop && worldMouseY <= worldTop + height;
-        boolean clientHovered = hovered
-            && worldMouseX >= clientWorldLeft && worldMouseX <= clientWorldLeft + segmentWidth
-            && worldMouseY >= worldTop && worldMouseY <= worldTop + height;
 
-        int globalFill = AnimationHelper.lerpColor(activeBackground, fieldBackground, progress);
-        int globalBorder = AnimationHelper.lerpColor(activeBorderColor, borderColor, progress);
-        int clientFill = AnimationHelper.lerpColor(fieldBackground, activeBackground, progress);
-        int clientBorder = AnimationHelper.lerpColor(borderColor, activeBorderColor, progress);
-        if (globalHovered) {
-            globalFill = adjustColorBrightness(globalFill, 1.08f);
-            globalBorder = activeBorderColor;
-        }
-        if (clientHovered) {
-            clientFill = adjustColorBrightness(clientFill, 1.08f);
-            clientBorder = activeBorderColor;
-        }
 
-        context.fill(globalLeft, top, globalLeft + segmentWidth, top + height, globalFill);
-        DrawContextBridge.drawBorderInLayer(context, globalLeft, top, segmentWidth, height, globalBorder);
-        context.fill(clientLeft, top, clientLeft + segmentWidth, top + height, clientFill);
-        DrawContextBridge.drawBorderInLayer(context, clientLeft, top, segmentWidth, height, clientBorder);
-
-        String globalLabel = tr("pathmind.option.messageScope.global");
-        String clientLabel = tr("pathmind.option.messageScope.clientSide");
-        int globalX = globalLeft + Math.max(0, (segmentWidth - textRenderer.width(globalLabel)) / 2);
-        int clientX = clientLeft + Math.max(0, (segmentWidth - textRenderer.width(clientLabel)) / 2);
-        int textY = top + (height - textRenderer.lineHeight) / 2 + 1;
-        int globalTextColor = AnimationHelper.lerpColor(activeTextColor, inactiveTextColor, progress);
-        int clientTextColor = AnimationHelper.lerpColor(inactiveTextColor, activeTextColor, progress);
-
-        drawNodeText(context, textRenderer, Component.literal(globalLabel), globalX, textY, globalTextColor);
-        drawNodeText(context, textRenderer, Component.literal(clientLabel), clientX, textY, clientTextColor);
-    }
-
-    private void renderBookTextInput(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar, int mouseX, int mouseY) {
-        // Render "Edit Text" button
-        int buttonLeft = node.getBookTextButtonLeft() - cameraX;
-        int buttonTop = node.getBookTextButtonTop() - cameraY;
-        int buttonWidth = node.getBookTextButtonWidth();
-        int buttonHeight = node.getBookTextButtonHeight();
-
-        int worldMouseX = screenToWorldX(mouseX);
-        int worldMouseY = screenToWorldY(mouseY);
-        boolean buttonHovered = !isOverSidebar &&
-            worldMouseX >= node.getBookTextButtonLeft() && worldMouseX <= node.getBookTextButtonLeft() + buttonWidth &&
-            worldMouseY >= node.getBookTextButtonTop() && worldMouseY <= node.getBookTextButtonTop() + buttonHeight;
-
-        int buttonFill = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BUTTON_DEFAULT_BG;
-        int buttonBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BUTTON_DEFAULT_BORDER;
-        if (buttonHovered) {
-            buttonFill = UITheme.BUTTON_DEFAULT_HOVER;
-            buttonBorder = getSelectedNodeAccentColor();
-        }
-
-        context.fill(buttonLeft, buttonTop, buttonLeft + buttonWidth, buttonTop + buttonHeight, buttonFill);
-        DrawContextBridge.drawBorderInLayer(context, buttonLeft, buttonTop, buttonWidth, buttonHeight, buttonBorder);
-
-        String buttonLabel = tr("pathmind.button.editText");
-        int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
-        int textX = buttonLeft + (buttonWidth - textRenderer.width(buttonLabel)) / 2;
-        int textY = buttonTop + (buttonHeight - textRenderer.lineHeight) / 2;
-        drawNodeText(context, textRenderer, Component.literal(buttonLabel), textX, textY, textColor);
-
-        if (node.hasBookTextPageInput()) {
-            int labelColor = isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.TEXT_SECONDARY;
-            int labelTop = node.getBookTextPageLabelTop() - cameraY;
-            drawNodeText(context, textRenderer, Component.translatable("pathmind.field.pageNumber"), buttonLeft, labelTop, labelColor);
-
-            int fieldTop = node.getBookTextPageFieldTop() - cameraY;
-            int fieldHeight = node.getBookTextPageFieldHeight();
-
-            NodeParameter pageParam = node.getParameter("Page");
-            String pageValue = pageParam != null ? pageParam.getDisplayValue() : "1";
-            if (pageValue == null) {
-                pageValue = "";
-            }
-            int pageTextColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
-            drawNodeText(context, textRenderer, Component.literal(pageValue), buttonLeft + 4, fieldTop + (fieldHeight - textRenderer.lineHeight) / 2, pageTextColor);
-        }
-    }
-
-    private void renderPopupEditButton(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar, int mouseX, int mouseY) {
-        if (node == null || !node.hasPopupEditButton()) {
-            return;
-        }
-        int buttonLeft = node.getPopupEditButtonLeft() - cameraX;
-        int buttonTop = node.getPopupEditButtonTop() - cameraY;
-        int buttonWidth = node.getPopupEditButtonWidth();
-        int buttonHeight = node.getPopupEditButtonHeight();
-
-        int worldMouseX = screenToWorldX(mouseX);
-        int worldMouseY = screenToWorldY(mouseY);
-        boolean buttonHovered = !isOverSidebar &&
-            worldMouseX >= node.getPopupEditButtonLeft() && worldMouseX <= node.getPopupEditButtonLeft() + buttonWidth &&
-            worldMouseY >= node.getPopupEditButtonTop() && worldMouseY <= node.getPopupEditButtonTop() + buttonHeight;
-
-        int buttonFill = isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BUTTON_DEFAULT_BG;
-        int buttonBorder = isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BUTTON_DEFAULT_BORDER;
-        if (buttonHovered) {
-            buttonFill = UITheme.BUTTON_DEFAULT_HOVER;
-            buttonBorder = getSelectedNodeAccentColor();
-        }
-
-        context.fill(buttonLeft, buttonTop, buttonLeft + buttonWidth, buttonTop + buttonHeight, buttonFill);
-        DrawContextBridge.drawBorderInLayer(context, buttonLeft, buttonTop, buttonWidth, buttonHeight, buttonBorder);
-
-        String buttonLabel = Component.translatable("pathmind.button.edit").getString();
-        int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
-        int textX = buttonLeft + (buttonWidth - textRenderer.width(buttonLabel)) / 2;
-        int textY = buttonTop + (buttonHeight - textRenderer.lineHeight) / 2;
-        drawNodeText(context, textRenderer, Component.literal(buttonLabel), textX, textY, textColor);
-    }
 
     private NodeGraphData.CustomNodeDefinition getTemplateDefinition(Node node) {
         NodeGraphData templateData = getPresetPreviewGraphData(node);
@@ -5282,35 +4254,9 @@ public class NodeGraph {
         return cached;
     }
 
-    public boolean isPointInsideBookTextButton(Node node, int mouseX, int mouseY) {
-        if (node == null || !node.hasBookTextInput()) {
-            return false;
-        }
-        int worldX = screenToWorldX(mouseX);
-        int worldY = screenToWorldY(mouseY);
-        int buttonLeft = node.getBookTextButtonLeft();
-        int buttonTop = node.getBookTextButtonTop();
-        int buttonWidth = node.getBookTextButtonWidth();
-        int buttonHeight = node.getBookTextButtonHeight();
 
-        return worldX >= buttonLeft && worldX <= buttonLeft + buttonWidth &&
-               worldY >= buttonTop && worldY <= buttonTop + buttonHeight;
-    }
 
-    public boolean isPointInsidePopupEditButton(Node node, int mouseX, int mouseY) {
-        if (node == null || !node.hasPopupEditButton()) {
-            return false;
-        }
-        int worldX = screenToWorldX(mouseX);
-        int worldY = screenToWorldY(mouseY);
-        int buttonLeft = node.getPopupEditButtonLeft();
-        int buttonTop = node.getPopupEditButtonTop();
-        int buttonWidth = node.getPopupEditButtonWidth();
-        int buttonHeight = node.getPopupEditButtonHeight();
 
-        return worldX >= buttonLeft && worldX <= buttonLeft + buttonWidth &&
-               worldY >= buttonTop && worldY <= buttonTop + buttonHeight;
-    }
 
     public boolean isPointInsideTemplateEditButton(Node node, int mouseX, int mouseY) {
         return false;
@@ -5346,7 +4292,7 @@ public class NodeGraph {
             && worldMouseY >= node.getStopTargetFieldInputTop()
             && worldMouseY <= node.getStopTargetFieldInputTop() + fieldHeight;
         float hoverProgress = getAnimatedHoverProgress(node.getId() + "#presetSelector", hovered || open);
-        int accentColor = isOverSidebar ? toGrayscale(getSelectedNodeAccentColor(), 0.8f) : getSelectedNodeAccentColor();
+        int accentColor = isOverSidebar ? nodeControls.toGrayscale(nodeControls.getSelectedNodeAccentColor(), 0.8f) : nodeControls.getSelectedNodeAccentColor();
         UIStyleHelper.FieldPalette palette = UIStyleHelper.getDropdownFieldPalette(accentColor, hoverProgress, open, false);
         int animatedTextColor = isOverSidebar ? textColor : palette.textColor();
 
@@ -5440,7 +4386,7 @@ public class NodeGraph {
             && worldMouseY >= node.getSchematicFieldInputTop()
             && worldMouseY <= node.getSchematicFieldInputTop() + fieldHeight;
         float hoverProgress = getAnimatedHoverProgress(node.getId() + "#schematicSelector", hovered || open);
-        int accentColor = isOverSidebar ? toGrayscale(UITheme.SCHEMATIC_ACTIVE_BORDER, 0.8f) : UITheme.SCHEMATIC_ACTIVE_BORDER;
+        int accentColor = isOverSidebar ? nodeControls.toGrayscale(UITheme.SCHEMATIC_ACTIVE_BORDER, 0.8f) : UITheme.SCHEMATIC_ACTIVE_BORDER;
         UIStyleHelper.FieldPalette palette = UIStyleHelper.getDropdownFieldPalette(accentColor, hoverProgress, open, false);
 
         drawNodeText(context, textRenderer, Component.translatable("pathmind.field.schematic"), fieldLeft, labelTop + (labelHeight - textRenderer.lineHeight) / 2, labelColor);
@@ -5515,7 +4461,7 @@ public class NodeGraph {
 
         int dropdownWidth = getSchematicDropdownWidth(node);
         int listLeft = node.getSchematicFieldLeft() - cameraX;
-        int accentColor = isOverSidebar ? toGrayscale(UITheme.SCHEMATIC_ACTIVE_BORDER, 0.8f) : UITheme.SCHEMATIC_ACTIVE_BORDER;
+        int accentColor = isOverSidebar ? nodeControls.toGrayscale(UITheme.SCHEMATIC_ACTIVE_BORDER, 0.8f) : UITheme.SCHEMATIC_ACTIVE_BORDER;
         UIStyleHelper.ScrollContainerPalette containerPalette = UIStyleHelper.getScrollContainerPalette(accentColor, animProgress, true, false);
         UIStyleHelper.ScrollContainerPalette adjustedPalette = new UIStyleHelper.ScrollContainerPalette(
             isOverSidebar ? UITheme.BACKGROUND_SECONDARY : containerPalette.backgroundColor(),
@@ -5582,7 +4528,7 @@ public class NodeGraph {
 
         int dropdownWidth = getRunPresetDropdownWidth(node);
         int listLeft = node.getStopTargetFieldLeft() - cameraX;
-        int accentColor = isOverSidebar ? toGrayscale(getSelectedNodeAccentColor(), 0.8f) : getSelectedNodeAccentColor();
+        int accentColor = isOverSidebar ? nodeControls.toGrayscale(nodeControls.getSelectedNodeAccentColor(), 0.8f) : nodeControls.getSelectedNodeAccentColor();
         UIStyleHelper.ScrollContainerPalette containerPalette = UIStyleHelper.getScrollContainerPalette(accentColor, animProgress, true, false);
         UIStyleHelper.ScrollContainerPalette adjustedPalette = new UIStyleHelper.ScrollContainerPalette(
             isOverSidebar ? UITheme.BACKGROUND_SECONDARY : containerPalette.backgroundColor(),
@@ -6026,10 +4972,10 @@ public class NodeGraph {
                 node.getModeFieldHeight());
         }
         return new DropdownController.Rect(
-            getParameterFieldLeft(node) - cameraX,
+            nodeControls.getParameterFieldLeft(node) - cameraX,
             node.getY() - cameraY + 18,
-            getParameterFieldWidth(node),
-            getParameterFieldHeight());
+            nodeControls.getParameterFieldWidth(node),
+            nodeControls.getParameterFieldHeight());
     }
 
     private List<DropdownController.Option<com.pathmind.nodes.NodeMode>> getModeDropdownOptions(Node node) {
@@ -6073,9 +5019,9 @@ public class NodeGraph {
         if (node == null || !node.shouldRenderInlineParameters()) {
             return false;
         }
-        int fieldLeft = getParameterFieldLeft(node);
-        int fieldWidth = getParameterFieldWidth(node);
-        int fieldHeight = getParameterFieldHeight();
+        int fieldLeft = nodeControls.getParameterFieldLeft(node);
+        int fieldWidth = nodeControls.getParameterFieldWidth(node);
+        int fieldHeight = nodeControls.getParameterFieldHeight();
         int fieldTop = node.getY() + 18;
         return worldX >= fieldLeft && worldX <= fieldLeft + fieldWidth
             && worldY >= fieldTop && worldY <= fieldTop + fieldHeight;
@@ -6133,7 +5079,7 @@ public class NodeGraph {
         }
         boolean newState = !node.isAmountInputEnabled();
         node.setAmountInputEnabled(newState);
-        getNodeToggleAnimation(amountToggleAnimations, node, newState)
+        nodeControls.getNodeToggleAnimation(amountToggleAnimations, node, newState)
             .animateTo(newState ? 1f : 0f, UITheme.TRANSITION_ANIM_MS, AnimationHelper::easeInOutCubic);
         if (!newState && isEditingAmountField() && inlineFields.getAmountEditingNode() == node) {
             stopAmountEditing(false);
@@ -6238,10 +5184,10 @@ public class NodeGraph {
             }
             return -1;
         }
-        int fieldLeft = getParameterFieldLeft(node);
-        int fieldWidth = getParameterFieldWidth(node);
-        int fieldHeight = getParameterFieldHeight();
-        int fieldTop = getInlineParameterFieldsTop(node);
+        int fieldLeft = nodeControls.getParameterFieldLeft(node);
+        int fieldWidth = nodeControls.getParameterFieldWidth(node);
+        int fieldHeight = nodeControls.getParameterFieldHeight();
+        int fieldTop = nodeControls.getInlineParameterFieldsTop(node);
 
         List<NodeParameter> parameters = node.getParameters();
         for (int i = 0; i < parameters.size(); i++) {
@@ -6275,7 +5221,7 @@ public class NodeGraph {
         if (node == null || index < 0) {
             return 0;
         }
-        int fieldTop = getInlineParameterFieldsTop(node);
+        int fieldTop = nodeControls.getInlineParameterFieldsTop(node);
         List<NodeParameter> parameters = node.getParameters();
         for (int i = 0; i < parameters.size(); i++) {
             NodeParameter parameter = parameters.get(i);
@@ -6336,10 +5282,10 @@ public class NodeGraph {
         }
         int worldX = screenToWorldX(screenX);
         int worldY = screenToWorldY(screenY);
-        int fieldLeft = getParameterFieldLeft(node);
+        int fieldLeft = nodeControls.getParameterFieldLeft(node);
         int fieldTop = getInlineParameterFieldTop(node, index);
-        int fieldWidth = getParameterFieldWidth(node);
-        int fieldHeight = getParameterFieldHeight();
+        int fieldWidth = nodeControls.getParameterFieldWidth(node);
+        int fieldHeight = nodeControls.getParameterFieldHeight();
         return worldX >= fieldLeft && worldX <= fieldLeft + fieldWidth
             && worldY >= fieldTop && worldY <= fieldTop + fieldHeight;
     }
@@ -6348,12 +5294,12 @@ public class NodeGraph {
         int worldX = screenToWorldX(screenX);
         int worldY = screenToWorldY(screenY);
         Node node = findDirectionModeNodeAt(worldX, worldY);
-        if (!isCombinedDirectionNode(node)) {
+        if (!nodeControls.isCombinedDirectionNode(node)) {
             return false;
         }
-        int fieldLeft = getParameterFieldLeft(node);
-        int fieldTop = getDirectionModeTabTop(node);
-        int fieldWidth = getParameterFieldWidth(node);
+        int fieldLeft = nodeControls.getParameterFieldLeft(node);
+        int fieldTop = nodeControls.getDirectionModeTabTop(node);
+        int fieldWidth = nodeControls.getParameterFieldWidth(node);
         if (worldX < fieldLeft || worldX > fieldLeft + fieldWidth
             || worldY < fieldTop || worldY > fieldTop + DIRECTION_MODE_TAB_HEIGHT) {
             return false;
@@ -6374,12 +5320,12 @@ public class NodeGraph {
     private Node findDirectionModeNodeAt(int worldX, int worldY) {
         for (int i = nodes.size() - 1; i >= 0; i--) {
             Node candidate = nodes.get(i);
-            if (!isCombinedDirectionNode(candidate)) {
+            if (!nodeControls.isCombinedDirectionNode(candidate)) {
                 continue;
             }
-            int fieldLeft = getParameterFieldLeft(candidate);
-            int fieldTop = getDirectionModeTabTop(candidate);
-            int fieldWidth = getParameterFieldWidth(candidate);
+            int fieldLeft = nodeControls.getParameterFieldLeft(candidate);
+            int fieldTop = nodeControls.getDirectionModeTabTop(candidate);
+            int fieldWidth = nodeControls.getParameterFieldWidth(candidate);
             if (worldX >= fieldLeft && worldX <= fieldLeft + fieldWidth
                 && worldY >= fieldTop && worldY <= fieldTop + DIRECTION_MODE_TAB_HEIGHT) {
                 return candidate;
@@ -6391,12 +5337,12 @@ public class NodeGraph {
     private Node findBooleanModeNodeAt(int worldX, int worldY) {
         for (int i = nodes.size() - 1; i >= 0; i--) {
             Node candidate = nodes.get(i);
-            if (!isCombinedBooleanNode(candidate)) {
+            if (!nodeControls.isCombinedBooleanNode(candidate)) {
                 continue;
             }
-            int fieldLeft = getParameterFieldLeft(candidate);
-            int fieldTop = getBooleanModeTabTop(candidate);
-            int fieldWidth = getParameterFieldWidth(candidate);
+            int fieldLeft = nodeControls.getParameterFieldLeft(candidate);
+            int fieldTop = nodeControls.getBooleanModeTabTop(candidate);
+            int fieldWidth = nodeControls.getParameterFieldWidth(candidate);
             if (worldX >= fieldLeft && worldX <= fieldLeft + fieldWidth
                 && worldY >= fieldTop && worldY <= fieldTop + DIRECTION_MODE_TAB_HEIGHT) {
                 return candidate;
@@ -6468,7 +5414,7 @@ public class NodeGraph {
         if (!hasRunPresetSelection(node)) return false;
         int left = getRunPresetOpenButtonWorldX(node);
         int top = getRunPresetOpenButtonWorldY(node);
-        return isPointInsideNodeHeaderButton(left, top, NODE_HEADER_BUTTON_SIZE, screenX, screenY);
+        return nodeControls.isPointInsideNodeHeaderButton(left, top, NODE_HEADER_BUTTON_SIZE, screenX, screenY);
     }
 
     public String getSelectedPresetNameForNode(Node node) {
@@ -6638,15 +5584,42 @@ public class NodeGraph {
     private record TrimKey(String text, int maxWidth) {
     }
 
-    private record ParameterLayoutCacheEntry(
-        String displayName,
-        int fieldLeft,
-        int fieldWidth,
-        int maxLabelWidth,
-        boolean leftAligned,
-        String labelText,
-        int valueStartX
-    ) {
+
+
+    public boolean isPointInsideRuntimeScopeButton(Node node, int screenX, int screenY) {
+        return nodeControls.isPointInsideRuntimeScopeButton(node, screenX, screenY);
+    }
+
+    public boolean handleRuntimeScopeButtonClick(Node node, int mouseX, int mouseY) {
+        return nodeControls.handleRuntimeScopeButtonClick(node, mouseX, mouseY);
+    }
+
+    public boolean handleBooleanToggleClick(Node node, int mouseX, int mouseY) {
+        return nodeControls.handleBooleanToggleClick(node, mouseX, mouseY);
+    }
+
+    public boolean handleMessageButtonClick(Node node, int mouseX, int mouseY) {
+        return nodeControls.handleMessageButtonClick(node, mouseX, mouseY);
+    }
+
+    public boolean handleBooleanOperatorButtonClick(Node node, int mouseX, int mouseY) {
+        return nodeControls.handleBooleanOperatorButtonClick(node, mouseX, mouseY);
+    }
+
+    public boolean handleMessageScopeToggleClick(Node node, int mouseX, int mouseY) {
+        return nodeControls.handleMessageScopeToggleClick(node, mouseX, mouseY);
+    }
+
+    public boolean handleOperatorToggleClick(Font textRenderer, int mouseX, int mouseY) {
+        return nodeControls.handleOperatorToggleClick(textRenderer, mouseX, mouseY);
+    }
+
+    public boolean isPointInsideBookTextButton(Node node, int mouseX, int mouseY) {
+        return nodeControls.isPointInsideBookTextButton(node, mouseX, mouseY);
+    }
+
+    public boolean isPointInsidePopupEditButton(Node node, int mouseX, int mouseY) {
+        return nodeControls.isPointInsidePopupEditButton(node, mouseX, mouseY);
     }
 
     public List<Node> getNodes() {
@@ -6779,7 +5752,7 @@ public class NodeGraph {
         if (node.getType() == NodeType.TEMPLATE && isPointInsideTemplateEditButton(node, mouseX, mouseY)) {
             return true;
         }
-        if (isPointInsideBooleanToggle(node, mouseX, mouseY)
+        if (nodeControls.isPointInsideBooleanToggle(node, mouseX, mouseY)
             || isPointInsideSchematicField(node, mouseX, mouseY)
             || isPointInsideRunPresetField(node, mouseX, mouseY)
             || isPointInsideScreenCoordinatePickerButton(node, mouseX, mouseY)
@@ -6795,9 +5768,9 @@ public class NodeGraph {
             || getMessageFieldIndexAt(node, mouseX, mouseY) >= 0
             || getParameterFieldIndexAt(node, mouseX, mouseY) >= 0
             || isPointInsideEventNameField(node, mouseX, mouseY)
-            || isPointInsideBookTextButton(node, mouseX, mouseY)
-            || isPointInsidePopupEditButton(node, mouseX, mouseY)
-            || isPointInsideMessageScopeToggle(node, mouseX, mouseY)) {
+            || nodeControls.isPointInsideBookTextButton(node, mouseX, mouseY)
+            || nodeControls.isPointInsidePopupEditButton(node, mouseX, mouseY)
+            || nodeControls.isPointInsideMessageScopeToggle(node, mouseX, mouseY)) {
             return true;
         }
 
@@ -6806,8 +5779,8 @@ public class NodeGraph {
             int addLeft = node.getBooleanOperatorAddButtonLeft();
             int removeLeft = node.getBooleanOperatorRemoveButtonLeft();
             int buttonSize = node.getBooleanOperatorButtonSize();
-            if (isPointInsideNodeHeaderButtonWorld(addLeft, buttonTop, buttonSize, worldX, worldY)
-                || isPointInsideNodeHeaderButtonWorld(removeLeft, buttonTop, buttonSize, worldX, worldY)) {
+            if (nodeControls.isPointInsideNodeHeaderButtonWorld(addLeft, buttonTop, buttonSize, worldX, worldY)
+                || nodeControls.isPointInsideNodeHeaderButtonWorld(removeLeft, buttonTop, buttonSize, worldX, worldY)) {
                 return true;
             }
         }
@@ -6817,26 +5790,26 @@ public class NodeGraph {
             int addLeft = node.getMessageAddButtonLeft();
             int removeLeft = node.getMessageRemoveButtonLeft();
             int buttonSize = node.getMessageButtonSize();
-            if (isPointInsideNodeHeaderButtonWorld(addLeft, buttonTop, buttonSize, worldX, worldY)
-                || isPointInsideNodeHeaderButtonWorld(removeLeft, buttonTop, buttonSize, worldX, worldY)) {
+            if (nodeControls.isPointInsideNodeHeaderButtonWorld(addLeft, buttonTop, buttonSize, worldX, worldY)
+                || nodeControls.isPointInsideNodeHeaderButtonWorld(removeLeft, buttonTop, buttonSize, worldX, worldY)) {
                 return true;
             }
         }
 
-        if (isCombinedDirectionNode(node)) {
-            int fieldLeft = getParameterFieldLeft(node);
-            int fieldTop = getDirectionModeTabTop(node);
-            int fieldWidth = getParameterFieldWidth(node);
+        if (nodeControls.isCombinedDirectionNode(node)) {
+            int fieldLeft = nodeControls.getParameterFieldLeft(node);
+            int fieldTop = nodeControls.getDirectionModeTabTop(node);
+            int fieldWidth = nodeControls.getParameterFieldWidth(node);
             if (worldX >= fieldLeft && worldX <= fieldLeft + fieldWidth
                 && worldY >= fieldTop && worldY <= fieldTop + DIRECTION_MODE_TAB_HEIGHT) {
                 return true;
             }
         }
 
-        if (isCombinedBooleanNode(node)) {
-            int fieldLeft = getParameterFieldLeft(node);
-            int fieldTop = getBooleanModeTabTop(node);
-            int fieldWidth = getParameterFieldWidth(node);
+        if (nodeControls.isCombinedBooleanNode(node)) {
+            int fieldLeft = nodeControls.getParameterFieldLeft(node);
+            int fieldTop = nodeControls.getBooleanModeTabTop(node);
+            int fieldWidth = nodeControls.getParameterFieldWidth(node);
             if (worldX >= fieldLeft && worldX <= fieldLeft + fieldWidth
                 && worldY >= fieldTop && worldY <= fieldTop + DIRECTION_MODE_TAB_HEIGHT) {
                 return true;

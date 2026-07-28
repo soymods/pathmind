@@ -111,11 +111,10 @@ import com.pathmind.ui.graph.InlineVariableRenderer.InlineVariableRender;
 public class NodeGraph {
     private static final int DUPLICATE_OFFSET_X = 32;
     private static final int DUPLICATE_OFFSET_Y = 24;
-    private static final int SELECTION_BOX_MIN_DRAG = 3;
     private static final int MINIMAL_NODE_TAB_WIDTH = 6;
-    private static final int GRID_SNAP_SIZE = 20;
     private static final int TEMPLATE_PREVIEW_MARGIN = 6;
     private static final int NODE_HEADER_BUTTON_SIZE = 12;
+    private static final int GRID_SNAP_SIZE = 20;
 
     private static String tr(String key) {
         return Component.translatable(key).getString();
@@ -147,7 +146,7 @@ public class NodeGraph {
         @Override public boolean isUndoCaptureSuppressed() { return suppressUndoCapture; }
         @Override public void markWorkspaceDirty() { NodeGraph.this.markWorkspaceDirty(); }
         @Override public void invalidateRenderCaches() { NodeGraph.this.invalidateRenderCaches(); }
-        @Override public void markDragOperationChanged() { dragOperationChanged = true; }
+        @Override public void markDragOperationChanged() { selectionController.markDragOperationChanged(); }
     });
     private final ConnectionRenderer connectionRenderer = new ConnectionRenderer(new ConnectionRenderer.Host() {
         @Override public List<NodeConnection> getConnections() { return connections; }
@@ -177,14 +176,6 @@ public class NodeGraph {
             NodeGraph.this.profilerConnectionMs = profilerConnectionMs;
         }
     }, connectionController);
-    private Node selectedNode;
-    private final LinkedHashSet<Node> selectedNodes;
-    private Node draggingNode;
-    private int draggingNodeStartX;
-    private int draggingNodeStartY;
-    private boolean draggingNodeDetached;
-    private NodeGraphData pendingDragUndoSnapshot = null;
-    private boolean dragOperationChanged = false;
     
     // Camera/viewport for infinite scrolling
     private int cameraX = 0;
@@ -232,10 +223,6 @@ public class NodeGraph {
         @Override public void closeNodeContextMenu() { NodeGraph.this.closeNodeContextMenu(); }
     });
 
-    private Node sensorDropTarget = null;
-    private Node actionDropTarget = null;
-    private Node parameterDropTarget = null;
-    private Integer parameterDropSlotIndex = null;
     private final Map<Node, AnimatedValue> amountToggleAnimations = new WeakHashMap<>();
     private final Map<Node, AnimatedValue> randomRoundingToggleAnimations = new WeakHashMap<>();
 
@@ -249,9 +236,6 @@ public class NodeGraph {
     private Node nodeContextMenuTarget = null;
 
     // Double-click detection
-    private long lastClickTime = 0;
-    private Node lastClickedNode = null;
-    private static final long DOUBLE_CLICK_THRESHOLD = 300; // milliseconds
     private int sidebarWidthForRendering = 180;
     private boolean executionEnabled = true;
     private boolean hierarchyGeometryDirty = true;
@@ -273,7 +257,6 @@ public class NodeGraph {
     private List<NodeGraphData.RoutineDefinitionData> routineRegistry = new ArrayList<>();
     private List<NodeGraphData.RoutineDefinitionData> routineValidationRegistry = List.of();
     private String activeRoutineWorkspaceId = "";
-    private final Set<Node> cascadeDeletionPreviewNodes;
 
     private static final int PARAMETER_INPUT_HEIGHT = 16;
     private static final int PARAMETER_INPUT_GAP = 4;
@@ -482,17 +465,12 @@ public class NodeGraph {
 
         @Override
         public void beginDragOperation() {
-            if (suppressUndoCapture) {
-                pendingDragUndoSnapshot = null;
-            } else {
-                pendingDragUndoSnapshot = buildGraphData(new ArrayList<>(nodes), new ArrayList<>(connections), null);
-            }
-            dragOperationChanged = false;
+            selectionController.beginDragOperation();
         }
 
         @Override
         public void markDragOperationChanged() {
-            dragOperationChanged = true;
+            selectionController.markDragOperationChanged();
         }
 
         @Override
@@ -515,6 +493,93 @@ public class NodeGraph {
             NodeGraph.this.setClipboardText(text);
         }
     });
+    private final NodeSelectionController selectionController = new NodeSelectionController(
+        new NodeSelectionController.Host() {
+            @Override public List<Node> nodes() { return nodes; }
+            @Override public int screenToWorldX(int screenX) { return NodeGraph.this.screenToWorldX(screenX); }
+            @Override public int screenToWorldY(int screenY) { return NodeGraph.this.screenToWorldY(screenY); }
+            @Override public int worldToScreenX(int worldX) { return NodeGraph.this.worldToScreenX(worldX); }
+            @Override public int worldToScreenY(int worldY) { return NodeGraph.this.worldToScreenY(worldY); }
+            @Override public float zoomScale() { return getZoomScale(); }
+            @Override public void stopEditorsForNodeDrag() {
+                stopCoordinateEditing(true);
+                stopAmountEditing(true);
+                stopMessageEditing(true);
+                stopStickyNoteEditing(true);
+                stopParameterEditing(true);
+                stopStopTargetEditing(true);
+                stopVariableEditing(true);
+                stopMessageEditing(true);
+            }
+            @Override public boolean isUndoCaptureSuppressed() { return suppressUndoCapture; }
+            @Override public NodeGraphData captureDragUndoSnapshot() {
+                return buildGraphData(new ArrayList<>(nodes), new ArrayList<>(connections), null);
+            }
+            @Override public void pushUndoSnapshot(NodeGraphData snapshot) { NodeGraph.this.pushUndoSnapshot(snapshot); }
+            @Override public void markWorkspaceDirty() { NodeGraph.this.markWorkspaceDirty(); }
+            @Override public void invalidateHierarchyCache() { NodeGraph.this.invalidateHierarchyCache(); }
+            @Override public boolean isConnectionCutActive() { return connectionController.isConnectionCutActive(); }
+            @Override public void updateConnectionCut(int worldX, int worldY) {
+                connectionController.updateConnectionCut(worldX, worldY);
+            }
+            @Override public boolean isStickyNoteResizing() { return stickyNoteController.isResizing(); }
+            @Override public void updateStickyNoteResize(int worldX, int worldY) {
+                stickyNoteController.updateResize(worldX, worldY);
+            }
+            @Override public Node finishStickyNoteResize() { return stickyNoteController.finishResize(); }
+            @Override public void cancelStickyNoteResize() { stickyNoteController.cancelResize(); }
+            @Override public void setInsertionPreviewConnection(NodeConnection connection) {
+                connectionController.setInsertionPreviewConnection(connection);
+            }
+            @Override public NodeConnection findInsertionPreviewConnection(Node node) {
+                return connectionController.findInsertionPreviewConnection(node);
+            }
+            @Override public boolean tryInsertDraggedNodeIntoPreviewConnection(Node node) {
+                return connectionController.tryInsertDraggedNodeIntoPreviewConnection(node);
+            }
+            @Override public boolean insertNodeIntoConnection(Node node, NodeConnection connection) {
+                return connectionController.insertNodeIntoConnection(node, connection);
+            }
+            @Override public void updateConnectionDrag(int worldX, int worldY) {
+                connectionController.updateDrag(worldX, worldY, denseViewportMode);
+            }
+            @Override public void forceClearConnectionDragState() {
+                connectionController.forceClearTransientDragState();
+            }
+            @Override public boolean isDraggingConnection() { return connectionController.isDraggingConnection(); }
+            @Override public boolean isConnectionCutActiveForStatus() {
+                return connectionController.isConnectionCutActive();
+            }
+            @Override public Node getNodeAtWorldExcluding(int worldX, int worldY, Node excluded) {
+                return NodeGraph.this.getNodeAtWorldExcluding(worldX, worldY, excluded);
+            }
+            @Override public Node getParentForNode(Node node) { return NodeGraph.this.getParentForNode(node); }
+            @Override public boolean intersectsViewport(Node node) { return NodeGraph.this.intersectsViewport(node); }
+            @Override public void positionNewNode(Node node, int worldMouseX, int worldMouseY) {
+                NodeGraph.this.positionNewNode(node, worldMouseX, worldMouseY);
+            }
+            @Override public String activeRoutineWorkspaceId() { return activeRoutineWorkspaceId; }
+            @Override public void assignNewStartNodeNumber(Node node) {
+                NodeGraph.this.assignNewStartNodeNumber(node);
+            }
+            @Override public void bringNodeToFront(Node node) { NodeGraph.this.bringNodeToFront(node); }
+            @Override public Node getRootNode(Node node) { return NodeGraph.this.getRootNode(node); }
+            @Override public SelectionBounds calculateBounds(Collection<Node> nodesToMeasure) {
+                return NodeGraph.this.calculateBounds(nodesToMeasure);
+            }
+            @Override public void removeNodeCascade(Node node, boolean captureUndo) {
+                NodeGraph.this.removeNodeCascade(node, captureUndo);
+            }
+            @Override public boolean shouldCascadeDelete(Node node) {
+                return NodeGraph.this.shouldCascadeDelete(node);
+            }
+            @Override public void collectNodesForCascade(Node node, List<Node> order, Set<Node> visited) {
+                NodeGraph.this.collectNodesForCascade(node, order, visited);
+            }
+            @Override public int cameraX() { return cameraX; }
+            @Override public int sidebarWidthForRendering() { return sidebarWidthForRendering; }
+        }
+    );
     private final NodeControlController nodeControls = new NodeControlController(
         new NodeControlController.Host() {
             @Override public int cameraX() { return cameraX; }
@@ -527,10 +592,10 @@ public class NodeGraph {
             }
             @Override public float zoomScale() { return getZoomScale(); }
             @Override public boolean compactViewportMode() { return compactViewportMode; }
-            @Override public Node sensorDropTarget() { return sensorDropTarget; }
-            @Override public Node actionDropTarget() { return actionDropTarget; }
-            @Override public Node parameterDropTarget() { return parameterDropTarget; }
-            @Override public Integer parameterDropSlotIndex() { return parameterDropSlotIndex; }
+            @Override public Node sensorDropTarget() { return selectionController.getSensorDropTarget(); }
+            @Override public Node actionDropTarget() { return selectionController.getActionDropTarget(); }
+            @Override public Node parameterDropTarget() { return selectionController.getParameterDropTarget(); }
+            @Override public Integer parameterDropSlotIndex() { return selectionController.getParameterDropSlotIndex(); }
             @Override public Node nodeAt(int screenX, int screenY) {
                 return NodeGraph.this.getNodeAt(screenX, screenY);
             }
@@ -1054,14 +1119,6 @@ public class NodeGraph {
     private boolean suppressUndoCapture = false;
     private static final int MAX_HISTORY = 50;
     private static final Map<String, SessionViewportState> SESSION_VIEWPORT_STATES = new ConcurrentHashMap<>();
-    private boolean selectionBoxActive = false;
-    private int selectionBoxStartWorldX = 0;
-    private int selectionBoxStartWorldY = 0;
-    private int selectionBoxCurrentWorldX = 0;
-    private int selectionBoxCurrentWorldY = 0;
-    private boolean multiDragActive = false;
-    private final Map<Node, DragStartInfo> multiDragStartPositions = new HashMap<>();
-    private boolean selectionDeletionPreviewActive = false;
 
 
     public enum ZoomLevel {
@@ -1111,16 +1168,6 @@ public class NodeGraph {
             this.minY = minY;
             this.maxX = maxX;
             this.maxY = maxY;
-        }
-    }
-
-    private static final class DragStartInfo {
-        private final int x;
-        private final int y;
-
-        private DragStartInfo(int x, int y) {
-            this.x = x;
-            this.y = y;
         }
     }
 
@@ -1267,14 +1314,7 @@ public class NodeGraph {
         this.cachedVisibleRootNodes = new ArrayList<>();
         this.cachedHierarchyBounds = new HashMap<>();
         this.cachedHierarchyNodeCounts = new HashMap<>();
-        this.selectedNode = null;
-        this.selectedNodes = new LinkedHashSet<>();
-        this.draggingNode = null;
-        this.draggingNodeStartX = 0;
-        this.draggingNodeStartY = 0;
-        this.draggingNodeDetached = false;
         this.activePreset = PresetManager.getActivePreset();
-        this.cascadeDeletionPreviewNodes = new HashSet<>();
 
         // Add preset nodes similar to Blender's shader editor
         // Will be initialized with proper centering when screen dimensions are available
@@ -1450,21 +1490,7 @@ public class NodeGraph {
             }
         }
 
-        if (sensorDropTarget == node) {
-            sensorDropTarget = null;
-            actionDropTarget = null;
-            parameterDropTarget = null;
-            parameterDropSlotIndex = null;
-        }
-
-        if (actionDropTarget == node) {
-            actionDropTarget = null;
-        }
-
-        if (parameterDropTarget == node) {
-            parameterDropTarget = null;
-            parameterDropSlotIndex = null;
-        }
+        selectionController.clearDropTargetsForRemovedNode(node);
 
         if (autoReconnect) {
             List<NodeConnection> inputConnections = new ArrayList<>();
@@ -1505,15 +1531,7 @@ public class NodeGraph {
             nextStartNodeNumber = 1;
         }
 
-        if (selectedNodes.remove(node)) {
-            node.setSelected(false);
-            if (selectedNode == node) {
-                selectedNode = selectedNodes.isEmpty() ? null : selectedNodes.iterator().next();
-            }
-        }
-        if (draggingNode == node) {
-            draggingNode = null;
-        }
+        selectionController.onNodeRemoved(node);
         invalidateRenderCaches();
     }
 
@@ -1591,67 +1609,31 @@ public class NodeGraph {
     }
 
     public void selectNode(Node node) {
-        if (node == null) {
-            clearSelection();
-            return;
-        }
-        clearSelection();
-        addNodeToSelection(node);
+        selectionController.selectNode(node);
     }
 
     public void selectNodes(Collection<Node> nodesToSelect) {
-        clearSelection();
-        if (nodesToSelect == null) {
-            return;
-        }
-        for (Node node : nodesToSelect) {
-            addNodeToSelection(node);
-        }
+        selectionController.selectNodes(nodesToSelect);
     }
 
     public Set<Node> getSelectedNodes() {
-        return Collections.unmodifiableSet(selectedNodes);
+        return selectionController.getSelectedNodes();
     }
 
     public void setSelectionDeletionPreviewActive(boolean active) {
-        selectionDeletionPreviewActive = active;
+        selectionController.setSelectionDeletionPreviewActive(active);
     }
 
     public boolean isNodeSelected(Node node) {
-        if (node == null) {
-            return false;
-        }
-        return selectedNodes.contains(node);
+        return selectionController.isNodeSelected(node);
     }
 
     public void focusSelectedNode(Node node) {
-        if (node == null) {
-            return;
-        }
-        if (!selectedNodes.contains(node)) {
-            selectNode(node);
-            return;
-        }
-        selectedNode = node;
-        node.setSelected(true);
+        selectionController.focusSelectedNode(node);
     }
 
     public void toggleNodeInSelection(Node node) {
-        if (node == null) {
-            return;
-        }
-        if (selectedNodes.contains(node)) {
-            // Remove from selection
-            selectedNodes.remove(node);
-            node.setSelected(false);
-            // Update focused node if we removed it
-            if (selectedNode == node) {
-                selectedNode = selectedNodes.isEmpty() ? null : selectedNodes.iterator().next();
-            }
-        } else {
-            // Add to selection
-            addNodeToSelection(node);
-        }
+        selectionController.toggleNodeInSelection(node);
     }
 
     SelectionBounds calculateBounds(Collection<Node> nodesToMeasure) {
@@ -1801,148 +1783,40 @@ public class NodeGraph {
         ));
     }
 
-    private void addNodeToSelection(Node node) {
-        if (node == null) {
-            return;
-        }
-        if (selectedNodes.add(node)) {
-            node.setSelected(true);
-            selectedNode = node;
-        }
-    }
-
     private void clearSelection() {
-        if (selectedNodes.isEmpty()) {
-            selectedNode = null;
-            return;
-        }
-        for (Node entry : selectedNodes) {
-            entry.setSelected(false);
-        }
-        selectedNodes.clear();
-        selectedNode = null;
+        selectionController.clearSelection();
     }
 
     private void pruneSelectionToCurrentNodes() {
-        if (selectedNodes.isEmpty()) {
-            selectedNode = null;
-            return;
-        }
-        Set<Node> liveNodes = new HashSet<>(nodes);
-        boolean changed = false;
-        java.util.Iterator<Node> iterator = selectedNodes.iterator();
-        while (iterator.hasNext()) {
-            Node entry = iterator.next();
-            if (entry == null || !liveNodes.contains(entry)) {
-                if (entry != null) {
-                    entry.setSelected(false);
-                }
-                iterator.remove();
-                changed = true;
-            }
-        }
-        if (selectedNode == null || !liveNodes.contains(selectedNode)) {
-            selectedNode = selectedNodes.isEmpty() ? null : selectedNodes.iterator().next();
-            changed = true;
-        }
-        if (changed && selectedNode != null) {
-            selectedNode.setSelected(true);
-        }
+        selectionController.pruneSelectionToCurrentNodes();
     }
 
     private void clearTransientGraphState() {
-        clearSelection();
-        draggingNode = null;
+        selectionController.clearTransientState();
         connectionController.clearGraphState();
         hoveringStartButton = false;
         hoveredStartNode = null;
         startModeDropdown.close();
-        sensorDropTarget = null;
-        actionDropTarget = null;
-        parameterDropTarget = null;
-        lastClickedNode = null;
-        lastClickTime = 0;
-        cascadeDeletionPreviewNodes.clear();
-        selectionDeletionPreviewActive = false;
-        selectionBoxActive = false;
     }
 
     public void beginSelectionBox(int screenX, int screenY) {
-        int worldX = screenToWorldX(screenX);
-        int worldY = screenToWorldY(screenY);
-        selectionBoxActive = true;
-        selectionBoxStartWorldX = worldX;
-        selectionBoxStartWorldY = worldY;
-        selectionBoxCurrentWorldX = worldX;
-        selectionBoxCurrentWorldY = worldY;
+        selectionController.beginSelectionBox(screenX, screenY);
     }
 
     public void updateSelectionBox(int screenX, int screenY) {
-        if (!selectionBoxActive) {
-            return;
-        }
-        selectionBoxCurrentWorldX = screenToWorldX(screenX);
-        selectionBoxCurrentWorldY = screenToWorldY(screenY);
-        if (hasSelectionBoxDrag()) {
-            applySelectionBoxSelection();
-        }
+        selectionController.updateSelectionBox(screenX, screenY);
     }
 
     public void completeSelectionBox() {
-        if (!selectionBoxActive) {
-            return;
-        }
-        if (hasSelectionBoxDrag()) {
-            applySelectionBoxSelection();
-        }
-        selectionBoxActive = false;
+        selectionController.completeSelectionBox();
     }
 
     public boolean isSelectionBoxActive() {
-        return selectionBoxActive;
-    }
-
-    private boolean hasSelectionBoxDrag() {
-        float scale = getZoomScale();
-        if (scale == 0.0f) {
-            scale = 1.0f;
-        }
-        int deltaX = Math.round(Math.abs(selectionBoxCurrentWorldX - selectionBoxStartWorldX) * scale);
-        int deltaY = Math.round(Math.abs(selectionBoxCurrentWorldY - selectionBoxStartWorldY) * scale);
-        return deltaX >= SELECTION_BOX_MIN_DRAG || deltaY >= SELECTION_BOX_MIN_DRAG;
-    }
-
-    private void applySelectionBoxSelection() {
-        int worldLeft = Math.min(selectionBoxStartWorldX, selectionBoxCurrentWorldX);
-        int worldRight = Math.max(selectionBoxStartWorldX, selectionBoxCurrentWorldX);
-        int worldTop = Math.min(selectionBoxStartWorldY, selectionBoxCurrentWorldY);
-        int worldBottom = Math.max(selectionBoxStartWorldY, selectionBoxCurrentWorldY);
-
-        List<Node> inside = new ArrayList<>();
-        for (Node node : nodes) {
-            if (node == null) {
-                continue;
-            }
-            int nodeLeft = node.getX();
-            int nodeRight = node.getX() + node.getWidth();
-            int nodeTop = node.getY();
-            int nodeBottom = node.getY() + node.getHeight();
-            boolean intersecting = nodeRight >= worldLeft &&
-                    nodeLeft <= worldRight &&
-                    nodeBottom >= worldTop &&
-                    nodeTop <= worldBottom;
-            if (intersecting) {
-                inside.add(node);
-            }
-        }
-        selectNodes(inside);
+        return selectionController.isSelectionBoxActive();
     }
 
     public void resetDropTargets() {
-        sensorDropTarget = null;
-        actionDropTarget = null;
-        parameterDropTarget = null;
-        parameterDropSlotIndex = null;
+        selectionController.resetDropTargets();
     }
 
     void bringNodeToFront(Node node) {
@@ -1963,11 +1837,12 @@ public class NodeGraph {
     }
 
     public Node getSelectedNode() {
-        return selectedNode;
+        return selectionController.getSelectedNode();
     }
 
     public boolean copySelectedNodeToClipboard() {
         pruneSelectionToCurrentNodes();
+        Set<Node> selectedNodes = selectionController.getSelectedNodes();
         if (selectedNodes.isEmpty()) {
             return false;
         }
@@ -1981,6 +1856,7 @@ public class NodeGraph {
 
     public boolean cutSelectedNodeToClipboard() {
         pruneSelectionToCurrentNodes();
+        Set<Node> selectedNodes = selectionController.getSelectedNodes();
         if (selectedNodes.isEmpty()) {
             return false;
         }
@@ -1994,6 +1870,7 @@ public class NodeGraph {
 
     public Node duplicateSelectedNode() {
         pruneSelectionToCurrentNodes();
+        Set<Node> selectedNodes = selectionController.getSelectedNodes();
         if (selectedNodes.isEmpty()) {
             return null;
         }
@@ -2011,6 +1888,7 @@ public class NodeGraph {
 
     public Node pasteClipboardNode() {
         pruneSelectionToCurrentNodes();
+        Set<Node> selectedNodes = selectionController.getSelectedNodes();
         if (clipboardNodeSnapshot == null) {
             return null;
         }
@@ -2023,6 +1901,7 @@ public class NodeGraph {
 
     public boolean deleteSelectedNode() {
         pruneSelectionToCurrentNodes();
+        Set<Node> selectedNodes = selectionController.getSelectedNodes();
         if (selectedNodes.isEmpty()) {
             return false;
         }
@@ -2094,55 +1973,7 @@ public class NodeGraph {
     }
 
     public void startDragging(Node node, int mouseX, int mouseY) {
-        stopCoordinateEditing(true);
-        stopAmountEditing(true);
-        stopMessageEditing(true);
-        stopStickyNoteEditing(true);
-        stopParameterEditing(true);
-        stopStopTargetEditing(true);
-        stopVariableEditing(true);
-        stopMessageEditing(true);
-        resetDropTargets();
-
-        if (node == null) {
-            pendingDragUndoSnapshot = null;
-            dragOperationChanged = false;
-            multiDragActive = false;
-            multiDragStartPositions.clear();
-            return;
-        }
-
-        if (suppressUndoCapture) {
-            pendingDragUndoSnapshot = null;
-        } else {
-            pendingDragUndoSnapshot = buildGraphData(new ArrayList<>(nodes), new ArrayList<>(connections), null);
-        }
-        dragOperationChanged = false;
-
-        draggingNode = node;
-        draggingNodeStartX = node.getX();
-        draggingNodeStartY = node.getY();
-        draggingNodeDetached = false;
-        node.setDragging(true);
-
-        if (selectedNodes.size() > 1 && selectedNodes.contains(node)) {
-            multiDragActive = true;
-            multiDragStartPositions.clear();
-            for (Node selected : selectedNodes) {
-                multiDragStartPositions.put(selected, new DragStartInfo(selected.getX(), selected.getY()));
-                if (selected != node) {
-                    selected.setDragging(true);
-                }
-            }
-        } else {
-            multiDragActive = false;
-            multiDragStartPositions.clear();
-        }
-
-        int worldMouseX = screenToWorldX(mouseX);
-        int worldMouseY = screenToWorldY(mouseY);
-        node.setDragOffsetX(worldMouseX - node.getX());
-        node.setDragOffsetY(worldMouseY - node.getY());
+        selectionController.startDragging(node, mouseX, mouseY);
     }
     
     public void startDraggingConnection(Node node, int socketIndex, boolean isOutput, int mouseX, int mouseY) {
@@ -2162,202 +1993,19 @@ public class NodeGraph {
     }
 
     public void updateDrag(int mouseX, int mouseY) {
-        int worldMouseX = screenToWorldX(mouseX);
-        int worldMouseY = screenToWorldY(mouseY);
-
-        if (connectionController.isConnectionCutActive()) {
-            updateConnectionCut(worldMouseX, worldMouseY);
-            return;
-        }
-
-        if (stickyNoteController.isResizing()) {
-            stickyNoteController.updateResize(worldMouseX, worldMouseY);
-            return;
-        }
-
-        if (draggingNode != null) {
-            int newX = worldMouseX - draggingNode.getDragOffsetX();
-            int newY = worldMouseY - draggingNode.getDragOffsetY();
-
-            if (multiDragActive) {
-                // Apply grid snapping if Shift is held
-                if (InputCompatibilityBridge.hasShiftDown()) {
-                    newX = snapToGrid(newX);
-                    newY = snapToGrid(newY);
-                }
-
-                int deltaX = newX - draggingNodeStartX;
-                int deltaY = newY - draggingNodeStartY;
-                if (deltaX != 0 || deltaY != 0) {
-                    dragOperationChanged = true;
-                }
-                draggingNode.setPosition(newX, newY);
-                for (Map.Entry<Node, DragStartInfo> entry : multiDragStartPositions.entrySet()) {
-                    Node member = entry.getKey();
-                    if (member == null || member == draggingNode) {
-                        continue;
-                    }
-                    DragStartInfo start = entry.getValue();
-                    if (start == null) {
-                        continue;
-                    }
-                    member.setPosition(start.x + deltaX, start.y + deltaY);
-                }
-                invalidateHierarchyCache();
-                draggingNode.setSocketsHidden(false);
-                resetDropTargets();
-                connectionController.setInsertionPreviewConnection(null);
-            } else {
-                if (!draggingNodeDetached) {
-                    if (newX != draggingNodeStartX || newY != draggingNodeStartY) {
-                        detachDraggingNodeFromParents();
-                    }
-                }
-
-                if (draggingNodeDetached) {
-                    int currentX = draggingNode.getX();
-                    int currentY = draggingNode.getY();
-                    if (currentX != newX || currentY != newY) {
-                        dragOperationChanged = true;
-                    }
-
-                    // Apply grid snapping if Shift is held
-                    if (InputCompatibilityBridge.hasShiftDown()) {
-                        newX = snapToGrid(newX);
-                        newY = snapToGrid(newY);
-                    }
-
-                    draggingNode.setPosition(newX, newY);
-                    invalidateHierarchyCache();
-
-                    boolean hideSockets = false;
-                    resetDropTargets();
-                    boolean parameterCandidate = Node.isUsableAsParameterType(draggingNode.getType());
-                    if (parameterCandidate) {
-                        hideSockets = trySetParameterDropTarget(draggingNode, worldMouseX, worldMouseY, true);
-                    }
-                    if (!hideSockets && draggingNode.isSensorNode()) {
-                        hideSockets = trySetSensorDropTarget(draggingNode, worldMouseX, worldMouseY);
-                    }
-                    if (!hideSockets && !draggingNode.isSensorNode()) {
-                        for (Node node : nodes) {
-                            if (!node.canAcceptActionNode() || node == draggingNode) {
-                                continue;
-                            }
-                            if (!node.canAcceptActionNode(draggingNode)) {
-                                continue;
-                            }
-                            if (node.isPointInsideActionSlot(worldMouseX, worldMouseY)) {
-                                actionDropTarget = node;
-                                hideSockets = true;
-                                break;
-                            }
-                        }
-                    }
-                    connectionController.setInsertionPreviewConnection(!hideSockets ? findInsertionPreviewConnection(draggingNode) : null);
-                    draggingNode.setSocketsHidden(hideSockets);
-                } else {
-                    connectionController.setInsertionPreviewConnection(null);
-                }
-            }
-        } else {
-            connectionController.setInsertionPreviewConnection(null);
-        }
-        connectionController.updateDrag(worldMouseX, worldMouseY, denseViewportMode);
+        selectionController.updateDrag(mouseX, mouseY);
     }
 
     public void previewSidebarDrag(NodeType nodeType, int worldMouseX, int worldMouseY) {
-        previewSidebarDrag(nodeType != null ? Node.createForEditor(nodeType, worldMouseX, worldMouseY) : null, worldMouseX, worldMouseY);
+        selectionController.previewSidebarDrag(nodeType, worldMouseX, worldMouseY);
     }
 
     public void previewSidebarDrag(Node candidate, int worldMouseX, int worldMouseY) {
-        resetDropTargets();
-        connectionController.setInsertionPreviewConnection(null);
-        if (candidate == null) {
-            return;
-        }
-        positionNewNode(candidate, worldMouseX, worldMouseY);
-        NodeType nodeType = candidate.getType();
-        boolean parameterCandidate = Node.isUsableAsParameterType(nodeType);
-        if (parameterCandidate && trySetParameterDropTarget(candidate, worldMouseX, worldMouseY, false)) {
-            return;
-        }
-        if (Node.isSensorType(nodeType) && trySetSensorDropTarget(null, worldMouseX, worldMouseY)) {
-            return;
-        }
-        if (Node.isParameterType(nodeType)) {
-            return;
-        } else {
-            boolean actionTargetFound = false;
-            for (Node node : nodes) {
-                if (!node.canAcceptActionNode()) {
-                    continue;
-                }
-                if (!node.canAcceptActionNode(candidate)) {
-                    continue;
-                }
-                if (node.isPointInsideActionSlot(worldMouseX, worldMouseY)) {
-                    actionDropTarget = node;
-                    actionTargetFound = true;
-                    break;
-                }
-            }
-            if (!actionTargetFound) {
-                connectionController.setInsertionPreviewConnection(findInsertionPreviewConnection(candidate));
-            }
-        }
+        selectionController.previewSidebarDrag(candidate, worldMouseX, worldMouseY);
     }
 
     public int[] getSidebarDragPreviewPosition(Node candidate, int worldMouseX, int worldMouseY) {
-        if (candidate == null) {
-            return new int[]{worldMouseX, worldMouseY};
-        }
-        int nodeX = worldMouseX - candidate.getWidth() / 2;
-        int nodeY = worldMouseY - candidate.getHeight() / 2;
-        if (InputCompatibilityBridge.hasShiftDown()) {
-            nodeX = snapToGrid(nodeX);
-            nodeY = snapToGrid(nodeY);
-        }
-        return new int[]{nodeX, nodeY};
-    }
-
-    private boolean trySetParameterDropTarget(Node candidate, int worldMouseX, int worldMouseY, boolean excludeCandidateNode) {
-        Node hoveredNode = getNodeAtWorldExcluding(worldMouseX, worldMouseY, excludeCandidateNode ? candidate : null);
-        for (Node current = hoveredNode; current != null; current = getParentForNode(current)) {
-            if (excludeCandidateNode && current == candidate) {
-                continue;
-            }
-            int slotIndex = findPreferredParameterSlot(current, candidate, worldMouseX, worldMouseY, true);
-            if (slotIndex >= 0) {
-                parameterDropTarget = current;
-                parameterDropSlotIndex = slotIndex;
-                return true;
-            }
-            if (current == hoveredNode
-                && current.getParentParameterHost() != null
-                && current.canAcceptParameter()
-                && current.containsPoint(worldMouseX, worldMouseY)) {
-                // When the cursor is over a nested parameter host, do not let an
-                // ancestor host steal the drop and replace the nested node.
-                return false;
-            }
-        }
-        for (int i = nodes.size() - 1; i >= 0; i--) {
-            Node node = nodes.get(i);
-            if (excludeCandidateNode && node == candidate) {
-                continue;
-            }
-            if (!intersectsViewport(node)) {
-                continue;
-            }
-            int slotIndex = findPreferredParameterSlot(node, candidate, worldMouseX, worldMouseY, false);
-            if (slotIndex >= 0) {
-                parameterDropTarget = node;
-                parameterDropSlotIndex = slotIndex;
-                return true;
-            }
-        }
-        return false;
+        return selectionController.getSidebarDragPreviewPosition(candidate, worldMouseX, worldMouseY);
     }
 
     private Node getNodeAtWorldExcluding(int worldX, int worldY, Node excluded) {
@@ -2417,114 +2065,12 @@ public class NodeGraph {
         return null;
     }
 
-    private int findPreferredParameterSlot(Node host, Node candidate, int worldMouseX, int worldMouseY, boolean allowBodyFallback) {
-        if (host == null || candidate == null || !host.canAcceptParameter()) {
-            return -1;
-        }
-
-        int hoveredSlotIndex = host.getParameterSlotIndexAt(worldMouseX, worldMouseY);
-        if (hoveredSlotIndex >= 0 && host.canAcceptParameterNode(candidate, hoveredSlotIndex)) {
-            return hoveredSlotIndex;
-        }
-
-        if (!allowBodyFallback || !host.containsPoint(worldMouseX, worldMouseY)) {
-            return -1;
-        }
-
-        int slotCount = host.getParameterSlotCount();
-        int firstCompatible = -1;
-        for (int slotIndex = 0; slotIndex < slotCount; slotIndex++) {
-            if (!host.canAcceptParameterNode(candidate, slotIndex)) {
-                continue;
-            }
-            if (firstCompatible < 0) {
-                firstCompatible = slotIndex;
-            }
-            if (host.getAttachedParameter(slotIndex) == null) {
-                return slotIndex;
-            }
-        }
-        return firstCompatible;
-    }
-
-    private boolean trySetSensorDropTarget(Node candidateToExclude, int worldMouseX, int worldMouseY) {
-        for (Node node : nodes) {
-            if (!node.canAcceptSensor() || node == candidateToExclude) {
-                continue;
-            }
-            if (!intersectsViewport(node)) {
-                continue;
-            }
-            if (node.isPointInsideSensorSlot(worldMouseX, worldMouseY)) {
-                sensorDropTarget = node;
-                return true;
-            }
-        }
-        return false;
-    }
-
     public Node handleSidebarDrop(NodeType nodeType, int worldMouseX, int worldMouseY) {
-        return handleSidebarDrop(nodeType != null ? Node.createForEditor(nodeType, 0, 0) : null, worldMouseX, worldMouseY);
+        return selectionController.handleSidebarDrop(nodeType, worldMouseX, worldMouseY);
     }
 
     public Node handleSidebarDrop(Node newNode, int worldMouseX, int worldMouseY) {
-        resetDropTargets();
-        connectionController.setInsertionPreviewConnection(null);
-        if (newNode == null) {
-            return null;
-        }
-        if (newNode.getType() == NodeType.ROUTINE_INPUT
-            && (activeRoutineWorkspaceId.isBlank() || !activeRoutineWorkspaceId.equals(newNode.getRoutineId()))) {
-            return null;
-        }
-        positionNewNode(newNode, worldMouseX, worldMouseY);
-        NodeType nodeType = newNode.getType();
-        if (nodeType == NodeType.START) {
-            assignNewStartNodeNumber(newNode);
-        }
-
-        boolean parameterCandidate = Node.isUsableAsParameterType(nodeType);
-        if (parameterCandidate
-            && trySetParameterDropTarget(newNode, worldMouseX, worldMouseY, false)
-            && parameterDropTarget != null
-            && parameterDropSlotIndex != null) {
-            nodes.add(newNode);
-            parameterDropTarget.attachParameter(newNode, parameterDropSlotIndex);
-            markWorkspaceDirty();
-            return newNode;
-        }
-        if (Node.isSensorType(nodeType) && trySetSensorDropTarget(null, worldMouseX, worldMouseY) && sensorDropTarget != null) {
-            nodes.add(newNode);
-            sensorDropTarget.attachSensor(newNode);
-            markWorkspaceDirty();
-            return newNode;
-        } else {
-            for (Node node : nodes) {
-                if (!node.canAcceptActionNode()) {
-                    continue;
-                }
-                if (!intersectsViewport(node)) {
-                    continue;
-                }
-                if (!node.canAcceptActionNode(newNode)) {
-                    continue;
-                }
-                if (node.isPointInsideActionSlot(worldMouseX, worldMouseY)) {
-                    nodes.add(newNode);
-                    node.attachActionNode(newNode);
-                    markWorkspaceDirty();
-                    return newNode;
-                }
-            }
-        }
-
-        NodeConnection insertionConnection = findInsertionPreviewConnection(newNode);
-        nodes.add(newNode);
-        if (insertionConnection != null) {
-            insertNodeIntoConnection(newNode, insertionConnection);
-        }
-        markWorkspaceDirty();
-        return newNode;
+        return selectionController.handleSidebarDrop(newNode, worldMouseX, worldMouseY);
     }
     
     public void updateMouseHover(int mouseX, int mouseY) {
@@ -2561,148 +2107,11 @@ public class NodeGraph {
     }
 
     public void stopDragging() {
-        Node rootToPromote = null;
-        if (stickyNoteController.isResizing()) {
-            rootToPromote = stickyNoteController.finishResize();
-        }
-        if (draggingNode != null) {
-            Node node = draggingNode;
-            if (multiDragActive) {
-                for (Node member : multiDragStartPositions.keySet()) {
-                    if (member != null) {
-                        member.setDragging(false);
-                        member.setSocketsHidden(shouldHideSocketsWhenAttached(member));
-                    }
-                }
-                rootToPromote = getRootNode(node);
-            } else if ((node.getType() == NodeType.SENSOR_POSITION_OF
-                || node.getType() == NodeType.SENSOR_DISTANCE_BETWEEN
-                || node.getType() == NodeType.SENSOR_TARGETED_BLOCK_FACE
-                || node.getType() == NodeType.SENSOR_TARGETED_BLOCK
-                || node.getType() == NodeType.SENSOR_TARGETED_ENTITY
-                || node.getType() == NodeType.SENSOR_CURRENT_GUI
-                || node.getType() == NodeType.SENSOR_LOOK_DIRECTION)
-                && parameterDropTarget != null
-                && parameterDropSlotIndex != null) {
-                Node target = parameterDropTarget;
-                int slotIndex = parameterDropSlotIndex;
-                node.setDragging(false);
-                if (!target.attachParameter(node, slotIndex)) {
-                    node.setSocketsHidden(false);
-                }
-                rootToPromote = getRootNode(target);
-            } else if (parameterDropTarget != null && parameterDropSlotIndex != null) {
-                Node target = parameterDropTarget;
-                int slotIndex = parameterDropSlotIndex;
-                node.setDragging(false);
-                if (!target.attachParameter(node, slotIndex)) {
-                    node.setSocketsHidden(false);
-                }
-                rootToPromote = getRootNode(target);
-            } else if (node.isSensorNode() && sensorDropTarget != null) {
-                Node target = sensorDropTarget;
-                node.setDragging(false);
-                if (!target.attachSensor(node)) {
-                    node.setSocketsHidden(false);
-                }
-                rootToPromote = getRootNode(target);
-            } else if (!node.isSensorNode() && actionDropTarget != null) {
-                Node target = actionDropTarget;
-                node.setDragging(false);
-                if (!target.attachActionNode(node)) {
-                    node.setSocketsHidden(false);
-                }
-                rootToPromote = getRootNode(target);
-            } else {
-                node.setDragging(false);
-                node.setSocketsHidden(shouldHideSocketsWhenAttached(node));
-                tryInsertDraggedNodeIntoPreviewConnection(node);
-                rootToPromote = getRootNode(node);
-            }
-        }
-        if (rootToPromote != null) {
-            bringNodeToFront(rootToPromote);
-        }
-        draggingNode = null;
-        draggingNodeDetached = false;
-        resetDropTargets();
-        connectionController.setInsertionPreviewConnection(null);
-
-        if (dragOperationChanged) {
-            pushUndoSnapshot(pendingDragUndoSnapshot);
-            markWorkspaceDirty();
-        }
-        pendingDragUndoSnapshot = null;
-        dragOperationChanged = false;
-        if (multiDragActive) {
-            multiDragActive = false;
-            multiDragStartPositions.clear();
-        }
-        selectionDeletionPreviewActive = false;
+        selectionController.stopDragging();
     }
 
     public void forceClearTransientDragState() {
-        for (Node node : nodes) {
-            if (node == null) {
-                continue;
-            }
-            node.setDragging(false);
-            node.setSocketsHidden(shouldHideSocketsWhenAttached(node));
-        }
-        draggingNode = null;
-        draggingNodeDetached = false;
-        stickyNoteController.cancelResize();
-        pendingDragUndoSnapshot = null;
-        dragOperationChanged = false;
-        if (multiDragActive) {
-            multiDragActive = false;
-            multiDragStartPositions.clear();
-        }
-        selectionDeletionPreviewActive = false;
-        selectionBoxActive = false;
-        connectionController.forceClearTransientDragState();
-        resetDropTargets();
-    }
-
-    private boolean shouldHideSocketsWhenAttached(Node node) {
-        if (node == null) {
-            return false;
-        }
-        return node.isAttachedToControl()
-            || node.isAttachedToActionControl()
-            || node.getParentParameterHost() != null;
-    }
-
-    private void detachDraggingNodeFromParents() {
-        if (draggingNode == null || draggingNodeDetached) {
-            return;
-        }
-
-        if (draggingNode.isSensorNode() && draggingNode.isAttachedToControl()) {
-            Node parent = draggingNode.getParentControl();
-            if (parent != null) {
-                parent.detachSensor();
-            }
-        }
-
-        if (draggingNode.isAttachedToActionControl()) {
-            Node parent = draggingNode.getParentActionControl();
-            if (parent != null) {
-                parent.detachActionNode();
-            }
-        }
-
-        if (Node.isUsableAsParameterType(draggingNode.getType())
-            && draggingNode.getParentParameterHost() != null) {
-            Node parent = draggingNode.getParentParameterHost();
-            if (parent != null) {
-                parent.detachParameter(draggingNode.getParentParameterSlotIndex());
-            }
-        }
-
-        draggingNodeDetached = true;
-        dragOperationChanged = true;
-        invalidateHierarchyCache();
+        selectionController.forceClearTransientDragState();
     }
 
     public void stopDraggingConnection() {
@@ -2718,8 +2127,7 @@ public class NodeGraph {
     }
     
     public boolean isAnyNodeBeingDragged() {
-        return draggingNode != null || stickyNoteController.isResizing()
-            || connectionController.isDraggingConnection() || connectionController.isConnectionCutActive();
+        return selectionController.isAnyNodeBeingDragged();
     }
 
     private boolean isLowDetailModeEnabled() {
@@ -3282,29 +2690,7 @@ public class NodeGraph {
     }
 
     public boolean isSelectionOverSidebar(int sidebarWidth) {
-        if (selectedNodes == null || selectedNodes.isEmpty()) {
-            return false;
-        }
-        List<Node> draggedNodes = new ArrayList<>();
-        for (Node node : selectedNodes) {
-            if (node != null && node.isDragging()) {
-                draggedNodes.add(node);
-            }
-        }
-        if (draggedNodes.isEmpty()) {
-            return false;
-        }
-        if (draggedNodes.size() == 1) {
-            return isNodeOverSidebar(draggedNodes.get(0), sidebarWidth);
-        }
-        SelectionBounds bounds = calculateBounds(draggedNodes);
-        if (bounds == null) {
-            return false;
-        }
-        int left = bounds.minX - cameraX;
-        int right = bounds.maxX - cameraX;
-        double scaledCenter = (left + (right - left) / 2.0) * getZoomScale();
-        return scaledCenter < sidebarWidth;
+        return selectionController.isSelectionOverSidebar(sidebarWidth);
     }
     
     public boolean tryConnectToSocket(Node targetNode, int targetSocket, boolean isInput) {
@@ -3482,20 +2868,7 @@ public class NodeGraph {
     }
 
     public void renderSelectionBox(GuiGraphics context) {
-        if (!selectionBoxActive || !hasSelectionBoxDrag()) {
-            return;
-        }
-        int left = worldToScreenX(Math.min(selectionBoxStartWorldX, selectionBoxCurrentWorldX));
-        int right = worldToScreenX(Math.max(selectionBoxStartWorldX, selectionBoxCurrentWorldX));
-        int top = worldToScreenY(Math.min(selectionBoxStartWorldY, selectionBoxCurrentWorldY));
-        int bottom = worldToScreenY(Math.max(selectionBoxStartWorldY, selectionBoxCurrentWorldY));
-        if (left == right || top == bottom) {
-            return;
-        }
-        int fillColor = UITheme.NODE_SELECTION_FILL;
-        int borderColor = UITheme.NODE_SELECTION_BORDER;
-        context.fill(left, top, right, bottom, fillColor);
-        DrawContextBridge.drawBorderInLayer(context, left, top, right - left, bottom - top, borderColor);
+        selectionController.renderSelectionBox(context);
     }
 
     private Node getParentForNode(Node node) {
@@ -5566,16 +4939,16 @@ public class NodeGraph {
         }
         boolean isOverSidebar = false;
         if (node.isDragging()) {
-            if (multiDragActive && node.isSelected()) {
+            if (selectionController.isMultiDragActive() && node.isSelected()) {
                 isOverSidebar = isSelectionOverSidebar(sidebarWidthForRendering);
             } else {
                 isOverSidebar = isNodeOverSidebar(node, sidebarWidthForRendering, screenX, screenWidth);
             }
         }
-        if (!isOverSidebar && selectionDeletionPreviewActive && node.isSelected()) {
+        if (!isOverSidebar && selectionController.isSelectionDeletionPreviewActive() && node.isSelected()) {
             isOverSidebar = true;
         }
-        if (!isOverSidebar && cascadeDeletionPreviewNodes.contains(node)) {
+        if (!isOverSidebar && selectionController.isCascadeDeletionPreviewNode(node)) {
             isOverSidebar = true;
         }
         return isOverSidebar;
@@ -5673,18 +5046,7 @@ public class NodeGraph {
      * Returns true if a double-click was detected and the popup should open
      */
     public boolean handleNodeClick(Node clickedNode, int mouseX, int mouseY) {
-        long currentTime = System.currentTimeMillis();
-        boolean isDoubleClick = false;
-        
-        if (clickedNode == lastClickedNode && 
-            (currentTime - lastClickTime) < DOUBLE_CLICK_THRESHOLD) {
-            isDoubleClick = true;
-        }
-        
-        lastClickTime = currentTime;
-        lastClickedNode = clickedNode;
-        
-        return isDoubleClick;
+        return selectionController.handleNodeClick(clickedNode);
     }
     
     private boolean isMouseOverStartButton(Node startNode, int mouseX, int mouseY) {
@@ -5899,32 +5261,7 @@ public class NodeGraph {
     }
 
     private void updateCascadeDeletionPreview() {
-        cascadeDeletionPreviewNodes.clear();
-        boolean selectionOverSidebar = false;
-        if (multiDragActive && selectedNodes != null && !selectedNodes.isEmpty()) {
-            selectionOverSidebar = isSelectionOverSidebar(sidebarWidthForRendering);
-        }
-        for (Node node : nodes) {
-            if (!shouldCascadeDelete(node)) {
-                continue;
-            }
-            if (!node.isDragging()) {
-                continue;
-            }
-            if (multiDragActive) {
-                if (!selectionOverSidebar) {
-                    continue;
-                }
-            } else {
-                int screenX = node.getX() - cameraX;
-                if (!isNodeOverSidebar(node, sidebarWidthForRendering, screenX, node.getWidth())) {
-                    continue;
-                }
-            }
-            List<Node> removalOrder = new ArrayList<>();
-            collectNodesForCascade(node, removalOrder, new HashSet<>());
-            cascadeDeletionPreviewNodes.addAll(removalOrder);
-        }
+        selectionController.updateCascadeDeletionPreview();
     }
     
     /**
@@ -6105,20 +5442,11 @@ public class NodeGraph {
         connections.clear();
         invalidateRenderCaches();
         nextStartNodeNumber = 1;
-        clearSelection();
-        draggingNode = null;
+        selectionController.clearTransientState();
         invalidateValidation();
         connectionController.clearGraphState();
         hoveringStartButton = false;
         hoveredStartNode = null;
-        sensorDropTarget = null;
-        actionDropTarget = null;
-        parameterDropTarget = null;
-        lastClickedNode = null;
-        lastClickTime = 0;
-        cascadeDeletionPreviewNodes.clear();
-        selectionDeletionPreviewActive = false;
-        selectionBoxActive = false;
     }
 
     private boolean applyLoadedData(NodeGraphData data) {
@@ -6126,10 +5454,7 @@ public class NodeGraph {
         nodes.clear();
         connections.clear();
         invalidateRenderCaches();
-        clearSelection();
-        draggingNode = null;
-        selectionDeletionPreviewActive = false;
-        selectionBoxActive = false;
+        selectionController.clearTransientState();
 
         // Load nodes and create node map for connections
         java.util.Map<String, Node> nodeMap = new java.util.HashMap<>();
@@ -6324,14 +5649,10 @@ public class NodeGraph {
             }
         }
 
-        sensorDropTarget = null;
-        actionDropTarget = null;
+        selectionController.resetDropTargets();
         connectionController.clearGraphState();
         hoveringStartButton = false;
         hoveredStartNode = null;
-        lastClickedNode = null;
-        lastClickTime = 0;
-        cascadeDeletionPreviewNodes.clear();
         invalidateValidation();
         restoreSessionViewportState();
 

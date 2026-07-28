@@ -379,7 +379,7 @@ public class NodeGraph {
             NodeGraph.this.renderPresetSelectorField(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
         }
         @Override public boolean isRunPresetDropdownOpenFor(Node node) {
-            return runPresetDropdownOpen && runPresetDropdownNode == node;
+            return specializedSelectors.isRunPresetOpen() && specializedSelectors.getRunPresetNode() == node;
         }
         @Override public String getStopTargetParameterKey(Node node) {
             return NodeGraph.this.getStopTargetParameterKey(node);
@@ -830,18 +830,43 @@ public class NodeGraph {
             }
         }
     );
-    private Node schematicDropdownNode = null;
-    private boolean schematicDropdownOpen = false;
+    private final SpecializedSelectorController specializedSelectors = new SpecializedSelectorController(
+        new SpecializedSelectorController.Host() {
+            @Override public int screenToWorldX(int screenX) { return NodeGraph.this.screenToWorldX(screenX); }
+            @Override public int screenToWorldY(int screenY) { return NodeGraph.this.screenToWorldY(screenY); }
+            @Override public int cameraY() { return cameraY; }
+            @Override public int schematicDropdownWidth(Node node) {
+                return getSchematicDropdownWidth(node);
+            }
+            @Override public int runPresetDropdownWidth(Node node) {
+                return getRunPresetDropdownWidth(node);
+            }
+            @Override public List<String> loadSchematicOptions() {
+                return SchematicRepository.loadSchematicOptions();
+            }
+            @Override public boolean schematicExists(String name) {
+                return schematicExistsInRoots(name);
+            }
+            @Override public boolean isPresetSelectorNode(Node node) {
+                return NodeGraph.this.isPresetSelectorNode(node);
+            }
+            @Override public String stopTargetParameterKey(Node node) {
+                return getStopTargetParameterKey(node);
+            }
+            @Override public void prepareRunPresetOpen(Node node) {
+                focusSelectedNode(node);
+                stopStopTargetEditing(true);
+            }
+            @Override public void applySchematicSelection(Node node, String value) {
+                NodeGraph.this.applySchematicSelection(node, value);
+            }
+            @Override public void applyRunPresetSelection(Node node, String value) {
+                NodeGraph.this.applyRunPresetSelection(node, value);
+            }
+        }
+    );
     private final AnimatedValue schematicDropdownAnimation = AnimatedValue.forHover();
-    private java.util.List<String> schematicDropdownOptions = new java.util.ArrayList<>();
-    private int schematicDropdownScrollOffset = 0;
-    private int schematicDropdownHoverIndex = -1;
-    private Node runPresetDropdownNode = null;
-    private boolean runPresetDropdownOpen = false;
     private final AnimatedValue runPresetDropdownAnimation = AnimatedValue.forHover();
-    private java.util.List<String> runPresetDropdownOptions = new java.util.ArrayList<>();
-    private int runPresetDropdownScrollOffset = 0;
-    private int runPresetDropdownHoverIndex = -1;
     private static final int SCHEMATIC_DROPDOWN_MAX_ROWS = 8;
     private static final int SCHEMATIC_DROPDOWN_ROW_HEIGHT = 16;
     private static final int RANDOM_ROUNDING_DROPDOWN_MAX_ROWS = 4;
@@ -1241,7 +1266,7 @@ public class NodeGraph {
             stopMessageEditing(false);
         }
 
-        if (runPresetDropdownNode == node) {
+        if (specializedSelectors.getRunPresetNode() == node) {
             closeRunPresetDropdown();
         }
 
@@ -5332,7 +5357,7 @@ public class NodeGraph {
         if (editing) {
             inlineFields.getStopTargetEditor().updateCaretBlink();
         }
-        boolean open = runPresetDropdownOpen && runPresetDropdownNode == node;
+        boolean open = specializedSelectors.isRunPresetOpen() && specializedSelectors.getRunPresetNode() == node;
 
         int fieldTop = node.getStopTargetFieldInputTop() - cameraY;
         int fieldHeight = node.getStopTargetFieldHeight();
@@ -5425,7 +5450,7 @@ public class NodeGraph {
         int labelColor = isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.NODE_LABEL_COLOR;
         int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
 
-        boolean open = schematicDropdownOpen && schematicDropdownNode == node;
+        boolean open = specializedSelectors.isSchematicOpen() && specializedSelectors.getSchematicNode() == node;
 
         int labelTop = node.getSchematicFieldLabelTop() - cameraY;
         int labelHeight = node.getSchematicFieldLabelHeight();
@@ -5484,8 +5509,8 @@ public class NodeGraph {
     }
 
     private void renderSchematicDropdownList(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar, int mouseX, int mouseY) {
-        float animProgress = getDropdownAnimationProgress(schematicDropdownAnimation, schematicDropdownOpen);
-        if (schematicDropdownNode != node) {
+        float animProgress = getDropdownAnimationProgress(schematicDropdownAnimation, specializedSelectors.isSchematicOpen());
+        if (specializedSelectors.getSchematicNode() != node) {
             return;
         }
         if (animProgress <= 0.001f) {
@@ -5495,7 +5520,7 @@ public class NodeGraph {
 
         int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
 
-        List<String> options = schematicDropdownOptions;
+        List<String> options = specializedSelectors.getSchematicOptions();
         int optionCount = options.isEmpty() ? 1 : options.size();
         int listTop = node.getSchematicFieldInputTop() + node.getSchematicFieldHeight() + 2 - cameraY;
         int screenHeight = Minecraft.getInstance().getWindow().getGuiScaledHeight();
@@ -5507,7 +5532,9 @@ public class NodeGraph {
             screenHeight
         );
         int visibleCount = layout.visibleCount;
-        schematicDropdownScrollOffset = Mth.clamp(schematicDropdownScrollOffset, 0, layout.maxScrollOffset);
+        specializedSelectors.setSchematicScrollOffset(
+            Mth.clamp(specializedSelectors.getSchematicScrollOffset(), 0, layout.maxScrollOffset)
+        );
 
         int dropdownWidth = getSchematicDropdownWidth(node);
         int listLeft = node.getSchematicFieldLeft() - cameraX;
@@ -5523,13 +5550,13 @@ public class NodeGraph {
 
         int worldMouseX = screenToWorldX(mouseX);
         int worldMouseY = screenToWorldY(mouseY);
-        schematicDropdownHoverIndex = PathmindDropdownRenderer.renderTextList(
+        specializedSelectors.setSchematicHoverIndex(PathmindDropdownRenderer.renderTextList(
             context,
             textRenderer,
             PathmindDropdownRenderer.TextListSpec.builder()
                 .bounds(listLeft, listTop, dropdownWidth)
                 .rows(SCHEMATIC_DROPDOWN_ROW_HEIGHT, visibleCount, options.size())
-                .scroll(schematicDropdownScrollOffset, layout.maxScrollOffset, DROPDOWN_SCROLLBAR_ALLOWANCE)
+                .scroll(specializedSelectors.getSchematicScrollOffset(), layout.maxScrollOffset, DROPDOWN_SCROLLBAR_ALLOWANCE)
                 .animation(animProgress)
                 .hoverPoint(worldMouseX - cameraX, worldMouseY - cameraY)
                 .colors(accentColor, textColor)
@@ -5542,12 +5569,12 @@ public class NodeGraph {
                     isOverSidebar ? UITheme.BORDER_SUBTLE : containerPalette.borderColor()
                 )
                 .build()
-        );
+        ));
     }
 
     private void renderRunPresetDropdownList(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar, int mouseX, int mouseY) {
-        float animProgress = getDropdownAnimationProgress(runPresetDropdownAnimation, runPresetDropdownOpen);
-        if (runPresetDropdownNode != node) {
+        float animProgress = getDropdownAnimationProgress(runPresetDropdownAnimation, specializedSelectors.isRunPresetOpen());
+        if (specializedSelectors.getRunPresetNode() != node) {
             return;
         }
         if (animProgress <= 0.001f) {
@@ -5557,7 +5584,7 @@ public class NodeGraph {
 
         int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
 
-        List<String> options = runPresetDropdownOptions;
+        List<String> options = specializedSelectors.getRunPresetOptions();
         int optionCount = options.isEmpty() ? 1 : options.size();
         int listTop = node.getStopTargetFieldInputTop() + node.getStopTargetFieldHeight() + 2 - cameraY;
         int screenHeight = Minecraft.getInstance().getWindow().getGuiScaledHeight();
@@ -5569,7 +5596,9 @@ public class NodeGraph {
             screenHeight
         );
         int visibleCount = layout.visibleCount;
-        runPresetDropdownScrollOffset = Mth.clamp(runPresetDropdownScrollOffset, 0, layout.maxScrollOffset);
+        specializedSelectors.setRunPresetScrollOffset(
+            Mth.clamp(specializedSelectors.getRunPresetScrollOffset(), 0, layout.maxScrollOffset)
+        );
 
         int dropdownWidth = getRunPresetDropdownWidth(node);
         int listLeft = node.getStopTargetFieldLeft() - cameraX;
@@ -5585,13 +5614,13 @@ public class NodeGraph {
 
         int worldMouseX = screenToWorldX(mouseX);
         int worldMouseY = screenToWorldY(mouseY);
-        runPresetDropdownHoverIndex = PathmindDropdownRenderer.renderTextList(
+        specializedSelectors.setRunPresetHoverIndex(PathmindDropdownRenderer.renderTextList(
             context,
             textRenderer,
             PathmindDropdownRenderer.TextListSpec.builder()
                 .bounds(listLeft, listTop, dropdownWidth)
                 .rows(SCHEMATIC_DROPDOWN_ROW_HEIGHT, visibleCount, options.size())
-                .scroll(runPresetDropdownScrollOffset, layout.maxScrollOffset, DROPDOWN_SCROLLBAR_ALLOWANCE)
+                .scroll(specializedSelectors.getRunPresetScrollOffset(), layout.maxScrollOffset, DROPDOWN_SCROLLBAR_ALLOWANCE)
                 .animation(animProgress)
                 .hoverPoint(worldMouseX - cameraX, worldMouseY - cameraY)
                 .colors(accentColor, textColor)
@@ -5604,7 +5633,7 @@ public class NodeGraph {
                     isOverSidebar ? UITheme.BORDER_SUBTLE : containerPalette.borderColor()
                 )
                 .build()
-        );
+        ));
     }
 
     public boolean isEditingCoordinateField() {
@@ -6019,7 +6048,7 @@ public class NodeGraph {
             return node != null ? node.getSchematicFieldWidth() : 0;
         }
         int longestLabelWidth = textRenderer.width(tr("pathmind.dropdown.noSchematicsFound"));
-        for (String option : schematicDropdownOptions) {
+        for (String option : specializedSelectors.getSchematicOptions()) {
             if (option != null) {
                 longestLabelWidth = Math.max(longestLabelWidth, textRenderer.width(option));
             }
@@ -6033,7 +6062,7 @@ public class NodeGraph {
             return node != null ? node.getStopTargetFieldWidth() : 0;
         }
         int longestLabelWidth = textRenderer.width(tr("pathmind.dropdown.noPresetsFound"));
-        for (String option : runPresetDropdownOptions) {
+        for (String option : specializedSelectors.getRunPresetOptions()) {
             if (option != null) {
                 longestLabelWidth = Math.max(longestLabelWidth, textRenderer.width(option));
             }
@@ -6359,31 +6388,7 @@ public class NodeGraph {
     }
 
     public boolean handleRunPresetDropdownClick(Node clickedNode, int screenX, int screenY) {
-        if (runPresetDropdownOpen && runPresetDropdownNode != null) {
-            if (isPointInsideRunPresetDropdownList(runPresetDropdownNode, screenX, screenY)) {
-                int index = getRunPresetDropdownIndexAt(runPresetDropdownNode, screenX, screenY);
-                if (index >= 0 && index < runPresetDropdownOptions.size()) {
-                    applyRunPresetSelection(runPresetDropdownNode, runPresetDropdownOptions.get(index));
-                }
-                closeRunPresetDropdown();
-                return true;
-            }
-            if (isPointInsideRunPresetField(runPresetDropdownNode, screenX, screenY)) {
-                closeRunPresetDropdown();
-                return true;
-            }
-            closeRunPresetDropdown();
-        }
-
-        if (isPresetSelectorNode(clickedNode)
-            && isPointInsideRunPresetField(clickedNode, screenX, screenY)) {
-            focusSelectedNode(clickedNode);
-            stopStopTargetEditing(true);
-            openRunPresetDropdown(clickedNode);
-            return true;
-        }
-
-        return false;
+        return specializedSelectors.handleRunPresetClick(clickedNode, screenX, screenY);
     }
 
     public boolean isPointInsideVariableField(Node node, int screenX, int screenY) {
@@ -6604,77 +6609,15 @@ public class NodeGraph {
     }
 
     public boolean handleSchematicDropdownClick(Node clickedNode, int screenX, int screenY) {
-        if (schematicDropdownOpen && schematicDropdownNode != null) {
-            if (isPointInsideSchematicDropdownList(schematicDropdownNode, screenX, screenY)) {
-                int index = getSchematicDropdownIndexAt(schematicDropdownNode, screenX, screenY);
-                if (index >= 0 && index < schematicDropdownOptions.size()) {
-                    applySchematicSelection(schematicDropdownNode, schematicDropdownOptions.get(index));
-                }
-                closeSchematicDropdown();
-                return true;
-            }
-            if (isPointInsideSchematicField(schematicDropdownNode, screenX, screenY)) {
-                closeSchematicDropdown();
-                return true;
-            }
-            closeSchematicDropdown();
-        }
-
-        if (clickedNode != null && clickedNode.hasSchematicDropdownField()
-            && isPointInsideSchematicField(clickedNode, screenX, screenY)) {
-            openSchematicDropdown(clickedNode);
-            return true;
-        }
-
-        return false;
+        return specializedSelectors.handleSchematicClick(clickedNode, screenX, screenY);
     }
 
     public boolean handleSchematicDropdownScroll(double screenX, double screenY, double amount) {
-        if (!schematicDropdownOpen || schematicDropdownNode == null || schematicDropdownOptions.isEmpty()) {
-            return false;
-        }
-        if (!isPointInsideSchematicDropdownList(schematicDropdownNode, (int) screenX, (int) screenY)) {
-            return false;
-        }
-        int listTop = schematicDropdownNode.getSchematicFieldInputTop() + schematicDropdownNode.getSchematicFieldHeight() + 2 - cameraY;
-        int screenHeight = Minecraft.getInstance().getWindow().getGuiScaledHeight();
-        DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
-            schematicDropdownOptions.size(),
-            SCHEMATIC_DROPDOWN_ROW_HEIGHT,
-            SCHEMATIC_DROPDOWN_MAX_ROWS,
-            listTop,
-            screenHeight
-        );
-        if (layout.maxScrollOffset <= 0) {
-            return true;
-        }
-        int delta = amount > 0 ? -1 : 1;
-        schematicDropdownScrollOffset = Mth.clamp(schematicDropdownScrollOffset + delta, 0, layout.maxScrollOffset);
-        return true;
+        return specializedSelectors.handleSchematicScroll(screenX, screenY, amount);
     }
 
     public boolean handleRunPresetDropdownScroll(double screenX, double screenY, double amount) {
-        if (!runPresetDropdownOpen || runPresetDropdownNode == null || runPresetDropdownOptions.isEmpty()) {
-            return false;
-        }
-        if (!isPointInsideRunPresetDropdownList(runPresetDropdownNode, (int) screenX, (int) screenY)) {
-            return false;
-        }
-        int listTop = runPresetDropdownNode.getStopTargetFieldInputTop() + runPresetDropdownNode.getStopTargetFieldHeight() + 2 - cameraY;
-        int screenHeight = Minecraft.getInstance().getWindow().getGuiScaledHeight();
-        DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
-            runPresetDropdownOptions.size(),
-            SCHEMATIC_DROPDOWN_ROW_HEIGHT,
-            SCHEMATIC_DROPDOWN_MAX_ROWS,
-            listTop,
-            screenHeight
-        );
-        if (layout.maxScrollOffset <= 0) {
-            return true;
-        }
-        int delta = amount > 0 ? -1 : 1;
-        runPresetDropdownScrollOffset = Mth.clamp(runPresetDropdownScrollOffset + delta, 0, layout.maxScrollOffset);
-        return true;
+        return specializedSelectors.handleRunPresetScroll(screenX, screenY, amount);
     }
 
     private boolean isPointInsideSchematicField(Node node, int screenX, int screenY) {
@@ -6735,159 +6678,12 @@ public class NodeGraph {
         return getSelectedPresetName(node);
     }
 
-    private boolean isPointInsideSchematicDropdownList(Node node, int screenX, int screenY) {
-        if (node == null || !schematicDropdownOpen || schematicDropdownNode != node) {
-            return false;
-        }
-        int optionCount = Math.max(1, schematicDropdownOptions.size());
-        int listTop = node.getSchematicFieldInputTop() + node.getSchematicFieldHeight() + 2 - cameraY;
-        int screenHeight = Minecraft.getInstance().getWindow().getGuiScaledHeight();
-        DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
-            optionCount,
-            SCHEMATIC_DROPDOWN_ROW_HEIGHT,
-            SCHEMATIC_DROPDOWN_MAX_ROWS,
-            listTop,
-            screenHeight
-        );
-        int listHeight = layout.height;
-
-        int worldX = screenToWorldX(screenX);
-        int worldY = screenToWorldY(screenY);
-        int listLeft = node.getSchematicFieldLeft();
-        int worldListTop = node.getSchematicFieldInputTop() + node.getSchematicFieldHeight() + 2;
-
-        int dropdownWidth = getSchematicDropdownWidth(node);
-        return worldX >= listLeft && worldX <= listLeft + dropdownWidth
-            && worldY >= worldListTop && worldY <= worldListTop + listHeight;
-    }
-
-    private boolean isPointInsideRunPresetDropdownList(Node node, int screenX, int screenY) {
-        if (!isPresetSelectorNode(node) || !runPresetDropdownOpen || runPresetDropdownNode != node) {
-            return false;
-        }
-        int optionCount = Math.max(1, runPresetDropdownOptions.size());
-        int listTop = node.getStopTargetFieldInputTop() + node.getStopTargetFieldHeight() + 2 - cameraY;
-        int screenHeight = Minecraft.getInstance().getWindow().getGuiScaledHeight();
-        DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
-            optionCount,
-            SCHEMATIC_DROPDOWN_ROW_HEIGHT,
-            SCHEMATIC_DROPDOWN_MAX_ROWS,
-            listTop,
-            screenHeight
-        );
-        int listHeight = layout.height;
-
-        int worldX = screenToWorldX(screenX);
-        int worldY = screenToWorldY(screenY);
-        int listLeft = node.getStopTargetFieldLeft();
-        int worldListTop = node.getStopTargetFieldInputTop() + node.getStopTargetFieldHeight() + 2;
-
-        int dropdownWidth = getRunPresetDropdownWidth(node);
-        return worldX >= listLeft && worldX <= listLeft + dropdownWidth
-            && worldY >= worldListTop && worldY <= worldListTop + listHeight;
-    }
-
-    private int getSchematicDropdownIndexAt(Node node, int screenX, int screenY) {
-        if (node == null || schematicDropdownOptions.isEmpty()) {
-            return -1;
-        }
-        int worldY = screenToWorldY(screenY);
-        int worldListTop = node.getSchematicFieldInputTop() + node.getSchematicFieldHeight() + 2;
-        int row = (worldY - worldListTop) / SCHEMATIC_DROPDOWN_ROW_HEIGHT;
-        if (row < 0) {
-            return -1;
-        }
-        int optionCount = schematicDropdownOptions.size();
-        int listTop = node.getSchematicFieldInputTop() + node.getSchematicFieldHeight() + 2 - cameraY;
-        int screenHeight = Minecraft.getInstance().getWindow().getGuiScaledHeight();
-        DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
-            optionCount,
-            SCHEMATIC_DROPDOWN_ROW_HEIGHT,
-            SCHEMATIC_DROPDOWN_MAX_ROWS,
-            listTop,
-            screenHeight
-        );
-        int visibleCount = layout.visibleCount;
-        if (row >= visibleCount) {
-            return -1;
-        }
-        return schematicDropdownScrollOffset + row;
-    }
-
-    private int getRunPresetDropdownIndexAt(Node node, int screenX, int screenY) {
-        if (node == null || runPresetDropdownOptions.isEmpty()) {
-            return -1;
-        }
-        int worldY = screenToWorldY(screenY);
-        int worldListTop = node.getStopTargetFieldInputTop() + node.getStopTargetFieldHeight() + 2;
-        int row = (worldY - worldListTop) / SCHEMATIC_DROPDOWN_ROW_HEIGHT;
-        if (row < 0) {
-            return -1;
-        }
-        int optionCount = runPresetDropdownOptions.size();
-        int listTop = node.getStopTargetFieldInputTop() + node.getStopTargetFieldHeight() + 2 - cameraY;
-        int screenHeight = Minecraft.getInstance().getWindow().getGuiScaledHeight();
-        DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
-            optionCount,
-            SCHEMATIC_DROPDOWN_ROW_HEIGHT,
-            SCHEMATIC_DROPDOWN_MAX_ROWS,
-            listTop,
-            screenHeight
-        );
-        int visibleCount = layout.visibleCount;
-        if (row >= visibleCount) {
-            return -1;
-        }
-        return runPresetDropdownScrollOffset + row;
-    }
-
-    private void openSchematicDropdown(Node node) {
-        schematicDropdownNode = node;
-        schematicDropdownOptions = loadSchematicOptions();
-        String current = "";
-        if (node != null) {
-            NodeParameter param = node.getParameter("Schematic");
-            current = param != null ? param.getStringValue() : "";
-        }
-        if (current != null && !current.isEmpty()
-            && !schematicDropdownOptions.contains(current)
-            && schematicExistsInRoots(current)) {
-            schematicDropdownOptions.add(0, current);
-        }
-        schematicDropdownOpen = true;
-        schematicDropdownScrollOffset = 0;
-        schematicDropdownHoverIndex = -1;
-    }
-
     private void closeSchematicDropdown() {
-        schematicDropdownOpen = false;
-        schematicDropdownHoverIndex = -1;
-    }
-
-    private void openRunPresetDropdown(Node node) {
-        if (!isPresetSelectorNode(node)) {
-            return;
-        }
-        runPresetDropdownNode = node;
-        runPresetDropdownOptions = new ArrayList<>(PresetManager.getAvailablePresets());
-        String current = "";
-        NodeParameter param = node.getParameter(getStopTargetParameterKey(node));
-        if (param != null && param.getStringValue() != null) {
-            current = param.getStringValue();
-        }
-        String normalizedCurrent = current != null ? current.trim() : "";
-        if (!normalizedCurrent.isEmpty()
-            && runPresetDropdownOptions.stream().noneMatch(option -> option.equalsIgnoreCase(normalizedCurrent))) {
-            runPresetDropdownOptions.add(0, normalizedCurrent);
-        }
-        runPresetDropdownOpen = true;
-        runPresetDropdownScrollOffset = 0;
-        runPresetDropdownHoverIndex = -1;
+        specializedSelectors.closeSchematic();
     }
 
     private void closeRunPresetDropdown() {
-        runPresetDropdownOpen = false;
-        runPresetDropdownHoverIndex = -1;
+        specializedSelectors.closeRunPreset();
     }
 
     private void openRandomRoundingDropdown(Node node) {
@@ -6913,22 +6709,11 @@ public class NodeGraph {
     }
 
     private void clearSchematicDropdownState() {
-        if (schematicDropdownOpen) {
-            return;
-        }
-        schematicDropdownNode = null;
-        schematicDropdownHoverIndex = -1;
-        schematicDropdownScrollOffset = 0;
+        specializedSelectors.clearSchematicState();
     }
 
     private void clearRunPresetDropdownState() {
-        if (runPresetDropdownOpen) {
-            return;
-        }
-        runPresetDropdownNode = null;
-        runPresetDropdownOptions = new ArrayList<>();
-        runPresetDropdownHoverIndex = -1;
-        runPresetDropdownScrollOffset = 0;
+        specializedSelectors.clearRunPresetState();
     }
 
     private void clearRandomRoundingDropdownState() {

@@ -163,7 +163,7 @@ final class RandomRoundingController {
             DROPDOWN_ROW_HEIGHT,
             DROPDOWN_MAX_ROWS,
             listTop,
-            host.guiScaledHeight()
+            transformedScreenHeight()
         );
         int accentColor = host.selectedNodeAccentColor();
         UIStyleHelper.ScrollContainerPalette containerPalette =
@@ -204,13 +204,13 @@ final class RandomRoundingController {
             return false;
         }
         int listTop = dropdownNode.getRandomRoundingFieldInputTop()
-            + dropdownNode.getRandomRoundingFieldHeight() + 2;
+            + dropdownNode.getRandomRoundingFieldHeight() + 2 - host.cameraY();
         DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
             getOptions().size(),
             DROPDOWN_ROW_HEIGHT,
             DROPDOWN_MAX_ROWS,
             listTop,
-            host.guiScaledHeight()
+            transformedScreenHeight()
         );
         if (layout.maxScrollOffset <= 0) {
             return false;
@@ -352,7 +352,7 @@ final class RandomRoundingController {
             DROPDOWN_ROW_HEIGHT,
             DROPDOWN_MAX_ROWS,
             listTopScreen,
-            host.guiScaledHeight()
+            transformedScreenHeight()
         );
         int listLeft = node.getRandomRoundingFieldLeft();
         int listWidth = getDropdownWidth(node, null);
@@ -380,7 +380,7 @@ final class RandomRoundingController {
             DROPDOWN_ROW_HEIGHT,
             DROPDOWN_MAX_ROWS,
             listTopScreen,
-            host.guiScaledHeight()
+            transformedScreenHeight()
         );
         int row = (worldY - worldListTop) / DROPDOWN_ROW_HEIGHT;
         if (row < 0 || row >= layout.visibleCount) {
@@ -391,6 +391,10 @@ final class RandomRoundingController {
             return -1;
         }
         return index;
+    }
+
+    private int transformedScreenHeight() {
+        return Math.round(host.guiScaledHeight() / Math.max(0.01f, host.zoomScale()));
     }
 
     private int getDropdownWidth(Node node, Font suppliedRenderer) {

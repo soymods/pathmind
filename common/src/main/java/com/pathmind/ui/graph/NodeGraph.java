@@ -835,6 +835,10 @@ public class NodeGraph {
             @Override public int screenToWorldX(int screenX) { return NodeGraph.this.screenToWorldX(screenX); }
             @Override public int screenToWorldY(int screenY) { return NodeGraph.this.screenToWorldY(screenY); }
             @Override public int cameraY() { return cameraY; }
+            @Override public int guiScaledHeight() {
+                return Minecraft.getInstance().getWindow().getGuiScaledHeight();
+            }
+            @Override public float zoomScale() { return getZoomScale(); }
             @Override public int schematicDropdownWidth(Node node) {
                 return getSchematicDropdownWidth(node);
             }
@@ -5493,7 +5497,10 @@ public class NodeGraph {
         List<String> options = specializedSelectors.getSchematicOptions();
         int optionCount = options.isEmpty() ? 1 : options.size();
         int listTop = node.getSchematicFieldInputTop() + node.getSchematicFieldHeight() + 2 - cameraY;
-        int screenHeight = Minecraft.getInstance().getWindow().getGuiScaledHeight();
+        int screenHeight = Math.round(
+            Minecraft.getInstance().getWindow().getGuiScaledHeight()
+                / Math.max(0.01f, getZoomScale())
+        );
         DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
             optionCount,
             SCHEMATIC_DROPDOWN_ROW_HEIGHT,
@@ -5557,7 +5564,10 @@ public class NodeGraph {
         List<String> options = specializedSelectors.getRunPresetOptions();
         int optionCount = options.isEmpty() ? 1 : options.size();
         int listTop = node.getStopTargetFieldInputTop() + node.getStopTargetFieldHeight() + 2 - cameraY;
-        int screenHeight = Minecraft.getInstance().getWindow().getGuiScaledHeight();
+        int screenHeight = Math.round(
+            Minecraft.getInstance().getWindow().getGuiScaledHeight()
+                / Math.max(0.01f, getZoomScale())
+        );
         DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
             optionCount,
             SCHEMATIC_DROPDOWN_ROW_HEIGHT,

@@ -6,7 +6,6 @@ import com.pathmind.nodes.NodeParameter;
 import com.pathmind.util.DropdownLayoutHelper;
 import java.util.ArrayList;
 import java.util.List;
-import net.minecraft.client.Minecraft;
 import net.minecraft.util.Mth;
 
 /**
@@ -21,6 +20,8 @@ final class SpecializedSelectorController {
         int screenToWorldX(int screenX);
         int screenToWorldY(int screenY);
         int cameraY();
+        int guiScaledHeight();
+        float zoomScale();
         int schematicDropdownWidth(Node node);
         int runPresetDropdownWidth(Node node);
         List<String> loadSchematicOptions();
@@ -255,15 +256,17 @@ final class SpecializedSelectorController {
 
     private DropdownLayoutHelper.Layout schematicLayout(Node node, int count) {
         int top = node.getSchematicFieldInputTop() + node.getSchematicFieldHeight() + 2 - host.cameraY();
+        int transformedScreenHeight =
+            Math.round(host.guiScaledHeight() / Math.max(0.01f, host.zoomScale()));
         return DropdownLayoutHelper.calculate(
-            count, ROW_HEIGHT, MAX_ROWS, top,
-            Minecraft.getInstance().getWindow().getGuiScaledHeight());
+            count, ROW_HEIGHT, MAX_ROWS, top, transformedScreenHeight);
     }
 
     private DropdownLayoutHelper.Layout runPresetLayout(Node node, int count) {
         int top = node.getStopTargetFieldInputTop() + node.getStopTargetFieldHeight() + 2 - host.cameraY();
+        int transformedScreenHeight =
+            Math.round(host.guiScaledHeight() / Math.max(0.01f, host.zoomScale()));
         return DropdownLayoutHelper.calculate(
-            count, ROW_HEIGHT, MAX_ROWS, top,
-            Minecraft.getInstance().getWindow().getGuiScaledHeight());
+            count, ROW_HEIGHT, MAX_ROWS, top, transformedScreenHeight);
     }
 }

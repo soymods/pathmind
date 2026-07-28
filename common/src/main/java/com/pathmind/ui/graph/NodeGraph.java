@@ -869,12 +869,84 @@ public class NodeGraph {
     private final AnimatedValue runPresetDropdownAnimation = AnimatedValue.forHover();
     private static final int SCHEMATIC_DROPDOWN_MAX_ROWS = 8;
     private static final int SCHEMATIC_DROPDOWN_ROW_HEIGHT = 16;
-    private static final int RANDOM_ROUNDING_DROPDOWN_MAX_ROWS = 4;
-    private Node randomRoundingDropdownNode = null;
-    private boolean randomRoundingDropdownOpen = false;
-    private final AnimatedValue randomRoundingDropdownAnimation = AnimatedValue.forHover();
-    private int randomRoundingDropdownHoverIndex = -1;
-    private int randomRoundingDropdownScrollOffset = 0;
+    private final RandomRoundingController randomRounding = new RandomRoundingController(
+        new RandomRoundingController.Host() {
+            @Override public int cameraX() { return cameraX; }
+            @Override public int cameraY() { return cameraY; }
+            @Override public int screenToWorldX(int screenX) {
+                return NodeGraph.this.screenToWorldX(screenX);
+            }
+            @Override public int screenToWorldY(int screenY) {
+                return NodeGraph.this.screenToWorldY(screenY);
+            }
+            @Override public int guiScaledHeight() {
+                return Minecraft.getInstance().getWindow().getGuiScaledHeight();
+            }
+            @Override public Font clientTextRenderer() { return getClientTextRenderer(); }
+            @Override public float zoomScale() { return getZoomScale(); }
+            @Override public boolean compactViewportMode() { return compactViewportMode; }
+            @Override public boolean shouldRenderNodeText() {
+                return NodeGraph.this.shouldRenderNodeText();
+            }
+            @Override public int selectedNodeAccentColor() {
+                return getSelectedNodeAccentColor();
+            }
+            @Override public String translate(String key) { return tr(key); }
+            @Override public String trimTextToWidth(String text, Font renderer, int maxWidth) {
+                return NodeGraph.this.trimTextToWidth(text, renderer, maxWidth);
+            }
+            @Override public UIStyleHelper.FieldPalette nodeInputPalette(
+                boolean isOverSidebar, int accentColor, float progress, boolean active, boolean disabled
+            ) {
+                return getNodeInputPalette(
+                    isOverSidebar, accentColor, progress, active, disabled
+                );
+            }
+            @Override public UIStyleHelper.FieldPalette lowDetailAwareFieldPalette(
+                int backgroundColor, int borderColor, int innerBorderColor, int textColor,
+                int placeholderColor, boolean isOverSidebar
+            ) {
+                return getLowDetailAwareFieldPalette(
+                    backgroundColor, borderColor, innerBorderColor, textColor,
+                    placeholderColor, isOverSidebar
+                );
+            }
+            @Override public void drawNodeText(
+                GuiGraphics context, Font renderer, Component text, int x, int y, int color
+            ) {
+                NodeGraph.this.drawNodeText(context, renderer, text, x, y, color);
+            }
+            @Override public void renderToggle(
+                GuiGraphics context, Node node, int left, int top, int width, int height,
+                boolean enabled, boolean isOverSidebar
+            ) {
+                renderNodeSliderToggle(
+                    context, left, top, width, height,
+                    getNodeToggleProgress(randomRoundingToggleAnimations, node, enabled),
+                    false, isOverSidebar
+                );
+            }
+            @Override public float dropdownAnimationProgress(
+                AnimatedValue animation, boolean open
+            ) {
+                return getDropdownAnimationProgress(animation, open);
+            }
+            @Override public void animateToggle(Node node, boolean enabled) {
+                getNodeToggleAnimation(randomRoundingToggleAnimations, node, enabled)
+                    .animateTo(
+                        enabled ? 1f : 0f,
+                        UITheme.TRANSITION_ANIM_MS,
+                        AnimationHelper::easeInOutCubic
+                    );
+            }
+            @Override public void stopParameterEditing() {
+                NodeGraph.this.stopParameterEditing(true);
+            }
+            @Override public void notifyNodeParametersChanged(Node node) {
+                NodeGraph.this.notifyNodeParametersChanged(node);
+            }
+        }
+    );
     private final AnimatedValue modeDropdownAnimation = AnimatedValue.forHover();
     private final DropdownController.Host dropdownHost = new DropdownController.Host() {
         @Override public float getZoomScale() { return NodeGraph.this.getZoomScale(); }
@@ -4776,113 +4848,11 @@ public class NodeGraph {
     }
 
     private void renderRandomRoundingField(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar) {
-        int baseLabelColor = isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.NODE_LABEL_COLOR;
-        int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
-
-        boolean enabled = node.isRandomRoundingEnabled();
-        boolean open = randomRoundingDropdownOpen && randomRoundingDropdownNode == node;
-
-        int labelTop = node.getRandomRoundingFieldLabelTop() - cameraY;
-        int labelHeight = node.getRandomRoundingFieldLabelHeight();
-        int fieldTop = node.getRandomRoundingFieldInputTop() - cameraY;
-        int fieldHeight = node.getRandomRoundingFieldHeight();
-        int fieldLeft = node.getRandomRoundingFieldLeft() - cameraX;
-        int fieldWidth = node.getRandomRoundingFieldWidth();
-        int fieldRight = fieldLeft + fieldWidth;
-
-        int labelY = labelTop + Math.max(0, (labelHeight - textRenderer.lineHeight) / 2);
-        drawNodeText(context, textRenderer, Component.translatable("pathmind.field.rounding"), fieldLeft + 2, labelY, baseLabelColor);
-
-        int fieldBottom = fieldTop + fieldHeight;
-        int disabledBg = isOverSidebar ? UITheme.BACKGROUND_TERTIARY
-            : (compactViewportMode ? UITheme.BACKGROUND_SECONDARY : UITheme.BUTTON_DEFAULT_BG);
-        UIStyleHelper.FieldPalette palette = getNodeInputPalette(isOverSidebar, getSelectedNodeAccentColor(), open ? 1f : 0f, open, !enabled);
-        int valueColor = enabled ? textColor : UITheme.TEXT_SECONDARY;
-
-        UIStyleHelper.drawFieldFrame(
-            context,
-            fieldLeft,
-            fieldTop,
-            fieldWidth,
-            fieldHeight,
-            enabled
-                ? palette
-                : getLowDetailAwareFieldPalette(
-                    disabledBg,
-                    isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BORDER_DEFAULT,
-                    UITheme.PANEL_INNER_BORDER,
-                    palette.textColor(),
-                    palette.placeholderColor(),
-                    isOverSidebar
-                )
-        );
-
-        String value = node.getRandomRoundingModeDisplay();
-        int arrowCenterX = fieldRight - 7;
-        int valueStartX = fieldLeft + 4;
-        int maxValueWidth = Math.max(0, arrowCenterX - 5 - valueStartX);
-        String display = trimTextToWidth(value, textRenderer, maxValueWidth);
-        int textY = fieldTop + (fieldHeight - textRenderer.lineHeight) / 2 + 1;
-        drawNodeText(context, textRenderer, Component.literal(display), valueStartX, textY, valueColor);
-        UIStyleHelper.drawChevron(context, arrowCenterX, fieldTop + fieldHeight / 2, open, valueColor);
-
-        if (node.hasRandomRoundingToggle()) {
-            int toggleLeft = node.getRandomRoundingToggleLeft() - cameraX;
-            int toggleTop = node.getRandomRoundingToggleTop() - cameraY;
-            int toggleWidth = node.getRandomRoundingToggleWidth();
-            int toggleHeight = node.getRandomRoundingToggleHeight();
-            renderNodeSliderToggle(context, toggleLeft, toggleTop, toggleWidth, toggleHeight,
-                getNodeToggleProgress(randomRoundingToggleAnimations, node, enabled), false, isOverSidebar);
-        }
+        randomRounding.renderField(context, textRenderer, node, isOverSidebar);
     }
 
     private void renderRandomRoundingDropdownList(GuiGraphics context, Font textRenderer, int mouseX, int mouseY) {
-        float animProgress = getDropdownAnimationProgress(randomRoundingDropdownAnimation, randomRoundingDropdownOpen);
-        if (randomRoundingDropdownNode == null) {
-            return;
-        }
-        if (animProgress <= 0.001f) {
-            clearRandomRoundingDropdownState();
-            return;
-        }
-        Node node = randomRoundingDropdownNode;
-        List<ParameterDropdownOption> options = getRandomRoundingDropdownOptions();
-        int optionCount = Math.max(1, options.size());
-        float zoom = getZoomScale();
-        int transformedMouseX = Math.round(mouseX / zoom);
-        int transformedMouseY = Math.round(mouseY / zoom);
-
-        int rowHeight = SCHEMATIC_DROPDOWN_ROW_HEIGHT;
-        int dropdownWidth = getRandomRoundingDropdownWidth(node);
-        int listTop = node.getRandomRoundingFieldInputTop() + node.getRandomRoundingFieldHeight() + 2 - cameraY;
-        int listLeft = node.getRandomRoundingFieldLeft() - cameraX;
-        int screenHeight = Minecraft.getInstance().getWindow().getGuiScaledHeight();
-        DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
-            optionCount,
-            rowHeight,
-            RANDOM_ROUNDING_DROPDOWN_MAX_ROWS,
-            listTop,
-            screenHeight
-        );
-        int accentColor = getSelectedNodeAccentColor();
-        UIStyleHelper.ScrollContainerPalette containerPalette = UIStyleHelper.getScrollContainerPalette(accentColor, animProgress, true, false);
-
-        randomRoundingDropdownScrollOffset = Mth.clamp(randomRoundingDropdownScrollOffset, 0, layout.maxScrollOffset);
-        randomRoundingDropdownHoverIndex = PathmindDropdownRenderer.renderTextList(
-            context,
-            textRenderer,
-            PathmindDropdownRenderer.TextListSpec.builder()
-                .bounds(listLeft, listTop, dropdownWidth)
-                .rows(rowHeight, layout.visibleCount, options.size())
-                .scroll(randomRoundingDropdownScrollOffset, layout.maxScrollOffset, DROPDOWN_SCROLLBAR_ALLOWANCE)
-                .animation(animProgress)
-                .hoverPoint(transformedMouseX, transformedMouseY)
-                .colors(accentColor, UITheme.TEXT_PRIMARY)
-                .textLayout(5, 4, false, shouldRenderNodeText())
-                .labels(tr("pathmind.dropdown.noOptions"), index -> options.get(index).label())
-                .chrome(containerPalette, containerPalette.trackColor(), containerPalette.thumbColor(), containerPalette.borderColor())
-                .build()
-        );
+        randomRounding.renderDropdown(context, textRenderer, mouseX, mouseY);
     }
 
     private void renderMessageInputFields(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar,
@@ -5906,14 +5876,6 @@ public class NodeGraph {
         return ParameterTextEditorController.isAnyBlockItemValue(value);
     }
 
-    private List<ParameterDropdownOption> getRandomRoundingDropdownOptions() {
-        List<ParameterDropdownOption> options = new ArrayList<>(3);
-        options.add(new ParameterDropdownOption(tr("pathmind.option.round"), "round"));
-        options.add(new ParameterDropdownOption(tr("pathmind.option.floor"), "floor"));
-        options.add(new ParameterDropdownOption(tr("pathmind.option.ceil"), "ceil"));
-        return options;
-    }
-
     private String formatAttributeDetectionInlineValue(Node node, NodeParameter parameter, String value) {
         if (node == null || parameter == null || !node.isAttributeDetectionSensor()) {
             return value;
@@ -5969,35 +5931,7 @@ public class NodeGraph {
     }
 
     public boolean handleRandomRoundingDropdownScroll(double screenX, double screenY, double verticalAmount) {
-        if (!randomRoundingDropdownOpen || randomRoundingDropdownNode == null) {
-            return false;
-        }
-        if (!isPointInsideRandomRoundingDropdownList((int) screenX, (int) screenY)) {
-            return false;
-        }
-        int listTop = randomRoundingDropdownNode.getRandomRoundingFieldInputTop()
-            + randomRoundingDropdownNode.getRandomRoundingFieldHeight() + 2;
-        int screenHeight = Minecraft.getInstance().getWindow().getGuiScaledHeight();
-        DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
-            getRandomRoundingDropdownOptions().size(),
-            SCHEMATIC_DROPDOWN_ROW_HEIGHT,
-            RANDOM_ROUNDING_DROPDOWN_MAX_ROWS,
-            listTop,
-            screenHeight
-        );
-        if (layout.maxScrollOffset <= 0) {
-            return false;
-        }
-        int delta = (int) Math.signum(verticalAmount);
-        if (delta == 0) {
-            return false;
-        }
-        randomRoundingDropdownScrollOffset = Mth.clamp(
-            randomRoundingDropdownScrollOffset - delta,
-            0,
-            layout.maxScrollOffset
-        );
-        return true;
+        return randomRounding.handleScroll(screenX, screenY, verticalAmount);
     }
 
     public boolean handleModeFieldClick(Node node, int screenX, int screenY) {
@@ -6026,20 +5960,6 @@ public class NodeGraph {
 
     private void renderModeDropdownList(GuiGraphics context, Font textRenderer, int mouseX, int mouseY) {
         modeDropdown.render(context, textRenderer, mouseX, mouseY);
-    }
-
-    private int getRandomRoundingDropdownWidth(Node node) {
-        Font textRenderer = getClientTextRenderer();
-        if (textRenderer == null || node == null) {
-            return node != null ? node.getRandomRoundingFieldWidth() : 0;
-        }
-        int longestLabelWidth = textRenderer.width(tr("pathmind.dropdown.noOptions"));
-        for (ParameterDropdownOption option : getRandomRoundingDropdownOptions()) {
-            if (option != null && option.label() != null) {
-                longestLabelWidth = Math.max(longestLabelWidth, textRenderer.width(option.label()));
-            }
-        }
-        return longestLabelWidth + DROPDOWN_SIDE_PADDING * 2 + DROPDOWN_SCROLLBAR_ALLOWANCE;
     }
 
     private int getSchematicDropdownWidth(Node node) {
@@ -6176,31 +6096,11 @@ public class NodeGraph {
     }
 
     private boolean isPointInsideRandomRoundingField(Node node, int screenX, int screenY) {
-        if (node == null || !node.hasRandomRoundingField()) {
-            return false;
-        }
-        int worldX = screenToWorldX(screenX);
-        int worldY = screenToWorldY(screenY);
-        int fieldLeft = node.getRandomRoundingFieldLeft();
-        int fieldTop = node.getRandomRoundingFieldInputTop();
-        int fieldWidth = node.getRandomRoundingFieldWidth();
-        int fieldHeight = node.getRandomRoundingFieldHeight();
-        return worldX >= fieldLeft && worldX <= fieldLeft + fieldWidth
-            && worldY >= fieldTop && worldY <= fieldTop + fieldHeight;
+        return randomRounding.isPointInsideField(node, screenX, screenY);
     }
 
     private boolean isPointInsideRandomRoundingToggle(Node node, int screenX, int screenY) {
-        if (node == null || !node.hasRandomRoundingToggle()) {
-            return false;
-        }
-        int worldX = screenToWorldX(screenX);
-        int worldY = screenToWorldY(screenY);
-        int left = node.getRandomRoundingToggleLeft() - 3;
-        int top = node.getRandomRoundingToggleTop() - 3;
-        int width = node.getRandomRoundingToggleWidth() + 6;
-        int height = node.getRandomRoundingToggleHeight() + 6;
-        return worldX >= left && worldX <= left + width
-            && worldY >= top && worldY <= top + height;
+        return randomRounding.isPointInsideToggle(node, screenX, screenY);
     }
 
     private boolean isPointInsideAmountToggle(Node node, int screenX, int screenY) {
@@ -6215,60 +6115,6 @@ public class NodeGraph {
         int height = node.getAmountToggleHeight() + 6;
         return worldX >= left && worldX <= left + width
             && worldY >= top && worldY <= top + height;
-    }
-
-    private boolean isPointInsideRandomRoundingDropdownList(int screenX, int screenY) {
-        if (!randomRoundingDropdownOpen || randomRoundingDropdownNode == null) {
-            return false;
-        }
-        Node node = randomRoundingDropdownNode;
-        int worldX = screenToWorldX(screenX);
-        int worldY = screenToWorldY(screenY);
-        int listTopScreen = node.getRandomRoundingFieldInputTop() + node.getRandomRoundingFieldHeight() + 2 - cameraY;
-        int screenHeight = Minecraft.getInstance().getWindow().getGuiScaledHeight();
-        DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
-            getRandomRoundingDropdownOptions().size(),
-            SCHEMATIC_DROPDOWN_ROW_HEIGHT,
-            RANDOM_ROUNDING_DROPDOWN_MAX_ROWS,
-            listTopScreen,
-            screenHeight
-        );
-        int listHeight = layout.height;
-        int listLeft = node.getRandomRoundingFieldLeft();
-        int listWidth = getRandomRoundingDropdownWidth(node);
-        int worldListTop = node.getRandomRoundingFieldInputTop() + node.getRandomRoundingFieldHeight() + 2;
-        return worldX >= listLeft && worldX <= listLeft + listWidth
-            && worldY >= worldListTop && worldY <= worldListTop + listHeight;
-    }
-
-    private int getRandomRoundingDropdownIndexAt(Node node, int screenX, int screenY) {
-        if (node == null) {
-            return -1;
-        }
-        List<ParameterDropdownOption> options = getRandomRoundingDropdownOptions();
-        if (options.isEmpty()) {
-            return -1;
-        }
-        int worldY = screenToWorldY(screenY);
-        int worldListTop = node.getRandomRoundingFieldInputTop() + node.getRandomRoundingFieldHeight() + 2;
-        int listTopScreen = node.getRandomRoundingFieldInputTop() + node.getRandomRoundingFieldHeight() + 2 - cameraY;
-        int screenHeight = Minecraft.getInstance().getWindow().getGuiScaledHeight();
-        DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
-            options.size(),
-            SCHEMATIC_DROPDOWN_ROW_HEIGHT,
-            RANDOM_ROUNDING_DROPDOWN_MAX_ROWS,
-            listTopScreen,
-            screenHeight
-        );
-        int row = (worldY - worldListTop) / SCHEMATIC_DROPDOWN_ROW_HEIGHT;
-        if (row < 0 || row >= layout.visibleCount) {
-            return -1;
-        }
-        int index = randomRoundingDropdownScrollOffset + row;
-        if (index < 0 || index >= options.size()) {
-            return -1;
-        }
-        return index;
     }
 
     public boolean handleAmountToggleClick(Node node, int mouseX, int mouseY) {
@@ -6288,70 +6134,11 @@ public class NodeGraph {
     }
 
     public boolean handleRandomRoundingToggleClick(Node node, int mouseX, int mouseY) {
-        if (!isPointInsideRandomRoundingToggle(node, mouseX, mouseY)) {
-            return false;
-        }
-        boolean newState = !node.isRandomRoundingEnabled();
-        node.setRandomRoundingEnabled(newState);
-        getNodeToggleAnimation(randomRoundingToggleAnimations, node, newState)
-            .animateTo(newState ? 1f : 0f, UITheme.TRANSITION_ANIM_MS, AnimationHelper::easeInOutCubic);
-        if (!newState && randomRoundingDropdownOpen && randomRoundingDropdownNode == node) {
-            closeRandomRoundingDropdown();
-        }
-        node.recalculateDimensions();
-        notifyNodeParametersChanged(node);
-        return true;
+        return randomRounding.handleToggleClick(node, mouseX, mouseY);
     }
 
     public boolean handleRandomRoundingDropdownClick(Node node, int mouseX, int mouseY) {
-        if (randomRoundingDropdownOpen) {
-            if (node == null || node != randomRoundingDropdownNode) {
-                if (isPointInsideRandomRoundingDropdownList(mouseX, mouseY)) {
-                    int index = getRandomRoundingDropdownIndexAt(randomRoundingDropdownNode, mouseX, mouseY);
-                    if (index >= 0) {
-                        List<ParameterDropdownOption> options = getRandomRoundingDropdownOptions();
-                        if (index < options.size()) {
-                            randomRoundingDropdownNode.setRandomRoundingMode(options.get(index).value());
-                            randomRoundingDropdownNode.recalculateDimensions();
-                            notifyNodeParametersChanged(randomRoundingDropdownNode);
-                        }
-                    }
-                    closeRandomRoundingDropdown();
-                    return true;
-                }
-                closeRandomRoundingDropdown();
-                return false;
-            }
-            if (isPointInsideRandomRoundingField(node, mouseX, mouseY)) {
-                closeRandomRoundingDropdown();
-                return true;
-            }
-            if (isPointInsideRandomRoundingDropdownList(mouseX, mouseY)) {
-                int index = getRandomRoundingDropdownIndexAt(node, mouseX, mouseY);
-                if (index >= 0) {
-                    List<ParameterDropdownOption> options = getRandomRoundingDropdownOptions();
-                    if (index < options.size()) {
-                        node.setRandomRoundingMode(options.get(index).value());
-                        node.recalculateDimensions();
-                        notifyNodeParametersChanged(node);
-                    }
-                }
-                closeRandomRoundingDropdown();
-                return true;
-            }
-            closeRandomRoundingDropdown();
-            return false;
-        }
-
-        if (node == null || !node.hasRandomRoundingField()) {
-            return false;
-        }
-        if (!isPointInsideRandomRoundingField(node, mouseX, mouseY)) {
-            return false;
-        }
-        stopParameterEditing(true);
-        openRandomRoundingDropdown(node);
-        return true;
+        return randomRounding.handleDropdownClick(node, mouseX, mouseY);
     }
 
     public boolean isPointInsideStopTargetField(Node node, int screenX, int screenY) {
@@ -6686,16 +6473,8 @@ public class NodeGraph {
         specializedSelectors.closeRunPreset();
     }
 
-    private void openRandomRoundingDropdown(Node node) {
-        randomRoundingDropdownNode = node;
-        randomRoundingDropdownOpen = true;
-        randomRoundingDropdownScrollOffset = 0;
-        randomRoundingDropdownHoverIndex = -1;
-    }
-
     private void closeRandomRoundingDropdown() {
-        randomRoundingDropdownOpen = false;
-        randomRoundingDropdownHoverIndex = -1;
+        randomRounding.close();
     }
 
     private float getDropdownAnimationProgress(AnimatedValue animation, boolean open) {
@@ -6714,15 +6493,6 @@ public class NodeGraph {
 
     private void clearRunPresetDropdownState() {
         specializedSelectors.clearRunPresetState();
-    }
-
-    private void clearRandomRoundingDropdownState() {
-        if (randomRoundingDropdownOpen) {
-            return;
-        }
-        randomRoundingDropdownNode = null;
-        randomRoundingDropdownHoverIndex = -1;
-        randomRoundingDropdownScrollOffset = 0;
     }
 
     private void clearParameterDropdownState() {

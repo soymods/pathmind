@@ -27,6 +27,7 @@ val prepareMc26Sources by tasks.registering(Sync::class) {
     )
     inputs.property("pathmindMc26SourceTransformRevision", mc26SourceTransformRevision)
     from(repositoryRoot.resolve("common/src/main/java"))
+    from(repositoryRoot.resolve("common/src/stonecutter/java"))
     from(repositoryRoot.resolve("common/src/compat/$commonSourceFamily/java"))
     from(repositoryRoot.resolve("neoforge/src/compat/$neoForgeUiFamily/java"))
     into(layout.buildDirectory.dir("generated/sources/pathmindMc26/main/java"))

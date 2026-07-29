@@ -9,6 +9,7 @@
 /common/.gradle/
 /common/build/
 /common/run/
+/common/versions/
 /fabric/.gradle/
 /fabric/build/
 /fabric/run/

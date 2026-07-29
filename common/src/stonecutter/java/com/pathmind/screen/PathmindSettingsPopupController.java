@@ -1,5 +1,7 @@
 package com.pathmind.screen;
 
+// Canonical settings UI shared by the default and 26.x Stonecutter proof targets.
+
 import static com.pathmind.screen.PathmindVisualEditorScreen.*;
 
 import com.pathmind.data.OnboardingPresetManager;

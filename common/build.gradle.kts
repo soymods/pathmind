@@ -55,7 +55,10 @@ sourceSets {
             when {
                 commonSourceFamily == "mc-1.21.0-1.21.8" -> srcDir("src/compat/mc-1.21.0-1.21.8/java")
                 commonSourceFamily == "mc-1.21.9-1.21.10" -> srcDir("src/compat/mc-1.21.9-1.21.10/java")
-                commonSourceFamily == "mc-1.21.11" -> srcDir("src/compat/mc-1.21.11/java")
+                commonSourceFamily == "mc-1.21.11" -> {
+                    srcDir("src/stonecutter/java")
+                    srcDir("src/compat/mc-1.21.11/java")
+                }
                 else -> throw GradleException("Unknown common source family '$commonSourceFamily' for Minecraft $requestedMinecraftVersion")
             }
             if (commonSourceFamily == "mc-1.21.0-1.21.8" || commonSourceFamily == "mc-1.21.9-1.21.10") {

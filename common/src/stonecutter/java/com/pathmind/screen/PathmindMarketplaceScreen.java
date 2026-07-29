@@ -114,6 +114,8 @@ public class PathmindMarketplaceScreen extends Screen {
     private int selectedIndex = -1;
     private int pageIndex = 0;
     private int galleryScrollOffset = 0;
+    private boolean galleryScrollDragging = false;
+    private int galleryScrollDragOffset = 0;
     private boolean loading = false;
     private boolean initialFetchStarted = false;
     private String statusMessage = Component.translatable("pathmind.marketplace.loadingPublishedPresets").getString();
@@ -474,7 +476,21 @@ public class PathmindMarketplaceScreen extends Screen {
         }
 
         disableGalleryScissor(context);
+        renderGalleryScrollbar(context, layout);
         renderFooter(context, mouseX, mouseY, layout);
+    }
+
+    private void renderGalleryScrollbar(GuiGraphics context, Layout layout) {
+        if (isAuthorDirectoryMode()) {
+            return;
+        }
+        ScrollbarHelper.renderSettingsStyle(
+            context,
+            getGalleryScrollMetrics(layout),
+            UITheme.BACKGROUND_SIDEBAR,
+            UITheme.BORDER_DEFAULT,
+            getAccentColor()
+        );
     }
 
     private void disableGalleryScissor(GuiGraphics context) {
@@ -1170,6 +1186,16 @@ public class PathmindMarketplaceScreen extends Screen {
             }
             sortDropdownOpen = false;
         }
+        if (!isAuthorDirectoryMode()) {
+            ScrollbarHelper.Metrics galleryScrollMetrics = getGalleryScrollMetrics(layout);
+            if (galleryScrollMetrics.maxScroll() > 0
+                && isPointInRect(mouseX, mouseY, galleryScrollMetrics.trackLeft() - 3, galleryScrollMetrics.trackTop(),
+                    galleryScrollMetrics.trackWidth() + 6, galleryScrollMetrics.viewportHeight())) {
+                galleryScrollDragging = true;
+                galleryScrollDragOffset = mouseY - galleryScrollMetrics.thumbTop();
+                return true;
+            }
+        }
         if (isPointInRect(mouseX, mouseY, layout.backButtonX, layout.backButtonY, BACK_BUTTON_SIZE, BACK_BUTTON_SIZE)) {
             onClose();
             return true;
@@ -1410,6 +1436,17 @@ public class PathmindMarketplaceScreen extends Screen {
             popupScrollOffset = ScrollbarHelper.scrollFromThumb(scrollMetrics, clampedThumbY);
             return true;
         }
+        if (galleryScrollDragging) {
+            Layout layout = getLayout();
+            ScrollbarHelper.Metrics scrollMetrics = getGalleryScrollMetrics(layout);
+            //? if MC_1_21_8 {
+            /*int desiredThumbY = (int) mouseYDouble - galleryScrollDragOffset;*/
+            //?} else {
+            int desiredThumbY = (int) click.y() - galleryScrollDragOffset;
+            //?}
+            galleryScrollOffset = ScrollbarHelper.scrollFromThumb(scrollMetrics, desiredThumbY);
+            return true;
+        }
         //? if MC_1_21_8 {
         /*return super.mouseDragged(mouseXDouble, mouseYDouble, button, deltaX, deltaY);*/
         //?} else {
@@ -1430,6 +1467,10 @@ public class PathmindMarketplaceScreen extends Screen {
         }
         if (popupScrollDragging) {
             popupScrollDragging = false;
+            return true;
+        }
+        if (galleryScrollDragging) {
+            galleryScrollDragging = false;
             return true;
         }
         //? if MC_1_21_8 {
@@ -3210,6 +3251,14 @@ public class PathmindMarketplaceScreen extends Screen {
         int contentHeight = 2 + rowsOnPage * CARD_SIZE + (rowsOnPage - 1) * CARD_GAP;
         int viewportHeight = layout.sectionHeight - getSectionHeaderHeight() - FOOTER_HEIGHT;
         return Math.max(0, contentHeight - viewportHeight);
+    }
+
+    private ScrollbarHelper.Metrics getGalleryScrollMetrics(Layout layout) {
+        int trackTop = layout.sectionY + getSectionHeaderHeight() + 2;
+        int viewportHeight = Math.max(1, layout.sectionHeight - getSectionHeaderHeight() - FOOTER_HEIGHT - 4);
+        int trackLeft = layout.bodyX + layout.bodyWidth - UITheme.SCROLLBAR_WIDTH;
+        return ScrollbarHelper.metrics(trackLeft, trackTop, UITheme.SCROLLBAR_WIDTH, viewportHeight,
+            getMaxGalleryScroll(layout), galleryScrollOffset, 20);
     }
 
     private int getAuthorEntriesPerPage(Layout layout) {

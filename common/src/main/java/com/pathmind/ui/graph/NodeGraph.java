@@ -33,7 +33,6 @@ import static com.pathmind.ui.graph.SchematicRepository.loadSchematicOptions;
 import static com.pathmind.ui.graph.SchematicRepository.schematicExistsInRoots;
 import static com.pathmind.ui.graph.InlineVariableRenderer.buildInlineVariableRender;
 import static com.pathmind.ui.graph.InlineVariableRenderer.isSingleKnownInlineVariableReference;
-import static com.pathmind.ui.graph.ConnectionRenderer.VIEWPORT_CULL_MARGIN;
 
 import com.pathmind.data.NodeGraphData;
 import com.pathmind.data.NodeGraphPersistence;
@@ -84,7 +83,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.WeakHashMap;
-import java.util.concurrent.ConcurrentHashMap;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -122,17 +120,23 @@ public class NodeGraph {
     private static final int TEMPLATE_PREVIEW_TOP = 42;
     private static final int TEMPLATE_PREVIEW_BOTTOM_MARGIN = 6;
     private static final int STICKY_NOTE_MAX_CHARS = 4096;
-    private static final int DENSE_VIEW_VISIBLE_NODE_THRESHOLD = 120;
-    private static final int COMPACT_VIEW_VISIBLE_NODE_THRESHOLD = 40;
     private static final int PROFILER_OVERLAY_MARGIN = 10;
     private static final int PROFILER_OVERLAY_PADDING = 6;
 
     private final List<Node> nodes;
     private final List<NodeConnection> connections;
     private final List<Node> cachedRootNodes;
-    private final List<Node> cachedVisibleRootNodes;
     private final Map<Node, SelectionBounds> cachedHierarchyBounds;
     private final Map<Node, Integer> cachedHierarchyNodeCounts;
+    private final ViewportController viewport = new ViewportController(new ViewportController.Host() {
+        @Override public void rebuildHierarchyCacheIfNeeded() {
+            NodeGraph.this.rebuildHierarchyCacheIfNeeded();
+        }
+        @Override public List<Node> cachedRootNodes() { return cachedRootNodes; }
+        @Override public Map<Node, SelectionBounds> cachedHierarchyBounds() { return cachedHierarchyBounds; }
+        @Override public Map<Node, Integer> cachedHierarchyNodeCounts() { return cachedHierarchyNodeCounts; }
+        @Override public String activePreset() { return activePreset; }
+    });
     private final ConnectionController connectionController = new ConnectionController(new ConnectionController.Host() {
         @Override public List<Node> getNodes() { return nodes; }
         @Override public List<NodeConnection> getConnections() { return connections; }
@@ -153,9 +157,9 @@ public class NodeGraph {
         @Override public List<Node> getVisibleRootsForViewport() { return NodeGraph.this.getVisibleRootsForViewport(); }
         @Override public int getViewportWorldWidth() { return NodeGraph.this.getViewportWorldWidth(); }
         @Override public int getViewportWorldHeight() { return NodeGraph.this.getViewportWorldHeight(); }
-        @Override public int getCameraX() { return cameraX; }
-        @Override public int getCameraY() { return cameraY; }
-        @Override public boolean isDenseViewportMode() { return denseViewportMode; }
+        @Override public int getCameraX() { return viewport.getCameraX(); }
+        @Override public int getCameraY() { return viewport.getCameraY(); }
+        @Override public boolean isDenseViewportMode() { return viewport.isDenseViewportMode(); }
         @Override public boolean shouldRenderConnectionsOnTop() { return NodeGraph.this.shouldRenderConnectionsOnTop(); }
         @Override public Node getParentForNode(Node node) { return NodeGraph.this.getParentForNode(node); }
         @Override public boolean shouldConsiderConnectionForViewport(NodeConnection connection, Set<Node> visibleRoots,
@@ -177,10 +181,6 @@ public class NodeGraph {
         }
     }, connectionController);
     
-    // Camera/viewport for infinite scrolling
-    private int cameraX = 0;
-    private int cameraY = 0;
-    private boolean isPanning = false;
     private double profilerRenderMs = 0.0;
     private double profilerNodeMs = 0.0;
     private double profilerConnectionMs = 0.0;
@@ -195,8 +195,6 @@ public class NodeGraph {
     private long profilerHitTestTotalNanos = 0L;
     private long profilerHitTestCallCount = 0L;
     private long profilerHitTestTotalRoots = 0L;
-    private int panStartX, panStartY;
-    private int panStartCameraX, panStartCameraY;
     
     // Start button hover state
     private boolean hoveringStartButton = false;
@@ -239,18 +237,10 @@ public class NodeGraph {
     private int sidebarWidthForRendering = 180;
     private boolean executionEnabled = true;
     private boolean hierarchyGeometryDirty = true;
-    private boolean visibleRootsDirty = true;
-    private boolean compactViewportMode = false;
-    private boolean denseViewportMode = false;
     private int visibleNodeCountForFrame = 0;
     private final Map<TrimKey, String> trimmedTextCache = new HashMap<>();
     private final Map<String, Set<String>> runtimeVariableNamesFrameCache = new HashMap<>();
     private Set<String> cachedBaseRuntimeVariableNames = null;
-    private int cachedVisibleNodeCount = 0;
-    private int visibleRootsCameraX = Integer.MIN_VALUE;
-    private int visibleRootsCameraY = Integer.MIN_VALUE;
-    private int visibleRootsViewportWidth = Integer.MIN_VALUE;
-    private int visibleRootsViewportHeight = Integer.MIN_VALUE;
 
     private String activePreset;
     private java.util.function.BooleanSupplier workspaceSaveHandler;
@@ -292,8 +282,8 @@ public class NodeGraph {
         }
     });
     private final InlineFieldRenderer inlineFieldRenderer = new InlineFieldRenderer(new InlineFieldRenderer.Host() {
-        @Override public int cameraX() { return cameraX; }
-        @Override public int cameraY() { return cameraY; }
+        @Override public int cameraX() { return viewport.getCameraX(); }
+        @Override public int cameraY() { return viewport.getCameraY(); }
         @Override public int screenToWorldX(int screenX) { return NodeGraph.this.screenToWorldX(screenX); }
         @Override public int screenToWorldY(int screenY) { return NodeGraph.this.screenToWorldY(screenY); }
         @Override public int selectedNodeAccentColor() { return nodeControls.getSelectedNodeAccentColor(); }
@@ -324,7 +314,7 @@ public class NodeGraph {
             return NodeGraph.this.shouldBuildInlineExpressionRender(rawText, variableNames);
         }
         @Override public boolean shouldRenderNodeText() { return NodeGraph.this.shouldRenderNodeText(); }
-        @Override public boolean isCompactViewportMode() { return compactViewportMode; }
+        @Override public boolean isCompactViewportMode() { return viewport.isCompactViewportMode(); }
         @Override public boolean isScreenCoordinateCaptureActiveFor(Node node) {
             return NodeGraph.this.isScreenCoordinateCaptureActiveFor(node);
         }
@@ -346,8 +336,8 @@ public class NodeGraph {
         }
         @Override public void renderAmountToggle(GuiGraphics context, Node node, boolean amountEnabled,
                                                   boolean isOverSidebar) {
-            int toggleLeft = node.getAmountToggleLeft() - cameraX;
-            int toggleTop = node.getAmountToggleTop() - cameraY;
+            int toggleLeft = node.getAmountToggleLeft() - viewport.getCameraX();
+            int toggleTop = node.getAmountToggleTop() - viewport.getCameraY();
             int toggleWidth = node.getAmountToggleWidth();
             int toggleHeight = node.getAmountToggleHeight();
             nodeControls.renderNodeSliderToggle(context, toggleLeft, toggleTop, toggleWidth, toggleHeight,
@@ -394,12 +384,12 @@ public class NodeGraph {
     private final StickyNoteController stickyNoteController = new StickyNoteController(new StickyNoteHost() {
         @Override
         public int cameraX() {
-            return cameraX;
+            return viewport.getCameraX();
         }
 
         @Override
         public int cameraY() {
-            return cameraY;
+            return viewport.getCameraY();
         }
 
         @Override
@@ -541,7 +531,7 @@ public class NodeGraph {
                 return connectionController.insertNodeIntoConnection(node, connection);
             }
             @Override public void updateConnectionDrag(int worldX, int worldY) {
-                connectionController.updateDrag(worldX, worldY, denseViewportMode);
+                connectionController.updateDrag(worldX, worldY, viewport.isDenseViewportMode());
             }
             @Override public void forceClearConnectionDragState() {
                 connectionController.forceClearTransientDragState();
@@ -576,14 +566,14 @@ public class NodeGraph {
             @Override public void collectNodesForCascade(Node node, List<Node> order, Set<Node> visited) {
                 NodeGraph.this.collectNodesForCascade(node, order, visited);
             }
-            @Override public int cameraX() { return cameraX; }
+            @Override public int cameraX() { return viewport.getCameraX(); }
             @Override public int sidebarWidthForRendering() { return sidebarWidthForRendering; }
         }
     );
     private final NodeControlController nodeControls = new NodeControlController(
         new NodeControlController.Host() {
-            @Override public int cameraX() { return cameraX; }
-            @Override public int cameraY() { return cameraY; }
+            @Override public int cameraX() { return viewport.getCameraX(); }
+            @Override public int cameraY() { return viewport.getCameraY(); }
             @Override public int screenToWorldX(int screenX) {
                 return NodeGraph.this.screenToWorldX(screenX);
             }
@@ -591,7 +581,7 @@ public class NodeGraph {
                 return NodeGraph.this.screenToWorldY(screenY);
             }
             @Override public float zoomScale() { return getZoomScale(); }
-            @Override public boolean compactViewportMode() { return compactViewportMode; }
+            @Override public boolean compactViewportMode() { return viewport.isCompactViewportMode(); }
             @Override public Node sensorDropTarget() { return selectionController.getSensorDropTarget(); }
             @Override public Node actionDropTarget() { return selectionController.getActionDropTarget(); }
             @Override public Node parameterDropTarget() { return selectionController.getParameterDropTarget(); }
@@ -643,9 +633,9 @@ public class NodeGraph {
         }
     );
     private final NodeRenderer nodeRenderer = new NodeRenderer(new NodeRenderer.Host() {
-        @Override public int cameraX() { return cameraX; }
-        @Override public int cameraY() { return cameraY; }
-        @Override public boolean compactViewportMode() { return compactViewportMode; }
+        @Override public int cameraX() { return viewport.getCameraX(); }
+        @Override public int cameraY() { return viewport.getCameraY(); }
+        @Override public boolean compactViewportMode() { return viewport.isCompactViewportMode(); }
         @Override public boolean intersectsViewport(Node node) { return NodeGraph.this.intersectsViewport(node); }
         @Override public boolean isNodeOverSidebarForRender(Node node, int x, int width) {
             return NodeGraph.this.isNodeOverSidebarForRender(node, x, width);
@@ -815,8 +805,8 @@ public class NodeGraph {
         }
     });
     private final TemplateNodeRenderer templateNodeRenderer = new TemplateNodeRenderer(new TemplateNodeRenderer.Host() {
-        @Override public int cameraX() { return cameraX; }
-        @Override public int cameraY() { return cameraY; }
+        @Override public int cameraX() { return viewport.getCameraX(); }
+        @Override public int cameraY() { return viewport.getCameraY(); }
         @Override public int adjustColorBrightness(int color, float factor) {
             return nodeControls.adjustColorBrightness(color, factor);
         }
@@ -921,8 +911,8 @@ public class NodeGraph {
                 return nodeControls.getParameterFieldWidth(node);
             }
             @Override public int parameterFieldHeight() { return nodeControls.getParameterFieldHeight(); }
-            @Override public int cameraX() { return cameraX; }
-            @Override public int cameraY() { return cameraY; }
+            @Override public int cameraX() { return viewport.getCameraX(); }
+            @Override public int cameraY() { return viewport.getCameraY(); }
             @Override public int screenToUiX(int screenX) {
                 return NodeGraph.this.screenToUiX(screenX);
             }
@@ -958,7 +948,7 @@ public class NodeGraph {
         new SpecializedSelectorController.Host() {
             @Override public int screenToWorldX(int screenX) { return NodeGraph.this.screenToWorldX(screenX); }
             @Override public int screenToWorldY(int screenY) { return NodeGraph.this.screenToWorldY(screenY); }
-            @Override public int cameraY() { return cameraY; }
+            @Override public int cameraY() { return viewport.getCameraY(); }
             @Override public int guiScaledHeight() {
                 return Minecraft.getInstance().getWindow().getGuiScaledHeight();
             }
@@ -999,8 +989,8 @@ public class NodeGraph {
     private static final int SCHEMATIC_DROPDOWN_ROW_HEIGHT = 16;
     private final RandomRoundingController randomRounding = new RandomRoundingController(
         new RandomRoundingController.Host() {
-            @Override public int cameraX() { return cameraX; }
-            @Override public int cameraY() { return cameraY; }
+            @Override public int cameraX() { return viewport.getCameraX(); }
+            @Override public int cameraY() { return viewport.getCameraY(); }
             @Override public int screenToWorldX(int screenX) {
                 return NodeGraph.this.screenToWorldX(screenX);
             }
@@ -1012,7 +1002,7 @@ public class NodeGraph {
             }
             @Override public Font clientTextRenderer() { return getClientTextRenderer(); }
             @Override public float zoomScale() { return getZoomScale(); }
-            @Override public boolean compactViewportMode() { return compactViewportMode; }
+            @Override public boolean compactViewportMode() { return viewport.isCompactViewportMode(); }
             @Override public boolean shouldRenderNodeText() {
                 return NodeGraph.this.shouldRenderNodeText();
             }
@@ -1109,16 +1099,11 @@ public class NodeGraph {
     private int nextStartNodeNumber = 1;
     private boolean validationDirty = true;
     private GraphValidationResult cachedValidationResult = GraphValidationResult.empty();
-    private static final float ZOOM_SCROLL_STEP = 1.12f;
-    private static final float ZOOM_EPSILON = 0.0001f;
-    private ZoomLevel zoomLevel = ZoomLevel.FOCUSED;
-    private float zoomScale = ZoomLevel.FOCUSED.getScale();
     private ClipboardSnapshot clipboardNodeSnapshot = null;
     private final Deque<NodeGraphData> undoStack = new ArrayDeque<>();
     private final Deque<NodeGraphData> redoStack = new ArrayDeque<>();
     private boolean suppressUndoCapture = false;
     private static final int MAX_HISTORY = 50;
-    private static final Map<String, SessionViewportState> SESSION_VIEWPORT_STATES = new ConcurrentHashMap<>();
 
 
     public enum ZoomLevel {
@@ -1171,147 +1156,54 @@ public class NodeGraph {
         }
     }
 
-    private static final class SessionViewportState {
-        private final int cameraX;
-        private final int cameraY;
-        private final ZoomLevel zoomLevel;
-        private final float zoomScale;
-
-        private SessionViewportState(int cameraX, int cameraY, ZoomLevel zoomLevel, float zoomScale) {
-            this.cameraX = cameraX;
-            this.cameraY = cameraY;
-            this.zoomLevel = zoomLevel;
-            this.zoomScale = zoomScale;
-        }
-    }
-
     public ZoomLevel getZoomLevel() {
-        return zoomLevel;
+        return viewport.getZoomLevel();
     }
 
     public boolean isZoomedOut() {
-        return zoomScale < (ZoomLevel.FOCUSED.getScale() - ZOOM_EPSILON);
+        return viewport.isZoomedOut();
     }
 
     public void setZoomLevel(ZoomLevel newLevel, int anchorScreenX, int anchorScreenY) {
-        if (newLevel == null || newLevel == this.zoomLevel) {
-            return;
-        }
-        int anchorWorldX = screenToWorldX(anchorScreenX);
-        int anchorWorldY = screenToWorldY(anchorScreenY);
-        this.zoomLevel = newLevel;
-        this.zoomScale = newLevel.getScale();
-        alignCameraToAnchor(anchorWorldX, anchorWorldY, anchorScreenX, anchorScreenY);
-        cacheSessionViewportState();
-    }
-
-    private void alignCameraToAnchor(int anchorWorldX, int anchorWorldY, int anchorScreenX, int anchorScreenY) {
-        float scale = getZoomScale();
-        if (scale == 0.0f) {
-            scale = 1.0f;
-        }
-        cameraX = Math.round(anchorWorldX - anchorScreenX / scale);
-        cameraY = Math.round(anchorWorldY - anchorScreenY / scale);
+        viewport.setZoomLevel(newLevel, anchorScreenX, anchorScreenY);
     }
 
     public float getZoomScale() {
-        return zoomScale;
+        return viewport.getZoomScale();
     }
 
     private boolean shouldRenderNodeText() {
-        return zoomLevel.shouldShowText();
+        return viewport.shouldRenderNodeText();
     }
 
     public boolean canZoomIn() {
-        return zoomScale < (ZoomLevel.FOCUSED.getScale() - ZOOM_EPSILON);
+        return viewport.canZoomIn();
     }
 
     public boolean canZoomOut() {
-        return zoomScale > (ZoomLevel.DISTANT.getScale() + ZOOM_EPSILON);
+        return viewport.canZoomOut();
     }
 
     public void zoomIn(int anchorScreenX, int anchorScreenY) {
-        ZoomLevel target = getNextZoomInLevel();
-        if (target != null) {
-            setZoomLevel(target, anchorScreenX, anchorScreenY);
-        }
+        viewport.zoomIn(anchorScreenX, anchorScreenY);
     }
 
     public void zoomOut(int anchorScreenX, int anchorScreenY) {
-        ZoomLevel target = getNextZoomOutLevel();
-        if (target != null) {
-            setZoomLevel(target, anchorScreenX, anchorScreenY);
-        }
+        viewport.zoomOut(anchorScreenX, anchorScreenY);
     }
 
     public boolean isDefaultZoom() {
-        return Math.abs(zoomScale - ZoomLevel.FOCUSED.getScale()) <= ZOOM_EPSILON;
-    }
-
-    private ZoomLevel getNextZoomInLevel() {
-        ZoomLevel target = null;
-        for (ZoomLevel level : ZoomLevel.values()) {
-            if (level.getScale() > zoomScale + ZOOM_EPSILON) {
-                if (target == null || level.getScale() < target.getScale()) {
-                    target = level;
-                }
-            }
-        }
-        return target;
-    }
-
-    private ZoomLevel getNextZoomOutLevel() {
-        ZoomLevel target = null;
-        for (ZoomLevel level : ZoomLevel.values()) {
-            if (level.getScale() < zoomScale - ZOOM_EPSILON) {
-                if (target == null || level.getScale() > target.getScale()) {
-                    target = level;
-                }
-            }
-        }
-        return target;
+        return viewport.isDefaultZoom();
     }
 
     public void zoomByScroll(double scrollAmount, int anchorScreenX, int anchorScreenY) {
-        if (scrollAmount == 0.0) {
-            return;
-        }
-        float scaleFactor = (float) Math.pow(ZOOM_SCROLL_STEP, scrollAmount);
-        setZoomScale(zoomScale * scaleFactor, anchorScreenX, anchorScreenY);
-    }
-
-    private void setZoomScale(float newScale, int anchorScreenX, int anchorScreenY) {
-        float minScale = ZoomLevel.DISTANT.getScale();
-        float maxScale = ZoomLevel.FOCUSED.getScale();
-        float clampedScale = Mth.clamp(newScale, minScale, maxScale);
-        if (Math.abs(clampedScale - zoomScale) <= ZOOM_EPSILON) {
-            return;
-        }
-        int anchorWorldX = screenToWorldX(anchorScreenX);
-        int anchorWorldY = screenToWorldY(anchorScreenY);
-        zoomScale = clampedScale;
-        updateZoomLevelFromScale();
-        alignCameraToAnchor(anchorWorldX, anchorWorldY, anchorScreenX, anchorScreenY);
-        cacheSessionViewportState();
-    }
-
-    private void updateZoomLevelFromScale() {
-        float minScale = ZoomLevel.DISTANT.getScale();
-        float maxScale = ZoomLevel.FOCUSED.getScale();
-        if (zoomScale >= maxScale - ZOOM_EPSILON) {
-            zoomLevel = ZoomLevel.FOCUSED;
-        } else if (zoomScale <= minScale + ZOOM_EPSILON) {
-            zoomLevel = ZoomLevel.DISTANT;
-        } else {
-            zoomLevel = ZoomLevel.OVERVIEW;
-        }
+        viewport.zoomByScroll(scrollAmount, anchorScreenX, anchorScreenY);
     }
 
     public NodeGraph() {
         this.nodes = new ArrayList<>();
         this.connections = new ArrayList<>();
         this.cachedRootNodes = new ArrayList<>();
-        this.cachedVisibleRootNodes = new ArrayList<>();
         this.cachedHierarchyBounds = new HashMap<>();
         this.cachedHierarchyNodeCounts = new HashMap<>();
         this.activePreset = PresetManager.getActivePreset();
@@ -1651,7 +1543,7 @@ public class NodeGraph {
 
     private void invalidateHierarchyCache() {
         hierarchyGeometryDirty = true;
-        visibleRootsDirty = true;
+        viewport.invalidateVisibleRoots();
     }
 
     private void invalidateConnectionIndex() {
@@ -1668,14 +1560,6 @@ public class NodeGraph {
     }
 
     private void rebuildHierarchyCacheIfNeeded() {
-        if (hierarchyGeometryDirty) {
-            // The visible-viewport set (cachedVisibleRootNodes/cachedVisibleNodeCount) is derived
-            // from the hierarchy cache, so it must be invalidated whenever the roots/bounds are
-            // rebuilt. Otherwise swapping the graph at an unchanged camera (e.g. switching presets)
-            // leaves the previous graph's visible set cached and drawn even though the node data
-            // and cachedRootNodes have already updated.
-            visibleRootsDirty = true;
-        }
         NodeGraphHierarchySupport.rebuildHierarchyCacheIfNeeded(
             this,
             hierarchyGeometryDirty,
@@ -1688,35 +1572,7 @@ public class NodeGraph {
     }
 
     private List<Node> getVisibleRootsForViewport() {
-        rebuildHierarchyCacheIfNeeded();
-
-        int viewportWidth = getViewportWorldWidth();
-        int viewportHeight = getViewportWorldHeight();
-        if (!visibleRootsDirty
-            && visibleRootsCameraX == cameraX
-            && visibleRootsCameraY == cameraY
-            && visibleRootsViewportWidth == viewportWidth
-            && visibleRootsViewportHeight == viewportHeight) {
-            return cachedVisibleRootNodes;
-        }
-
-        cachedVisibleRootNodes.clear();
-        cachedVisibleNodeCount = 0;
-        for (Node root : cachedRootNodes) {
-            SelectionBounds bounds = cachedHierarchyBounds.get(root);
-            if (!intersectsViewport(bounds, viewportWidth, viewportHeight)) {
-                continue;
-            }
-            cachedVisibleRootNodes.add(root);
-            cachedVisibleNodeCount += cachedHierarchyNodeCounts.getOrDefault(root, 0);
-        }
-
-        visibleRootsDirty = false;
-        visibleRootsCameraX = cameraX;
-        visibleRootsCameraY = cameraY;
-        visibleRootsViewportWidth = viewportWidth;
-        visibleRootsViewportHeight = viewportHeight;
-        return cachedVisibleRootNodes;
+        return viewport.getVisibleRootsForViewport();
     }
 
     void collectHierarchyNodes(Node node, List<Node> collected, Set<Node> visited) {
@@ -1735,52 +1591,23 @@ public class NodeGraph {
     }
 
     private int getViewportWorldWidth() {
-        Minecraft client = Minecraft.getInstance();
-        if (client == null) {
-            return 0;
-        }
-        return Math.round(client.getWindow().getGuiScaledWidth() / Math.max(0.0001f, getZoomScale()));
+        return viewport.getViewportWorldWidth();
     }
 
     private int getViewportWorldHeight() {
-        Minecraft client = Minecraft.getInstance();
-        if (client == null) {
-            return 0;
-        }
-        return Math.round(client.getWindow().getGuiScaledHeight() / Math.max(0.0001f, getZoomScale()));
+        return viewport.getViewportWorldHeight();
     }
 
     private boolean intersectsViewport(SelectionBounds bounds) {
-        return intersectsViewport(bounds, getViewportWorldWidth(), getViewportWorldHeight());
+        return viewport.intersectsViewport(bounds);
     }
 
     private boolean intersectsViewport(SelectionBounds bounds, int viewportWidth, int viewportHeight) {
-        if (bounds == null) {
-            return false;
-        }
-        if (viewportWidth <= 0 || viewportHeight <= 0) {
-            return true;
-        }
-        int viewportLeft = cameraX - VIEWPORT_CULL_MARGIN;
-        int viewportTop = cameraY - VIEWPORT_CULL_MARGIN;
-        int viewportRight = cameraX + viewportWidth + VIEWPORT_CULL_MARGIN;
-        int viewportBottom = cameraY + viewportHeight + VIEWPORT_CULL_MARGIN;
-        return bounds.maxX >= viewportLeft
-            && bounds.minX <= viewportRight
-            && bounds.maxY >= viewportTop
-            && bounds.minY <= viewportBottom;
+        return viewport.intersectsViewport(bounds, viewportWidth, viewportHeight);
     }
 
     private boolean intersectsViewport(Node node) {
-        if (node == null) {
-            return false;
-        }
-        return intersectsViewport(new SelectionBounds(
-            node.getX(),
-            node.getY(),
-            node.getX() + node.getWidth(),
-            node.getY() + node.getHeight()
-        ));
+        return viewport.intersectsViewport(node);
     }
 
     private void clearSelection() {
@@ -2099,8 +1926,10 @@ public class NodeGraph {
         int worldMouseX = screenToWorldX(mouseX);
         int worldMouseY = screenToWorldY(mouseY);
 
-        boolean socketHovered = connectionController.updateMouseHover(worldMouseX, worldMouseY, denseViewportMode, visibleRoots);
-        if (socketHovered && denseViewportMode) {
+        boolean socketHovered = connectionController.updateMouseHover(
+            worldMouseX, worldMouseY, viewport.isDenseViewportMode(), visibleRoots
+        );
+        if (socketHovered && viewport.isDenseViewportMode()) {
             return;
         }
         profilerHoverMs = (System.nanoTime() - startNanos) / 1_000_000.0;
@@ -2136,11 +1965,7 @@ public class NodeGraph {
     }
 
     public void startPanning(int mouseX, int mouseY) {
-        isPanning = true;
-        panStartX = mouseX;
-        panStartY = mouseY;
-        panStartCameraX = cameraX;
-        panStartCameraY = cameraY;
+        viewport.startPanning(mouseX, mouseY);
     }
 
     /**
@@ -2371,56 +2196,31 @@ public class NodeGraph {
     }
 
     public void updatePanning(int mouseX, int mouseY) {
-        if (isPanning) {
-            int deltaX = mouseX - panStartX;
-            int deltaY = mouseY - panStartY;
-            float scale = getZoomScale();
-            if (scale == 0.0f) {
-                scale = 1.0f;
-            }
-            cameraX = panStartCameraX - Math.round(deltaX / scale); // Flip horizontal panning
-            cameraY = panStartCameraY - Math.round(deltaY / scale); // Flip vertical panning
-            cacheSessionViewportState();
-        }
+        viewport.updatePanning(mouseX, mouseY);
     }
     
     public void stopPanning() {
-        isPanning = false;
+        viewport.stopPanning();
     }
     
     public boolean isPanning() {
-        return isPanning;
+        return viewport.isPanning();
     }
     
     public void resetCamera() {
-        cameraX = 0;
-        cameraY = 0;
-        zoomLevel = ZoomLevel.FOCUSED;
-        zoomScale = ZoomLevel.FOCUSED.getScale();
-        cacheSessionViewportState();
+        viewport.resetCamera();
     }
 
     public void restoreSessionViewportState() {
-        SessionViewportState state = SESSION_VIEWPORT_STATES.get(activePreset);
-        if (state == null) {
-            return;
-        }
-        cameraX = state.cameraX;
-        cameraY = state.cameraY;
-        zoomLevel = state.zoomLevel != null ? state.zoomLevel : ZoomLevel.FOCUSED;
-        zoomScale = state.zoomScale > 0.0f ? state.zoomScale : zoomLevel.getScale();
-        updateZoomLevelFromScale();
+        viewport.restoreSessionViewportState();
     }
 
     public void persistSessionViewportState() {
-        cacheSessionViewportState();
+        viewport.persistSessionViewportState();
     }
 
     private void cacheSessionViewportState() {
-        if (activePreset == null || activePreset.isEmpty()) {
-            return;
-        }
-        SESSION_VIEWPORT_STATES.put(activePreset, new SessionViewportState(cameraX, cameraY, zoomLevel, zoomScale));
+        viewport.persistSessionViewportState();
     }
 
     public boolean focusNodeById(String nodeId, int screenWidth, int screenHeight, int sidebarWidth, int titleBarHeight) {
@@ -2450,20 +2250,7 @@ public class NodeGraph {
         clearSelection();
         selectNode(node);
 
-        int workspaceLeft = Math.max(0, sidebarWidth);
-        int workspaceTop = Math.max(0, titleBarHeight);
-        int workspaceWidth = Math.max(1, screenWidth - workspaceLeft);
-        int workspaceHeight = Math.max(1, screenHeight - workspaceTop);
-        float scale = getZoomScale();
-        if (scale <= 0.0f) {
-            scale = 1.0f;
-        }
-
-        int desiredScreenX = workspaceLeft + workspaceWidth / 2 - Math.round(node.getWidth() * scale / 2f);
-        int desiredScreenY = workspaceTop + workspaceHeight / 2 - Math.round(node.getHeight() * scale / 2f);
-        cameraX = node.getX() - Math.round((desiredScreenX - workspaceLeft) / scale);
-        cameraY = node.getY() - Math.round((desiredScreenY - workspaceTop) / scale);
-        cacheSessionViewportState();
+        viewport.focusNode(node, screenWidth, screenHeight, sidebarWidth, titleBarHeight);
     }
 
     public boolean focusBestMatchingNode(String query, int screenWidth, int screenHeight, int sidebarWidth, int titleBarHeight) {
@@ -2563,44 +2350,28 @@ public class NodeGraph {
     
     // Convert screen coordinates to world coordinates
     public int screenToWorldX(int screenX) {
-        float scale = getZoomScale();
-        if (scale == 0.0f) {
-            scale = 1.0f;
-        }
-        return cameraX + Math.round(screenX / scale);
+        return viewport.screenToWorldX(screenX);
     }
     
     public int screenToWorldY(int screenY) {
-        float scale = getZoomScale();
-        if (scale == 0.0f) {
-            scale = 1.0f;
-        }
-        return cameraY + Math.round(screenY / scale);
+        return viewport.screenToWorldY(screenY);
     }
 
     private int screenToUiX(int screenX) {
-        float scale = getZoomScale();
-        if (scale == 0.0f) {
-            scale = 1.0f;
-        }
-        return Math.round(screenX / scale);
+        return viewport.screenToUiX(screenX);
     }
 
     private int screenToUiY(int screenY) {
-        float scale = getZoomScale();
-        if (scale == 0.0f) {
-            scale = 1.0f;
-        }
-        return Math.round(screenY / scale);
+        return viewport.screenToUiY(screenY);
     }
     
     // Convert world coordinates to screen coordinates
     public int worldToScreenX(int worldX) {
-        return Math.round((worldX - cameraX) * getZoomScale());
+        return viewport.worldToScreenX(worldX);
     }
     
     public int worldToScreenY(int worldY) {
-        return Math.round((worldY - cameraY) * getZoomScale());
+        return viewport.worldToScreenY(worldY);
     }
 
     /**
@@ -2615,7 +2386,7 @@ public class NodeGraph {
     public void deleteNodeIfInSidebar(Node node, int mouseX, int sidebarWidth) {
         // Use the same logic as the grey-out function - more than halfway over the sidebar
         // Calculate the node's screen position (same as in renderNode)
-        int nodeScreenX = node.getX() - cameraX;
+        int nodeScreenX = node.getX() - viewport.getCameraX();
         if (isNodeOverSidebar(node, sidebarWidth, nodeScreenX, node.getWidth())) {
             if (shouldCascadeDelete(node)) {
                 removeNodeCascade(node);
@@ -2746,16 +2517,15 @@ public class NodeGraph {
             updateCascadeDeletionPreview();
         }
         List<Node> visibleRoots = getVisibleRootsForViewport();
-        visibleNodeCountForFrame = cachedVisibleNodeCount;
+        visibleNodeCountForFrame = viewport.getCachedVisibleNodeCount();
         if (!onlyDragged) {
             profilerVisibleRoots = visibleRoots.size();
-            profilerVisibleNodes = cachedVisibleNodeCount;
+            profilerVisibleNodes = viewport.getCachedVisibleNodeCount();
         }
         if (!onlyDragged) {
             runtimeVariableNamesFrameCache.clear();
         }
-        compactViewportMode = isLowDetailModeEnabled();
-        denseViewportMode = false;
+        viewport.beginRenderFrame(isLowDetailModeEnabled());
         boolean renderConnectionsOnTop = shouldRenderConnectionsOnTop();
         int drawnConnections = 0;
         if (!renderConnectionsOnTop) {
@@ -2794,8 +2564,7 @@ public class NodeGraph {
             nodeControls.renderRuntimeScopeTooltip(context, textRenderer, mouseX, mouseY);
         }
         MatrixStackBridge.pop(matrices);
-        compactViewportMode = false;
-        denseViewportMode = false;
+        viewport.endRenderFrame();
         visibleNodeCountForFrame = 0;
     }
 
@@ -2895,7 +2664,7 @@ public class NodeGraph {
         if (node == null) {
             return false;
         }
-        if (denseViewportMode) {
+        if (viewport.isDenseViewportMode()) {
             return false;
         }
         if (node.shouldRenderInlineParameters()) {
@@ -2918,7 +2687,7 @@ public class NodeGraph {
         if (node == null || !node.shouldRenderSockets()) {
             return false;
         }
-        if (!denseViewportMode && !compactViewportMode) {
+        if (!viewport.isDenseViewportMode() && !viewport.isCompactViewportMode()) {
             return true;
         }
         return node.isSelected()
@@ -3085,8 +2854,8 @@ public class NodeGraph {
         if (node == null || !node.showsModeFieldAboveParameterSlot()) {
             return;
         }
-        int fieldLeft = node.getModeFieldLeft() - cameraX;
-        int fieldTop = node.getModeFieldTop() - cameraY;
+        int fieldLeft = node.getModeFieldLeft() - viewport.getCameraX();
+        int fieldTop = node.getModeFieldTop() - viewport.getCameraY();
         int fieldWidth = node.getModeFieldWidth();
         int fieldHeight = node.getModeFieldHeight();
         String labelText = node.getModeFieldLabelText();
@@ -3103,8 +2872,8 @@ public class NodeGraph {
                                              int fieldHeight, String label, boolean includeValue, String value) {
         int worldMouseX = screenToWorldX(mouseX);
         int worldMouseY = screenToWorldY(mouseY);
-        int worldFieldLeft = fieldLeft + cameraX;
-        int worldFieldTop = fieldTop + cameraY;
+        int worldFieldLeft = fieldLeft + viewport.getCameraX();
+        int worldFieldTop = fieldTop + viewport.getCameraY();
         boolean hovered = !isOverSidebar
             && worldMouseX >= worldFieldLeft
             && worldMouseX <= worldFieldLeft + fieldWidth
@@ -3115,7 +2884,7 @@ public class NodeGraph {
         float hoverProgress = getAnimatedHoverProgress(node.getId() + "#selector:" + fieldLeft + ":" + fieldTop, hovered || open);
         int accentColor = isOverSidebar ? nodeControls.toGrayscale(nodeControls.getSelectedNodeAccentColor(), 0.8f) : nodeControls.getSelectedNodeAccentColor();
         UIStyleHelper.FieldPalette palette;
-        if (compactViewportMode && !isOverSidebar) {
+        if (viewport.isCompactViewportMode() && !isOverSidebar) {
             palette = new UIStyleHelper.FieldPalette(
                 open ? UITheme.BACKGROUND_INPUT : UITheme.BACKGROUND_SECONDARY,
                 open ? accentColor : UITheme.BORDER_DEFAULT,
@@ -3168,7 +2937,7 @@ public class NodeGraph {
     }
 
     private float getAnimatedHoverProgress(Object key, boolean highlighted) {
-        if (compactViewportMode) {
+        if (viewport.isCompactViewportMode()) {
             return 0f;
         }
         return HoverAnimator.getProgress(key, highlighted, UITheme.HOVER_ANIM_MS);
@@ -3179,7 +2948,7 @@ public class NodeGraph {
     }
 
     private UIStyleHelper.FieldPalette getNodeInputPalette(boolean isOverSidebar, int accentColor, float progress, boolean active, boolean disabled) {
-        if (compactViewportMode && !isOverSidebar) {
+        if (viewport.isCompactViewportMode() && !isOverSidebar) {
             return new UIStyleHelper.FieldPalette(
                 active ? UITheme.BACKGROUND_INPUT : UITheme.BACKGROUND_SECONDARY,
                 active ? accentColor : UITheme.BORDER_DEFAULT,
@@ -3203,7 +2972,7 @@ public class NodeGraph {
 
     private UIStyleHelper.FieldPalette getLowDetailAwareFieldPalette(int backgroundColor, int borderColor, int innerBorderColor,
                                                                      int textColor, int placeholderColor, boolean isOverSidebar) {
-        if (compactViewportMode && !isOverSidebar) {
+        if (viewport.isCompactViewportMode() && !isOverSidebar) {
             innerBorderColor = borderColor;
         }
         return new UIStyleHelper.FieldPalette(backgroundColor, borderColor, innerBorderColor, textColor, placeholderColor);
@@ -3326,8 +3095,8 @@ public class NodeGraph {
         if (node == null || !node.hasScreenCoordinatePickerButton()) {
             return;
         }
-        int buttonLeft = node.getScreenCoordinatePickerButtonLeft() - cameraX;
-        int buttonTop = node.getScreenCoordinatePickerButtonTop() - cameraY;
+        int buttonLeft = node.getScreenCoordinatePickerButtonLeft() - viewport.getCameraX();
+        int buttonTop = node.getScreenCoordinatePickerButtonTop() - viewport.getCameraY();
         int buttonWidth = node.getScreenCoordinatePickerButtonWidth();
         int buttonHeight = node.getScreenCoordinatePickerButtonHeight();
 
@@ -3420,7 +3189,7 @@ public class NodeGraph {
 
     private boolean shouldBuildInlineExpressionRender(String rawText, Set<String> variableNames, boolean allowRelativeMarker) {
         return InlineVariableRenderer.shouldBuildInlineExpressionRender(
-            compactViewportMode, rawText, variableNames, allowRelativeMarker);
+            viewport.isCompactViewportMode(), rawText, variableNames, allowRelativeMarker);
     }
 
     static boolean isInlineArithmeticOperatorAt(String text, int index) {
@@ -3652,9 +3421,9 @@ public class NodeGraph {
         }
         boolean open = specializedSelectors.isRunPresetOpen() && specializedSelectors.getRunPresetNode() == node;
 
-        int fieldTop = node.getStopTargetFieldInputTop() - cameraY;
+        int fieldTop = node.getStopTargetFieldInputTop() - viewport.getCameraY();
         int fieldHeight = node.getStopTargetFieldHeight();
-        int fieldLeft = node.getStopTargetFieldLeft() - cameraX;
+        int fieldLeft = node.getStopTargetFieldLeft() - viewport.getCameraX();
         int fieldWidth = node.getStopTargetFieldWidth();
         int fieldBottom = fieldTop + fieldHeight;
         int worldMouseX = screenToWorldX(mouseX);
@@ -3745,11 +3514,11 @@ public class NodeGraph {
 
         boolean open = specializedSelectors.isSchematicOpen() && specializedSelectors.getSchematicNode() == node;
 
-        int labelTop = node.getSchematicFieldLabelTop() - cameraY;
+        int labelTop = node.getSchematicFieldLabelTop() - viewport.getCameraY();
         int labelHeight = node.getSchematicFieldLabelHeight();
-        int fieldTop = node.getSchematicFieldInputTop() - cameraY;
+        int fieldTop = node.getSchematicFieldInputTop() - viewport.getCameraY();
         int fieldHeight = node.getSchematicFieldHeight();
-        int fieldLeft = node.getSchematicFieldLeft() - cameraX;
+        int fieldLeft = node.getSchematicFieldLeft() - viewport.getCameraX();
         int fieldWidth = node.getSchematicFieldWidth();
         int worldMouseX = screenToWorldX(mouseX);
         int worldMouseY = screenToWorldY(mouseY);
@@ -3815,7 +3584,7 @@ public class NodeGraph {
 
         List<String> options = specializedSelectors.getSchematicOptions();
         int optionCount = options.isEmpty() ? 1 : options.size();
-        int listTop = node.getSchematicFieldInputTop() + node.getSchematicFieldHeight() + 2 - cameraY;
+        int listTop = node.getSchematicFieldInputTop() + node.getSchematicFieldHeight() + 2 - viewport.getCameraY();
         int screenHeight = Math.round(
             Minecraft.getInstance().getWindow().getGuiScaledHeight()
                 / Math.max(0.01f, getZoomScale())
@@ -3833,7 +3602,7 @@ public class NodeGraph {
         );
 
         int dropdownWidth = getSchematicDropdownWidth(node);
-        int listLeft = node.getSchematicFieldLeft() - cameraX;
+        int listLeft = node.getSchematicFieldLeft() - viewport.getCameraX();
         int accentColor = isOverSidebar ? nodeControls.toGrayscale(UITheme.SCHEMATIC_ACTIVE_BORDER, 0.8f) : UITheme.SCHEMATIC_ACTIVE_BORDER;
         UIStyleHelper.ScrollContainerPalette containerPalette = UIStyleHelper.getScrollContainerPalette(accentColor, animProgress, true, false);
         UIStyleHelper.ScrollContainerPalette adjustedPalette = new UIStyleHelper.ScrollContainerPalette(
@@ -3854,7 +3623,7 @@ public class NodeGraph {
                 .rows(SCHEMATIC_DROPDOWN_ROW_HEIGHT, visibleCount, options.size())
                 .scroll(specializedSelectors.getSchematicScrollOffset(), layout.maxScrollOffset, DROPDOWN_SCROLLBAR_ALLOWANCE)
                 .animation(animProgress)
-                .hoverPoint(worldMouseX - cameraX, worldMouseY - cameraY)
+                .hoverPoint(worldMouseX - viewport.getCameraX(), worldMouseY - viewport.getCameraY())
                 .colors(accentColor, textColor)
                 .textLayout(3, 4, false, shouldRenderNodeText())
                 .labels(tr("pathmind.dropdown.noSchematicsFound"), options::get)
@@ -3882,7 +3651,7 @@ public class NodeGraph {
 
         List<String> options = specializedSelectors.getRunPresetOptions();
         int optionCount = options.isEmpty() ? 1 : options.size();
-        int listTop = node.getStopTargetFieldInputTop() + node.getStopTargetFieldHeight() + 2 - cameraY;
+        int listTop = node.getStopTargetFieldInputTop() + node.getStopTargetFieldHeight() + 2 - viewport.getCameraY();
         int screenHeight = Math.round(
             Minecraft.getInstance().getWindow().getGuiScaledHeight()
                 / Math.max(0.01f, getZoomScale())
@@ -3900,7 +3669,7 @@ public class NodeGraph {
         );
 
         int dropdownWidth = getRunPresetDropdownWidth(node);
-        int listLeft = node.getStopTargetFieldLeft() - cameraX;
+        int listLeft = node.getStopTargetFieldLeft() - viewport.getCameraX();
         int accentColor = isOverSidebar ? nodeControls.toGrayscale(nodeControls.getSelectedNodeAccentColor(), 0.8f) : nodeControls.getSelectedNodeAccentColor();
         UIStyleHelper.ScrollContainerPalette containerPalette = UIStyleHelper.getScrollContainerPalette(accentColor, animProgress, true, false);
         UIStyleHelper.ScrollContainerPalette adjustedPalette = new UIStyleHelper.ScrollContainerPalette(
@@ -3921,7 +3690,7 @@ public class NodeGraph {
                 .rows(SCHEMATIC_DROPDOWN_ROW_HEIGHT, visibleCount, options.size())
                 .scroll(specializedSelectors.getRunPresetScrollOffset(), layout.maxScrollOffset, DROPDOWN_SCROLLBAR_ALLOWANCE)
                 .animation(animProgress)
-                .hoverPoint(worldMouseX - cameraX, worldMouseY - cameraY)
+                .hoverPoint(worldMouseX - viewport.getCameraX(), worldMouseY - viewport.getCameraY())
                 .colors(accentColor, textColor)
                 .textLayout(3, 4, false, shouldRenderNodeText())
                 .labels(tr("pathmind.dropdown.noPresetsFound"), options::get)
@@ -4333,20 +4102,20 @@ public class NodeGraph {
     private DropdownController.Rect computeModeDropdownAnchor(Node node) {
         if (node.getType() == NodeType.WAIT || node.getType() == NodeType.PARAM_DURATION) {
             return new DropdownController.Rect(
-                node.getAmountFieldLeft() - cameraX,
-                node.getAmountFieldLabelTop() - cameraY,
+                node.getAmountFieldLeft() - viewport.getCameraX(),
+                node.getAmountFieldLabelTop() - viewport.getCameraY(),
                 node.getAmountFieldWidth(),
                 node.getAmountFieldLabelHeight());
         } else if (node.showsModeFieldAboveParameterSlot()) {
             return new DropdownController.Rect(
-                node.getModeFieldLeft() - cameraX,
-                node.getModeFieldTop() - cameraY,
+                node.getModeFieldLeft() - viewport.getCameraX(),
+                node.getModeFieldTop() - viewport.getCameraY(),
                 node.getModeFieldWidth(),
                 node.getModeFieldHeight());
         }
         return new DropdownController.Rect(
-            nodeControls.getParameterFieldLeft(node) - cameraX,
-            node.getY() - cameraY + 18,
+            nodeControls.getParameterFieldLeft(node) - viewport.getCameraX(),
+            node.getY() - viewport.getCameraY() + 18,
             nodeControls.getParameterFieldWidth(node),
             nodeControls.getParameterFieldHeight());
     }
@@ -5030,11 +4799,11 @@ public class NodeGraph {
     }
     
     public int getCameraX() {
-        return cameraX;
+        return viewport.getCameraX();
     }
     
     public int getCameraY() {
-        return cameraY;
+        return viewport.getCameraY();
     }
     
     public void setSidebarWidth(int sidebarWidth) {

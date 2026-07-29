@@ -164,13 +164,13 @@ public class Node {
     static final int SLOT_AREA_PADDING_TOP = 0;
     static final int SLOT_AREA_PADDING_BOTTOM = 6;
     static final int SLOT_VERTICAL_SPACING = 6;
-    private static final int BOOLEAN_TOGGLE_MARGIN_HORIZONTAL = 6;
-    private static final int BOOLEAN_TOGGLE_TOP_MARGIN = 8;
-    private static final int BOOLEAN_TOGGLE_HEIGHT = 16;
-    private static final int BOOLEAN_TOGGLE_BOTTOM_MARGIN = 8;
+    static final int BOOLEAN_TOGGLE_MARGIN_HORIZONTAL = 6;
+    static final int BOOLEAN_TOGGLE_TOP_MARGIN = 8;
+    static final int BOOLEAN_TOGGLE_HEIGHT = 16;
+    static final int BOOLEAN_TOGGLE_BOTTOM_MARGIN = 8;
     static final int COORDINATE_FIELD_WIDTH = 44;
     static final int COORDINATE_FIELD_HEIGHT = 16;
-    private static final int COORDINATE_FIELD_TEXT_PADDING = 3;
+    static final int COORDINATE_FIELD_TEXT_PADDING = 3;
     static final int COORDINATE_FIELD_SPACING = 6;
     static final int COORDINATE_FIELD_TOP_MARGIN = 6;
     static final int COORDINATE_FIELD_LABEL_HEIGHT = 10;
@@ -182,7 +182,7 @@ public class Node {
     static final int AMOUNT_FIELD_TOP_MARGIN = 6;
     static final int AMOUNT_FIELD_LABEL_HEIGHT = 10;
     static final int AMOUNT_FIELD_HEIGHT = 16;
-    private static final int AMOUNT_FIELD_TEXT_PADDING = 3;
+    static final int AMOUNT_FIELD_TEXT_PADDING = 3;
     static final int AMOUNT_FIELD_BOTTOM_MARGIN = 6;
     static final int WAIT_AMOUNT_FIELD_GAP = 4;
     static final int AMOUNT_TOGGLE_WIDTH = 18;
@@ -196,11 +196,11 @@ public class Node {
     static final int RANDOM_ROUNDING_TOGGLE_HEIGHT = 10;
     static final int RANDOM_ROUNDING_TOGGLE_SPACING = 6;
     static final int MESSAGE_FIELD_MARGIN_HORIZONTAL = 6;
-    private static final int MESSAGE_FIELD_TOP_MARGIN = 6;
-    private static final int MESSAGE_FIELD_LABEL_HEIGHT = 10;
-    private static final int MESSAGE_FIELD_HEIGHT = 16;
-    private static final int MESSAGE_FIELD_VERTICAL_GAP = 6;
-    private static final int MESSAGE_FIELD_BOTTOM_MARGIN = 6;
+    static final int MESSAGE_FIELD_TOP_MARGIN = 6;
+    static final int MESSAGE_FIELD_LABEL_HEIGHT = 10;
+    static final int MESSAGE_FIELD_HEIGHT = 16;
+    static final int MESSAGE_FIELD_VERTICAL_GAP = 6;
+    static final int MESSAGE_FIELD_BOTTOM_MARGIN = 6;
     static final int MESSAGE_FIELD_MIN_CONTENT_WIDTH = 120;
     static final int MESSAGE_FIELD_TEXT_PADDING = 3;
     public static final int MAX_MESSAGE_LINES = 128;
@@ -208,11 +208,11 @@ public class Node {
     static final int MESSAGE_BUTTON_SIZE = 10;
     static final int MESSAGE_BUTTON_PADDING = 4;
     static final int MESSAGE_BUTTON_SPACING = 4;
-    private static final int MESSAGE_SCOPE_MARGIN_HORIZONTAL = 6;
-    private static final int MESSAGE_SCOPE_TOP_MARGIN = 6;
-    private static final int MESSAGE_SCOPE_LABEL_HEIGHT = 10;
-    private static final int MESSAGE_SCOPE_TOGGLE_HEIGHT = 16;
-    private static final int MESSAGE_SCOPE_BOTTOM_MARGIN = 6;
+    static final int MESSAGE_SCOPE_MARGIN_HORIZONTAL = 6;
+    static final int MESSAGE_SCOPE_TOP_MARGIN = 6;
+    static final int MESSAGE_SCOPE_LABEL_HEIGHT = 10;
+    static final int MESSAGE_SCOPE_TOGGLE_HEIGHT = 16;
+    static final int MESSAGE_SCOPE_BOTTOM_MARGIN = 6;
     static final int SCHEMATIC_FIELD_TOP_MARGIN = 6;
     static final int SCHEMATIC_FIELD_LABEL_HEIGHT = 10;
     static final int SCHEMATIC_FIELD_HEIGHT = 16;
@@ -221,7 +221,7 @@ public class Node {
     static final int STOP_TARGET_FIELD_TOP_MARGIN = 6;
     static final int STOP_TARGET_FIELD_LABEL_HEIGHT = 0;
     static final int STOP_TARGET_FIELD_HEIGHT = 16;
-    private static final int STOP_TARGET_FIELD_TEXT_PADDING = 3;
+    static final int STOP_TARGET_FIELD_TEXT_PADDING = 3;
     static final int STOP_TARGET_FIELD_BOTTOM_MARGIN = 6;
     static final int STOP_TARGET_FIELD_MIN_WIDTH = 48;
     static final int RUN_PRESET_FIELD_MIN_WIDTH = 120;
@@ -229,7 +229,7 @@ public class Node {
     static final int VARIABLE_FIELD_TOP_MARGIN = 6;
     static final int VARIABLE_FIELD_LABEL_HEIGHT = 0;
     static final int VARIABLE_FIELD_HEIGHT = 16;
-    private static final int VARIABLE_FIELD_TEXT_PADDING = 3;
+    static final int VARIABLE_FIELD_TEXT_PADDING = 3;
     static final int VARIABLE_FIELD_BOTTOM_MARGIN = 6;
     static final int VARIABLE_FIELD_MIN_WIDTH = 80;
     static final int MODE_FIELD_TOP_MARGIN = 6;
@@ -237,24 +237,24 @@ public class Node {
     static final int MODE_FIELD_HEIGHT = 16;
     static final int MODE_FIELD_BOTTOM_MARGIN = 6;
     static final int BOOK_TEXT_BUTTON_MARGIN_HORIZONTAL = 6;
-    private static final int BOOK_TEXT_TOP_MARGIN = 6;
-    private static final int BOOK_TEXT_BUTTON_HEIGHT = 16;
+    static final int BOOK_TEXT_TOP_MARGIN = 6;
+    static final int BOOK_TEXT_BUTTON_HEIGHT = 16;
     static final int BOOK_TEXT_BUTTON_MIN_WIDTH = 70;
-    private static final int BOOK_TEXT_LABEL_HEIGHT = 10;
-    private static final int BOOK_TEXT_PAGE_FIELD_HEIGHT = 16;
-    private static final int BOOK_TEXT_FIELD_SPACING = 6;
-    private static final int BOOK_TEXT_BOTTOM_MARGIN = 6;
+    static final int BOOK_TEXT_LABEL_HEIGHT = 10;
+    static final int BOOK_TEXT_PAGE_FIELD_HEIGHT = 16;
+    static final int BOOK_TEXT_FIELD_SPACING = 6;
+    static final int BOOK_TEXT_BOTTOM_MARGIN = 6;
     static final int SIGN_LINE_MAX_CHARS = 15;
     static final int SIGN_MAX_LINES = 4;
     static final int SIGN_MAX_CHARS = 63;
     static final int POPUP_EDIT_BUTTON_MARGIN_HORIZONTAL = 6;
-    private static final int POPUP_EDIT_BUTTON_TOP_MARGIN = 4;
-    private static final int POPUP_EDIT_BUTTON_HEIGHT = 16;
+    static final int POPUP_EDIT_BUTTON_TOP_MARGIN = 4;
+    static final int POPUP_EDIT_BUTTON_HEIGHT = 16;
     static final int POPUP_EDIT_BUTTON_MIN_WIDTH = 70;
-    private static final int POPUP_EDIT_BUTTON_BOTTOM_MARGIN = 6;
+    static final int POPUP_EDIT_BUTTON_BOTTOM_MARGIN = 6;
     static final int TEMPLATE_NODE_WIDTH = 160;
     static final int TEMPLATE_NODE_HEIGHT = 108;
-    private static final int EVENT_NAME_FIELD_MARGIN_HORIZONTAL = 6;
+    static final int EVENT_NAME_FIELD_MARGIN_HORIZONTAL = 6;
     static final int EVENT_NAME_FIELD_TOP_MARGIN = 6;
     static final int EVENT_NAME_FIELD_HEIGHT = 16;
     static final int EVENT_NAME_FIELD_BOTTOM_MARGIN = 6;
@@ -2978,26 +2978,23 @@ public class Node {
     }
 
     public int getBooleanToggleLeft() {
-        return getX() + BOOLEAN_TOGGLE_MARGIN_HORIZONTAL;
+        return inlineFieldLayout.getBooleanToggleLeft();
     }
 
     public int getBooleanToggleTop() {
-        if (hasParameterSlot()) {
-            return NodeSlotLayout.parameterSlotsBottom(this) + PARAMETER_SLOT_BOTTOM_PADDING + BOOLEAN_TOGGLE_TOP_MARGIN;
-        }
-        return getY() + HEADER_HEIGHT + BOOLEAN_TOGGLE_TOP_MARGIN;
+        return inlineFieldLayout.getBooleanToggleTop();
     }
 
     public int getBooleanToggleWidth() {
-        return Math.max(48, getWidth() - 2 * BOOLEAN_TOGGLE_MARGIN_HORIZONTAL);
+        return inlineFieldLayout.getBooleanToggleWidth();
     }
 
     public int getBooleanToggleHeight() {
-        return BOOLEAN_TOGGLE_HEIGHT;
+        return inlineFieldLayout.getBooleanToggleHeight();
     }
 
     public int getBooleanToggleAreaHeight() {
-        return BOOLEAN_TOGGLE_TOP_MARGIN + BOOLEAN_TOGGLE_HEIGHT + BOOLEAN_TOGGLE_BOTTOM_MARGIN;
+        return inlineFieldLayout.getBooleanToggleAreaHeight();
     }
 
     public boolean supportsModeSelection() {
@@ -3254,152 +3251,119 @@ public class Node {
     }
 
     public int getMessageFieldDisplayHeight() {
-        if (!hasMessageInputFields()) {
-            return 0;
-        }
-        int count = getMessageFieldCount();
-        int blockHeight = MESSAGE_FIELD_LABEL_HEIGHT + MESSAGE_FIELD_HEIGHT + MESSAGE_FIELD_VERTICAL_GAP;
-        return MESSAGE_FIELD_TOP_MARGIN + (count * blockHeight) - MESSAGE_FIELD_VERTICAL_GAP
-            + MESSAGE_FIELD_BOTTOM_MARGIN + getMessageScopeToggleDisplayHeight();
+        return inlineFieldLayout.getMessageFieldDisplayHeight();
     }
 
     public int getMessageFieldLabelTop(int index) {
-        return getY() + HEADER_HEIGHT + MESSAGE_FIELD_TOP_MARGIN + index * (MESSAGE_FIELD_LABEL_HEIGHT + MESSAGE_FIELD_HEIGHT + MESSAGE_FIELD_VERTICAL_GAP);
+        return inlineFieldLayout.getMessageFieldLabelTop(index);
     }
 
     public int getMessageFieldInputTop(int index) {
-        return getMessageFieldLabelTop(index) + MESSAGE_FIELD_LABEL_HEIGHT;
+        return inlineFieldLayout.getMessageFieldInputTop(index);
     }
 
     public int getMessageFieldLabelHeight() {
-        return MESSAGE_FIELD_LABEL_HEIGHT;
+        return inlineFieldLayout.getMessageFieldLabelHeight();
     }
 
     public int getMessageFieldHeight() {
-        return MESSAGE_FIELD_HEIGHT;
+        return inlineFieldLayout.getMessageFieldHeight();
     }
 
     public int getMessageFieldWidth() {
-        return Math.max(MESSAGE_FIELD_MIN_CONTENT_WIDTH, getWidth() - 2 * MESSAGE_FIELD_MARGIN_HORIZONTAL);
+        return inlineFieldLayout.getMessageFieldWidth();
     }
 
     public void setMessageFieldTextWidth(int textWidth) {
-        if (!hasMessageInputFields()) {
-            return;
-        }
-        int paddedWidth = Math.max(MESSAGE_FIELD_MIN_CONTENT_WIDTH, textWidth + (MESSAGE_FIELD_TEXT_PADDING * 2));
-        layoutState.setMessageFieldContentWidthOverride(paddedWidth);
+        inlineFieldLayout.setMessageFieldTextWidth(textWidth);
     }
 
     public void setParameterFieldWidthOverride(int fieldWidth) {
-        if (!isParameterNode()) {
-            return;
-        }
-        layoutState.setParameterFieldWidthOverride(Math.max(0, fieldWidth));
+        inlineFieldLayout.setParameterFieldWidthOverride(fieldWidth);
     }
 
     public void setCoordinateFieldTextWidth(int textWidth) {
-        if (!hasCoordinateInputFields()) {
-            return;
-        }
-        int paddedWidth = Math.max(COORDINATE_FIELD_WIDTH, textWidth + (COORDINATE_FIELD_TEXT_PADDING * 2));
-        layoutState.setCoordinateFieldWidthOverride(paddedWidth);
+        inlineFieldLayout.setCoordinateFieldTextWidth(textWidth);
     }
 
     public void setAmountFieldTextWidth(int textWidth) {
-        if (!hasAmountInputField()) {
-            return;
-        }
-        int paddedWidth = Math.max(PARAMETER_SLOT_MIN_CONTENT_WIDTH, textWidth + (AMOUNT_FIELD_TEXT_PADDING * 2));
-        layoutState.setAmountFieldWidthOverride(paddedWidth);
+        inlineFieldLayout.setAmountFieldTextWidth(textWidth);
     }
 
     public void setStopTargetFieldTextWidth(int textWidth) {
-        if (!hasStopTargetInputField()) {
-            return;
-        }
-        int paddedWidth = Math.max(STOP_TARGET_FIELD_MIN_WIDTH, textWidth + (STOP_TARGET_FIELD_TEXT_PADDING * 2));
-        layoutState.setStopTargetFieldWidthOverride(paddedWidth);
+        inlineFieldLayout.setStopTargetFieldTextWidth(textWidth);
     }
 
     public void setVariableFieldTextWidth(int textWidth) {
-        if (!hasVariableInputField()) {
-            return;
-        }
-        int paddedWidth = Math.max(VARIABLE_FIELD_MIN_WIDTH, textWidth + (VARIABLE_FIELD_TEXT_PADDING * 2));
-        layoutState.setVariableFieldWidthOverride(paddedWidth);
+        inlineFieldLayout.setVariableFieldTextWidth(textWidth);
     }
 
     public int getMessageFieldLeft() {
-        return getX() + MESSAGE_FIELD_MARGIN_HORIZONTAL;
+        return inlineFieldLayout.getMessageFieldLeft();
     }
 
     public int getMessageAddButtonLeft() {
-        return getX() + getWidth() - MESSAGE_BUTTON_PADDING - MESSAGE_BUTTON_SIZE;
+        return inlineFieldLayout.getMessageAddButtonLeft();
     }
 
     public int getMessageRemoveButtonLeft() {
-        return getMessageAddButtonLeft() - MESSAGE_BUTTON_SPACING - MESSAGE_BUTTON_SIZE;
+        return inlineFieldLayout.getMessageRemoveButtonLeft();
     }
 
     public int getMessageButtonTop() {
-        return getY() + 3;
+        return inlineFieldLayout.getMessageButtonTop();
     }
 
     public int getMessageButtonSize() {
-        return MESSAGE_BUTTON_SIZE;
+        return inlineFieldLayout.getMessageButtonSize();
     }
 
     public int getMessageButtonsWidth() {
-        return (MESSAGE_BUTTON_SIZE * 2) + MESSAGE_BUTTON_SPACING + (MESSAGE_BUTTON_PADDING * 2);
+        return inlineFieldLayout.getMessageButtonsWidth();
     }
 
     public int getBooleanOperatorAddButtonLeft() {
-        return getX() + getWidth() - MESSAGE_BUTTON_PADDING - MESSAGE_BUTTON_SIZE;
+        return inlineFieldLayout.getBooleanOperatorAddButtonLeft();
     }
 
     public int getBooleanOperatorRemoveButtonLeft() {
-        return getBooleanOperatorAddButtonLeft() - MESSAGE_BUTTON_SPACING - MESSAGE_BUTTON_SIZE;
+        return inlineFieldLayout.getBooleanOperatorRemoveButtonLeft();
     }
 
     public int getBooleanOperatorButtonTop() {
-        return getY() + 3;
+        return inlineFieldLayout.getBooleanOperatorButtonTop();
     }
 
     public int getBooleanOperatorButtonSize() {
-        return MESSAGE_BUTTON_SIZE;
+        return inlineFieldLayout.getBooleanOperatorButtonSize();
     }
 
     public int getMessageScopeToggleDisplayHeight() {
-        if (!hasMessageScopeToggle()) {
-            return 0;
-        }
-        return MESSAGE_SCOPE_TOP_MARGIN + MESSAGE_SCOPE_LABEL_HEIGHT + MESSAGE_SCOPE_TOGGLE_HEIGHT + MESSAGE_SCOPE_BOTTOM_MARGIN;
+        return inlineFieldLayout.getMessageScopeToggleDisplayHeight();
     }
 
     public int getMessageScopeLabelTop() {
-        return getMessageFieldInputTop(getMessageFieldCount() - 1) + MESSAGE_FIELD_HEIGHT
-            + MESSAGE_FIELD_BOTTOM_MARGIN + MESSAGE_SCOPE_TOP_MARGIN;
+        return inlineFieldLayout.getMessageScopeLabelTop();
     }
 
     public int getMessageScopeToggleTop() {
-        return getMessageScopeLabelTop() + MESSAGE_SCOPE_LABEL_HEIGHT;
+        return inlineFieldLayout.getMessageScopeToggleTop();
     }
 
     public int getMessageScopeLabelHeight() {
-        return MESSAGE_SCOPE_LABEL_HEIGHT;
+        return inlineFieldLayout.getMessageScopeLabelHeight();
     }
 
     public int getMessageScopeToggleLeft() {
-        return getX() + MESSAGE_SCOPE_MARGIN_HORIZONTAL;
+        return inlineFieldLayout.getMessageScopeToggleLeft();
     }
 
     public int getMessageScopeToggleWidth() {
-        return Math.max(MESSAGE_FIELD_MIN_CONTENT_WIDTH, getWidth() - 2 * MESSAGE_SCOPE_MARGIN_HORIZONTAL);
+        return inlineFieldLayout.getMessageScopeToggleWidth();
     }
 
     public int getMessageScopeToggleHeight() {
-        return MESSAGE_SCOPE_TOGGLE_HEIGHT;
+        return inlineFieldLayout.getMessageScopeToggleHeight();
     }
 
     // Text input methods for WRITE_BOOK and WRITE_SIGN nodes
@@ -3534,50 +3498,43 @@ public class Node {
     }
 
     public int getBookTextDisplayHeight() {
-        if (!hasBookTextInput()) {
-            return 0;
-        }
-        if (hasBookTextPageInput()) {
-            return BOOK_TEXT_TOP_MARGIN + BOOK_TEXT_BUTTON_HEIGHT + BOOK_TEXT_FIELD_SPACING
-                + BOOK_TEXT_LABEL_HEIGHT + BOOK_TEXT_PAGE_FIELD_HEIGHT + BOOK_TEXT_BOTTOM_MARGIN;
-        }
-        return BOOK_TEXT_TOP_MARGIN + BOOK_TEXT_BUTTON_HEIGHT + BOOK_TEXT_BOTTOM_MARGIN;
+        return inlineFieldLayout.getBookTextDisplayHeight();
     }
 
     public int getBookTextButtonTop() {
-        return getY() + HEADER_HEIGHT + BOOK_TEXT_TOP_MARGIN;
+        return inlineFieldLayout.getBookTextButtonTop();
     }
 
     public int getBookTextButtonLeft() {
-        return getX() + BOOK_TEXT_BUTTON_MARGIN_HORIZONTAL;
+        return inlineFieldLayout.getBookTextButtonLeft();
     }
 
     public int getBookTextButtonWidth() {
-        return Math.max(BOOK_TEXT_BUTTON_MIN_WIDTH, getWidth() - 2 * BOOK_TEXT_BUTTON_MARGIN_HORIZONTAL);
+        return inlineFieldLayout.getBookTextButtonWidth();
     }
 
     public int getBookTextButtonHeight() {
-        return BOOK_TEXT_BUTTON_HEIGHT;
+        return inlineFieldLayout.getBookTextButtonHeight();
     }
 
     public int getBookTextPageLabelTop() {
-        return getBookTextButtonTop() + BOOK_TEXT_BUTTON_HEIGHT + BOOK_TEXT_FIELD_SPACING;
+        return inlineFieldLayout.getBookTextPageLabelTop();
     }
 
     public int getBookTextPageFieldTop() {
-        return getBookTextPageLabelTop() + BOOK_TEXT_LABEL_HEIGHT;
+        return inlineFieldLayout.getBookTextPageFieldTop();
     }
 
     public int getBookTextPageFieldLeft() {
-        return getX() + BOOK_TEXT_BUTTON_MARGIN_HORIZONTAL;
+        return inlineFieldLayout.getBookTextPageFieldLeft();
     }
 
     public int getBookTextPageFieldWidth() {
-        return getWidth() - 2 * BOOK_TEXT_BUTTON_MARGIN_HORIZONTAL;
+        return inlineFieldLayout.getBookTextPageFieldWidth();
     }
 
     public int getBookTextPageFieldHeight() {
-        return BOOK_TEXT_PAGE_FIELD_HEIGHT;
+        return inlineFieldLayout.getBookTextPageFieldHeight();
     }
 
     public boolean hasPopupEditButton() {
@@ -3585,47 +3542,39 @@ public class Node {
     }
 
     public int getPopupEditButtonLeft() {
-        return getX() + POPUP_EDIT_BUTTON_MARGIN_HORIZONTAL;
+        return inlineFieldLayout.getPopupEditButtonLeft();
     }
 
     public int getPopupEditButtonTop() {
-        if (isParameterNode()
-            && type != NodeType.SENSOR_POSITION_OF
-            && type != NodeType.SENSOR_DISTANCE_BETWEEN) {
-            return getY() + HEADER_HEIGHT + getParameterDisplayHeight() + POPUP_EDIT_BUTTON_TOP_MARGIN;
-        }
-        return getY() + HEADER_HEIGHT;
+        return inlineFieldLayout.getPopupEditButtonTop();
     }
 
     public int getPopupEditButtonWidth() {
-        return Math.max(POPUP_EDIT_BUTTON_MIN_WIDTH, getWidth() - 2 * POPUP_EDIT_BUTTON_MARGIN_HORIZONTAL);
+        return inlineFieldLayout.getPopupEditButtonWidth();
     }
 
     public int getPopupEditButtonHeight() {
-        return POPUP_EDIT_BUTTON_HEIGHT;
+        return inlineFieldLayout.getPopupEditButtonHeight();
     }
 
     public int getPopupEditButtonDisplayHeight() {
-        if (!hasPopupEditButton()) {
-            return 0;
-        }
-        return POPUP_EDIT_BUTTON_TOP_MARGIN + POPUP_EDIT_BUTTON_HEIGHT + POPUP_EDIT_BUTTON_BOTTOM_MARGIN;
+        return inlineFieldLayout.getPopupEditButtonDisplayHeight();
     }
 
     public int getEventNameFieldLeft() {
-        return getX() + EVENT_NAME_FIELD_MARGIN_HORIZONTAL;
+        return inlineFieldLayout.getEventNameFieldLeft();
     }
 
     public int getEventNameFieldTop() {
-        return getY() + HEADER_HEIGHT + EVENT_NAME_FIELD_TOP_MARGIN;
+        return inlineFieldLayout.getEventNameFieldTop();
     }
 
     public int getEventNameFieldWidth() {
-        return getWidth() - 2 * EVENT_NAME_FIELD_MARGIN_HORIZONTAL;
+        return inlineFieldLayout.getEventNameFieldWidth();
     }
 
     public int getEventNameFieldHeight() {
-        return EVENT_NAME_FIELD_HEIGHT;
+        return inlineFieldLayout.getEventNameFieldHeight();
     }
 
     /**

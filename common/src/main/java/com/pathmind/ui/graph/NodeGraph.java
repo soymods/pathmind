@@ -217,18 +217,35 @@ public class NodeGraph {
         @Override public void closeContextMenu() { NodeGraph.this.closeContextMenu(); }
         @Override public void closeNodeContextMenu() { NodeGraph.this.closeNodeContextMenu(); }
     });
+    private final GraphContextMenuController contextMenus =
+        new GraphContextMenuController(new GraphContextMenuController.Host() {
+            @Override public float zoomScale() { return getZoomScale(); }
+            @Override public int screenToWorldX(int screenX) {
+                return NodeGraph.this.screenToWorldX(screenX);
+            }
+            @Override public int screenToWorldY(int screenY) {
+                return NodeGraph.this.screenToWorldY(screenY);
+            }
+            @Override public int worldToScreenX(int worldX) {
+                return NodeGraph.this.worldToScreenX(worldX);
+            }
+            @Override public int worldToScreenY(int worldY) {
+                return NodeGraph.this.worldToScreenY(worldY);
+            }
+            @Override public boolean isNodeSelected(Node node) {
+                return NodeGraph.this.isNodeSelected(node);
+            }
+            @Override public void selectNode(Node node) { NodeGraph.this.selectNode(node); }
+            @Override public void copySelectedNodeToClipboard() {
+                NodeGraph.this.copySelectedNodeToClipboard();
+            }
+            @Override public void duplicateSelectedNode() { NodeGraph.this.duplicateSelectedNode(); }
+            @Override public void pasteClipboardNode() { NodeGraph.this.pasteClipboardNode(); }
+            @Override public void deleteSelectedNode() { NodeGraph.this.deleteSelectedNode(); }
+        });
 
     private final Map<Node, AnimatedValue> amountToggleAnimations = new WeakHashMap<>();
     private final Map<Node, AnimatedValue> randomRoundingToggleAnimations = new WeakHashMap<>();
-
-    // Context menu state
-    private com.pathmind.ui.menu.ContextMenu contextMenu = null;
-    private com.pathmind.ui.menu.NodeContextMenu nodeContextMenu = null;
-    private int contextMenuWorldX = 0;
-    private int contextMenuWorldY = 0;
-    private int nodeContextMenuWorldX = 0;
-    private int nodeContextMenuWorldY = 0;
-    private Node nodeContextMenuTarget = null;
 
     // Double-click detection
     private int sidebarWidthForRendering = 180;
@@ -2057,56 +2074,33 @@ public class NodeGraph {
      * Shows the context menu at the specified screen position.
      */
     public void showContextMenu(int screenX, int screenY, com.pathmind.ui.sidebar.Sidebar sidebar, int screenWidth, int screenHeight) {
-        closeNodeContextMenu();
-        if (contextMenu == null) {
-            contextMenu = new com.pathmind.ui.menu.ContextMenu(sidebar);
-        }
-        contextMenu.setScale(getZoomScale());
-        // Store the world coordinates where nodes should be created
-        contextMenuWorldX = screenToWorldX(screenX);
-        contextMenuWorldY = screenToWorldY(screenY);
-        contextMenu.setAnchorScreen(screenX, screenY);
-        contextMenu.showAt(screenX, screenY, screenWidth, screenHeight);
+        contextMenus.showContextMenu(screenX, screenY, sidebar, screenWidth, screenHeight);
     }
 
     public void showNodeContextMenu(int screenX, int screenY, Node targetNode, int screenWidth, int screenHeight) {
-        closeContextMenu();
-        if (nodeContextMenu == null) {
-            nodeContextMenu = new com.pathmind.ui.menu.NodeContextMenu();
-        }
-        nodeContextMenuTarget = targetNode;
-        nodeContextMenuWorldX = screenToWorldX(screenX);
-        nodeContextMenuWorldY = screenToWorldY(screenY);
-        nodeContextMenu.setScale(getZoomScale());
-        nodeContextMenu.setAnchorScreen(screenX, screenY);
-        nodeContextMenu.showAt(screenX, screenY, screenWidth, screenHeight);
+        contextMenus.showNodeContextMenu(screenX, screenY, targetNode, screenWidth, screenHeight);
     }
 
     /**
      * Closes the context menu if it's open.
      */
     public void closeContextMenu() {
-        if (contextMenu != null) {
-            contextMenu.close();
-        }
+        contextMenus.closeContextMenu();
     }
 
     public void closeNodeContextMenu() {
-        if (nodeContextMenu != null) {
-            nodeContextMenu.close();
-        }
-        nodeContextMenuTarget = null;
+        contextMenus.closeNodeContextMenu();
     }
 
     /**
      * Returns true if the context menu is open.
      */
     public boolean isContextMenuOpen() {
-        return contextMenu != null && contextMenu.isOpen();
+        return contextMenus.isContextMenuOpen();
     }
 
     public boolean isNodeContextMenuOpen() {
-        return nodeContextMenu != null && nodeContextMenu.isOpen();
+        return contextMenus.isNodeContextMenuOpen();
     }
 
     public boolean isStartModeDropdownOpen() {
@@ -2117,23 +2111,11 @@ public class NodeGraph {
      * Updates the context menu hover state.
      */
     public void updateContextMenuHover(int mouseX, int mouseY) {
-        if (contextMenu != null && contextMenu.isOpen()) {
-            int anchorScreenX = worldToScreenX(contextMenuWorldX);
-            int anchorScreenY = worldToScreenY(contextMenuWorldY);
-            contextMenu.setAnchorScreen(anchorScreenX, anchorScreenY);
-            contextMenu.setScale(getZoomScale());
-            contextMenu.updateHover(mouseX, mouseY);
-        }
+        contextMenus.updateContextMenuHover(mouseX, mouseY);
     }
 
     public void updateNodeContextMenuHover(int mouseX, int mouseY) {
-        if (nodeContextMenu != null && nodeContextMenu.isOpen()) {
-            int anchorScreenX = worldToScreenX(nodeContextMenuWorldX);
-            int anchorScreenY = worldToScreenY(nodeContextMenuWorldY);
-            nodeContextMenu.setAnchorScreen(anchorScreenX, anchorScreenY);
-            nodeContextMenu.setScale(getZoomScale());
-            nodeContextMenu.updateHover(mouseX, mouseY);
-        }
+        contextMenus.updateNodeContextMenuHover(mouseX, mouseY);
     }
 
     public boolean handleStartModeDropdownClick(int mouseX, int mouseY) {
@@ -2148,73 +2130,22 @@ public class NodeGraph {
      * Handles a click on the context menu. Returns the selected NodeType, or null.
      */
     public ContextMenuSelection handleContextMenuClick(int mouseX, int mouseY) {
-        if (contextMenu != null && contextMenu.isOpen()) {
-            int anchorScreenX = worldToScreenX(contextMenuWorldX);
-            int anchorScreenY = worldToScreenY(contextMenuWorldY);
-            contextMenu.setAnchorScreen(anchorScreenX, anchorScreenY);
-            contextMenu.setScale(getZoomScale());
-            return contextMenu.handleClick(mouseX, mouseY);
-        }
-        return null;
+        return contextMenus.handleContextMenuClick(mouseX, mouseY);
     }
 
     public boolean handleNodeContextMenuClick(int mouseX, int mouseY) {
-        if (nodeContextMenu == null || !nodeContextMenu.isOpen()) {
-            return false;
-        }
-        int anchorScreenX = worldToScreenX(nodeContextMenuWorldX);
-        int anchorScreenY = worldToScreenY(nodeContextMenuWorldY);
-        nodeContextMenu.setAnchorScreen(anchorScreenX, anchorScreenY);
-        nodeContextMenu.setScale(getZoomScale());
-        com.pathmind.ui.menu.NodeContextMenuAction action = nodeContextMenu.handleClick(mouseX, mouseY);
-        if (action == null) {
-            closeNodeContextMenu();
-            return true;
-        }
-
-        if (nodeContextMenuTarget != null && !isNodeSelected(nodeContextMenuTarget)) {
-            selectNode(nodeContextMenuTarget);
-        }
-
-        switch (action) {
-            case COPY:
-                copySelectedNodeToClipboard();
-                break;
-            case DUPLICATE:
-                duplicateSelectedNode();
-                break;
-            case PASTE:
-                pasteClipboardNode();
-                break;
-            case DELETE:
-                deleteSelectedNode();
-                break;
-        }
-        closeNodeContextMenu();
-        return true;
+        return contextMenus.handleNodeContextMenuClick(mouseX, mouseY);
     }
 
     /**
      * Renders the context menu.
      */
     public void renderContextMenu(GuiGraphics context, Font textRenderer, int mouseX, int mouseY) {
-        if (contextMenu != null && contextMenu.isOpen()) {
-            int anchorScreenX = worldToScreenX(contextMenuWorldX);
-            int anchorScreenY = worldToScreenY(contextMenuWorldY);
-            contextMenu.setAnchorScreen(anchorScreenX, anchorScreenY);
-            contextMenu.setScale(getZoomScale());
-            contextMenu.render(context, textRenderer, mouseX, mouseY);
-        }
+        contextMenus.renderContextMenu(context, textRenderer, mouseX, mouseY);
     }
 
     public void renderNodeContextMenu(GuiGraphics context, Font textRenderer) {
-        if (nodeContextMenu != null && nodeContextMenu.isOpen()) {
-            int anchorScreenX = worldToScreenX(nodeContextMenuWorldX);
-            int anchorScreenY = worldToScreenY(nodeContextMenuWorldY);
-            nodeContextMenu.setAnchorScreen(anchorScreenX, anchorScreenY);
-            nodeContextMenu.setScale(getZoomScale());
-            nodeContextMenu.render(context, textRenderer);
-        }
+        contextMenus.renderNodeContextMenu(context, textRenderer);
     }
 
     public void renderStartModeDropdown(GuiGraphics context, Font textRenderer, int mouseX, int mouseY) {
@@ -2236,12 +2167,13 @@ public class NodeGraph {
      * Adds a node from the context menu at the stored right-click position.
      */
     public Node addNodeFromContextMenu(NodeType type) {
-        return addNodeAtPosition(type, contextMenuWorldX, contextMenuWorldY);
+        return addNodeAtPosition(type, contextMenus.contextMenuWorldX(), contextMenus.contextMenuWorldY());
     }
 
     public Node addRoutineFromContextMenu(NodeGraphData.RoutineDefinitionData routine) {
         if (routine == null) return null;
-        Node node = Node.createRoutineCall(routine, contextMenuWorldX, contextMenuWorldY);
+        Node node = Node.createRoutineCall(
+            routine, contextMenus.contextMenuWorldX(), contextMenus.contextMenuWorldY());
         addNode(node);
         selectNode(node);
         return node;
@@ -2266,18 +2198,7 @@ public class NodeGraph {
      * Returns true if the context menu handled the scroll.
      */
     public boolean handleContextMenuScroll(int mouseX, int mouseY, double amount) {
-        if (contextMenu != null && contextMenu.isOpen()) {
-            int anchorScreenX = worldToScreenX(contextMenuWorldX);
-            int anchorScreenY = worldToScreenY(contextMenuWorldY);
-            contextMenu.setAnchorScreen(anchorScreenX, anchorScreenY);
-            contextMenu.setScale(getZoomScale());
-            // Check if mouse is over the menu and handle scroll
-            if (contextMenu.isMouseOver(mouseX, mouseY)) {
-                contextMenu.handleScroll(amount);
-                return true;
-            }
-        }
-        return false;
+        return contextMenus.handleContextMenuScroll(mouseX, mouseY, amount);
     }
 
     public void updatePanning(int mouseX, int mouseY) {

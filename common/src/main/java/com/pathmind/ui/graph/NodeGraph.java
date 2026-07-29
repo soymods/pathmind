@@ -160,7 +160,7 @@ public class NodeGraph {
             @Override public void setRoutineRegistry(
                 List<NodeGraphData.RoutineDefinitionData> routines
             ) {
-                routineRegistry = routines;
+                routineWorkspace.setRoutineRegistry(routines);
             }
             @Override public void invalidateRenderCaches() {
                 NodeGraph.this.invalidateRenderCaches();
@@ -202,7 +202,9 @@ public class NodeGraph {
         new NodeLifecycleController(new NodeLifecycleController.Host() {
             @Override public List<Node> nodes() { return nodes; }
             @Override public List<NodeConnection> connections() { return connections; }
-            @Override public String activeRoutineWorkspaceId() { return activeRoutineWorkspaceId; }
+            @Override public String activeRoutineWorkspaceId() {
+                return routineWorkspace.getActiveRoutineWorkspaceId();
+            }
             @Override public int nextStartNodeNumber() { return nextStartNodeNumber; }
             @Override public void setNextStartNodeNumber(int value) {
                 nextStartNodeNumber = value;
@@ -263,6 +265,18 @@ public class NodeGraph {
                 return selectionController.getSelectedNodes();
             }
             @Override public void clearSelection() { NodeGraph.this.clearSelection(); }
+        });
+    private final RoutineWorkspaceController routineWorkspace =
+        new RoutineWorkspaceController(new RoutineWorkspaceController.Host() {
+            @Override public List<Node> nodes() { return nodes; }
+            @Override public void invalidateValidation() {
+                NodeGraph.this.invalidateValidation();
+            }
+            @Override public String liveRoutineParameterValue(
+                Node node, String parameterName
+            ) {
+                return NodeGraph.this.liveRoutineParameterValue(node, parameterName);
+            }
         });
     private final ConnectionController connectionController = new ConnectionController(new ConnectionController.Host() {
         @Override public List<Node> getNodes() { return nodes; }
@@ -388,9 +402,6 @@ public class NodeGraph {
 
     private String activePreset;
     private java.util.function.BooleanSupplier workspaceSaveHandler;
-    private List<NodeGraphData.RoutineDefinitionData> routineRegistry = new ArrayList<>();
-    private List<NodeGraphData.RoutineDefinitionData> routineValidationRegistry = List.of();
-    private String activeRoutineWorkspaceId = "";
 
     private static final int PARAMETER_INPUT_HEIGHT = 16;
     private static final int PARAMETER_INPUT_GAP = 4;
@@ -693,7 +704,9 @@ public class NodeGraph {
             @Override public void positionNewNode(Node node, int worldMouseX, int worldMouseY) {
                 NodeGraph.this.positionNewNode(node, worldMouseX, worldMouseY);
             }
-            @Override public String activeRoutineWorkspaceId() { return activeRoutineWorkspaceId; }
+            @Override public String activeRoutineWorkspaceId() {
+                return routineWorkspace.getActiveRoutineWorkspaceId();
+            }
             @Override public void assignNewStartNodeNumber(Node node) {
                 NodeGraph.this.assignNewStartNodeNumber(node);
             }
@@ -4209,7 +4222,7 @@ public class NodeGraph {
         hoveredStartNode = startNode;
 
         ExecutionManager manager = ExecutionManager.getInstance();
-        manager.setWorkspaceGraph(nodes, connections, routineRegistry);
+        manager.setWorkspaceGraph(nodes, connections, routineWorkspace.routineRegistry());
         if (manager.isChainActive(startNode)) {
             return manager.requestStopForStart(startNode);
         }
@@ -4286,7 +4299,8 @@ public class NodeGraph {
         stickyNoteController.commitPendingEdit();
         boolean saved = workspaceSaveHandler != null
             ? workspaceSaveHandler.getAsBoolean()
-            : NodeGraphPersistence.saveNodeGraphForPreset(activePreset, nodes, connections, routineRegistry);
+            : NodeGraphPersistence.saveNodeGraphForPreset(
+                activePreset, nodes, connections, routineWorkspace.routineRegistry());
         if (saved) {
             workspaceDirty = false;
             invalidateTemplatePreviewCachesForPreset(activePreset);
@@ -4375,10 +4389,9 @@ public class NodeGraph {
 
     public GraphValidationResult getValidationResult(boolean baritoneAvailable, boolean uiUtilsAvailable) {
         if (validationDirty) {
-            List<NodeGraphData.RoutineDefinitionData> validationRoutines = routineValidationRegistry.isEmpty()
-                ? routineRegistry : routineValidationRegistry;
             cachedValidationResult = GraphValidator.validate(nodes, connections, activePreset, baritoneAvailable,
-                uiUtilsAvailable, validationRoutines, activeRoutineWorkspaceId);
+                uiUtilsAvailable, routineWorkspace.validationRoutines(),
+                routineWorkspace.getActiveRoutineWorkspaceId());
             validationDirty = false;
         }
         return cachedValidationResult;
@@ -4436,7 +4449,7 @@ public class NodeGraph {
 
     public NodeGraphData exportGraphDataSnapshot() {
         NodeGraphData snapshot = buildGraphData(new ArrayList<>(nodes), new ArrayList<>(connections), null);
-        snapshot.setRoutines(new ArrayList<>(routineRegistry));
+        snapshot.setRoutines(new ArrayList<>(routineWorkspace.routineRegistry()));
         return snapshot;
     }
 
@@ -4475,60 +4488,28 @@ public class NodeGraph {
     }
 
     public void setActiveRoutineWorkspaceId(String routineId) {
-        String resolved = routineId == null ? "" : routineId;
-        if (!resolved.equals(activeRoutineWorkspaceId)) invalidateValidation();
-        activeRoutineWorkspaceId = resolved;
+        routineWorkspace.setActiveRoutineWorkspaceId(routineId);
     }
 
     public String getActiveRoutineWorkspaceId() {
-        return activeRoutineWorkspaceId;
+        return routineWorkspace.getActiveRoutineWorkspaceId();
     }
 
     public List<NodeGraphData.RoutineDefinitionData> getRoutineDefinitions() {
-        return List.copyOf(routineRegistry);
+        return routineWorkspace.getRoutineDefinitions();
     }
 
     public void setRoutineValidationContext(List<NodeGraphData.RoutineDefinitionData> routines) {
-        List<NodeGraphData.RoutineDefinitionData> resolved = routines == null ? List.of() : List.copyOf(routines);
-        if (!resolved.equals(routineValidationRegistry)) {
-            routineValidationRegistry = resolved;
-            invalidateValidation();
-        }
+        routineWorkspace.setRoutineValidationContext(routines);
     }
 
     /** Mirrors live routine card edits into sidebar metadata, including the current uncommitted text buffer. */
     public void syncRoutineDefinitionMetadata(NodeGraphData.RoutineDefinitionData routine) {
-        if (routine == null || routine.getId() == null || !routine.getId().equals(activeRoutineWorkspaceId)) {
-            return;
-        }
-        for (Node node : nodes) {
-            if (node == null || !routine.getId().equals(node.getRoutineId())) continue;
-            if (node.getType() == NodeType.ROUTINE_ENTRY) {
-                String name = liveRoutineParameterValue(node, "Name");
-                if (!name.isBlank()) routine.setName(name.trim());
-                continue;
-            }
-            if (node.getType() != NodeType.ROUTINE_INPUT || node.getRoutineInputId().isBlank()) continue;
-            NodeGraphData.RoutineInputData input = routine.getInputs().stream()
-                .filter(candidate -> node.getRoutineInputId().equals(candidate.getId())).findFirst().orElse(null);
-            if (input == null) continue;
-            String label = liveRoutineParameterValue(node, "Label");
-            if (!label.isBlank()) input.setLabel(label.trim());
-            input.setValueKind(com.pathmind.routines.RoutineValueKind.fromSerialized(
-                liveRoutineParameterValue(node, "ValueKind")).name());
-            input.setDefaultValue(liveRoutineParameterValue(node, "Default"));
-            input.setRequired(Boolean.parseBoolean(liveRoutineParameterValue(node, "Required")));
-        }
-        syncRoutineInvocations();
+        routineWorkspace.syncRoutineDefinitionMetadata(routine);
     }
 
     private void syncRoutineInvocations() {
-        if (activeRoutineWorkspaceId != null && !activeRoutineWorkspaceId.isBlank()) return;
-        for (Node node : nodes) {
-            if (node == null || node.getType() != NodeType.ROUTINE_CALL) continue;
-            routineRegistry.stream().filter(routine -> node.getRoutineId().equals(routine.getId())).findFirst()
-                .ifPresent(node::syncRoutineCallDefinition);
-        }
+        routineWorkspace.syncRoutineInvocations();
     }
 
     private String liveRoutineParameterValue(Node node, String parameterName) {

@@ -1,7 +1,9 @@
 package com.pathmind.nodes;
 
+import com.pathmind.execution.ExecutionManager;
 import com.pathmind.util.BlockSelection;
 import com.pathmind.util.EntityStateOptions;
+import com.pathmind.util.GameProfileCompatibilityBridge;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -9,6 +11,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.regex.Pattern;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -18,10 +21,12 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
 final class NodeWorldTargetResolver {
     private static final Pattern UNSAFE_RESOURCE_ID_PATTERN = Pattern.compile("[^a-z0-9_:/.-]");
@@ -610,6 +615,268 @@ final class NodeWorldTargetResolver {
                 && !entity.getItem().isEmpty()
                 && entity.getItem().is(item)
         );
+    }
+
+    Entity resolveListItemEntity(Node listNode, RuntimeParameterData data, CompletableFuture<Void> future) {
+        if (listNode == null) {
+            return null;
+        }
+        net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
+        if (client == null || client.player == null || client.level == null) {
+            return null;
+        }
+
+        String listName = Node.getParameterString(listNode, "List");
+        if (listName == null || listName.trim().isEmpty()) {
+            owner.sendNodeErrorMessage(client, Node.tr("pathmind.error.listNameEmpty"));
+            if (future != null && !future.isDone()) {
+                future.complete(null);
+            }
+            return null;
+        }
+
+        ExecutionManager.RuntimeList list = resolveRuntimeList(listNode);
+        if (list == null || list.getEntries().isEmpty()) {
+            owner.sendNodeErrorMessage(client, Node.tr("pathmind.error.listEmptyOrMissing", listName.trim()));
+            if (future != null && !future.isDone()) {
+                future.complete(null);
+            }
+            return null;
+        }
+
+        int index = Node.parseNodeInt(listNode, "Index", 1);
+        if (index <= 0) {
+            owner.sendNodeErrorMessage(client, Node.tr("pathmind.error.listIndexPositive"));
+            if (future != null && !future.isDone()) {
+                future.complete(null);
+            }
+            return null;
+        }
+
+        int listIndex = index - 1;
+        if (listIndex >= list.getEntries().size()) {
+            owner.sendNodeErrorMessage(client, Node.tr("pathmind.error.listNoItem", listName.trim(), index));
+            if (future != null && !future.isDone()) {
+                future.complete(null);
+            }
+            return null;
+        }
+
+        String entry = list.getEntries().get(listIndex);
+        if (entry == null || entry.isEmpty()) {
+            owner.sendNodeErrorMessage(client, Node.tr("pathmind.error.listNoItem", listName.trim(), index));
+            if (future != null && !future.isDone()) {
+                future.complete(null);
+            }
+            return null;
+        }
+
+        if (entry.startsWith(Node.LIST_ENTRY_SERIALIZED_PREFIX)) {
+            Node snapshot = owner.resolveListItemValueNode(listNode, future, true, data);
+            if (snapshot == null) {
+                return null;
+            }
+            NodeType snapshotType = snapshot.getType();
+            if (snapshotType != NodeType.PARAM_ENTITY
+                && snapshotType != NodeType.PARAM_PLAYER
+                && snapshotType != NodeType.PARAM_ITEM) {
+                return null;
+            }
+            RuntimeParameterData resolvedData = data != null ? data : new RuntimeParameterData();
+            Optional<Vec3> resolved = owner.resolvePositionTarget(snapshot, resolvedData, future);
+            if (resolved.isEmpty()) {
+                return null;
+            }
+            return resolvedData.targetEntity;
+        }
+
+        if (list.getElementType() == NodeType.PARAM_GUI) {
+            if (owner.getParameter("Slot") == null && owner.getParameter("SourceSlot") == null && owner.getParameter("TargetSlot") == null) {
+                owner.sendNodeErrorMessage(client, Node.tr("pathmind.error.listGuiSlotsUnsupported", listName.trim(), owner.getType().getDisplayName()));
+                if (future != null && !future.isDone()) {
+                    future.complete(null);
+                }
+                return null;
+            }
+            ListSlotEntry slotEntry = parseListSlotEntry(entry);
+            if (slotEntry == null) {
+                owner.sendNodeErrorMessage(client, Node.tr("pathmind.error.listItemInvalidGuiSlot", listName.trim(), index));
+                if (future != null && !future.isDone()) {
+                    future.complete(null);
+                }
+                return null;
+            }
+            if (data != null) {
+                data.slotIndex = slotEntry.slotIndex;
+                data.slotSelectionType = slotEntry.selectionType;
+            }
+            applyListSlotSelection(slotEntry.slotIndex, listNode.getParentParameterSlotIndex());
+            return client.player;
+        }
+
+        try {
+            java.util.UUID uuid = java.util.UUID.fromString(entry);
+            Entity entity = resolveEntityByUuid(client, uuid);
+            if (entity == null || entity.isRemoved()) {
+                owner.sendNodeErrorMessage(client, Node.tr("pathmind.error.listItemUnavailable", listName.trim(), index));
+                if (future != null && !future.isDone()) {
+                    future.complete(null);
+                }
+                return null;
+            }
+            if (data != null) {
+                data.targetEntity = entity;
+                Identifier entityId = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType());
+							  data.targetEntityId = entityId.toString();
+						}
+
+            NodeType elementType = list.getElementType();
+            if (elementType == NodeType.PARAM_ITEM && entity instanceof ItemEntity itemEntity) {
+                ItemStack stack = itemEntity.getItem();
+                if (stack != null && !stack.isEmpty()) {
+                    Item item = stack.getItem();
+                    Identifier itemId = BuiltInRegistries.ITEM.getKey(item);
+									  if (data != null) {
+										    data.targetItem = item;
+										    data.targetItemId = itemId.toString();
+									  }
+									owner.setParameterValueAndPropagate("Item", itemId.toString());
+								}
+            } else if (elementType == NodeType.PARAM_PLAYER && entity instanceof AbstractClientPlayer player) {
+                String name = GameProfileCompatibilityBridge.getName(player.getGameProfile());
+                if (name != null && !name.trim().isEmpty()) {
+                    owner.setParameterValueAndPropagate("Player", name);
+                }
+            } else if (elementType == NodeType.PARAM_ENTITY) {
+                Identifier typeId = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType());
+							  owner.setParameterValueAndPropagate("Entity", typeId.toString());
+						}
+
+            return entity;
+        } catch (IllegalArgumentException ex) {
+            NodeType elementType = list.getElementType();
+            String trimmedEntry = entry.trim();
+
+            if (elementType == NodeType.PARAM_ENTITY) {
+                Identifier identifier = Identifier.tryParse(trimmedEntry);
+                if (identifier != null && BuiltInRegistries.ENTITY_TYPE.containsKey(identifier)) {
+                    EntityType<?> entityType = BuiltInRegistries.ENTITY_TYPE.getOptional(identifier).orElse(null);
+                    Optional<Entity> nearest = findNearestEntity(client, entityType, Node.PARAMETER_SEARCH_RADIUS, "");
+                    if (nearest.isPresent()) {
+                        Entity entity = nearest.get();
+                        if (data != null) {
+                            data.targetEntity = entity;
+                            data.targetEntityId = identifier.toString();
+                        }
+                        owner.setParameterValueAndPropagate("Entity", identifier.toString());
+                        return entity;
+                    }
+                }
+            }
+
+            owner.sendNodeErrorMessage(client, Node.tr("pathmind.error.listItemUnavailable", listName.trim(), index));
+            if (future != null && !future.isDone()) {
+                future.complete(null);
+            }
+            return null;
+        }
+    }
+
+    ExecutionManager.RuntimeList resolveRuntimeList(Node listNode) {
+        if (listNode == null) {
+            return null;
+        }
+        String listName = Node.getParameterString(listNode, "List");
+        if (listName == null || listName.trim().isEmpty()) {
+            return null;
+        }
+        ExecutionManager manager = ExecutionManager.getInstance();
+        Node startNode = owner.resolveExecutionStartNode();
+        RuntimeValueScope scope = manager.resolveRuntimeListScope(
+            startNode, listName.trim(), listNode.getRuntimeValueScope());
+        return manager.getRuntimeList(startNode, listName.trim(), scope);
+    }
+
+    Optional<Integer> resolveListLengthValue(Node listNode) {
+        if (listNode == null) {
+            return Optional.empty();
+        }
+        String listName = Node.getParameterString(listNode, "List");
+        if (listName == null || listName.trim().isEmpty()) {
+            return Optional.empty();
+        }
+        ExecutionManager.RuntimeList list = resolveRuntimeList(listNode);
+        if (list == null) {
+            return Optional.of(0);
+        }
+        return Optional.of(list.getEntries().size());
+    }
+
+    ListSlotEntry resolveListItemSlotEntry(Node listNode, boolean reportErrors, CompletableFuture<Void> future) {
+        net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
+        if (listNode == null) {
+            return null;
+        }
+        ExecutionManager.RuntimeList list = resolveRuntimeList(listNode);
+        String listName = Node.getParameterString(listNode, "List");
+        String safeListName = listName == null ? "" : listName.trim();
+        if (list == null || list.getEntries().isEmpty() || list.getElementType() != NodeType.PARAM_GUI) {
+            return null;
+        }
+
+        int index = Node.parseNodeInt(listNode, "Index", 1);
+        if (index <= 0 || index > list.getEntries().size()) {
+            if (reportErrors && client != null) {
+                owner.sendNodeErrorMessage(client, Node.tr("pathmind.error.listNoItem", safeListName, index));
+            }
+            if (reportErrors && future != null && !future.isDone()) {
+                future.complete(null);
+            }
+            return null;
+        }
+        String entry = list.getEntries().get(index - 1);
+        ListSlotEntry parsed = parseListSlotEntry(entry);
+        if (parsed == null) {
+            if (reportErrors && client != null) {
+                owner.sendNodeErrorMessage(client, Node.tr("pathmind.error.listItemInvalidGuiSlot", safeListName, index));
+            }
+            if (reportErrors && future != null && !future.isDone()) {
+                future.complete(null);
+            }
+        }
+        return parsed;
+    }
+
+    ListSlotEntry parseListSlotEntry(String entry) {
+        if (entry == null) {
+            return null;
+        }
+        String trimmed = entry.trim();
+        if (trimmed.isEmpty()) {
+            return null;
+        }
+        if (trimmed.startsWith(Node.LIST_SLOT_GUI_PREFIX)) {
+            Integer slotIndex = Node.parseIntOrNull(trimmed.substring(Node.LIST_SLOT_GUI_PREFIX.length()));
+            return slotIndex == null ? null : new ListSlotEntry(slotIndex, SlotSelectionType.GUI_CONTAINER);
+        }
+        if (trimmed.startsWith(Node.LIST_SLOT_PLAYER_PREFIX)) {
+            Integer slotIndex = Node.parseIntOrNull(trimmed.substring(Node.LIST_SLOT_PLAYER_PREFIX.length()));
+            return slotIndex == null ? null : new ListSlotEntry(slotIndex, SlotSelectionType.PLAYER_INVENTORY);
+        }
+        return null;
+    }
+
+    private void applyListSlotSelection(int slotIndex, int parameterSlotIndex) {
+        if (owner.getParameter("Slot") != null) {
+            owner.setParameterValueAndPropagate("Slot", Integer.toString(slotIndex));
+            return;
+        }
+        if (owner.getParameter("SourceSlot") != null && (parameterSlotIndex <= 0 || owner.getParameter("TargetSlot") == null)) {
+            owner.setParameterValueAndPropagate("SourceSlot", Integer.toString(slotIndex));
+        }
+        if (owner.getParameter("TargetSlot") != null && parameterSlotIndex == 1) {
+            owner.setParameterValueAndPropagate("TargetSlot", Integer.toString(slotIndex));
+        }
     }
 
     private static Method resolveClientWorldGetEntityByUuid() {

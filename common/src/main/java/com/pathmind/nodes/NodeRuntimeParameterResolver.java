@@ -13,6 +13,7 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
@@ -751,6 +752,365 @@ final class NodeRuntimeParameterResolver {
             return false;
         }
         return true;
+    }
+
+    boolean resolveLookOrientation(
+        Node parameterNode, RuntimeParameterData data, CompletableFuture<Void> future
+    ) {
+        net.minecraft.client.Minecraft client =
+            net.minecraft.client.Minecraft.getInstance();
+        if (client == null || client.player == null) {
+            return false;
+        }
+
+        if (parameterNode != null && parameterNode.getType() == NodeType.LIST_ITEM) {
+            Node resolved =
+                owner.resolveListItemValueNode(parameterNode, future, false, data);
+            if (resolved != null) {
+                return resolveLookOrientation(resolved, data, future);
+            }
+        }
+
+        if (parameterNode != null
+            && parameterNode.getType() == NodeType.PARAM_BLOCK_FACE) {
+            Node targetNode = parameterNode.getAttachedParameter(0);
+            if (targetNode == null) {
+                return false;
+            }
+            if (targetNode.getType() == NodeType.VARIABLE) {
+                targetNode = resolveVariableValueNode(targetNode, 0, future);
+                if (targetNode == null) {
+                    return false;
+                }
+            }
+
+            String faceName = getParameterString(parameterNode, "Face");
+            if (faceName == null || faceName.trim().isEmpty()) {
+                faceName = getParameterString(parameterNode, "Side");
+            }
+            Direction targetFace = parseDirectionValue(faceName);
+            if (targetFace == null) {
+                targetFace = Direction.NORTH;
+            }
+
+            // Resolve the nested target independently so any temporary vector state on the outer
+            // runtime context cannot override the actual block/coordinate target.
+            RuntimeParameterData targetData = new RuntimeParameterData();
+            Optional<Vec3> resolvedTarget =
+                resolvePositionTarget(targetNode, targetData, future);
+            if (resolvedTarget.isEmpty()) {
+                return false;
+            }
+
+            BlockPos targetBlockPos = targetData.targetBlockPos;
+            if (targetBlockPos == null) {
+                Vec3 targetVec = resolvedTarget.get();
+                targetBlockPos =
+                    new BlockPos(
+                        Mth.floor(targetVec.x),
+                        Mth.floor(targetVec.y),
+                        Mth.floor(targetVec.z));
+                if (data != null) {
+                    data.targetBlockPos = targetBlockPos;
+                }
+            }
+
+            Vec3 faceCenter =
+                Vec3.atCenterOf(targetBlockPos)
+                    .add(
+                        targetFace.getStepX() * 0.5D,
+                        targetFace.getStepY() * 0.5D,
+                        targetFace.getStepZ() * 0.5D);
+            Vec3 eyes = client.player.getEyePosition();
+            Vec3 delta = faceCenter.subtract(eyes);
+            if (delta.lengthSqr() < 1.0E-6) {
+                return false;
+            }
+
+            float yaw =
+                (float)
+                    (Mth.wrapDegrees(
+                        Math.toDegrees(Math.atan2(delta.z, delta.x)) - 90.0D));
+            float pitch =
+                (float)
+                    (-Math.toDegrees(
+                        Math.atan2(
+                            delta.y,
+                            Math.sqrt(delta.x * delta.x + delta.z * delta.z))));
+            float clampedPitch = Mth.clamp(pitch, -90.0F, 90.0F);
+
+            owner.setParameterIfPresent("Yaw", Node.formatFloat(yaw));
+            owner.setParameterIfPresent("Pitch", Node.formatFloat(clampedPitch));
+
+            if (data != null) {
+                data.targetBlockPos = targetBlockPos;
+                data.targetVector = faceCenter;
+                data.resolvedYaw = yaw;
+                data.resolvedPitch = clampedPitch;
+            }
+            return true;
+        }
+
+        boolean allowDirectRotation =
+            parameterNode.getType() != NodeType.PARAM_DIRECTION
+                || parameterNode.isDirectionModeExact();
+        Float yawParam =
+            allowDirectRotation ? parseNodeFloat(parameterNode, "Yaw") : null;
+        Float pitchParam =
+            allowDirectRotation ? parseNodeFloat(parameterNode, "Pitch") : null;
+        if (allowDirectRotation
+            && yawParam == null
+            && pitchParam == null
+            && owner.providesTrait(parameterNode, NodeValueTrait.ROTATION)) {
+            Map<String, String> exported = parameterNode.exportParameterValues();
+            yawParam = parseFloatOrNull(exported.get("Yaw"));
+            pitchParam = parseFloatOrNull(exported.get("Pitch"));
+            if (data != null) {
+                Double distance = parseDoubleOrNull(exported.get("Distance"));
+                if (distance == null) {
+                    distance = parseDoubleOrNull(exported.get("LookDistance"));
+                }
+                if (distance == null) {
+                    distance = parseDoubleOrNull(exported.get("Range"));
+                }
+                if (distance != null && distance > 0.0) {
+                    data.resolvedLookDistance = distance;
+                }
+            }
+        }
+        if (yawParam != null || pitchParam != null) {
+            if (yawParam != null) {
+                owner.setParameterIfPresent("Yaw", Node.formatFloat(yawParam));
+                if (data != null) {
+                    data.resolvedYaw = yawParam;
+                }
+            }
+            if (pitchParam != null) {
+                float clamped = Mth.clamp(pitchParam, -90.0F, 90.0F);
+                owner.setParameterIfPresent("Pitch", Node.formatFloat(clamped));
+                if (data != null) {
+                    data.resolvedPitch = clamped;
+                }
+            }
+            if (data != null) {
+                double distance = parseNodeDouble(parameterNode, "Distance", -1.0);
+                if (distance > 0.0) {
+                    data.resolvedLookDistance = distance;
+                }
+            }
+            return true;
+        }
+
+        if (owner.getType() == NodeType.LOOK
+            && owner.providesTrait(parameterNode, NodeValueTrait.NUMBER)) {
+            float yaw =
+                (float)
+                    Mth.wrapDegrees(
+                        client.player.getYRot()
+                            + parseNodeDouble(parameterNode, "Amount", 0.0));
+            owner.setParameterIfPresent("Yaw", Node.formatFloat(yaw));
+            if (data != null) {
+                data.resolvedYaw = yaw;
+                data.resolvedPitch = client.player.getXRot();
+            }
+            return true;
+        }
+
+        if (owner.providesTrait(parameterNode, NodeValueTrait.DIRECTION)
+            && (parameterNode.getType() != NodeType.PARAM_DIRECTION
+                || parameterNode.isDirectionModeCardinal())) {
+            String direction = getParameterString(parameterNode, "Direction");
+            if (direction == null || direction.isEmpty()) {
+                direction = getParameterString(parameterNode, "Side");
+            }
+            if (direction == null || direction.isEmpty()) {
+                direction = getParameterString(parameterNode, "Face");
+            }
+            if (direction == null || direction.isEmpty()) {
+                Map<String, String> exported = parameterNode.exportParameterValues();
+                direction = exported.get("Direction");
+                if (direction == null || direction.isEmpty()) {
+                    direction = exported.get("Side");
+                }
+                if (direction == null || direction.isEmpty()) {
+                    direction = exported.get("Face");
+                }
+            }
+            if (direction != null) {
+                String normalized = direction.trim().toLowerCase(Locale.ROOT);
+                Float yaw = null;
+                Float pitch = null;
+                switch (normalized) {
+                    case "north" -> {
+                        yaw = 180.0F;
+                    }
+                    case "south" -> {
+                        yaw = 0.0F;
+                    }
+                    case "west" -> {
+                        yaw = 90.0F;
+                    }
+                    case "east" -> {
+                        yaw = -90.0F;
+                    }
+                    case "up" -> {
+                        yaw = client.player.getYRot();
+                        pitch = -90.0F;
+                    }
+                    case "down" -> {
+                        yaw = client.player.getYRot();
+                        pitch = 90.0F;
+                    }
+                }
+                if (yaw != null) {
+                    owner.setParameterIfPresent("Yaw", Node.formatFloat(yaw));
+                    if (data != null) {
+                        data.resolvedYaw = yaw;
+                    }
+                }
+                if (pitch != null) {
+                    float clamped = Mth.clamp(pitch, -90.0F, 90.0F);
+                    owner.setParameterIfPresent("Pitch", Node.formatFloat(clamped));
+                    if (data != null) {
+                        data.resolvedPitch = clamped;
+                    }
+                }
+                if (yaw != null) {
+                    if (data != null) {
+                        double distance =
+                            parseNodeDouble(parameterNode, "Distance", -1.0);
+                        if (distance > 0.0) {
+                            data.resolvedLookDistance = distance;
+                        }
+                    }
+                    return true;
+                }
+            }
+        }
+
+        Vec3 target = null;
+        if (data != null && data.targetEntity != null && data.targetEntity.isAlive()) {
+            target = data.targetEntity.getBoundingBox().getCenter();
+        }
+        if (target == null && data != null) {
+            target = data.targetVector;
+        }
+        if (target == null) {
+            Optional<Vec3> resolved =
+                resolvePositionTarget(parameterNode, data, future);
+            if (resolved.isEmpty()) {
+                return false;
+            }
+            target = resolved.get();
+        }
+
+        Vec3 eyes = client.player.getEyePosition();
+        Vec3 delta = target.subtract(eyes);
+        if (delta.lengthSqr() < 1.0E-6) {
+            return false;
+        }
+        float yaw =
+            (float)
+                (Mth.wrapDegrees(
+                    Math.toDegrees(Math.atan2(delta.z, delta.x)) - 90.0D));
+        float pitch =
+            (float)
+                (-Math.toDegrees(
+                    Math.atan2(
+                        delta.y, Math.sqrt(delta.x * delta.x + delta.z * delta.z))));
+        float clampedPitch = Mth.clamp(pitch, -90.0F, 90.0F);
+
+        owner.setParameterIfPresent("Yaw", Node.formatFloat(yaw));
+        owner.setParameterIfPresent("Pitch", Node.formatFloat(clampedPitch));
+
+        if (data != null) {
+            data.resolvedYaw = yaw;
+            data.resolvedPitch = clampedPitch;
+        }
+        return true;
+    }
+
+    private Direction parseDirectionValue(String value) {
+        if (value == null || value.trim().isEmpty()) {
+            return null;
+        }
+        return switch (value.trim().toLowerCase(Locale.ROOT)) {
+            case "north" -> Direction.NORTH;
+            case "south" -> Direction.SOUTH;
+            case "east" -> Direction.EAST;
+            case "west" -> Direction.WEST;
+            case "up" -> Direction.UP;
+            case "down" -> Direction.DOWN;
+            default -> null;
+        };
+    }
+
+    void orientPlayerTowardsRuntimeTarget(
+        net.minecraft.client.Minecraft client, RuntimeParameterData data
+    ) {
+        if (client == null || client.player == null || data == null) {
+            return;
+        }
+
+        float yaw = client.player.getYRot();
+        float pitch = client.player.getXRot();
+        boolean applyYaw = false;
+        boolean applyPitch = false;
+
+        Vec3 targetVector = null;
+        if (data.targetEntity != null && data.targetEntity.isAlive()) {
+            targetVector = data.targetEntity.getBoundingBox().getCenter();
+        }
+        if (targetVector == null && data.targetVector != null) {
+            targetVector = data.targetVector;
+        }
+        if (targetVector == null && data.targetBlockPos != null) {
+            targetVector = Vec3.atCenterOf(data.targetBlockPos);
+        }
+
+        if (targetVector != null) {
+            Vec3 eyes = client.player.getEyePosition();
+            Vec3 delta = targetVector.subtract(eyes);
+            if (delta.lengthSqr() > 1.0E-6) {
+                yaw =
+                    (float)
+                        (Mth.wrapDegrees(
+                            Math.toDegrees(Math.atan2(delta.z, delta.x)) - 90.0D));
+                pitch =
+                    (float)
+                        (-Math.toDegrees(
+                            Math.atan2(
+                                delta.y,
+                                Math.sqrt(delta.x * delta.x + delta.z * delta.z))));
+                pitch = Mth.clamp(pitch, -90.0F, 90.0F);
+                applyYaw = true;
+                applyPitch = true;
+            }
+        }
+
+        if (!applyYaw && data.resolvedYaw != null) {
+            yaw = data.resolvedYaw;
+            applyYaw = true;
+        }
+        if (!applyPitch && data.resolvedPitch != null) {
+            pitch = Mth.clamp(data.resolvedPitch, -90.0F, 90.0F);
+            applyPitch = true;
+        }
+
+        if (!applyYaw && !applyPitch) {
+            return;
+        }
+
+        client.player.setYRot(yaw);
+        client.player.setXRot(pitch);
+        client.player.setYHeadRot(yaw);
+
+        if (applyYaw) {
+            data.resolvedYaw = yaw;
+        }
+        if (applyPitch) {
+            data.resolvedPitch = pitch;
+        }
     }
 
     static float normalizeLookYaw(float yaw) {

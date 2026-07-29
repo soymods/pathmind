@@ -106,6 +106,7 @@ public class Node {
     private final NodeType type;
     private NodeMode mode;
     private final NodeLayoutState layoutState;
+    private final NodeInlineFieldLayout inlineFieldLayout;
     private final NodeInteractionState interactionState;
     private final NodeAttachments attachments;
     private final NodeRuntimeState runtimeState;
@@ -167,32 +168,32 @@ public class Node {
     private static final int BOOLEAN_TOGGLE_TOP_MARGIN = 8;
     private static final int BOOLEAN_TOGGLE_HEIGHT = 16;
     private static final int BOOLEAN_TOGGLE_BOTTOM_MARGIN = 8;
-    private static final int COORDINATE_FIELD_WIDTH = 44;
-    private static final int COORDINATE_FIELD_HEIGHT = 16;
+    static final int COORDINATE_FIELD_WIDTH = 44;
+    static final int COORDINATE_FIELD_HEIGHT = 16;
     private static final int COORDINATE_FIELD_TEXT_PADDING = 3;
-    private static final int COORDINATE_FIELD_SPACING = 6;
-    private static final int COORDINATE_FIELD_TOP_MARGIN = 6;
-    private static final int COORDINATE_FIELD_LABEL_HEIGHT = 10;
-    private static final int COORDINATE_FIELD_BOTTOM_MARGIN = 6;
-    private static final int SCREEN_PICK_BUTTON_TOP_MARGIN = 6;
-    private static final int SCREEN_PICK_BUTTON_HEIGHT = 16;
-    private static final int SCREEN_PICK_BUTTON_MIN_WIDTH = 70;
-    private static final int SCREEN_PICK_BUTTON_BOTTOM_MARGIN = 6;
-    private static final int AMOUNT_FIELD_TOP_MARGIN = 6;
-    private static final int AMOUNT_FIELD_LABEL_HEIGHT = 10;
-    private static final int AMOUNT_FIELD_HEIGHT = 16;
+    static final int COORDINATE_FIELD_SPACING = 6;
+    static final int COORDINATE_FIELD_TOP_MARGIN = 6;
+    static final int COORDINATE_FIELD_LABEL_HEIGHT = 10;
+    static final int COORDINATE_FIELD_BOTTOM_MARGIN = 6;
+    static final int SCREEN_PICK_BUTTON_TOP_MARGIN = 6;
+    static final int SCREEN_PICK_BUTTON_HEIGHT = 16;
+    static final int SCREEN_PICK_BUTTON_MIN_WIDTH = 70;
+    static final int SCREEN_PICK_BUTTON_BOTTOM_MARGIN = 6;
+    static final int AMOUNT_FIELD_TOP_MARGIN = 6;
+    static final int AMOUNT_FIELD_LABEL_HEIGHT = 10;
+    static final int AMOUNT_FIELD_HEIGHT = 16;
     private static final int AMOUNT_FIELD_TEXT_PADDING = 3;
-    private static final int AMOUNT_FIELD_BOTTOM_MARGIN = 6;
-    private static final int WAIT_AMOUNT_FIELD_GAP = 4;
+    static final int AMOUNT_FIELD_BOTTOM_MARGIN = 6;
+    static final int WAIT_AMOUNT_FIELD_GAP = 4;
     static final int AMOUNT_TOGGLE_WIDTH = 18;
-    private static final int AMOUNT_TOGGLE_HEIGHT = 10;
+    static final int AMOUNT_TOGGLE_HEIGHT = 10;
     static final int AMOUNT_TOGGLE_SPACING = 6;
-    private static final int RANDOM_ROUNDING_FIELD_TOP_MARGIN = 6;
-    private static final int RANDOM_ROUNDING_FIELD_LABEL_HEIGHT = 10;
-    private static final int RANDOM_ROUNDING_FIELD_HEIGHT = 16;
-    private static final int RANDOM_ROUNDING_FIELD_BOTTOM_MARGIN = 6;
+    static final int RANDOM_ROUNDING_FIELD_TOP_MARGIN = 6;
+    static final int RANDOM_ROUNDING_FIELD_LABEL_HEIGHT = 10;
+    static final int RANDOM_ROUNDING_FIELD_HEIGHT = 16;
+    static final int RANDOM_ROUNDING_FIELD_BOTTOM_MARGIN = 6;
     static final int RANDOM_ROUNDING_TOGGLE_WIDTH = 18;
-    private static final int RANDOM_ROUNDING_TOGGLE_HEIGHT = 10;
+    static final int RANDOM_ROUNDING_TOGGLE_HEIGHT = 10;
     static final int RANDOM_ROUNDING_TOGGLE_SPACING = 6;
     static final int MESSAGE_FIELD_MARGIN_HORIZONTAL = 6;
     private static final int MESSAGE_FIELD_TOP_MARGIN = 6;
@@ -212,29 +213,29 @@ public class Node {
     private static final int MESSAGE_SCOPE_LABEL_HEIGHT = 10;
     private static final int MESSAGE_SCOPE_TOGGLE_HEIGHT = 16;
     private static final int MESSAGE_SCOPE_BOTTOM_MARGIN = 6;
-    private static final int SCHEMATIC_FIELD_TOP_MARGIN = 6;
-    private static final int SCHEMATIC_FIELD_LABEL_HEIGHT = 10;
-    private static final int SCHEMATIC_FIELD_HEIGHT = 16;
-    private static final int SCHEMATIC_FIELD_BOTTOM_MARGIN = 6;
+    static final int SCHEMATIC_FIELD_TOP_MARGIN = 6;
+    static final int SCHEMATIC_FIELD_LABEL_HEIGHT = 10;
+    static final int SCHEMATIC_FIELD_HEIGHT = 16;
+    static final int SCHEMATIC_FIELD_BOTTOM_MARGIN = 6;
     static final int STOP_TARGET_FIELD_MARGIN_HORIZONTAL = 8;
-    private static final int STOP_TARGET_FIELD_TOP_MARGIN = 6;
-    private static final int STOP_TARGET_FIELD_LABEL_HEIGHT = 0;
-    private static final int STOP_TARGET_FIELD_HEIGHT = 16;
+    static final int STOP_TARGET_FIELD_TOP_MARGIN = 6;
+    static final int STOP_TARGET_FIELD_LABEL_HEIGHT = 0;
+    static final int STOP_TARGET_FIELD_HEIGHT = 16;
     private static final int STOP_TARGET_FIELD_TEXT_PADDING = 3;
-    private static final int STOP_TARGET_FIELD_BOTTOM_MARGIN = 6;
+    static final int STOP_TARGET_FIELD_BOTTOM_MARGIN = 6;
     static final int STOP_TARGET_FIELD_MIN_WIDTH = 48;
     static final int RUN_PRESET_FIELD_MIN_WIDTH = 120;
     static final int VARIABLE_FIELD_MARGIN_HORIZONTAL = 8;
-    private static final int VARIABLE_FIELD_TOP_MARGIN = 6;
-    private static final int VARIABLE_FIELD_LABEL_HEIGHT = 0;
-    private static final int VARIABLE_FIELD_HEIGHT = 16;
+    static final int VARIABLE_FIELD_TOP_MARGIN = 6;
+    static final int VARIABLE_FIELD_LABEL_HEIGHT = 0;
+    static final int VARIABLE_FIELD_HEIGHT = 16;
     private static final int VARIABLE_FIELD_TEXT_PADDING = 3;
-    private static final int VARIABLE_FIELD_BOTTOM_MARGIN = 6;
+    static final int VARIABLE_FIELD_BOTTOM_MARGIN = 6;
     static final int VARIABLE_FIELD_MIN_WIDTH = 80;
-    private static final int MODE_FIELD_TOP_MARGIN = 6;
-    private static final int MODE_FIELD_LABEL_HEIGHT = 0;
-    private static final int MODE_FIELD_HEIGHT = 16;
-    private static final int MODE_FIELD_BOTTOM_MARGIN = 6;
+    static final int MODE_FIELD_TOP_MARGIN = 6;
+    static final int MODE_FIELD_LABEL_HEIGHT = 0;
+    static final int MODE_FIELD_HEIGHT = 16;
+    static final int MODE_FIELD_BOTTOM_MARGIN = 6;
     static final int BOOK_TEXT_BUTTON_MARGIN_HORIZONTAL = 6;
     private static final int BOOK_TEXT_TOP_MARGIN = 6;
     private static final int BOOK_TEXT_BUTTON_HEIGHT = 16;
@@ -321,6 +322,7 @@ public class Node {
             y,
             STICKY_NOTE_MIN_WIDTH + 32,
             STICKY_NOTE_MIN_HEIGHT + 20);
+        this.inlineFieldLayout = new NodeInlineFieldLayout(this, layoutState);
         this.interactionState = new NodeInteractionState();
         this.attachments = new NodeAttachments();
         this.runtimeState = new NodeRuntimeState();
@@ -1380,78 +1382,48 @@ public class Node {
         return getParameterSlotHeight(0);
     }
 
-    private int getParameterSlotsBottom() {
+    int getParameterSlotsBottom() {
         return NodeSlotLayout.parameterSlotsBottom(this);
     }
 
     public boolean hasCoordinateInputFields() {
-        return type == NodeType.CLICK_SCREEN;
+        return inlineFieldLayout.hasCoordinateInputFields();
     }
 
     public String[] getCoordinateFieldAxes() {
-        if (type == NodeType.CLICK_SCREEN) {
-            return new String[]{"X", "Y"};
-        }
-        return new String[]{"X", "Y", "Z"};
+        return inlineFieldLayout.getCoordinateFieldAxes();
     }
 
     public int getCoordinateFieldDisplayHeight() {
-        if (!hasCoordinateInputFields()) {
-            return 0;
-        }
-        int height = COORDINATE_FIELD_TOP_MARGIN + COORDINATE_FIELD_LABEL_HEIGHT + COORDINATE_FIELD_HEIGHT;
-        if (hasScreenCoordinatePickerButton()) {
-            height += SCREEN_PICK_BUTTON_TOP_MARGIN + SCREEN_PICK_BUTTON_HEIGHT + SCREEN_PICK_BUTTON_BOTTOM_MARGIN;
-        } else {
-            height += COORDINATE_FIELD_BOTTOM_MARGIN;
-        }
-        return height;
+        return inlineFieldLayout.getCoordinateFieldDisplayHeight();
     }
 
     public boolean showsModeFieldAboveParameterSlot() {
-        return (type == NodeType.SENSOR_POSITION_OF || type == NodeType.SENSOR_LOOK_DIRECTION)
-            && supportsModeSelection()
-            && !isInlineParameterNode()
-            && !shouldRenderInlineParameters()
-            && type != NodeType.WAIT
-            && type != NodeType.PARAM_DURATION;
+        return inlineFieldLayout.showsModeFieldAboveParameterSlot();
     }
 
     public int getModeFieldDisplayHeight() {
-        if (!showsModeFieldAboveParameterSlot()) {
-            return 0;
-        }
-        return MODE_FIELD_TOP_MARGIN + MODE_FIELD_LABEL_HEIGHT + MODE_FIELD_HEIGHT + MODE_FIELD_BOTTOM_MARGIN;
+        return inlineFieldLayout.getModeFieldDisplayHeight();
     }
 
     public int getModeFieldTop() {
-        int top = getY() + HEADER_HEIGHT;
-        if (hasSchematicDropdownField()) {
-            top += getSchematicFieldDisplayHeight();
-        }
-        if (hasVariableInputField()) {
-            top += getVariableFieldDisplayHeight();
-        }
-        return top + MODE_FIELD_TOP_MARGIN + MODE_FIELD_LABEL_HEIGHT;
+        return inlineFieldLayout.getModeFieldTop();
     }
 
     public int getModeFieldLeft() {
-        return getParameterSlotLeft();
+        return inlineFieldLayout.getModeFieldLeft();
     }
 
     public int getModeFieldWidth() {
-        return getParameterSlotWidth();
+        return inlineFieldLayout.getModeFieldWidth();
     }
 
     public int getModeFieldHeight() {
-        return MODE_FIELD_HEIGHT;
+        return inlineFieldLayout.getModeFieldHeight();
     }
 
     public String getModeFieldLabelText() {
-        if (type == NodeType.SENSOR_POSITION_OF || type == NodeType.SENSOR_LOOK_DIRECTION) {
-            return "Axis:";
-        }
-        return "Mode:";
+        return inlineFieldLayout.getModeFieldLabelText();
     }
 
     public boolean isSensorPositionSingleAxisMode() {
@@ -1521,108 +1493,75 @@ public class Node {
     }
 
     public int getCoordinateFieldLabelTop() {
-        return getParameterSlotsBottom() + COORDINATE_FIELD_TOP_MARGIN;
+        return inlineFieldLayout.getCoordinateFieldLabelTop();
     }
 
     public int getCoordinateFieldInputTop() {
-        return getCoordinateFieldLabelTop() + COORDINATE_FIELD_LABEL_HEIGHT;
+        return inlineFieldLayout.getCoordinateFieldInputTop();
     }
 
     public int getCoordinateFieldLabelHeight() {
-        return COORDINATE_FIELD_LABEL_HEIGHT;
+        return inlineFieldLayout.getCoordinateFieldLabelHeight();
     }
 
     public int getCoordinateFieldHeight() {
-        return COORDINATE_FIELD_HEIGHT;
+        return inlineFieldLayout.getCoordinateFieldHeight();
     }
 
     public int getCoordinateFieldWidth() {
-        return Math.max(COORDINATE_FIELD_WIDTH, layoutState.getCoordinateFieldWidthOverride());
+        return inlineFieldLayout.getCoordinateFieldWidth();
     }
 
     public int getCoordinateFieldSpacing() {
-        return COORDINATE_FIELD_SPACING;
+        return inlineFieldLayout.getCoordinateFieldSpacing();
     }
 
     public int getCoordinateFieldStartX() {
-        int slotLeft = getParameterSlotLeft();
-        int slotWidth = getParameterSlotWidth();
-        int totalFieldWidth = getCoordinateFieldTotalWidth();
-        if (totalFieldWidth >= slotWidth) {
-            return slotLeft;
-        }
-        return slotLeft + (slotWidth - totalFieldWidth) / 2;
+        return inlineFieldLayout.getCoordinateFieldStartX();
     }
 
     public int getCoordinateFieldTotalWidth() {
-        int axisCount = getCoordinateFieldAxes().length;
-        return (getCoordinateFieldWidth() * axisCount) + (COORDINATE_FIELD_SPACING * Math.max(0, axisCount - 1));
+        return inlineFieldLayout.getCoordinateFieldTotalWidth();
     }
 
     public boolean hasScreenCoordinatePickerButton() {
-        return type == NodeType.CLICK_SCREEN;
+        return inlineFieldLayout.hasScreenCoordinatePickerButton();
     }
 
     public int getScreenCoordinatePickerButtonTop() {
-        return getCoordinateFieldInputTop() + COORDINATE_FIELD_HEIGHT + SCREEN_PICK_BUTTON_TOP_MARGIN;
+        return inlineFieldLayout.getScreenCoordinatePickerButtonTop();
     }
 
     public int getScreenCoordinatePickerButtonLeft() {
-        return getX() + POPUP_EDIT_BUTTON_MARGIN_HORIZONTAL;
+        return inlineFieldLayout.getScreenCoordinatePickerButtonLeft();
     }
 
     public int getScreenCoordinatePickerButtonWidth() {
-        return Math.max(SCREEN_PICK_BUTTON_MIN_WIDTH, getWidth() - 2 * POPUP_EDIT_BUTTON_MARGIN_HORIZONTAL);
+        return inlineFieldLayout.getScreenCoordinatePickerButtonWidth();
     }
 
     public int getScreenCoordinatePickerButtonHeight() {
-        return SCREEN_PICK_BUTTON_HEIGHT;
+        return inlineFieldLayout.getScreenCoordinatePickerButtonHeight();
     }
 
     public boolean hasAmountInputField() {
-        return
-            (type == NodeType.COLLECT
-                && (mode == null || mode == NodeMode.COLLECT_SINGLE))
-            || (type == NodeType.CRAFT
-                && (mode == null || mode == NodeMode.CRAFT_PLAYER_GUI || mode == NodeMode.CRAFT_CRAFTING_TABLE))
-            || type == NodeType.MOVE_ITEM
-            || type == NodeType.CONTROL_REPEAT
-            || type == NodeType.SENSOR_ITEM_IN_INVENTORY
-            || type == NodeType.SENSOR_ITEM_IN_SLOT
-            || type == NodeType.SENSOR_HEALTH_BELOW
-            || type == NodeType.SENSOR_HUNGER_BELOW
-            || type == NodeType.SENSOR_CHAT_MESSAGE
-            || type == NodeType.SENSOR_VILLAGER_TRADE
-            || type == NodeType.SENSOR_IN_STOCK
-            || type == NodeType.WAIT
-            || type == NodeType.PARAM_DURATION
-            || type == NodeType.USE
-            || type == NodeType.PRESS_KEY
-            || type == NodeType.SWING
-            || type == NodeType.DROP_ITEM;
+        return inlineFieldLayout.hasAmountInputField();
     }
 
     public boolean hasRandomRoundingField() {
-        return type == NodeType.OPERATOR_RANDOM;
+        return inlineFieldLayout.hasRandomRoundingField();
     }
 
     public boolean hasSchematicDropdownField() {
-        return type == NodeType.BUILD;
+        return inlineFieldLayout.hasSchematicDropdownField();
     }
 
     public boolean hasStopTargetInputField() {
-        return type == NodeType.STOP_CHAIN || type == NodeType.START_CHAIN || type == NodeType.RUN_PRESET
-            || type == NodeType.TEMPLATE;
+        return inlineFieldLayout.hasStopTargetInputField();
     }
 
     public boolean hasVariableInputField() {
-        return type == NodeType.CREATE_LIST
-            || type == NodeType.ADD_TO_LIST
-            || type == NodeType.REMOVE_FIRST_FROM_LIST
-            || type == NodeType.REMOVE_LAST_FROM_LIST
-            || type == NodeType.REMOVE_LIST_ITEM
-            || type == NodeType.REMOVE_FROM_LIST
-            || type == NodeType.LIST_LENGTH;
+        return inlineFieldLayout.hasVariableInputField();
     }
 
     public String getStopTargetFieldParameterKey() {
@@ -1640,98 +1579,43 @@ public class Node {
     }
 
     public int getAmountFieldDisplayHeight() {
-        if (!hasAmountInputField()) {
-            return 0;
-        }
-        if (type == NodeType.WAIT || type == NodeType.PARAM_DURATION) {
-            return AMOUNT_FIELD_TOP_MARGIN + getAmountFieldLabelHeight() + WAIT_AMOUNT_FIELD_GAP + AMOUNT_FIELD_HEIGHT + AMOUNT_FIELD_BOTTOM_MARGIN;
-        }
-        return AMOUNT_FIELD_TOP_MARGIN + AMOUNT_FIELD_LABEL_HEIGHT + AMOUNT_FIELD_HEIGHT + AMOUNT_FIELD_BOTTOM_MARGIN;
+        return inlineFieldLayout.getAmountFieldDisplayHeight();
     }
 
     public int getAmountFieldLabelTop() {
-        if (type == NodeType.CONTROL_REPEAT) {
-            int top = getActionSlotTop() + getActionSlotHeight();
-            return top + SLOT_AREA_PADDING_BOTTOM + AMOUNT_FIELD_TOP_MARGIN;
-        }
-        int top = getParameterSlotsBottom();
-        if (hasCoordinateInputFields()) {
-            top += getCoordinateFieldDisplayHeight();
-        }
-        return top + AMOUNT_FIELD_TOP_MARGIN;
+        return inlineFieldLayout.getAmountFieldLabelTop();
     }
 
     public int getAmountFieldInputTop() {
-        if (type == NodeType.WAIT || type == NodeType.PARAM_DURATION) {
-            return getAmountFieldLabelTop() + getAmountFieldLabelHeight() + WAIT_AMOUNT_FIELD_GAP;
-        }
-        return getAmountFieldLabelTop() + AMOUNT_FIELD_LABEL_HEIGHT;
+        return inlineFieldLayout.getAmountFieldInputTop();
     }
 
     public int getAmountFieldLabelHeight() {
-        if (type == NodeType.WAIT || type == NodeType.PARAM_DURATION) {
-            return AMOUNT_FIELD_HEIGHT;
-        }
-        return AMOUNT_FIELD_LABEL_HEIGHT;
+        return inlineFieldLayout.getAmountFieldLabelHeight();
     }
 
     public String getAmountFieldLabel() {
-        if (usesVillagerTradeNumberField()) {
-            return "Number";
-        }
-        return switch (type) {
-           case NodeType.USE, NodeType.PRESS_KEY, NodeType.SWING -> "Hold Duration";
-            case NodeType.SENSOR_CHAT_MESSAGE -> "Seconds";
-            case NodeType.SENSOR_HEALTH_BELOW -> "Health";
-            case NodeType.SENSOR_HUNGER_BELOW -> "Hunger";
-            case NodeType.WAIT, NodeType.PARAM_DURATION ->
-                switch (mode == null ? NodeMode.WAIT_SECONDS : mode) {
-                    case WAIT_TICKS -> "Ticks";
-                    case WAIT_MINUTES -> "Minutes";
-                    case WAIT_HOURS -> "Hours";
-                    default -> "Seconds";
-                };
-            case NodeType.CONTROL_REPEAT -> "Times";
-            default -> "Amount";
-        };
+        return inlineFieldLayout.getAmountFieldLabel();
     }
 
     public String getAmountParameterKey() {
-        if (usesVillagerTradeNumberField()) {
-            return "Number";
-        }
-        return switch (type) {
-            case NodeType.MOVE_ITEM, NodeType.CONTROL_REPEAT, NodeType.DROP_ITEM -> "Count";
-            case NodeType.WAIT, NodeType.PARAM_DURATION, NodeType.SWING, NodeType.PRESS_KEY -> "Duration";
-            case NodeType.USE -> "UseDurationSeconds";
-            default -> "Amount";
-        };
+        return inlineFieldLayout.getAmountParameterKey();
     }
 
     public int getAmountFieldHeight() {
-        return AMOUNT_FIELD_HEIGHT;
+        return inlineFieldLayout.getAmountFieldHeight();
     }
 
     public int getAmountFieldWidth() {
-        int width = getParameterSlotWidth();
-        if (hasAmountToggle()) {
-            width = Math.max(40, width - (AMOUNT_TOGGLE_WIDTH + AMOUNT_TOGGLE_SPACING));
-        }
-        return Math.max(width, layoutState.getAmountFieldWidthOverride());
+        return inlineFieldLayout.getAmountFieldWidth();
     }
 
     public int getAmountFieldLeft() {
-        return getParameterSlotLeft();
+        return inlineFieldLayout.getAmountFieldLeft();
     }
 
     public boolean hasAmountToggle() {
-        return type == NodeType.SENSOR_ITEM_IN_INVENTORY
-            || type == NodeType.SENSOR_ITEM_IN_SLOT
-            || type == NodeType.SENSOR_CHAT_MESSAGE
-            || type == NodeType.USE
-            || type == NodeType.PRESS_KEY
-            || type == NodeType.SWING
-            || type == NodeType.DROP_ITEM;
+        return inlineFieldLayout.hasAmountToggle();
     }
 
     public boolean isAmountInputEnabled() {
@@ -1757,75 +1641,67 @@ public class Node {
     }
 
     public int getAmountToggleLeft() {
-        return getAmountFieldLeft() + getAmountFieldWidth() + AMOUNT_TOGGLE_SPACING;
+        return inlineFieldLayout.getAmountToggleLeft();
     }
 
     public int getAmountToggleTop() {
-        return getAmountFieldInputTop() + (getAmountFieldHeight() - AMOUNT_TOGGLE_HEIGHT) / 2;
+        return inlineFieldLayout.getAmountToggleTop();
     }
 
     public int getAmountToggleWidth() {
-        return AMOUNT_TOGGLE_WIDTH;
+        return inlineFieldLayout.getAmountToggleWidth();
     }
 
     public int getAmountToggleHeight() {
-        return AMOUNT_TOGGLE_HEIGHT;
+        return inlineFieldLayout.getAmountToggleHeight();
     }
 
     public int getRandomRoundingFieldDisplayHeight() {
-        if (!hasRandomRoundingField()) {
-            return 0;
-        }
-        return RANDOM_ROUNDING_FIELD_TOP_MARGIN + RANDOM_ROUNDING_FIELD_LABEL_HEIGHT
-            + RANDOM_ROUNDING_FIELD_HEIGHT + RANDOM_ROUNDING_FIELD_BOTTOM_MARGIN;
+        return inlineFieldLayout.getRandomRoundingFieldDisplayHeight();
     }
 
     public int getRandomRoundingFieldLabelTop() {
-        return getY() + HEADER_HEIGHT + getParameterDisplayHeight() + RANDOM_ROUNDING_FIELD_TOP_MARGIN;
+        return inlineFieldLayout.getRandomRoundingFieldLabelTop();
     }
 
     public int getRandomRoundingFieldInputTop() {
-        return getRandomRoundingFieldLabelTop() + RANDOM_ROUNDING_FIELD_LABEL_HEIGHT;
+        return inlineFieldLayout.getRandomRoundingFieldInputTop();
     }
 
     public int getRandomRoundingFieldLabelHeight() {
-        return RANDOM_ROUNDING_FIELD_LABEL_HEIGHT;
+        return inlineFieldLayout.getRandomRoundingFieldLabelHeight();
     }
 
     public int getRandomRoundingFieldHeight() {
-        return RANDOM_ROUNDING_FIELD_HEIGHT;
+        return inlineFieldLayout.getRandomRoundingFieldHeight();
     }
 
     public int getRandomRoundingFieldWidth() {
-        int width = Math.max(20, getWidth() - 10);
-        if (hasRandomRoundingToggle()) {
-            width = Math.max(40, width - (RANDOM_ROUNDING_TOGGLE_WIDTH + RANDOM_ROUNDING_TOGGLE_SPACING));
-        }
-        return width;
+        return inlineFieldLayout.getRandomRoundingFieldWidth();
     }
 
     public int getRandomRoundingFieldLeft() {
-        return getX() + 5;
+        return inlineFieldLayout.getRandomRoundingFieldLeft();
     }
 
     public boolean hasRandomRoundingToggle() {
-        return type == NodeType.OPERATOR_RANDOM;
+        return inlineFieldLayout.hasRandomRoundingToggle();
     }
 
     public int getRandomRoundingToggleLeft() {
-        return getRandomRoundingFieldLeft() + getRandomRoundingFieldWidth() + RANDOM_ROUNDING_TOGGLE_SPACING;
+        return inlineFieldLayout.getRandomRoundingToggleLeft();
     }
 
     public int getRandomRoundingToggleTop() {
-        return getRandomRoundingFieldInputTop() + (getRandomRoundingFieldHeight() - RANDOM_ROUNDING_TOGGLE_HEIGHT) / 2;
+        return inlineFieldLayout.getRandomRoundingToggleTop();
     }
 
     public int getRandomRoundingToggleWidth() {
-        return RANDOM_ROUNDING_TOGGLE_WIDTH;
+        return inlineFieldLayout.getRandomRoundingToggleWidth();
     }
 
     public int getRandomRoundingToggleHeight() {
-        return RANDOM_ROUNDING_TOGGLE_HEIGHT;
+        return inlineFieldLayout.getRandomRoundingToggleHeight();
     }
 
     public boolean isRandomRoundingEnabled() {
@@ -1971,112 +1847,87 @@ public class Node {
     }
 
     public int getSchematicFieldDisplayHeight() {
-        if (!hasSchematicDropdownField()) {
-            return 0;
-        }
-        return SCHEMATIC_FIELD_TOP_MARGIN + SCHEMATIC_FIELD_LABEL_HEIGHT + SCHEMATIC_FIELD_HEIGHT + SCHEMATIC_FIELD_BOTTOM_MARGIN;
+        return inlineFieldLayout.getSchematicFieldDisplayHeight();
     }
 
     public int getSchematicFieldLabelTop() {
-        return getY() + HEADER_HEIGHT + SCHEMATIC_FIELD_TOP_MARGIN;
+        return inlineFieldLayout.getSchematicFieldLabelTop();
     }
 
     public int getSchematicFieldInputTop() {
-        return getSchematicFieldLabelTop() + SCHEMATIC_FIELD_LABEL_HEIGHT;
+        return inlineFieldLayout.getSchematicFieldInputTop();
     }
 
     public int getSchematicFieldLabelHeight() {
-        return SCHEMATIC_FIELD_LABEL_HEIGHT;
+        return inlineFieldLayout.getSchematicFieldLabelHeight();
     }
 
     public int getSchematicFieldHeight() {
-        return SCHEMATIC_FIELD_HEIGHT;
+        return inlineFieldLayout.getSchematicFieldHeight();
     }
 
     public int getSchematicFieldWidth() {
-        return getParameterSlotWidth();
+        return inlineFieldLayout.getSchematicFieldWidth();
     }
 
     public int getSchematicFieldLeft() {
-        return getParameterSlotLeft();
+        return inlineFieldLayout.getSchematicFieldLeft();
     }
 
     public int getStopTargetFieldDisplayHeight() {
-        if (!hasStopTargetInputField()) {
-            return 0;
-        }
-        if (type == NodeType.TEMPLATE) {
-            return 24;
-        }
-        return STOP_TARGET_FIELD_TOP_MARGIN + STOP_TARGET_FIELD_HEIGHT + STOP_TARGET_FIELD_BOTTOM_MARGIN;
+        return inlineFieldLayout.getStopTargetFieldDisplayHeight();
     }
 
     public int getStopTargetFieldLabelTop() {
-        if (type == NodeType.TEMPLATE) {
-            return getY() + HEADER_HEIGHT + 4;
-        }
-        return getParameterSlotsBottom() + STOP_TARGET_FIELD_TOP_MARGIN;
+        return inlineFieldLayout.getStopTargetFieldLabelTop();
     }
 
     public int getStopTargetFieldInputTop() {
-        return getStopTargetFieldLabelTop() + STOP_TARGET_FIELD_LABEL_HEIGHT;
+        return inlineFieldLayout.getStopTargetFieldInputTop();
     }
 
     public int getStopTargetFieldLabelHeight() {
-        return STOP_TARGET_FIELD_LABEL_HEIGHT;
+        return inlineFieldLayout.getStopTargetFieldLabelHeight();
     }
 
     public int getStopTargetFieldHeight() {
-        if (type == NodeType.TEMPLATE) {
-            return 16;
-        }
-        return STOP_TARGET_FIELD_HEIGHT;
+        return inlineFieldLayout.getStopTargetFieldHeight();
     }
 
     public int getStopTargetFieldWidth() {
-        if (type == NodeType.TEMPLATE) {
-            return Math.max(72, getWidth() - 12);
-        }
-        int minimum = type == NodeType.RUN_PRESET ? RUN_PRESET_FIELD_MIN_WIDTH : STOP_TARGET_FIELD_MIN_WIDTH;
-        return Math.max(minimum, layoutState.getStopTargetFieldWidthOverride());
+        return inlineFieldLayout.getStopTargetFieldWidth();
     }
 
     public int getStopTargetFieldLeft() {
-        if (type == NodeType.TEMPLATE) {
-            return getX() + 6;
-        }
-        return getX() + Math.max(STOP_TARGET_FIELD_MARGIN_HORIZONTAL, (getWidth() - getStopTargetFieldWidth()) / 2);
+        return inlineFieldLayout.getStopTargetFieldLeft();
     }
 
     public int getVariableFieldDisplayHeight() {
-        if (!hasVariableInputField() && type != NodeType.ROUTINE_INPUT) {
-            return 0;
-        }
-        return VARIABLE_FIELD_TOP_MARGIN + VARIABLE_FIELD_HEIGHT + VARIABLE_FIELD_BOTTOM_MARGIN;
+        return inlineFieldLayout.getVariableFieldDisplayHeight();
     }
 
     public int getVariableFieldLabelTop() {
-        return getY() + HEADER_HEIGHT + VARIABLE_FIELD_TOP_MARGIN;
+        return inlineFieldLayout.getVariableFieldLabelTop();
     }
 
     public int getVariableFieldInputTop() {
-        return getVariableFieldLabelTop() + VARIABLE_FIELD_LABEL_HEIGHT;
+        return inlineFieldLayout.getVariableFieldInputTop();
     }
 
     public int getVariableFieldLabelHeight() {
-        return VARIABLE_FIELD_LABEL_HEIGHT;
+        return inlineFieldLayout.getVariableFieldLabelHeight();
     }
 
     public int getVariableFieldHeight() {
-        return VARIABLE_FIELD_HEIGHT;
+        return inlineFieldLayout.getVariableFieldHeight();
     }
 
     public int getVariableFieldWidth() {
-        return Math.max(VARIABLE_FIELD_MIN_WIDTH, layoutState.getVariableFieldWidthOverride());
+        return inlineFieldLayout.getVariableFieldWidth();
     }
 
     public int getVariableFieldLeft() {
-        return getX() + Math.max(VARIABLE_FIELD_MARGIN_HORIZONTAL, (getWidth() - getVariableFieldWidth()) / 2);
+        return inlineFieldLayout.getVariableFieldLeft();
     }
 
     public boolean isPointInsideParameterSlot(int pointX, int pointY) {

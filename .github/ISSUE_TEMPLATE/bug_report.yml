@@ -1,0 +1,82 @@
+name: Bug Report
+description: Something in Pathmind behaves incorrectly
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. The version and loader fields matter more than
+        usual here — Pathmind supports many Minecraft versions across two
+        loaders, and most bugs turn out to be specific to a few of them.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you expected, and what happened instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open the visual editor
+        2. Drag a Goto node into the workspace
+        3. ...
+    validations:
+      required: true
+
+  - type: input
+    id: mc-version
+    attributes:
+      label: Minecraft version
+      placeholder: "1.21.11"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: loader
+    attributes:
+      label: Mod loader
+      options:
+        - Fabric
+        - NeoForge
+    validations:
+      required: true
+
+  - type: input
+    id: pathmind-version
+    attributes:
+      label: Pathmind version
+      placeholder: "1.1.5"
+    validations:
+      required: true
+
+  - type: textarea
+    id: other-mods
+    attributes:
+      label: Other mods installed
+      description: >
+        Baritone and UI utility mods especially — some nodes depend on them.
+        "None" is a useful answer.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log or crash report
+      description: >
+        Attach `logs/latest.log`, or paste the relevant part. If the game
+        crashed, the crash report is more useful than the log.
+      render: text
+
+  - type: textarea
+    id: preset
+    attributes:
+      label: Preset
+      description: >
+        If a specific node graph triggers it, exporting and attaching the preset
+        makes this far faster to fix.

@@ -149,13 +149,14 @@ Imported marketplace presets and exported graphs also flow through this preset s
 
 ## Development
 
-Contributor documentation:
+Start with [`CONTRIBUTING.md`](CONTRIBUTING.md) — it covers the source-set layout, the build commands, and what to verify before opening a pull request.
+
+Reference documentation:
 
 - [`docs/node-architecture.md`](docs/node-architecture.md) maps the node system, execution routing, UI helpers, localization rules, and current compat source sets.
 - [`docs/minecraft-compatibility-baseline.md`](docs/minecraft-compatibility-baseline.md) records the protected `1.21.x` matrix, artifact contract, source inventory, and smoke-test procedure.
 - [`docs/build-generations.md`](docs/build-generations.md) explains the stable build commands and the Java 21/remapped versus Java 25/unobfuscated boundary.
 - [`docs/compatibility-maintenance.md`](docs/compatibility-maintenance.md) is the new-version, verification-tier, graphics-smoke, deprecation, and release playbook.
-- [`docs/minecraft-multiversion-roadmap.md`](docs/minecraft-multiversion-roadmap.md) defines the staged transition to clean `1.21.x` and `26.x` support.
 
 ### Build From Source
 

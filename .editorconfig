@@ -1,0 +1,37 @@
+# EditorConfig helps editors apply this project's formatting automatically.
+# https://editorconfig.org
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.java]
+indent_size = 4
+
+[*.{json,yml,yaml}]
+indent_size = 2
+
+[*.{gradle,gradle.kts,kts}]
+indent_size = 4
+
+[*.properties]
+indent_size = 4
+# Gradle reads these as ISO-8859-1 unless told otherwise.
+charset = latin1
+
+[*.md]
+indent_size = 2
+# Trailing whitespace is a hard line break in Markdown.
+trim_trailing_whitespace = false
+
+[gradlew.bat]
+end_of_line = crlf
+
+[*.{png,jar,zip}]
+insert_final_newline = false
+trim_trailing_whitespace = false

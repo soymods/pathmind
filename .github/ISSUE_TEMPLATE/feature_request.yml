@@ -1,0 +1,42 @@
+name: Feature Request
+description: Suggest a node, or a change to how Pathmind works
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do
+      description: >
+        Describe the goal rather than the implementation. Knowing what you are
+        automating usually suggests a better fit than the feature as first
+        imagined.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you have in mind
+      description: >
+        If you are proposing a node, what are its inputs and outputs, and what
+        does it do when it runs?
+    validations:
+      required: true
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Can you do this today
+      description: >
+        If it is possible with existing nodes but awkward, describe the awkward
+        version — that is useful evidence.
+
+  - type: dropdown
+    id: contributing
+    attributes:
+      label: Would you like to implement this
+      description: CONTRIBUTING.md has a section on adding a node.
+      options:
+        - "Just suggesting"
+        - "I would like to try, with guidance"
+        - "I plan to open a pull request"

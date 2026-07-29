@@ -181,6 +181,9 @@ final class PathmindWorkspaceViewportController {
     // --- Sidebar drag preview ----------------------------------------------
 
     void renderDragPreview(GuiGraphics context, int mouseX, int mouseY) {
+        if (!host.isSidebarDragActive()) {
+            return;
+        }
         NodeType draggingNodeType = host.draggingNodeType();
         Node draggingSidebarNode = host.draggingSidebarNode();
         if (draggingNodeType == null && draggingSidebarNode == null) {

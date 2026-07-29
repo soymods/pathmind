@@ -74,7 +74,6 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 
 /**
  * The main visual editor screen for Pathmind.
@@ -152,22 +151,8 @@ public class PathmindVisualEditorScreen extends Screen {
     private final boolean baritoneAvailable;
     private final boolean uiUtilsAvailable;
 
-    // Drag and drop state
-    private boolean isDraggingFromSidebar = false;
-    private boolean sidebarDragActivated = false;
-    private int sidebarDragStartX = -1;
-    private int sidebarDragStartY = -1;
-    private NodeType draggingNodeType = null;
-    private Node draggingSidebarNode = null;
-    private boolean draggingFromRoutineLibrary = false;
-
-    // Right-click context menu state
-    private static final int CLICK_THRESHOLD = 5;  // pixels
-    private static final long CLICK_TIME_THRESHOLD = 250;  // milliseconds
-    private int rightClickStartX = -1;
-    private int rightClickStartY = -1;
-    private long rightClickStartTime = 0;
-    private boolean cuttingConnections = false;
+    private final PathmindWorkspaceDragController workspaceDragController =
+        new PathmindWorkspaceDragController(new WorkspaceDragHost());
     private final PathmindNodeSearchController nodeSearchController =
         new PathmindNodeSearchController(new NodeSearchHost());
 
@@ -1145,17 +1130,17 @@ public class PathmindVisualEditorScreen extends Screen {
 
         @Override
         public boolean isSidebarDragActive() {
-            return isDraggingFromSidebar && sidebarDragActivated;
+            return workspaceDragController.isSidebarDragActive();
         }
 
         @Override
         public NodeType draggingNodeType() {
-            return draggingNodeType;
+            return workspaceDragController.draggingNodeType();
         }
 
         @Override
         public Node draggingSidebarNode() {
-            return draggingSidebarNode;
+            return workspaceDragController.draggingSidebarNode();
         }
 
         @Override
@@ -1166,6 +1151,67 @@ public class PathmindVisualEditorScreen extends Screen {
         @Override
         public void closePresetDropdown() {
             presetDropdownController.close();
+        }
+    }
+
+    private final class WorkspaceDragHost implements PathmindWorkspaceDragController.Host {
+        @Override
+        public int screenWidth() {
+            return PathmindVisualEditorScreen.this.width;
+        }
+
+        @Override
+        public int screenHeight() {
+            return PathmindVisualEditorScreen.this.height;
+        }
+
+        @Override
+        public Minecraft client() {
+            return PathmindVisualEditorScreen.this.minecraft;
+        }
+
+        @Override
+        public NodeGraph nodeGraph() {
+            return nodeGraph;
+        }
+
+        @Override
+        public Sidebar sidebar() {
+            return sidebar;
+        }
+
+        @Override
+        public boolean isNodeDragBlocked(NodeType nodeType) {
+            return shouldBlockBaritoneNode(nodeType) || shouldBlockUiUtilsNode(nodeType);
+        }
+
+        @Override
+        public boolean saveDraggedRoutineToLibrary(double mouseX, double mouseY, boolean fromLibrary, Node draggedNode) {
+            return workspaceLifecycleController.saveDraggedRoutineToLibrary(
+                mouseX, mouseY, fromLibrary, draggedNode);
+        }
+
+        @Override
+        public boolean importDraggedLibraryRoutineToList(double mouseX, double mouseY, boolean fromLibrary, Node draggedNode) {
+            return workspaceLifecycleController.importDraggedLibraryRoutineToList(
+                mouseX, mouseY, fromLibrary, draggedNode);
+        }
+
+        @Override
+        public Node dropDraggedSidebarNodeIntoWorkspace(int mouseX, int mouseY, boolean fromLibrary,
+                                                        Node draggedNode, NodeType draggedType) {
+            return workspaceLifecycleController.dropDraggedSidebarNodeIntoWorkspace(
+                mouseX, mouseY, fromLibrary, draggedNode, draggedType);
+        }
+
+        @Override
+        public void openRoutineWorkspaceTab(String routineId) {
+            PathmindVisualEditorScreen.this.openRoutineWorkspaceTab(routineId);
+        }
+
+        @Override
+        public void openLibraryRoutineWorkspaceTab(String routineId) {
+            PathmindVisualEditorScreen.this.openLibraryRoutineWorkspaceTab(routineId);
         }
     }
 
@@ -1352,7 +1398,7 @@ public class PathmindVisualEditorScreen extends Screen {
     public void render(GuiGraphics context, int mouseX, int mouseY, float delta) {
         OverlayProtection.setPathmindRendering(true);
         try {
-        recoverStaleLeftMouseDrag(mouseX, mouseY);
+        workspaceDragController.recoverStaleLeftMouseDrag(mouseX, mouseY);
         resetOverlayCutout();
         context.fill(0, 0, this.width, this.height, UITheme.BACKGROUND_PRIMARY);
 
@@ -1374,9 +1420,7 @@ public class PathmindVisualEditorScreen extends Screen {
         boolean sidebarInteractionsEnabled = !isPopupObscuringWorkspace();
         boolean allowSidebarTooltips = showWorkspaceTooltips && !nodeGraph.isAnyNodeBeingDragged();
         refreshRoutineSidebarContext();
-        sidebar.setRoutineDragState(isDraggingFromSidebar && sidebarDragActivated
-            && draggingSidebarNode != null && draggingSidebarNode.getType() == NodeType.ROUTINE_CALL,
-            draggingFromRoutineLibrary);
+        workspaceDragController.updateSidebarRoutineDragState();
         sidebar.render(
             context,
             this.font,
@@ -1540,9 +1584,7 @@ public class PathmindVisualEditorScreen extends Screen {
         nodeSearchController.render(context, mouseX, mouseY, delta);
         DrawContextBridge.startNewRootLayer(context);
         renderDraggedWorkspaceLayer(context, mouseX, mouseY, delta);
-        if (isDraggingFromSidebar && sidebarDragActivated && (draggingNodeType != null || draggingSidebarNode != null)) {
-            workspaceViewportController.renderDragPreview(context, mouseX, mouseY);
-        }
+        workspaceViewportController.renderDragPreview(context, mouseX, mouseY);
         renderDraggedPresetDropdownTab(context, mouseX, mouseY);
         DrawContextBridge.startNewRootLayer(context);
         NodeErrorNotificationOverlay.getInstance().render(context, this.font, this.width, this.height);
@@ -1588,62 +1630,9 @@ public class PathmindVisualEditorScreen extends Screen {
 
         presetDropdownController.close();
         dismissParameterOverlay();
-        isDraggingFromSidebar = false;
-        draggingNodeType = null;
-        draggingSidebarNode = null;
+        workspaceDragController.clearSidebarDrag();
         this.minecraft.setScreen(null);
         return true;
-    }
-
-    private void recoverStaleLeftMouseDrag(int mouseX, int mouseY) {
-        Minecraft client = this.minecraft != null ? this.minecraft : Minecraft.getInstance();
-        if (InputCompatibilityBridge.isMouseButtonPressed(client, GLFW.GLFW_MOUSE_BUTTON_LEFT)) {
-            return;
-        }
-
-        boolean recoveringWorkspaceDrag = false;
-        Set<Node> selectedNodes = nodeGraph.getSelectedNodes();
-        if (selectedNodes != null) {
-            for (Node selected : selectedNodes) {
-                if (selected != null && selected.isDragging()) {
-                    recoveringWorkspaceDrag = true;
-                    break;
-                }
-            }
-        }
-
-        boolean staleState = isDraggingFromSidebar
-            || nodeGraph.isSelectionBoxActive()
-            || nodeGraph.isAnyNodeBeingDragged()
-            || recoveringWorkspaceDrag;
-        if (!staleState) {
-            return;
-        }
-
-        if (nodeGraph.isSelectionBoxActive()) {
-            nodeGraph.completeSelectionBox();
-        }
-
-        if (isDraggingFromSidebar) {
-            if (sidebarDragActivated && saveDraggedRoutineToLibrary(mouseX, mouseY)) {
-                // Saved to the reusable routine catalogue.
-            } else if (sidebarDragActivated && importDraggedLibraryRoutineToList(mouseX, mouseY)) {
-                // Imported into this preset's routine list.
-            } else if (sidebarDragActivated && mouseX >= sidebar.getWidth() && mouseY > TITLE_BAR_HEIGHT) {
-                Node newNode = dropDraggedSidebarNodeIntoWorkspace(mouseX, mouseY);
-                if (newNode != null) {
-                    nodeGraph.selectNode(newNode);
-                }
-            }
-            isDraggingFromSidebar = false;
-            sidebarDragActivated = false;
-            draggingNodeType = null;
-            draggingSidebarNode = null;
-            draggingFromRoutineLibrary = false;
-            nodeGraph.resetDropTargets();
-            return;
-        }
-        nodeGraph.forceClearTransientDragState();
     }
 
     private void resetOverlayCutout() {
@@ -1950,24 +1939,7 @@ public class PathmindVisualEditorScreen extends Screen {
                     return true;
                 }
                 // Check if we should start dragging a node from sidebar
-                if (sidebar.isHoveringNode()) {
-                    NodeType hoveredType = sidebar.getHoveredNodeType();
-                    if (shouldBlockBaritoneNode(hoveredType)) {
-                        return true;
-                    }
-                    if (shouldBlockUiUtilsNode(hoveredType)) {
-                        return true;
-                    }
-                    isDraggingFromSidebar = true;
-                    sidebarDragActivated = false;
-                    sidebarDragStartX = (int) mouseX;
-                    sidebarDragStartY = (int) mouseY;
-                    draggingNodeType = hoveredType;
-                    draggingSidebarNode = sidebar.createNodeFromSidebar(0, 0);
-                    draggingFromRoutineLibrary = sidebar.isHoveringLibraryRoutine();
-                    nodeGraph.resetDropTargets();
-                    nodeGraph.closeContextMenu();
-                }
+                workspaceDragController.beginSidebarDragIfHovering((int) mouseX, (int) mouseY);
                 return true;
             }
         }
@@ -1992,22 +1964,8 @@ public class PathmindVisualEditorScreen extends Screen {
                 return true;
             }
 
-            // Handle right-click - track position for context menu
-            if (button == 1) {
-                if (InputCompatibilityBridge.hasControlDown()) {
-                    cuttingConnections = true;
-                    nodeGraph.startConnectionCut((int) mouseX, (int) mouseY);
-                    return true;
-                }
-                rightClickStartX = (int)mouseX;
-                rightClickStartY = (int)mouseY;
-                rightClickStartTime = System.currentTimeMillis();
-                return true;
-            }
-
-            // Handle middle-click for panning
-            if (button == 2) {
-                nodeGraph.startPanning((int)mouseX, (int)mouseY);
+            // Handle right-click for cutting or context menus, middle-click for panning
+            if (workspaceDragController.beginWorkspacePointerGesture((int) mouseX, (int) mouseY, button)) {
                 return true;
             }
 
@@ -2399,12 +2357,7 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
-        if (sidebar.mouseDragged(mouseX, mouseY, button)) {
-            return true;
-        }
-
-        if (button == 0 && nodeGraph.isSelectionBoxActive()) {
-            nodeGraph.updateSelectionBox((int) mouseX, (int) mouseY);
+        if (workspaceDragController.handleSidebarAndSelectionBoxDrag(mouseX, mouseY, button)) {
             return true;
         }
 
@@ -2427,54 +2380,10 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
-        if (button == 1 && cuttingConnections) {
-            nodeGraph.updateConnectionCut(nodeGraph.screenToWorldX((int) mouseX), nodeGraph.screenToWorldY((int) mouseY));
+        if (workspaceDragController.handleWorkspaceDrag(mouseX, mouseY, button)) {
             return true;
         }
 
-        if (button == 1 && rightClickStartX != -1 && !nodeGraph.isPanning()) {
-            int dragDeltaX = Math.abs((int) mouseX - rightClickStartX);
-            int dragDeltaY = Math.abs((int) mouseY - rightClickStartY);
-            if (dragDeltaX > CLICK_THRESHOLD || dragDeltaY > CLICK_THRESHOLD) {
-                nodeGraph.startPanning(rightClickStartX, rightClickStartY);
-                rightClickStartX = -1;
-                rightClickStartY = -1;
-            }
-        }
-
-        // Handle dragging from sidebar
-        if (isDraggingFromSidebar && button == 0) {
-            sidebarDragActivated = sidebarDragActivated
-                || Math.abs((int) mouseX - sidebarDragStartX) > CLICK_THRESHOLD
-                || Math.abs((int) mouseY - sidebarDragStartY) > CLICK_THRESHOLD;
-            if (!sidebarDragActivated) return true;
-            if ((draggingNodeType != null || draggingSidebarNode != null) && mouseX >= sidebar.getWidth() && mouseY > TITLE_BAR_HEIGHT) {
-                int worldMouseX = nodeGraph.screenToWorldX((int) mouseX);
-                int worldMouseY = nodeGraph.screenToWorldY((int) mouseY);
-                if (draggingSidebarNode != null) {
-                    nodeGraph.previewSidebarDrag(draggingSidebarNode, worldMouseX, worldMouseY);
-                } else {
-                    nodeGraph.previewSidebarDrag(draggingNodeType, worldMouseX, worldMouseY);
-                }
-            } else {
-                nodeGraph.resetDropTargets();
-            }
-            return true; // Continue dragging
-        }
-        
-        // Handle node dragging and connection dragging
-        if (button == 0) {
-            nodeGraph.updateDrag((int)mouseX, (int)mouseY);
-            updateSelectionDeletionPreviewState();
-            return true;
-        }
-        
-        // Handle panning with right-click or middle-click
-        if ((button == 1 || button == 2) && nodeGraph.isPanning()) {
-            nodeGraph.updatePanning((int)mouseX, (int)mouseY);
-            return true;
-        }
-        
         //? if MC_1_21_8 {
         /*return super.mouseDragged(mouseX, mouseY, button, deltaX, deltaY);*/
         //?} else {
@@ -2535,12 +2444,7 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
-        if (sidebar.mouseReleased(button)) {
-            return true;
-        }
-
-        if (button == 0 && nodeGraph.isSelectionBoxActive()) {
-            nodeGraph.completeSelectionBox();
+        if (workspaceDragController.handleSidebarAndSelectionBoxRelease(button)) {
             return true;
         }
 
@@ -2573,106 +2477,8 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
-        if (button == 0) {
-            // Handle dropping node from sidebar
-            if (isDraggingFromSidebar) {
-                if (sidebarDragActivated && saveDraggedRoutineToLibrary(mouseX, mouseY)) {
-                    // Saved to the reusable routine catalogue.
-                } else if (sidebarDragActivated && importDraggedLibraryRoutineToList(mouseX, mouseY)) {
-                    // Imported into this preset's routine list.
-                } else if (sidebarDragActivated && mouseX >= sidebar.getWidth() && mouseY > TITLE_BAR_HEIGHT) {
-                    Node newNode = dropDraggedSidebarNodeIntoWorkspace((int) mouseX, (int) mouseY);
-                    if (newNode != null) {
-                        nodeGraph.selectNode(newNode);
-                    }
-                } else if (!sidebarDragActivated && draggingSidebarNode != null
-                    && draggingSidebarNode.getType() == NodeType.ROUTINE_CALL
-                    && !draggingSidebarNode.getRoutineId().isBlank()) {
-                    if (draggingFromRoutineLibrary) {
-                        openLibraryRoutineWorkspaceTab(draggingSidebarNode.getRoutineId());
-                    } else {
-                        openRoutineWorkspaceTab(draggingSidebarNode.getRoutineId());
-                    }
-                }
-                // Reset drag state
-                isDraggingFromSidebar = false;
-                sidebarDragActivated = false;
-                draggingNodeType = null;
-                draggingSidebarNode = null;
-                draggingFromRoutineLibrary = false;
-                nodeGraph.resetDropTargets();
-            } else {
-                // Check if dragging node into sidebar for deletion (only if actually dragging)
-                Set<Node> selectedNodes = nodeGraph.getSelectedNodes();
-                if (selectedNodes != null && !selectedNodes.isEmpty()) {
-                    List<Node> snapshot = new ArrayList<>(selectedNodes);
-                    boolean selectionDragged = false;
-                    Node draggedNode = null;
-                    boolean selectionOverSidebar = false;
-                    for (Node selected : snapshot) {
-                        if (selected == null) {
-                            continue;
-                        }
-                        if (selected.isDragging()) {
-                            selectionDragged = true;
-                            if (draggedNode == null) {
-                                draggedNode = selected;
-                            }
-                        }
-                    }
-                    if (selectionDragged) {
-                        if (snapshot.size() > 1) {
-                            selectionOverSidebar = nodeGraph.isSelectionOverSidebar(sidebar.getWidth());
-                        } else if (draggedNode != null) {
-                            selectionOverSidebar = nodeGraph.isNodeOverSidebar(draggedNode, sidebar.getWidth());
-                        }
-                    }
-                    if (selectionDragged && selectionOverSidebar) {
-                        nodeGraph.deleteSelectedNode();
-                    }
-                } else if (nodeGraph.getSelectedNode() != null && nodeGraph.getSelectedNode().isDragging()) {
-                    nodeGraph.deleteNodeIfInSidebar(nodeGraph.getSelectedNode(), (int)mouseX, sidebar.getWidth());
-                }
-                
-                nodeGraph.stopDragging();
-                nodeGraph.stopDraggingConnection();
-            }
-        } else if (button == 1) {
-            if (cuttingConnections) {
-                nodeGraph.stopConnectionCut();
-                cuttingConnections = false;
-                return true;
-            }
-            // Right-click released - check if it's a click or a drag
-            if (rightClickStartX != -1) {
-                int deltaX = Math.abs((int)mouseX - rightClickStartX);
-                int deltaY = Math.abs((int)mouseY - rightClickStartY);
-                long deltaTime = System.currentTimeMillis() - rightClickStartTime;
-
-                boolean isClick = deltaX <= CLICK_THRESHOLD &&
-                                  deltaY <= CLICK_THRESHOLD &&
-                                  deltaTime <= CLICK_TIME_THRESHOLD;
-
-                if (isClick && mouseX >= sidebar.getWidth() && mouseY > TITLE_BAR_HEIGHT) {
-                    Node clickedNode = nodeGraph.getNodeAt(rightClickStartX, rightClickStartY);
-                    if (clickedNode != null) {
-                    nodeGraph.focusSelectedNode(clickedNode);
-                        nodeGraph.showNodeContextMenu(rightClickStartX, rightClickStartY, clickedNode, width, height);
-                    } else {
-                        // Show context menu at the right-click position
-                        nodeGraph.showContextMenu(rightClickStartX, rightClickStartY, sidebar, width, height);
-                    }
-                }
-
-                rightClickStartX = -1;
-                rightClickStartY = -1;
-            }
-
-            // Stop panning
-            nodeGraph.stopPanning();
-        } else if (button == 2) {
-            // Stop panning on middle-click release
-            nodeGraph.stopPanning();
+        if (workspaceDragController.handleWorkspaceRelease(mouseX, mouseY, button)) {
+            return true;
         }
         //? if MC_1_21_8 {
         /*return super.mouseReleased(mouseX, mouseY, button);*/
@@ -3412,21 +3218,6 @@ public class PathmindVisualEditorScreen extends Screen {
         workspaceLifecycleController.handleRoutineLibraryAction(libraryRoutineId, action);
     }
 
-    private boolean saveDraggedRoutineToLibrary(double mouseX, double mouseY) {
-        return workspaceLifecycleController.saveDraggedRoutineToLibrary(
-            mouseX, mouseY, draggingFromRoutineLibrary, draggingSidebarNode);
-    }
-
-    private Node dropDraggedSidebarNodeIntoWorkspace(int mouseX, int mouseY) {
-        return workspaceLifecycleController.dropDraggedSidebarNodeIntoWorkspace(
-            mouseX, mouseY, draggingFromRoutineLibrary, draggingSidebarNode, draggingNodeType);
-    }
-
-    private boolean importDraggedLibraryRoutineToList(double mouseX, double mouseY) {
-        return workspaceLifecycleController.importDraggedLibraryRoutineToList(
-            mouseX, mouseY, draggingFromRoutineLibrary, draggingSidebarNode);
-    }
-
     private void switchToRootAfterRoutineChange(NodeGraphData root) {
         workspaceLifecycleController.switchToRootAfterRoutineChange(root);
     }
@@ -3698,9 +3489,7 @@ public class PathmindVisualEditorScreen extends Screen {
         movePresetTabToEnd(presetName);
         nodeGraph.setActivePreset(activePresetName);
         dismissParameterOverlay();
-        isDraggingFromSidebar = false;
-        draggingNodeType = null;
-        draggingSidebarNode = null;
+        workspaceDragController.clearSidebarDrag();
         clearPopupAnimation.hide();
         closeSettingsPopup();
         presetDropdownController.close();
@@ -4149,9 +3938,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
         if (deletingActive) {
             dismissParameterOverlay();
-            isDraggingFromSidebar = false;
-            draggingNodeType = null;
-            draggingSidebarNode = null;
+            workspaceDragController.clearSidebarDrag();
             clearPopupAnimation.hide();
             clearImportExportStatus();
 
@@ -4195,33 +3982,6 @@ public class PathmindVisualEditorScreen extends Screen {
         renamePresetStatusColor = UITheme.TEXT_SECONDARY;
     }
 
-    private void updateSelectionDeletionPreviewState() {
-        Set<Node> selectedNodes = nodeGraph.getSelectedNodes();
-        boolean preview = false;
-        if (selectedNodes != null && !selectedNodes.isEmpty()) {
-            boolean hasDragging = false;
-            for (Node node : selectedNodes) {
-                if (node != null && node.isDragging()) {
-                    hasDragging = true;
-                    break;
-                }
-            }
-            if (hasDragging) {
-                if (selectedNodes.size() > 1) {
-                    preview = nodeGraph.isSelectionOverSidebar(sidebar.getWidth());
-                } else {
-                    for (Node node : selectedNodes) {
-                        if (node != null && node.isDragging() && nodeGraph.isNodeOverSidebar(node, sidebar.getWidth())) {
-                            preview = true;
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-        nodeGraph.setSelectionDeletionPreviewActive(preview);
-    }
-
     void refreshAvailablePresets() {
         stopInlinePresetRename(false);
         availablePresets = new ArrayList<>(PresetManager.getAvailablePresets());
@@ -4253,9 +4013,7 @@ public class PathmindVisualEditorScreen extends Screen {
         refreshAvailablePresets();
         nodeGraph.setActivePreset(activePresetName);
         dismissParameterOverlay();
-        isDraggingFromSidebar = false;
-        draggingNodeType = null;
-        draggingSidebarNode = null;
+        workspaceDragController.clearSidebarDrag();
         if (importExportPopupAnimation.isVisible()) {
             closeImportExportPopup();
         }
@@ -5056,9 +4814,7 @@ public class PathmindVisualEditorScreen extends Screen {
     private void startExecutingAllGraphs() {
         validationExecutionController.closePanel();
         dismissParameterOverlay();
-        isDraggingFromSidebar = false;
-        draggingNodeType = null;
-        draggingSidebarNode = null;
+        workspaceDragController.clearSidebarDrag();
         NodeGraphData.RoutineDefinitionData activeRoutine = getActiveRoutineWorkspace();
         saveRootPresetWorkspace();
         if (activeRoutine != null) {
@@ -5084,9 +4840,7 @@ public class PathmindVisualEditorScreen extends Screen {
         presetDropdownController.close();
         if (nodeGraph.didLastStartButtonTriggerExecution()) {
             dismissParameterOverlay();
-            isDraggingFromSidebar = false;
-            draggingNodeType = null;
-            draggingSidebarNode = null;
+            workspaceDragController.clearSidebarDrag();
             if (this.minecraft != null && this.minecraft.player != null) {
                 this.minecraft.setScreen(null);
             }

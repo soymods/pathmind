@@ -2,7 +2,7 @@
 /.gradle/
 /.gradle-home/
 /build/
-/bin/
+bin/
 /run/
 /buildSrc/.gradle/
 /buildSrc/build/

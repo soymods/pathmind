@@ -169,7 +169,7 @@ public class NodeGraph {
                 selectionController.clearTransientState();
             }
             @Override public void normalizeStartNodeNumbers() {
-                NodeGraph.this.normalizeStartNodeNumbers();
+                nodeLifecycle.normalizeStartNodeNumbers();
             }
             @Override public void syncRoutineInvocations() {
                 NodeGraph.this.syncRoutineInvocations();
@@ -197,6 +197,72 @@ public class NodeGraph {
             @Override public void setNextStartNodeNumber(int value) {
                 nextStartNodeNumber = value;
             }
+        });
+    private final NodeLifecycleController nodeLifecycle =
+        new NodeLifecycleController(new NodeLifecycleController.Host() {
+            @Override public List<Node> nodes() { return nodes; }
+            @Override public List<NodeConnection> connections() { return connections; }
+            @Override public String activeRoutineWorkspaceId() { return activeRoutineWorkspaceId; }
+            @Override public int nextStartNodeNumber() { return nextStartNodeNumber; }
+            @Override public void setNextStartNodeNumber(int value) {
+                nextStartNodeNumber = value;
+            }
+            @Override public void pushUndoState() { NodeGraph.this.pushUndoState(); }
+            @Override public void markWorkspaceDirty() { NodeGraph.this.markWorkspaceDirty(); }
+            @Override public void stopEditorsForRemovedNode(Node node) {
+                if (inlineFields.getCoordinateEditingNode() == node) {
+                    stopCoordinateEditing(false);
+                }
+                if (inlineFields.getAmountEditingNode() == node) {
+                    stopAmountEditing(false);
+                }
+                if (inlineFields.getStopTargetEditingNode() == node) {
+                    stopStopTargetEditing(false);
+                }
+                if (inlineFields.getVariableEditingNode() == node) {
+                    stopVariableEditing(false);
+                }
+                if (inlineFields.getMessageEditingNode() == node) {
+                    stopMessageEditing(false);
+                }
+            }
+            @Override public void closeRunPresetDropdownForRemovedNode(Node node) {
+                if (specializedSelectors.getRunPresetNode() == node) {
+                    closeRunPresetDropdown();
+                }
+            }
+            @Override public void clearDropTargetsForRemovedNode(Node node) {
+                selectionController.clearDropTargetsForRemovedNode(node);
+            }
+            @Override public void addConnectionReplacingConflicts(
+                Node outputNode, Node inputNode, int outputSocket, int inputSocket
+            ) {
+                NodeGraph.this.addConnectionReplacingConflicts(
+                    outputNode, inputNode, outputSocket, inputSocket);
+            }
+            @Override public void onNodeRemoved(Node node) {
+                selectionController.onNodeRemoved(node);
+            }
+            @Override public void invalidateHierarchyCache() {
+                NodeGraph.this.invalidateHierarchyCache();
+            }
+            @Override public void invalidateRenderCaches() {
+                NodeGraph.this.invalidateRenderCaches();
+            }
+            @Override public int cameraX() { return viewport.getCameraX(); }
+            @Override public boolean isNodeOverSidebar(
+                Node node, int sidebarWidth, int screenX, int screenWidth
+            ) {
+                return NodeGraph.this.isNodeOverSidebar(
+                    node, sidebarWidth, screenX, screenWidth);
+            }
+            @Override public void pruneSelectionToCurrentNodes() {
+                NodeGraph.this.pruneSelectionToCurrentNodes();
+            }
+            @Override public Set<Node> selectedNodes() {
+                return selectionController.getSelectedNodes();
+            }
+            @Override public void clearSelection() { NodeGraph.this.clearSelection(); }
         });
     private final ConnectionController connectionController = new ConnectionController(new ConnectionController.Host() {
         @Override public List<Node> getNodes() { return nodes; }
@@ -640,10 +706,10 @@ public class NodeGraph {
                 NodeGraph.this.removeNodeCascade(node, captureUndo);
             }
             @Override public boolean shouldCascadeDelete(Node node) {
-                return NodeGraph.this.shouldCascadeDelete(node);
+                return nodeLifecycle.shouldCascadeDelete(node);
             }
             @Override public void collectNodesForCascade(Node node, List<Node> order, Set<Node> visited) {
-                NodeGraph.this.collectNodesForCascade(node, order, visited);
+                nodeLifecycle.collectNodesForCascade(node, order, visited);
             }
             @Override public int cameraX() { return viewport.getCameraX(); }
             @Override public int sidebarWidthForRendering() { return sidebarWidthForRendering; }
@@ -1405,192 +1471,15 @@ public class NodeGraph {
     }
 
     void assignNewStartNodeNumber(Node node) {
-        if (node == null || node.getType() != NodeType.START) {
-            return;
-        }
-        if (nextStartNodeNumber <= 0) {
-            nextStartNodeNumber = 1;
-        }
-        java.util.Set<Integer> used = new java.util.HashSet<>();
-        for (Node existing : nodes) {
-            if (existing != null && existing.getType() == NodeType.START) {
-                int number = existing.getStartNodeNumber();
-                if (number > 0) {
-                    used.add(number);
-                }
-            }
-        }
-        while (used.contains(nextStartNodeNumber)) {
-            nextStartNodeNumber++;
-        }
-        node.setStartNodeNumber(nextStartNodeNumber);
-        nextStartNodeNumber++;
+        nodeLifecycle.assignNewStartNodeNumber(node);
     }
-
-    private void normalizeStartNodeNumbers() {
-        java.util.Set<Integer> used = new java.util.HashSet<>();
-        int max = 0;
-        List<Node> startNodes = new ArrayList<>();
-        for (Node node : nodes) {
-            if (node != null && node.getType() == NodeType.START) {
-                startNodes.add(node);
-            }
-        }
-        for (Node node : startNodes) {
-            int number = node.getStartNodeNumber();
-            if (number > 0 && used.add(number)) {
-                max = Math.max(max, number);
-            } else {
-                node.setStartNodeNumber(0);
-            }
-        }
-        int next = Math.max(1, max + 1);
-        for (Node node : startNodes) {
-            if (node.getStartNodeNumber() <= 0) {
-                node.setStartNodeNumber(next);
-                used.add(next);
-                next++;
-            }
-        }
-        nextStartNodeNumber = next;
-    }
-
 
     public void addNode(Node node) {
-        if (node != null && node.getType() == NodeType.ROUTINE_INPUT
-            && (!activeRoutineWorkspaceId.equals(node.getRoutineId()) || activeRoutineWorkspaceId.isBlank())) {
-            return;
-        }
-        if (node != null && node.getType() == NodeType.START && node.getStartNodeNumber() <= 0) {
-            assignNewStartNodeNumber(node);
-        }
-        nodes.add(node);
-        invalidateHierarchyCache();
+        nodeLifecycle.addNode(node);
     }
 
     public void removeNode(Node node) {
-        if (node == null || node.isProtectedRoutineEntry()) {
-            return;
-        }
-        pushUndoState();
-        removeNodeInternal(node, true, true);
-        markWorkspaceDirty();
-    }
-
-    private void removeNodeInternal(Node node, boolean autoReconnect, boolean repositionDetachments) {
-        if (node == null) {
-            return;
-        }
-
-        if (inlineFields.getCoordinateEditingNode() == node) {
-            stopCoordinateEditing(false);
-        }
-
-        if (inlineFields.getAmountEditingNode() == node) {
-            stopAmountEditing(false);
-        }
-        if (inlineFields.getStopTargetEditingNode() == node) {
-            stopStopTargetEditing(false);
-        }
-        if (inlineFields.getVariableEditingNode() == node) {
-            stopVariableEditing(false);
-        }
-        if (inlineFields.getMessageEditingNode() == node) {
-            stopMessageEditing(false);
-        }
-
-        if (specializedSelectors.getRunPresetNode() == node) {
-            closeRunPresetDropdown();
-        }
-
-        if (node.hasAttachedSensor()) {
-            Node attached = node.getAttachedSensor();
-            node.detachSensor();
-            if (repositionDetachments && attached != null) {
-                attached.setPosition(node.getX() + node.getWidth() + 12, node.getY());
-            }
-        }
-
-        if (node.hasAttachedActionNode()) {
-            Node attached = node.getAttachedActionNode();
-            node.detachActionNode();
-            if (repositionDetachments && attached != null) {
-                attached.setPosition(node.getX() + node.getWidth() + 12, node.getY());
-            }
-        }
-
-        if (node.isSensorNode() && node.isAttachedToControl()) {
-            Node parent = node.getParentControl();
-            if (parent != null) {
-                parent.detachSensor();
-            }
-        }
-
-        if (node.isAttachedToActionControl()) {
-            Node parent = node.getParentActionControl();
-            if (parent != null) {
-                parent.detachActionNode();
-            }
-        }
-
-        if (node.isParameterNode() && node.getParentParameterHost() != null) {
-            Node parent = node.getParentParameterHost();
-            int slotIndex = node.getParentParameterSlotIndex();
-            if (parent != null) {
-                parent.detachParameter(slotIndex);
-            }
-        }
-
-        if (node.hasAttachedParameter()) {
-            List<Integer> parameterSlots = new ArrayList<>(node.getAttachedParameters().keySet());
-            for (Integer slotIndex : parameterSlots) {
-                node.detachParameter(slotIndex);
-            }
-        }
-
-        selectionController.clearDropTargetsForRemovedNode(node);
-
-        if (autoReconnect) {
-            List<NodeConnection> inputConnections = new ArrayList<>();
-            List<NodeConnection> outputConnections = new ArrayList<>();
-
-            for (NodeConnection conn : connections) {
-                if (conn.getOutputNode().equals(node)) {
-                    outputConnections.add(conn);
-                } else if (conn.getInputNode().equals(node)) {
-                    inputConnections.add(conn);
-                }
-            }
-
-            // Avoid reconnecting nodes that previously fanned out to multiple outputs,
-            // otherwise the upstream node ends up with duplicate outgoing lines.
-            boolean hasMultipleOutputs = outputConnections.size() > 1;
-            if (!hasMultipleOutputs) {
-                for (NodeConnection inputConn : inputConnections) {
-                    Node inputSource = inputConn.getOutputNode();
-                    int inputSocket = inputConn.getOutputSocket();
-
-                    for (NodeConnection outputConn : outputConnections) {
-                        Node outputTarget = outputConn.getInputNode();
-                        int outputSocket = outputConn.getInputSocket();
-
-                        addConnectionReplacingConflicts(inputSource, outputTarget, inputSocket, outputSocket);
-                    }
-                }
-            }
-        }
-
-        boolean removedStartNode = node.getType() == NodeType.START;
-        connections.removeIf(conn ->
-            conn.getOutputNode().equals(node) || conn.getInputNode().equals(node));
-        nodes.remove(node);
-        if (removedStartNode) {
-            // Reuse freed START numbers on the next START node creation.
-            nextStartNodeNumber = 1;
-        }
-
-        selectionController.onNodeRemoved(node);
-        invalidateRenderCaches();
+        nodeLifecycle.removeNode(node);
     }
 
     public Node getNodeAt(int x, int y) {
@@ -1893,22 +1782,7 @@ public class NodeGraph {
     }
 
     public boolean deleteSelectedNode() {
-        pruneSelectionToCurrentNodes();
-        Set<Node> selectedNodes = selectionController.getSelectedNodes();
-        if (selectedNodes.isEmpty()) {
-            return false;
-        }
-        List<Node> targets = selectedNodes.stream().filter(node -> !node.isProtectedRoutineEntry()).toList();
-        if (targets.isEmpty()) {
-            return false;
-        }
-        pushUndoState();
-        for (Node node : targets) {
-            removeNodeCascade(node, false);
-        }
-        clearSelection();
-        markWorkspaceDirty();
-        return true;
+        return nodeLifecycle.deleteSelectedNode();
     }
 
     private boolean isNodeEligibleForConnectionInsertion(Node node) {
@@ -2346,66 +2220,11 @@ public class NodeGraph {
     }
 
     public void deleteNodeIfInSidebar(Node node, int mouseX, int sidebarWidth) {
-        // Use the same logic as the grey-out function - more than halfway over the sidebar
-        // Calculate the node's screen position (same as in renderNode)
-        int nodeScreenX = node.getX() - viewport.getCameraX();
-        if (isNodeOverSidebar(node, sidebarWidth, nodeScreenX, node.getWidth())) {
-            if (shouldCascadeDelete(node)) {
-                removeNodeCascade(node);
-            } else {
-                removeNode(node);
-            }
-        }
-    }
-
-    private void removeNodeCascade(Node node) {
-        removeNodeCascade(node, true);
+        nodeLifecycle.deleteNodeIfInSidebar(node, mouseX, sidebarWidth);
     }
 
     private void removeNodeCascade(Node node, boolean captureUndo) {
-        if (node == null || node.isProtectedRoutineEntry()) {
-            return;
-        }
-        if (node == null) {
-            return;
-        }
-        if (captureUndo) {
-            pushUndoState();
-        }
-        List<Node> removalOrder = new ArrayList<>();
-        collectNodesForCascade(node, removalOrder, new HashSet<>());
-        for (Node toRemove : removalOrder) {
-            boolean shouldReconnect = toRemove == node;
-            removeNodeInternal(toRemove, shouldReconnect, false);
-        }
-        markWorkspaceDirty();
-    }
-
-    private void collectNodesForCascade(Node node, List<Node> order, Set<Node> visited) {
-        if (node == null || !visited.add(node)) {
-            return;
-        }
-
-        if (node.hasAttachedSensor()) {
-            collectNodesForCascade(node.getAttachedSensor(), order, visited);
-        }
-        if (node.hasAttachedActionNode()) {
-            collectNodesForCascade(node.getAttachedActionNode(), order, visited);
-        }
-        if (node.hasAttachedParameter()) {
-            for (Node parameter : node.getAttachedParameters().values()) {
-                collectNodesForCascade(parameter, order, visited);
-            }
-        }
-
-        order.add(node);
-    }
-
-    private boolean shouldCascadeDelete(Node node) {
-        if (node == null) {
-            return false;
-        }
-        return node.hasAttachedSensor() || node.hasAttachedActionNode() || node.hasAttachedParameter();
+        nodeLifecycle.removeNodeCascade(node, captureUndo);
     }
     
     public boolean isNodeOverSidebar(Node node, int sidebarWidth) {

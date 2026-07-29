@@ -2,9 +2,7 @@ package com.pathmind.nodes;
 
 import com.pathmind.execution.PathmindNavigator;
 import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
 import java.math.BigDecimal;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -17,11 +15,9 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.HashSet;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.Executors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -52,7 +48,6 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
-import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.Entity;
@@ -63,26 +58,13 @@ import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.crafting.CraftingRecipe;
-import net.minecraft.world.item.crafting.RecipeHolder;
-import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
-import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
-import it.unimi.dsi.fastutil.ints.IntList;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.TreeMap;
-import java.util.Random;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import org.lwjgl.glfw.GLFW;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -156,12 +138,11 @@ public class Node {
     static final int PARAMETER_SLOT_INNER_PADDING = 4;
     static final int PARAMETER_SLOT_MIN_CONTENT_WIDTH = 88;
     static final int PARAMETER_SLOT_MIN_CONTENT_HEIGHT = 32;
+    static final int PLAYER_ARMOR_SLOT_COUNT = 4;
     static final int PARAMETER_SLOT_LABEL_HEIGHT = 12;
     static final int OPERATOR_SLOT_GAP = 24;
     static final int MINIMAL_NODE_TAB_WIDTH = 6;
     static final int PARAMETER_FIELD_PADDING = 12;
-    static final int PLAYER_ARMOR_SLOT_COUNT = 4;
-    private static final int PLAYER_OFFHAND_INVENTORY_INDEX = Inventory.INVENTORY_SIZE + PLAYER_ARMOR_SLOT_COUNT;
     static final int PARAMETER_SLOT_BOTTOM_PADDING = 6;
 
     static String tr(String key, Object... args) {
@@ -272,7 +253,6 @@ public class Node {
     static final int BOOK_PAGE_MAX_CHARS = 256;
     static final double PARAMETER_SEARCH_RADIUS = 64.0;
     static final double DEFAULT_REACH_DISTANCE_SQUARED = 25.0D;
-    private static final double DEFAULT_REACH_DISTANCE = Math.sqrt(DEFAULT_REACH_DISTANCE_SQUARED);
     static final double DEFAULT_DIRECTION_DISTANCE = 16.0;
     static final long SNEAK_SYNC_DELAY_MS = 75L;
     private static final Object GOTO_BREAK_LOCK = new Object();
@@ -2754,114 +2734,19 @@ public class Node {
     }
 
     void resetBaritonePathing(Object baritone, Object mineProcess) {
-        if (baritone == null) {
-            return;
-        }
-
-        try {
-            if (mineProcess != null) {
-                BaritoneApiProxy.cancelMine(mineProcess);
-                if (BaritoneApiProxy.isProcessActive(mineProcess)) {
-                    BaritoneApiProxy.onLostControl(mineProcess);
-                }
-            }
-
-            Object pathingBehavior = BaritoneApiProxy.getPathingBehavior(baritone);
-            if (pathingBehavior != null) {
-                if (BaritoneApiProxy.isPathing(pathingBehavior) || BaritoneApiProxy.hasPath(pathingBehavior)) {
-                }
-                BaritoneApiProxy.forceCancel(pathingBehavior);
-            }
-
-            Object goalProcess = BaritoneApiProxy.getCustomGoalProcess(baritone);
-            if (goalProcess != null) {
-                BaritoneApiProxy.setGoal(goalProcess, null);
-                if (BaritoneApiProxy.isProcessActive(goalProcess)) {
-                    BaritoneApiProxy.onLostControl(goalProcess);
-                }
-            }
-
-            Object getToBlockProcess = BaritoneApiProxy.getGetToBlockProcess(baritone);
-            if (getToBlockProcess != null && BaritoneApiProxy.isProcessActive(getToBlockProcess)) {
-                BaritoneApiProxy.onLostControl(getToBlockProcess);
-            }
-
-            Object exploreProcess = BaritoneApiProxy.getExploreProcess(baritone);
-            if (exploreProcess != null && BaritoneApiProxy.isProcessActive(exploreProcess)) {
-                BaritoneApiProxy.onLostControl(exploreProcess);
-            }
-
-            Object farmProcess = BaritoneApiProxy.getFarmProcess(baritone);
-            if (farmProcess != null && BaritoneApiProxy.isProcessActive(farmProcess)) {
-                BaritoneApiProxy.onLostControl(farmProcess);
-            }
-        } catch (Exception e) {
-        }
+        NodeBaritoneSupport.resetPathing(baritone, mineProcess);
     }
 
     void resetBaritonePathing(Object baritone) {
-        if (baritone == null) {
-            return;
-        }
-        resetBaritonePathing(baritone, BaritoneApiProxy.getMineProcess(baritone));
+        NodeBaritoneSupport.resetPathing(baritone);
     }
 
     private NodeCraftCommandExecutor craftCommandExecutor() {
         return new NodeCraftCommandExecutor(this);
     }
 
-    boolean isCraftingScreenAvailable(net.minecraft.client.Minecraft client, NodeMode craftMode) {
-        return craftCommandExecutor().isCraftingScreenAvailable(client, craftMode);
-    }
-
-    boolean isCompatibleCraftingHandler(AbstractContainerMenu handler, NodeMode craftMode) {
-        return craftCommandExecutor().isCompatibleCraftingHandler(handler, craftMode);
-    }
-
     int getRequestedCraftQuantity() {
         return craftCommandExecutor().getRequestedCraftQuantity();
-    }
-
-    boolean displayFitsPlayerGrid(Object display, Object registryManager) {
-        return craftCommandExecutor().displayFitsPlayerGrid(display, registryManager);
-    }
-
-    void cacheRecipeForMode(NodeCraftCommandExecutor.CachedRecipeBook book,
-                            Item targetItem,
-                            CraftingRecipe recipe,
-                            int outputCount,
-                            NodeMode mode,
-                            Object registryManager) {
-        craftCommandExecutor().cacheRecipeForMode(book, targetItem, recipe, outputCount, mode, registryManager);
-    }
-
-    void cacheDisplayForMode(NodeCraftCommandExecutor.CachedRecipeBook book,
-                             Item targetItem,
-                             int outputCount,
-                             Object display,
-                             NodeMode mode,
-                             Object registryManager) {
-        craftCommandExecutor().cacheDisplayForMode(book, targetItem, outputCount, display, mode, registryManager);
-    }
-
-    List<java.lang.reflect.Method> getAllMethods(Class<?> type) {
-        return craftCommandExecutor().getAllMethods(type);
-    }
-
-    List<RecipeHolder<?>> getCraftingRecipeEntries(Object manager) {
-        return craftCommandExecutor().getCraftingRecipeEntries(manager);
-    }
-
-    ItemStack getRecipeOutput(CraftingRecipe recipe, Object registryManager) {
-        return craftCommandExecutor().getRecipeOutput(recipe, registryManager);
-    }
-
-    ItemStack getDisplayOutput(Object display, Object registryManager) {
-        return craftCommandExecutor().getDisplayOutput(display, registryManager);
-    }
-
-    boolean recipeFitsPlayerGrid(CraftingRecipe recipe) {
-        return craftCommandExecutor().recipeFitsPlayerGrid(recipe);
     }
 
     int mapPlayerInventorySlot(AbstractContainerMenu handler, int inventorySlot) {
@@ -3045,23 +2930,15 @@ public class Node {
     }
 
     static double getBlockInteractionReach(net.minecraft.client.Minecraft client) {
-        if (client == null || client.player == null) {
-            return DEFAULT_REACH_DISTANCE;
-        }
-        return Math.max(0.0D, client.player.blockInteractionRange());
+        return NodeClientRuntimeSupport.getBlockInteractionReach(client);
     }
 
     static double getBlockInteractionReachSquared(net.minecraft.client.Minecraft client) {
-        double reach = getBlockInteractionReach(client);
-        return reach * reach;
+        return NodeClientRuntimeSupport.getBlockInteractionReachSquared(client);
     }
 
     static double getEntityInteractionReachSquared(net.minecraft.client.Minecraft client) {
-        double reach = DEFAULT_REACH_DISTANCE;
-        if (client != null && client.player != null) {
-            reach = Math.max(0.0D, client.player.entityInteractionRange());
-        }
-        return reach * reach;
+        return NodeClientRuntimeSupport.getEntityInteractionReachSquared(client);
     }
 
     boolean isBlockReplaceable(net.minecraft.world.level.Level world, BlockPos targetPos) {
@@ -3174,110 +3051,31 @@ public class Node {
     }
 
     void applySneakState(net.minecraft.client.Minecraft client, boolean active) {
-        if (client == null || client.player == null) {
-            return;
-        }
-        client.player.setShiftKeyDown(active);
-        if (client.options != null && client.options.keyShift != null) {
-            client.options.keyShift.setDown(active);
-        }
+        NodeClientRuntimeSupport.applySneakState(client, active);
     }
 
     void waitForSneakSync(net.minecraft.client.Minecraft client, boolean previousState, boolean desiredState) throws InterruptedException {
-        if (client == null || client.isSameThread() || previousState == desiredState) {
-            return;
-        }
-        Thread.sleep(SNEAK_SYNC_DELAY_MS);
+        NodeClientRuntimeSupport.waitForSneakSync(client, previousState, desiredState);
     }
 
     BlockHitResult raycastBlockFromOrientation(net.minecraft.client.Minecraft client, float yaw, float pitch, double distance) {
-        if (client == null || client.player == null || client.level == null) {
-            return null;
-        }
-        Vec3 eyePos = client.player.getEyePosition();
-        double yawRad = Math.toRadians(yaw);
-        double pitchRad = Math.toRadians(pitch);
-        Vec3 direction = new Vec3(
-            -Math.sin(yawRad) * Math.cos(pitchRad),
-            -Math.sin(pitchRad),
-            Math.cos(yawRad) * Math.cos(pitchRad)
-        );
-        double reachDistance = getBlockInteractionReach(client);
-        double rayDistance = distance > 0.0 ? Math.min(distance, reachDistance) : reachDistance;
-        Vec3 end = eyePos.add(direction.scale(rayDistance));
-        HitResult hit = client.level.clip(new ClipContext(
-            eyePos,
-            end,
-            ClipContext.Block.OUTLINE,
-            ClipContext.Fluid.NONE,
-            client.player
-        ));
-        if (hit instanceof BlockHitResult blockHit && hit.getType() == HitResult.Type.BLOCK) {
-            return blockHit;
-        }
-        return null;
+        return NodeClientRuntimeSupport.raycastBlockFromOrientation(client, yaw, pitch, distance);
     }
     
     void runOnClientThread(net.minecraft.client.Minecraft client, Runnable task) throws InterruptedException {
-        if (client == null || client.isSameThread()) {
-            task.run();
-            return;
-        }
-
-        CountDownLatch latch = new CountDownLatch(1);
-        AtomicReference<RuntimeException> error = new AtomicReference<>();
-        client.execute(() -> {
-            try {
-                task.run();
-            } catch (RuntimeException e) {
-                error.set(e);
-            } finally {
-                latch.countDown();
-            }
-        });
-        latch.await();
-        if (error.get() != null) {
-            throw error.get();
-        }
+        NodeClientRuntimeSupport.runOnClientThread(client, task);
     }
 
     <T> T supplyFromClient(net.minecraft.client.Minecraft client, java.util.function.Supplier<T> supplier) throws InterruptedException {
-        if (client == null || client.isSameThread()) {
-            return supplier.get();
-        }
-
-        CountDownLatch latch = new CountDownLatch(1);
-        AtomicReference<T> result = new AtomicReference<>();
-        AtomicReference<RuntimeException> error = new AtomicReference<>();
-        client.execute(() -> {
-            try {
-                result.set(supplier.get());
-            } catch (RuntimeException e) {
-                error.set(e);
-            } finally {
-                latch.countDown();
-            }
-        });
-        latch.await();
-        if (error.get() != null) {
-            throw error.get();
-        }
-        return result.get();
+        return NodeClientRuntimeSupport.supplyFromClient(client, supplier);
     }
 
     int clampInventorySlot(Inventory inventory, int slot) {
-        return Mth.clamp(slot, 0, inventory.getContainerSize() - 1);
+        return NodeClientRuntimeSupport.clampInventorySlot(inventory, slot);
     }
 
     int getOffhandInventoryIndex(Inventory inventory) {
-        if (inventory == null || inventory.getContainerSize() <= 0) {
-            return -1;
-        }
-        int index = PLAYER_OFFHAND_INVENTORY_INDEX;
-        if (index >= inventory.getContainerSize()) {
-            return inventory.getContainerSize() - 1;
-        }
-        return index;
+        return NodeClientRuntimeSupport.getOffhandInventoryIndex(inventory);
     }
 
     private EquipmentSlot parseEquipmentSlot(NodeParameter parameter, EquipmentSlot defaultSlot) {

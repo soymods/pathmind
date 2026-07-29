@@ -75,10 +75,7 @@ import net.minecraft.util.Mth;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.IdentityHashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -95,23 +92,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private static final int TITLE_BAR_HEIGHT = 20;
-    private static final int TAB_BAR_TOP = 4;
-    private static final int TAB_HEIGHT = 16;
-    private static final int TAB_GAP = 4;
-    private static final int TAB_MIN_WIDTH = 72;
-    private static final int TAB_MAX_WIDTH = 140;
-    private static final int PRESET_TAB_TEXT_PADDING = 6;
-    private static final int PRESET_TAB_CLOSE_ICON_SIZE = 6;
-    private static final int PRESET_TAB_CLOSE_HITBOX_PADDING = 2;
-    private static final int PRESET_TAB_CLOSE_GAP = 4;
-    private static final int PRESET_TAB_ADD_WIDTH = 20;
     private static final int PRESET_MENU_BUTTON_SIZE = 18;
-    private static final int PRESET_TAB_TITLE_GAP = 0;
-    private static final int PRESET_TAB_DRAG_THRESHOLD = 4;
-    private static final String[] PRESET_GROUP_COLOR_KEYS = {"sky", "mint", "amber", "rose", "violet"};
-    private static final int[] PRESET_GROUP_COLORS = {0xFF38BDF8, 0xFF34D399, 0xFFF59E0B, 0xFFFB7185, 0xFFA78BFA};
-    private static final String PRESET_GROUP_TAB_PREFIX = "__pathmind_preset_group__:";
-    private static final int PRESET_GROUP_TAB_WIDTH = 10;
     
     // Colors now come from UITheme for consistency
     private static final int BOTTOM_BUTTON_SIZE = 18;
@@ -233,29 +214,10 @@ public class PathmindVisualEditorScreen extends Screen {
     private final AnimatedValue titleUnderlineAnimation = AnimatedValue.forHover();
     private final AnimatedValue routineWorkspaceAnimation = new AnimatedValue(0f, AnimationHelper::easeOutCubic);
     private List<String> availablePresets = new ArrayList<>();
-    private final List<String> presetTabOrder = new ArrayList<>();
-    private final Map<String, AnimatedValue> presetTabXAnimations = new HashMap<>();
-    private final Map<String, AnimatedValue> presetTabAppearAnimations = new HashMap<>();
-    private final AnimatedValue presetTabAddButtonFadeAnimation = new AnimatedValue(1f, AnimationHelper::easeOutCubic);
-    private boolean presetTabsInitialized = false;
-    private static final long PRESET_TAB_RENAME_DOUBLE_CLICK_MS = 300L;
-    private String pendingPresetTabInteractionName = null;
-    private int pendingPresetTabPressMouseX = 0;
-    private int pendingPresetTabPressMouseY = 0;
-    private int pendingPresetTabPressTabLeft = 0;
-    private String draggingPresetTabName = null;
-    private int draggingPresetTabPointerOffsetX = 0;
-    private int draggingPresetTabCurrentX = 0;
-    private String pendingPresetDropdownDragName = null;
-    private int pendingPresetDropdownPressMouseX = 0;
-    private int pendingPresetDropdownPressMouseY = 0;
-    private String draggingPresetDropdownName = null;
-    private int draggingPresetDropdownCurrentX = 0;
-    private int draggingPresetDropdownCurrentY = 0;
+    private final PathmindPresetTabController presetTabController =
+        new PathmindPresetTabController(new PresetTabHost());
     private final PathmindPresetContextMenuController presetContextMenuController =
         new PathmindPresetContextMenuController(new PresetContextMenuHost());
-    private String animatingPresetDeletionName = null;
-    private long animatingPresetDeletionExecuteAtMs = 0L;
     private String activePresetName = "";
     final PopupAnimationHandler createPresetPopupAnimation = new PopupAnimationHandler();
     EditBox createPresetField;
@@ -282,9 +244,6 @@ public class PathmindVisualEditorScreen extends Screen {
     String renamePresetStatus = "";
     int renamePresetStatusColor = UITheme.TEXT_SECONDARY;
     String pendingPresetRenameName = "";
-    private String inlinePresetRenameName = "";
-    private long lastPresetTitleClickTime = 0L;
-    private String lastPresetTitleClickName = "";
     private final PopupAnimationHandler infoPopupAnimation = new PopupAnimationHandler();
     final PopupAnimationHandler presetDeletePopupAnimation = new PopupAnimationHandler();
     String pendingPresetDeletionName = "";
@@ -372,6 +331,98 @@ public class PathmindVisualEditorScreen extends Screen {
         }
     }
 
+    private final class PresetTabHost implements PathmindPresetTabController.Host {
+        @Override
+        public Font font() {
+            return font;
+        }
+
+        @Override
+        public int titleTextX() {
+            return getTitleTextX();
+        }
+
+        @Override
+        public int presetOverflowTabRight() {
+            return getPresetOverflowTabRight();
+        }
+
+        @Override
+        public int accentColor() {
+            return getAccentColor();
+        }
+
+        @Override
+        public boolean isPopupObscuringWorkspace() {
+            return PathmindVisualEditorScreen.this.isPopupObscuringWorkspace();
+        }
+
+        @Override
+        public List<String> availablePresets() {
+            return availablePresets;
+        }
+
+        @Override
+        public String activePresetName() {
+            return activePresetName;
+        }
+
+        @Override
+        public Settings settings() {
+            return currentSettings;
+        }
+
+        @Override
+        public EditBox inlinePresetRenameField() {
+            return inlinePresetRenameField;
+        }
+
+        @Override
+        public boolean isPresetDeleteDisabled(String presetName) {
+            return PathmindVisualEditorScreen.this.isPresetDeleteDisabled(presetName);
+        }
+
+        @Override
+        public void openPresetDeletePopup(String presetName) {
+            PathmindVisualEditorScreen.this.openPresetDeletePopup(presetName);
+        }
+
+        @Override
+        public void openCreatePresetPopup() {
+            PathmindVisualEditorScreen.this.openCreatePresetPopup();
+        }
+
+        @Override
+        public void closeCreatePresetPopup() {
+            PathmindVisualEditorScreen.this.closeCreatePresetPopup();
+        }
+
+        @Override
+        public void closeRenamePresetPopup() {
+            PathmindVisualEditorScreen.this.closeRenamePresetPopup();
+        }
+
+        @Override
+        public void closePresetDropdown() {
+            presetDropdownController.close();
+        }
+
+        @Override
+        public void switchPreset(String presetName) {
+            PathmindVisualEditorScreen.this.switchPreset(presetName);
+        }
+
+        @Override
+        public boolean renamePresetInternal(String currentName, String desiredName) {
+            return PathmindVisualEditorScreen.this.renamePresetInternal(currentName, desiredName);
+        }
+
+        @Override
+        public void attemptDeletePresetImmediate(String presetName) {
+            PathmindVisualEditorScreen.this.attemptDeletePresetImmediate(presetName);
+        }
+    }
+
     private final class PresetDropdownHost implements PathmindPresetDropdownController.Host {
         @Override
         public int screenWidth() {
@@ -430,9 +481,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
         @Override
         public void beginPresetDropdownDrag(String presetName, int mouseX, int mouseY) {
-            pendingPresetDropdownDragName = presetName;
-            pendingPresetDropdownPressMouseX = mouseX;
-            pendingPresetDropdownPressMouseY = mouseY;
+            presetTabController.beginPresetDropdownDrag(presetName, mouseX, mouseY);
         }
     }
 
@@ -2417,21 +2466,21 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
-        if (button == 0 && pendingPresetTabInteractionName != null) {
+        if (button == 0 && presetTabController.hasPendingPresetTabInteraction()) {
             updatePendingPresetTabInteraction((int) mouseX, (int) mouseY);
-            if (draggingPresetTabName != null) {
+            if (presetTabController.isDraggingPresetTab()) {
                 return true;
             }
         }
-        if (button == 0 && pendingPresetDropdownDragName != null) {
+        if (button == 0 && presetTabController.hasPendingPresetDropdownDrag()) {
             updatePendingPresetDropdownDrag((int) mouseX, (int) mouseY);
             return true;
         }
-        if (button == 0 && draggingPresetDropdownName != null) {
+        if (button == 0 && presetTabController.isDraggingPresetDropdown()) {
             updatePresetDropdownDrag((int) mouseX, (int) mouseY);
             return true;
         }
-        if (draggingPresetTabName != null) {
+        if (presetTabController.isDraggingPresetTab()) {
             updatePresetTabDrag((int) mouseX);
             return true;
         }
@@ -2553,23 +2602,17 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
-        if (draggingPresetTabName != null) {
+        if (presetTabController.isDraggingPresetTab()) {
             endPresetTabDrag();
             return true;
         }
 
-        if (button == 0 && draggingPresetDropdownName != null) {
+        if (button == 0 && presetTabController.isDraggingPresetDropdown()) {
             finishPresetDropdownDrag((int) mouseX, (int) mouseY);
             return true;
         }
 
-        if (button == 0 && pendingPresetDropdownDragName != null) {
-            String presetName = pendingPresetDropdownDragName;
-            clearPresetDropdownDragState();
-            presetDropdownController.close();
-            if (!presetName.equals(activePresetName)) {
-                switchPreset(presetName);
-            }
+        if (button == 0 && presetTabController.releasePendingPresetDropdownDrag()) {
             return true;
         }
 
@@ -2584,16 +2627,7 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
-        if (button == 0 && pendingPresetTabInteractionName != null) {
-            String presetName = pendingPresetTabInteractionName;
-            clearPendingPresetTabInteraction();
-            if (isPresetGroupTab(presetName)) {
-                togglePresetGroupExpanded(getPresetGroupKeyFromTab(presetName));
-                return true;
-            }
-            if (!presetName.equals(activePresetName)) {
-                switchPreset(presetName);
-            }
+        if (button == 0 && presetTabController.releasePendingPresetTabInteraction()) {
             return true;
         }
 
@@ -3250,862 +3284,115 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void renderWorkspaceTabs(GuiGraphics context, int mouseX, int mouseY) {
-        tickQueuedPresetDeletionAnimation();
-        if (!isPopupObscuringWorkspace() && pendingPresetTabInteractionName != null && draggingPresetTabName == null) {
-            updatePendingPresetTabInteraction(mouseX, mouseY);
-        }
-        if (!isPopupObscuringWorkspace() && draggingPresetTabName != null) {
-            updatePresetTabDrag(mouseX);
-        }
-        int x = getPresetTabStartX();
-        int y = TAB_BAR_TOP;
-        int rightLimit = getPresetTabRightLimit();
-        List<String> tabs = getRenderedPresetTabsForWidth(rightLimit - x);
-        if (tabs.isEmpty()) {
-            return;
-        }
-
-        int[] tabWidths = computePresetTabWidths(tabs, rightLimit - x, PRESET_TAB_ADD_WIDTH);
-        int[] tabXs = computePresetTabXs(tabWidths, x);
-        int dragIndex = draggingPresetTabName == null ? -1 : tabs.indexOf(draggingPresetTabName);
-
-        for (int i = 0; i < tabs.size() && i < tabWidths.length; i++) {
-            if (i == dragIndex) {
-                continue;
-            }
-            String label = tabs.get(i);
-            int tabWidth = tabWidths[i];
-            if (tabWidth <= 0) {
-                continue;
-            }
-            int drawX = getAnimatedPresetTabX(label, tabXs[i]);
-            drawPresetTab(context, mouseX, mouseY, label, drawX, y, tabWidth, false);
-        }
-
-        if (dragIndex >= 0 && dragIndex < tabs.size() && dragIndex < tabWidths.length) {
-            String label = tabs.get(dragIndex);
-            int tabWidth = tabWidths[dragIndex];
-            if (tabWidth > 0) {
-                int drawX = draggingPresetTabCurrentX == 0 ? tabXs[dragIndex] : draggingPresetTabCurrentX;
-                drawPresetTab(context, mouseX, mouseY, label, drawX, y, tabWidth, true);
-            }
-        }
-
-        x = getPresetTabStartX();
-        for (int width : tabWidths) {
-            if (width > 0) {
-                x += width + TAB_GAP;
-            }
-        }
-        int addTabX = Math.max(getPresetTabStartX(), x - TAB_GAP);
-        presetTabAddButtonFadeAnimation.animateTo(draggingPresetTabName != null ? 0f : 1f, 120, AnimationHelper::easeOutCubic);
-        presetTabAddButtonFadeAnimation.tick();
-        float plusAlpha = Mth.clamp(presetTabAddButtonFadeAnimation.getValue(), 0f, 1f);
-        if (addTabX + PRESET_TAB_ADD_WIDTH <= rightLimit) {
-            boolean hovered = isPointInRect(mouseX, mouseY, addTabX, y, PRESET_TAB_ADD_WIDTH, TAB_HEIGHT);
-            context.drawCenteredString(
-                this.font,
-                Component.literal("+"),
-                addTabX + PRESET_TAB_ADD_WIDTH / 2,
-                y + (TAB_HEIGHT - this.font.lineHeight) / 2 + 1,
-                AnimationHelper.multiplyAlpha(hovered ? getAccentColor() : UITheme.ICON_MUTED_BRIGHT, plusAlpha)
-            );
-        }
-        renderInlinePresetRenameField(context, mouseX, mouseY, tabs, tabWidths, tabXs, y, dragIndex);
+        presetTabController.render(context, mouseX, mouseY);
     }
 
     private boolean handleWorkspaceTabClick(int mouseX, int mouseY) {
-        int x = getPresetTabStartX();
-        int y = TAB_BAR_TOP;
-        int rightLimit = getPresetTabRightLimit();
-        List<String> tabs = getRenderedPresetTabsForWidth(rightLimit - x);
-        if (tabs.isEmpty()) {
-            return false;
-        }
-        int[] tabWidths = computePresetTabWidths(tabs, rightLimit - x, PRESET_TAB_ADD_WIDTH);
-        int[] tabXs = computePresetTabXs(tabWidths, x);
-        for (int i = 0; i < tabs.size() && i < tabWidths.length; i++) {
-            String label = tabs.get(i);
-            int tabWidth = tabWidths[i];
-            if (tabWidth <= 0) {
-                continue;
-            }
-            if (label.equals(animatingPresetDeletionName)) {
-                continue;
-            }
-            x = tabXs[i];
-            if (isPointInRect(mouseX, mouseY, x, y, tabWidth, TAB_HEIGHT)) {
-                if (isPresetGroupTab(label)) {
-                    pendingPresetTabInteractionName = label;
-                    pendingPresetTabPressMouseX = mouseX;
-                    pendingPresetTabPressMouseY = mouseY;
-                    pendingPresetTabPressTabLeft = x;
-                    return true;
-                }
-                if (!isPresetDeleteDisabled(label)) {
-                    int closeLeft = x + tabWidth - PRESET_TAB_TEXT_PADDING - PRESET_TAB_CLOSE_ICON_SIZE;
-                    int closeTop = y + (TAB_HEIGHT - PRESET_TAB_CLOSE_ICON_SIZE) / 2;
-                    int closeHitboxSize = PRESET_TAB_CLOSE_ICON_SIZE + PRESET_TAB_CLOSE_HITBOX_PADDING * 2;
-                    if (isPointInRect(
-                        mouseX,
-                        mouseY,
-                        closeLeft - PRESET_TAB_CLOSE_HITBOX_PADDING,
-                        closeTop - PRESET_TAB_CLOSE_HITBOX_PADDING,
-                        closeHitboxSize,
-                        closeHitboxSize
-                    )) {
-                        openPresetDeletePopup(label);
-                        return true;
-                    }
-                }
-                if (!isPresetDeleteDisabled(label) && shouldStartInlinePresetRename(label)) {
-                    clearPendingPresetTabInteraction();
-                    startInlinePresetRename(label);
-                    return true;
-                }
-                if (!label.equals(activePresetName)) {
-                    pendingPresetTabInteractionName = label;
-                    pendingPresetTabPressMouseX = mouseX;
-                    pendingPresetTabPressMouseY = mouseY;
-                    pendingPresetTabPressTabLeft = x;
-                } else if (!isPresetDeleteDisabled(label)) {
-                    pendingPresetTabInteractionName = label;
-                    pendingPresetTabPressMouseX = mouseX;
-                    pendingPresetTabPressMouseY = mouseY;
-                    pendingPresetTabPressTabLeft = x;
-                }
-                return true;
-            }
-        }
-        x = getPresetTabStartX();
-        for (int width : tabWidths) {
-            if (width > 0) {
-                x += width + TAB_GAP;
-            }
-        }
-        int addTabX = Math.max(getPresetTabStartX(), x - TAB_GAP);
-        if (addTabX + PRESET_TAB_ADD_WIDTH <= rightLimit && isPointInRect(mouseX, mouseY, addTabX, y, PRESET_TAB_ADD_WIDTH, TAB_HEIGHT)) {
-            openCreatePresetPopup();
-            return true;
-        }
-        return false;
+        return presetTabController.handleClick(mouseX, mouseY);
     }
 
     private int getPresetTabRightLimit() {
-        return Math.max(getPresetTabStartX(), getTitleTextX() - PRESET_TAB_TITLE_GAP);
+        return presetTabController.getPresetTabRightLimit();
     }
 
     private void clearPendingPresetTabInteraction() {
-        pendingPresetTabInteractionName = null;
-        pendingPresetTabPressMouseX = 0;
-        pendingPresetTabPressMouseY = 0;
-        pendingPresetTabPressTabLeft = 0;
+        presetTabController.clearPendingPresetTabInteraction();
     }
 
     private void updatePendingPresetTabInteraction(int mouseX, int mouseY) {
-        if (pendingPresetTabInteractionName == null || draggingPresetTabName != null) {
-            return;
-        }
-        int dx = Math.abs(mouseX - pendingPresetTabPressMouseX);
-        int dy = Math.abs(mouseY - pendingPresetTabPressMouseY);
-        if (dx < PRESET_TAB_DRAG_THRESHOLD && dy < PRESET_TAB_DRAG_THRESHOLD) {
-            return;
-        }
-        String presetName = pendingPresetTabInteractionName;
-        int tabLeft = pendingPresetTabPressTabLeft;
-        clearPendingPresetTabInteraction();
-        if (isPresetDeleteDisabled(presetName)) {
-            return;
-        }
-        beginPresetTabDrag(presetName, mouseX, tabLeft);
-    }
-
-    private void beginPresetTabDrag(String presetName, int mouseX, int tabLeft) {
-        draggingPresetTabName = presetName;
-        draggingPresetTabPointerOffsetX = mouseX - tabLeft;
-        draggingPresetTabCurrentX = tabLeft;
-    }
-
-    private void normalizePresetTabOrder() {
-        String defaultPresetName = PresetManager.getDefaultPresetName();
-        if (defaultPresetName == null || defaultPresetName.isEmpty()) {
-            return;
-        }
-        if (presetTabOrder.remove(defaultPresetName)) {
-            presetTabOrder.add(0, defaultPresetName);
-        }
+        presetTabController.updatePendingPresetTabInteraction(mouseX, mouseY);
     }
 
     private void updatePresetTabDrag(int mouseX) {
-        if (draggingPresetTabName == null) {
-            return;
-        }
-        List<String> tabs = getRenderedPresetTabsForWidth(getPresetTabRightLimit() - getPresetTabStartX());
-        int currentIndex = tabs.indexOf(draggingPresetTabName);
-        if (currentIndex < 0) {
-            endPresetTabDrag();
-            return;
-        }
-        int startX = getPresetTabStartX();
-        int rightLimit = getPresetTabRightLimit();
-        int[] widths = computePresetTabWidths(tabs, rightLimit - startX, PRESET_TAB_ADD_WIDTH);
-        int[] xs = computePresetTabXs(widths, startX);
-        if (currentIndex >= widths.length) {
-            return;
-        }
-        int draggedWidth = widths[currentIndex];
-        draggingPresetTabCurrentX = mouseX - draggingPresetTabPointerOffsetX;
-        int dragCenter = draggingPresetTabCurrentX + draggedWidth / 2;
-        if (isPresetGroupTab(draggingPresetTabName)) {
-            updatePresetGroupDragOrder(tabs, widths, xs, currentIndex, dragCenter);
-            return;
-        }
-        int targetIndex = 0;
-        for (int i = 0; i < tabs.size() && i < widths.length; i++) {
-            if (i == currentIndex) {
-                continue;
-            }
-            int center = xs[i] + widths[i] / 2;
-            if (dragCenter > center) {
-                targetIndex++;
-            }
-        }
-        int orderIndex = presetTabOrder.indexOf(draggingPresetTabName);
-        if (orderIndex < 0) {
-            return;
-        }
-        int clampedTarget = Mth.clamp(targetIndex, 1, presetTabOrder.size() - 1);
-        if (clampedTarget != orderIndex) {
-            presetTabOrder.remove(orderIndex);
-            presetTabOrder.add(clampedTarget, draggingPresetTabName);
-            normalizePresetTabOrder();
-        }
-    }
-
-    private void updatePresetGroupDragOrder(List<String> tabs, int[] widths, int[] xs, int currentIndex, int dragCenter) {
-        if (currentSettings == null || currentSettings.presetGroupOrder == null) {
-            return;
-        }
-        String groupKey = getPresetGroupKeyFromTab(draggingPresetTabName);
-        int orderIndex = currentSettings.presetGroupOrder.indexOf(groupKey);
-        if (orderIndex < 0) {
-            return;
-        }
-        int targetIndex = 0;
-        for (int i = 0; i < tabs.size() && i < widths.length; i++) {
-            if (i == currentIndex || !isPresetGroupTab(tabs.get(i))) {
-                continue;
-            }
-            int center = xs[i] + widths[i] / 2;
-            if (dragCenter > center) {
-                targetIndex++;
-            }
-        }
-        int clampedTarget = Mth.clamp(targetIndex, 0, currentSettings.presetGroupOrder.size() - 1);
-        if (clampedTarget != orderIndex) {
-            currentSettings.presetGroupOrder.remove(orderIndex);
-            currentSettings.presetGroupOrder.add(clampedTarget, groupKey);
-            SettingsManager.save(currentSettings);
-        }
+        presetTabController.updatePresetTabDrag(mouseX);
     }
 
     private void endPresetTabDrag() {
-        if (draggingPresetTabName != null && draggingPresetTabCurrentX > 0) {
-            int dropX = draggingPresetTabCurrentX + Math.max(1, PRESET_GROUP_TAB_WIDTH / 2);
-            String groupKey = getPresetGroupAt(dropX, TAB_BAR_TOP + TAB_HEIGHT / 2);
-            if (!groupKey.isEmpty() && !isPresetGroupTab(draggingPresetTabName)) {
-                setPresetGroupColor(draggingPresetTabName, groupKey);
-            } else if (!isPresetGroupTab(draggingPresetTabName) && !getPresetGroupKey(draggingPresetTabName).isEmpty() && !isPointInPresetGroupSpan(dropX, TAB_BAR_TOP + TAB_HEIGHT / 2, getPresetGroupKey(draggingPresetTabName))) {
-                setPresetGroupColor(draggingPresetTabName, null);
-            }
-        }
-        if (draggingPresetTabName != null && draggingPresetTabCurrentX > 0) {
-            presetTabXAnimations
-                .computeIfAbsent(draggingPresetTabName, key -> new AnimatedValue(draggingPresetTabCurrentX))
-                .setValue(draggingPresetTabCurrentX);
-        }
-        draggingPresetTabName = null;
-        draggingPresetTabPointerOffsetX = 0;
-        draggingPresetTabCurrentX = 0;
-        clearPendingPresetTabInteraction();
+        presetTabController.endPresetTabDrag();
     }
 
     private boolean isPointInPresetTabBarContextZone(int mouseX, int mouseY) {
-        int startX = getPresetTabStartX();
-        int rightLimit = getPresetOverflowTabRight();
-        return isPointInRect(mouseX, mouseY, startX, TAB_BAR_TOP - 4, Math.max(0, rightLimit - startX), TAB_HEIGHT + 8);
+        return presetTabController.isPointInPresetTabBarContextZone(mouseX, mouseY);
     }
 
     private String getPresetTabAt(int mouseX, int mouseY) {
-        int startX = getPresetTabStartX();
-        int y = TAB_BAR_TOP;
-        int rightLimit = getPresetTabRightLimit();
-        List<String> tabs = getRenderedPresetTabsForWidth(rightLimit - startX);
-        int[] widths = computePresetTabWidths(tabs, rightLimit - startX, PRESET_TAB_ADD_WIDTH);
-        int[] xs = computePresetTabXs(widths, startX);
-        for (int i = 0; i < tabs.size() && i < widths.length; i++) {
-            if (isPointInRect(mouseX, mouseY, xs[i], y, widths[i], TAB_HEIGHT)) {
-                String tabName = tabs.get(i);
-                return isPresetGroupTab(tabName) ? null : tabName;
-            }
-        }
-        return null;
+        return presetTabController.getPresetTabAt(mouseX, mouseY);
     }
 
     private String getPresetGroupAt(int mouseX, int mouseY) {
-        int startX = getPresetTabStartX();
-        int y = TAB_BAR_TOP;
-        int rightLimit = getPresetTabRightLimit();
-        List<String> tabs = getRenderedPresetTabsForWidth(rightLimit - startX);
-        int[] widths = computePresetTabWidths(tabs, rightLimit - startX, PRESET_TAB_ADD_WIDTH);
-        int[] xs = computePresetTabXs(widths, startX);
-        for (int i = 0; i < tabs.size() && i < widths.length; i++) {
-            if (isPointInRect(mouseX, mouseY, xs[i], y, widths[i], TAB_HEIGHT) && isPresetGroupTab(tabs.get(i))) {
-                return getPresetGroupKeyFromTab(tabs.get(i));
-            }
-        }
-        return "";
-    }
-
-    private boolean isPointInPresetGroupSpan(int mouseX, int mouseY, String groupKey) {
-        if (!isValidPresetGroupColorKey(groupKey)) {
-            return false;
-        }
-        int startX = getPresetTabStartX();
-        int y = TAB_BAR_TOP;
-        int rightLimit = getPresetTabRightLimit();
-        List<String> tabs = getRenderedPresetTabsForWidth(rightLimit - startX);
-        int[] widths = computePresetTabWidths(tabs, rightLimit - startX, PRESET_TAB_ADD_WIDTH);
-        int[] xs = computePresetTabXs(widths, startX);
-        int left = -1;
-        int right = -1;
-        for (int i = 0; i < tabs.size() && i < widths.length; i++) {
-            String tab = tabs.get(i);
-            boolean inGroup = isPresetGroupTab(tab)
-                ? groupKey.equals(getPresetGroupKeyFromTab(tab))
-                : groupKey.equals(getPresetGroupKey(tab));
-            if (inGroup) {
-                if (left < 0) {
-                    left = xs[i];
-                }
-                right = xs[i] + widths[i];
-            } else if (left >= 0) {
-                break;
-            }
-        }
-        return left >= 0 && isPointInRect(mouseX, mouseY, left, y - 4, Math.max(0, right - left), TAB_HEIGHT + 8);
+        return presetTabController.getPresetGroupAt(mouseX, mouseY);
     }
 
     private String getPresetGroupColorLabel(String key) {
-        if ("sky".equals(key)) return "Sky";
-        if ("mint".equals(key)) return "Mint";
-        if ("amber".equals(key)) return "Amber";
-        if ("rose".equals(key)) return "Rose";
-        if ("violet".equals(key)) return "Violet";
-        return key;
+        return presetTabController.getPresetGroupColorLabel(key);
     }
 
     private String getNextPresetGroupColorKey() {
-        if (currentSettings == null) {
-            return "";
-        }
-        if (currentSettings.presetGroupOrder == null) {
-            currentSettings.presetGroupOrder = new ArrayList<>();
-        }
-        for (String key : PRESET_GROUP_COLOR_KEYS) {
-            if (!currentSettings.presetGroupOrder.contains(key)) {
-                return key;
-            }
-        }
-        return "";
+        return presetTabController.getNextPresetGroupColorKey();
     }
 
     private void createPresetGroup() {
-        String key = getNextPresetGroupColorKey();
-        if (key.isEmpty() || currentSettings == null) {
-            return;
-        }
-        if (currentSettings.presetGroupOrder == null) {
-            currentSettings.presetGroupOrder = new ArrayList<>();
-        }
-        if (currentSettings.presetGroupsExpanded == null) {
-            currentSettings.presetGroupsExpanded = new LinkedHashMap<>();
-        }
-        currentSettings.presetGroupOrder.add(key);
-        currentSettings.presetGroupsExpanded.put(key, true);
-        SettingsManager.save(currentSettings);
+        presetTabController.createPresetGroup();
     }
 
     private void deletePresetGroup(String groupKey) {
-        if (!isValidPresetGroupColorKey(groupKey) || currentSettings == null) {
-            return;
-        }
-        if (currentSettings.presetGroupOrder != null) {
-            currentSettings.presetGroupOrder.remove(groupKey);
-        }
-        if (currentSettings.presetGroupsExpanded != null) {
-            currentSettings.presetGroupsExpanded.remove(groupKey);
-        }
-        if (currentSettings.presetGroupColors != null) {
-            currentSettings.presetGroupColors.entrySet().removeIf(entry -> groupKey.equals(entry.getValue()));
-        }
-        SettingsManager.save(currentSettings);
+        presetTabController.deletePresetGroup(groupKey);
     }
 
     private void recolorPresetGroup(String oldKey, String newKey) {
-        if (!isValidPresetGroupColorKey(oldKey) || !isValidPresetGroupColorKey(newKey) || currentSettings == null || oldKey.equals(newKey)) {
-            return;
-        }
-        if (currentSettings.presetGroupOrder == null) {
-            currentSettings.presetGroupOrder = new ArrayList<>();
-        }
-        if (currentSettings.presetGroupOrder.contains(newKey)) {
-            return;
-        }
-        int index = currentSettings.presetGroupOrder.indexOf(oldKey);
-        if (index >= 0) {
-            currentSettings.presetGroupOrder.set(index, newKey);
-        }
-        if (currentSettings.presetGroupsExpanded != null) {
-            Boolean expanded = currentSettings.presetGroupsExpanded.remove(oldKey);
-            currentSettings.presetGroupsExpanded.put(newKey, expanded == null || expanded);
-        }
-        if (currentSettings.presetGroupColors != null) {
-            for (Map.Entry<String, String> entry : currentSettings.presetGroupColors.entrySet()) {
-                if (oldKey.equals(entry.getValue())) {
-                    entry.setValue(newKey);
-                }
-            }
-        }
-        SettingsManager.save(currentSettings);
+        presetTabController.recolorPresetGroup(oldKey, newKey);
     }
 
     private void setPresetGroupColor(String presetName, String colorKey) {
-        if (presetName == null || presetName.isEmpty() || currentSettings == null) {
-            return;
-        }
-        if (currentSettings.presetGroupColors == null) {
-            currentSettings.presetGroupColors = new LinkedHashMap<>();
-        }
-        if (currentSettings.presetGroupsExpanded == null) {
-            currentSettings.presetGroupsExpanded = new LinkedHashMap<>();
-        }
-        if (colorKey == null || colorKey.isEmpty()) {
-            currentSettings.presetGroupColors.remove(presetName);
-        } else {
-            if (currentSettings.presetGroupOrder == null) {
-                currentSettings.presetGroupOrder = new ArrayList<>();
-            }
-            if (!currentSettings.presetGroupOrder.contains(colorKey)) {
-                currentSettings.presetGroupOrder.add(colorKey);
-            }
-            currentSettings.presetGroupColors.put(presetName, colorKey);
-            currentSettings.presetGroupsExpanded.putIfAbsent(colorKey, true);
-        }
-        SettingsManager.save(currentSettings);
+        presetTabController.setPresetGroupColor(presetName, colorKey);
     }
 
     private boolean isPresetGroupTab(String tabName) {
-        return tabName != null && tabName.startsWith(PRESET_GROUP_TAB_PREFIX);
-    }
-
-    private String getPresetGroupTabName(String colorKey) {
-        return PRESET_GROUP_TAB_PREFIX + colorKey;
+        return presetTabController.isPresetGroupTab(tabName);
     }
 
     private String getPresetGroupKeyFromTab(String tabName) {
-        if (!isPresetGroupTab(tabName)) {
-            return "";
-        }
-        return tabName.substring(PRESET_GROUP_TAB_PREFIX.length());
+        return presetTabController.getPresetGroupKeyFromTab(tabName);
     }
 
     private String getPresetGroupKey(String presetName) {
-        if (presetName == null || currentSettings == null || currentSettings.presetGroupColors == null) {
-            return "";
-        }
-        String key = currentSettings.presetGroupColors.get(presetName);
-        return isValidPresetGroupColorKey(key) ? key : "";
-    }
-
-    private boolean isValidPresetGroupColorKey(String key) {
-        if (key == null || key.isEmpty()) {
-            return false;
-        }
-        for (String candidate : PRESET_GROUP_COLOR_KEYS) {
-            if (candidate.equals(key)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private boolean isPresetGroupExpanded(String colorKey) {
-        if (!isValidPresetGroupColorKey(colorKey)) {
-            return true;
-        }
-        if (currentSettings == null || currentSettings.presetGroupsExpanded == null) {
-            return true;
-        }
-        Boolean expanded = currentSettings.presetGroupsExpanded.get(colorKey);
-        return expanded == null || expanded;
-    }
-
-    private void togglePresetGroupExpanded(String colorKey) {
-        if (!isValidPresetGroupColorKey(colorKey) || currentSettings == null) {
-            return;
-        }
-        setPresetGroupExpanded(colorKey, !isPresetGroupExpanded(colorKey));
-    }
-
-    private void setPresetGroupExpanded(String colorKey, boolean expanded) {
-        if (!isValidPresetGroupColorKey(colorKey) || currentSettings == null) {
-            return;
-        }
-        if (currentSettings.presetGroupsExpanded == null) {
-            currentSettings.presetGroupsExpanded = new LinkedHashMap<>();
-        }
-        currentSettings.presetGroupsExpanded.put(colorKey, expanded);
-        if (expanded) {
-            for (String presetName : availablePresets) {
-                if (colorKey.equals(getPresetGroupKey(presetName))) {
-                    AnimatedValue appear = presetTabAppearAnimations.computeIfAbsent(presetName, key -> new AnimatedValue(1f));
-                    appear.setValue(0f);
-                    appear.animateTo(1f, 180, AnimationHelper::easeOutCubic);
-                }
-            }
-        }
-        SettingsManager.save(currentSettings);
-    }
-
-    private int getPresetGroupColorByKey(String key) {
-        for (int i = 0; i < PRESET_GROUP_COLOR_KEYS.length; i++) {
-            if (PRESET_GROUP_COLOR_KEYS[i].equals(key)) {
-                return PRESET_GROUP_COLORS[i];
-            }
-        }
-        return 0;
+        return presetTabController.getPresetGroupKey(presetName);
     }
 
     private int getPresetGroupColor(String presetName) {
-        if (isPresetGroupTab(presetName)) {
-            return getPresetGroupColorByKey(getPresetGroupKeyFromTab(presetName));
-        }
-        return getPresetGroupColorByKey(getPresetGroupKey(presetName));
+        return presetTabController.getPresetGroupColor(presetName);
     }
 
     private void clearPresetDropdownDragState() {
-        pendingPresetDropdownDragName = null;
-        pendingPresetDropdownPressMouseX = 0;
-        pendingPresetDropdownPressMouseY = 0;
-        draggingPresetDropdownName = null;
-        draggingPresetDropdownCurrentX = 0;
-        draggingPresetDropdownCurrentY = 0;
+        presetTabController.clearPresetDropdownDragState();
     }
 
     private void updatePendingPresetDropdownDrag(int mouseX, int mouseY) {
-        if (pendingPresetDropdownDragName == null || draggingPresetDropdownName != null) {
-            return;
-        }
-        int dx = Math.abs(mouseX - pendingPresetDropdownPressMouseX);
-        int dy = Math.abs(mouseY - pendingPresetDropdownPressMouseY);
-        if (dx < PRESET_TAB_DRAG_THRESHOLD && dy < PRESET_TAB_DRAG_THRESHOLD) {
-            return;
-        }
-        draggingPresetDropdownName = pendingPresetDropdownDragName;
-        draggingPresetDropdownCurrentX = mouseX;
-        draggingPresetDropdownCurrentY = mouseY;
-        pendingPresetDropdownDragName = null;
+        presetTabController.updatePendingPresetDropdownDrag(mouseX, mouseY);
     }
 
     private void updatePresetDropdownDrag(int mouseX, int mouseY) {
-        draggingPresetDropdownCurrentX = mouseX;
-        draggingPresetDropdownCurrentY = mouseY;
+        presetTabController.updatePresetDropdownDrag(mouseX, mouseY);
     }
 
     private void finishPresetDropdownDrag(int mouseX, int mouseY) {
-        String presetName = draggingPresetDropdownName;
-        if (presetName == null || presetName.isEmpty()) {
-            clearPresetDropdownDragState();
-            return;
-        }
-        if (isPointInPresetTabBarDropZone(mouseX, mouseY)) {
-            String groupKey = getPresetGroupAt(mouseX, mouseY);
-            if (!groupKey.isEmpty()) {
-                setPresetGroupColor(presetName, groupKey);
-            } else {
-                insertPresetTabAtDropPosition(presetName, mouseX);
-            }
-            presetDropdownController.close();
-        }
-        clearPresetDropdownDragState();
-    }
-
-    private boolean isPointInPresetTabBarDropZone(int mouseX, int mouseY) {
-        int startX = getPresetTabStartX();
-        int rightLimit = getPresetTabRightLimit();
-        return isPointInRect(mouseX, mouseY, startX, TAB_BAR_TOP - 4, Math.max(0, rightLimit - startX), TAB_HEIGHT + 8);
-    }
-
-    private void insertPresetTabAtDropPosition(String presetName, int mouseX) {
-        if (presetName == null || presetName.isEmpty() || !availablePresets.contains(presetName)) {
-            return;
-        }
-        if (isPresetDeleteDisabled(presetName)) {
-            return;
-        }
-        int targetIndex = getPresetTabDropIndex(mouseX);
-        presetTabOrder.remove(presetName);
-        int clampedTarget = Mth.clamp(targetIndex, 1, presetTabOrder.size());
-        presetTabOrder.add(clampedTarget, presetName);
-        normalizePresetTabOrder();
-        presetTabAppearAnimations.computeIfAbsent(presetName, key -> new AnimatedValue(1f)).setValue(1f);
-    }
-
-    private int getPresetTabDropIndex(int mouseX) {
-        int startX = getPresetTabStartX();
-        int rightLimit = getPresetTabRightLimit();
-        List<String> tabs = getRenderedPresetTabsForWidth(rightLimit - startX);
-        int[] widths = computePresetTabWidths(tabs, rightLimit - startX, PRESET_TAB_ADD_WIDTH);
-        int[] xs = computePresetTabXs(widths, startX);
-        int targetIndex = 0;
-        for (int i = 0; i < tabs.size() && i < widths.length; i++) {
-            String tabName = tabs.get(i);
-            if (tabName != null && (tabName.equals(draggingPresetDropdownName) || isPresetGroupTab(tabName))) {
-                continue;
-            }
-            if (mouseX > xs[i] + widths[i] / 2) {
-                targetIndex++;
-            }
-        }
-        return targetIndex;
+        presetTabController.finishPresetDropdownDrag(mouseX, mouseY);
     }
 
     private void renderDraggedPresetDropdownTab(GuiGraphics context, int mouseX, int mouseY) {
-        if (draggingPresetDropdownName == null) {
-            return;
-        }
-        int width = Mth.clamp(
-            this.font.width(draggingPresetDropdownName) + PRESET_TAB_TEXT_PADDING * 2,
-            TAB_MIN_WIDTH,
-            TAB_MAX_WIDTH
-        );
-        int x = draggingPresetDropdownCurrentX - width / 2;
-        int y = draggingPresetDropdownCurrentY - TAB_HEIGHT / 2;
-        drawPresetTab(context, mouseX, mouseY, draggingPresetDropdownName, x, y, width, true);
-    }
-
-    private int[] computePresetTabXs(int[] widths, int startX) {
-        return PathmindPresetTabLayout.computeXs(widths, startX);
-    }
-
-    private void drawPresetTab(GuiGraphics context, int mouseX, int mouseY, String label, int x, int y, int tabWidth, boolean dragging) {
-        if (isPresetGroupTab(label)) {
-            drawPresetGroupTab(context, mouseX, mouseY, label, x, y, tabWidth, dragging);
-            return;
-        }
-        String displayLabel = getPresetTabDisplayLabel(label);
-        boolean active = label.equals(activePresetName);
-        boolean hovered = isPointInRect(mouseX, mouseY, x, y, tabWidth, TAB_HEIGHT);
-        int groupColor = getPresetGroupColor(label);
-        int fill = active ? UITheme.BUTTON_ACTIVE_BG : UITheme.BUTTON_DEFAULT_BG;
-        int border = groupColor != 0 ? groupColor : (active ? getAccentColor() : UITheme.BORDER_DEFAULT);
-        if (!active && hovered) {
-            fill = UITheme.BUTTON_DEFAULT_HOVER;
-            border = groupColor != 0 ? groupColor : UITheme.BORDER_HIGHLIGHT;
-        }
-        if (dragging) {
-            fill = UITheme.TOOLBAR_BG_ACTIVE;
-        }
-
-        float appear = dragging ? 1f : getPresetTabAppearProgress(label);
-        int fillColor = AnimationHelper.multiplyAlpha(fill, appear);
-        int borderColor = AnimationHelper.multiplyAlpha(border, appear);
-        int textColor = AnimationHelper.multiplyAlpha(active ? UITheme.TEXT_PRIMARY : UITheme.TEXT_SECONDARY, appear);
-        if (hovered && !active) {
-            textColor = AnimationHelper.multiplyAlpha(UITheme.TEXT_PRIMARY, appear);
-        }
-
-        context.fill(x, y, x + tabWidth, y + TAB_HEIGHT, fillColor);
-        if (groupColor != 0) {
-            context.fill(x + 1, y + 1, x + tabWidth - 1, y + 3, AnimationHelper.multiplyAlpha(groupColor, appear));
-        }
-        DrawContextBridge.drawBorderInLayer(context, x, y, tabWidth, TAB_HEIGHT, borderColor);
-        boolean deletable = !isPresetDeleteDisabled(label);
-        int closeSpace = deletable ? (PRESET_TAB_CLOSE_GAP + PRESET_TAB_CLOSE_ICON_SIZE + PRESET_TAB_CLOSE_HITBOX_PADDING * 2) : 0;
-        int textMaxWidth = Math.max(4, tabWidth - PRESET_TAB_TEXT_PADDING * 2 - closeSpace);
-        if (!label.equals(inlinePresetRenameName)) {
-            String drawLabel = TextRenderUtil.trimWithEllipsis(this.font, displayLabel, textMaxWidth);
-            context.drawString(this.font, Component.literal(drawLabel), x + PRESET_TAB_TEXT_PADDING, y + (TAB_HEIGHT - this.font.lineHeight) / 2 + 1, textColor, false);
-        }
-
-        if (deletable) {
-            int closeLeft = x + tabWidth - PRESET_TAB_TEXT_PADDING - PRESET_TAB_CLOSE_ICON_SIZE;
-            int closeTop = y + (TAB_HEIGHT - PRESET_TAB_CLOSE_ICON_SIZE) / 2;
-            int closeHitboxSize = PRESET_TAB_CLOSE_ICON_SIZE + PRESET_TAB_CLOSE_HITBOX_PADDING * 2;
-            boolean closeHovered = isPointInRect(
-                mouseX, mouseY,
-                closeLeft - PRESET_TAB_CLOSE_HITBOX_PADDING,
-                closeTop - PRESET_TAB_CLOSE_HITBOX_PADDING,
-                closeHitboxSize, closeHitboxSize
-            );
-            int closeColor = closeHovered ? UITheme.STATE_ERROR : UITheme.ICON_MUTED;
-            drawCloseXIcon(context, closeLeft, closeTop, PRESET_TAB_CLOSE_ICON_SIZE, AnimationHelper.multiplyAlpha(closeColor, appear));
-        }
-    }
-
-    private void drawPresetGroupTab(GuiGraphics context, int mouseX, int mouseY, String label, int x, int y, int tabWidth, boolean dragging) {
-        String groupKey = getPresetGroupKeyFromTab(label);
-        int groupColor = getPresetGroupColorByKey(groupKey);
-        boolean hovered = isPointInRect(mouseX, mouseY, x, y, tabWidth, TAB_HEIGHT);
-        float appear = dragging ? 1f : getPresetTabAppearProgress(label);
-        boolean expanded = isPresetGroupExpanded(groupKey);
-        int squareSize = 8;
-        int squareX = x + (tabWidth - squareSize) / 2;
-        int squareY = y + (TAB_HEIGHT - squareSize) / 2;
-        context.fill(squareX + 1, squareY + 1, squareX + squareSize + 1, squareY + squareSize + 1, AnimationHelper.multiplyAlpha(UITheme.BACKGROUND_SECONDARY, appear * 0.75f));
-        if (expanded) {
-            context.fill(squareX + 1, squareY + 1, squareX + squareSize - 1, squareY + squareSize - 1, AnimationHelper.multiplyAlpha(UITheme.BACKGROUND_SECONDARY, appear));
-            context.fill(squareX + 3, squareY + 3, squareX + squareSize - 3, squareY + squareSize - 3, AnimationHelper.multiplyAlpha(groupColor, appear));
-        } else {
-            context.fill(squareX + 1, squareY + 1, squareX + squareSize - 1, squareY + squareSize - 1, AnimationHelper.multiplyAlpha(groupColor, appear));
-        }
-        DrawContextBridge.drawBorderInLayer(context, squareX, squareY, squareSize, squareSize, AnimationHelper.multiplyAlpha(groupColor, appear));
-    }
-
-    private String getPresetTabDisplayLabel(String label) {
-        if (isPresetGroupTab(label)) {
-            return "";
-        }
-        return label;
-    }
-
-    private List<String> getRenderedPresetTabs() {
-        List<String> tabs = new ArrayList<>();
-        HashSet<String> groupedPresets = new HashSet<>();
-        if (currentSettings != null && currentSettings.presetGroupOrder != null) {
-            for (String groupKey : currentSettings.presetGroupOrder) {
-                if (!isValidPresetGroupColorKey(groupKey)) {
-                    continue;
-                }
-                tabs.add(getPresetGroupTabName(groupKey));
-                if (isPresetGroupExpanded(groupKey)) {
-                    for (String name : presetTabOrder) {
-                        if (availablePresets.contains(name) && groupKey.equals(getPresetGroupKey(name))) {
-                            tabs.add(name);
-                            groupedPresets.add(name);
-                        }
-                    }
-                }
-            }
-        }
-        for (String name : presetTabOrder) {
-            if (availablePresets.contains(name) && !groupedPresets.contains(name) && getPresetGroupKey(name).isEmpty()) {
-                tabs.add(name);
-            }
-        }
-        for (String name : availablePresets) {
-            if (!tabs.contains(name) && getPresetGroupKey(name).isEmpty()) {
-                tabs.add(name);
-            }
-        }
-        String defaultPresetName = PresetManager.getDefaultPresetName();
-        if (defaultPresetName != null && tabs.remove(defaultPresetName)) {
-            tabs.add(0, defaultPresetName);
-        }
-        return tabs;
-    }
-
-    private List<String> getRenderedPresetTabsForWidth(int availableWidth) {
-        List<String> allTabs = getRenderedPresetTabs();
-        if (allTabs.isEmpty() || doPresetTabsFit(allTabs, availableWidth, PRESET_TAB_ADD_WIDTH)) {
-            return allTabs;
-        }
-
-        List<String> visibleTabs = new ArrayList<>();
-        for (String name : allTabs) {
-            List<String> candidate = new ArrayList<>(visibleTabs);
-            candidate.add(name);
-            if (!doPresetTabsFit(candidate, availableWidth, PRESET_TAB_ADD_WIDTH)) {
-                break;
-            }
-            visibleTabs.add(name);
-        }
-
-        if (activePresetName != null && allTabs.contains(activePresetName) && !visibleTabs.contains(activePresetName)) {
-            while (!visibleTabs.isEmpty()) {
-                List<String> candidate = new ArrayList<>(visibleTabs);
-                candidate.add(activePresetName);
-                if (doPresetTabsFit(candidate, availableWidth, PRESET_TAB_ADD_WIDTH)) {
-                    visibleTabs.add(activePresetName);
-                    break;
-                }
-                visibleTabs.remove(visibleTabs.size() - 1);
-            }
-            if (visibleTabs.isEmpty()) {
-                List<String> candidate = new ArrayList<>();
-                candidate.add(activePresetName);
-                if (doPresetTabsFit(candidate, availableWidth, PRESET_TAB_ADD_WIDTH)) {
-                    visibleTabs.add(activePresetName);
-                }
-            }
-        }
-        return visibleTabs;
+        presetTabController.renderDraggedPresetDropdownTab(context, mouseX, mouseY);
     }
 
     private boolean isInlinePresetRenameActive() {
-        return inlinePresetRenameField != null
-            && inlinePresetRenameField.isVisible()
-            && inlinePresetRenameName != null
-            && !inlinePresetRenameName.isEmpty();
+        return presetTabController.isInlinePresetRenameActive();
     }
 
     private boolean canStartInlinePresetRename(String presetName) {
-        return presetName != null
-            && !presetName.isEmpty()
-            && !isPresetDeleteDisabled(presetName)
-            && inlinePresetRenameField != null;
-    }
-
-    private boolean shouldStartInlinePresetRename(String presetName) {
-        long now = System.currentTimeMillis();
-        boolean doubleClick = presetName != null && presetName.equals(lastPresetTitleClickName)
-            && now - lastPresetTitleClickTime <= PRESET_TAB_RENAME_DOUBLE_CLICK_MS;
-        lastPresetTitleClickName = presetName;
-        lastPresetTitleClickTime = now;
-        return doubleClick;
-    }
-
-    private int getPresetTabTextMaxWidth(String label, int tabWidth) {
-        boolean deletable = !isPresetDeleteDisabled(label);
-        int closeSpace = deletable ? (PRESET_TAB_CLOSE_GAP + PRESET_TAB_CLOSE_ICON_SIZE + PRESET_TAB_CLOSE_HITBOX_PADDING * 2) : 0;
-        return Math.max(4, tabWidth - PRESET_TAB_TEXT_PADDING * 2 - closeSpace);
-    }
-
-    private int[] getPresetTabTitleBounds(String label, int x, int y, int tabWidth) {
-        int textMaxWidth = getPresetTabTextMaxWidth(label, tabWidth);
-        String drawLabel = TextRenderUtil.trimWithEllipsis(this.font, getPresetTabDisplayLabel(label), textMaxWidth);
-        int textX = x + PRESET_TAB_TEXT_PADDING;
-        int textY = y + (TAB_HEIGHT - this.font.lineHeight) / 2 + 1;
-        int textWidth = Math.max(4, this.font.width(drawLabel));
-        return new int[]{textX, textY - 1, Math.min(textWidth, textMaxWidth), this.font.lineHeight + 2};
+        return presetTabController.canStartInlinePresetRename(presetName);
     }
 
     private void startInlinePresetRename(String presetName) {
-        if (!canStartInlinePresetRename(presetName)) {
-            return;
-        }
-        closeCreatePresetPopup();
-        closeRenamePresetPopup();
-        clearPendingPresetTabInteraction();
-        endPresetTabDrag();
-        inlinePresetRenameName = presetName;
-        inlinePresetRenameField.setValue(presetName);
-        inlinePresetRenameField.setVisible(true);
-        inlinePresetRenameField.setEditable(true);
-        inlinePresetRenameField.setFocused(true);
-        inlinePresetRenameField.moveCursorToStart(false);
-        inlinePresetRenameField.setHighlightPos(presetName.length());
+        presetTabController.startInlinePresetRename(presetName);
     }
 
     private boolean renamePresetInternal(String currentName, String desiredName) {
@@ -4141,113 +3428,11 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     void stopInlinePresetRename(boolean commit) {
-        if (!isInlinePresetRenameActive()) {
-            return;
-        }
-        boolean renamed = false;
-        if (commit && inlinePresetRenameField != null) {
-            renamed = renamePresetInternal(inlinePresetRenameName, inlinePresetRenameField.getValue());
-        }
-        if (commit && !renamed) {
-            inlinePresetRenameField.setFocused(true);
-            return;
-        }
-        inlinePresetRenameName = "";
-        if (inlinePresetRenameField != null) {
-            PathmindTextField.deactivate(inlinePresetRenameField);
-        }
-    }
-
-    private void renderInlinePresetRenameField(GuiGraphics context, int mouseX, int mouseY, List<String> tabs, int[] tabWidths, int[] tabXs, int y, int dragIndex) {
-        if (!isInlinePresetRenameActive() || inlinePresetRenameField == null) {
-            return;
-        }
-        for (int i = 0; i < tabs.size() && i < tabWidths.length; i++) {
-            if (i == dragIndex) {
-                continue;
-            }
-            String label = tabs.get(i);
-            if (!label.equals(inlinePresetRenameName)) {
-                continue;
-            }
-            int tabWidth = tabWidths[i];
-            if (tabWidth <= 0) {
-                break;
-            }
-            int drawX = getAnimatedPresetTabX(label, tabXs[i]);
-            int[] titleBounds = getPresetTabTitleBounds(label, drawX, y, tabWidth);
-            int fieldX = titleBounds[0];
-            int fieldWidth = getPresetTabTextMaxWidth(label, tabWidth);
-            int fieldHeight = Math.max(this.font.lineHeight + 2, titleBounds[3]);
-            int fieldY = titleBounds[1];
-            int frameX = Math.max(drawX + 2, fieldX - 3);
-            int frameY = y + 2;
-            int frameWidth = Math.min(fieldWidth + 6, drawX + tabWidth - 2 - frameX);
-            int frameHeight = TAB_HEIGHT - 4;
-            context.fill(frameX, frameY, frameX + frameWidth, frameY + frameHeight, UITheme.BACKGROUND_SECONDARY);
-            DrawContextBridge.drawBorderInLayer(context, frameX, frameY, frameWidth, frameHeight, getAccentColor());
-            inlinePresetRenameField.setVisible(true);
-            inlinePresetRenameField.setEditable(true);
-            inlinePresetRenameField.setPosition(fieldX, fieldY);
-            inlinePresetRenameField.setWidth(fieldWidth);
-            inlinePresetRenameField.setHeight(fieldHeight);
-            inlinePresetRenameField.render(context, mouseX, mouseY, 0f);
-            return;
-        }
-        stopInlinePresetRename(false);
-    }
-
-    private void tickQueuedPresetDeletionAnimation() {
-        if (animatingPresetDeletionName == null) {
-            return;
-        }
-        if (System.currentTimeMillis() < animatingPresetDeletionExecuteAtMs) {
-            return;
-        }
-        String presetName = animatingPresetDeletionName;
-        animatingPresetDeletionName = null;
-        animatingPresetDeletionExecuteAtMs = 0L;
-        attemptDeletePresetImmediate(presetName);
-    }
-
-    private int getAnimatedPresetTabX(String presetName, int targetX) {
-        AnimatedValue animation = presetTabXAnimations.computeIfAbsent(presetName, key -> new AnimatedValue(targetX));
-        if (!animation.isAnimating() && Math.abs(animation.getValue() - targetX) < 0.5f) {
-            animation.setValue(targetX);
-            return targetX;
-        }
-        animation.animateTo(targetX, 120, AnimationHelper::easeOutCubic);
-        animation.tick();
-        return Math.round(animation.getValue());
-    }
-
-    private float getPresetTabAppearProgress(String presetName) {
-        AnimatedValue animation = presetTabAppearAnimations.computeIfAbsent(presetName, key -> new AnimatedValue(1f));
-        animation.tick();
-        return Mth.clamp(animation.getValue(), 0f, 1f);
-    }
-
-    private int getPresetTabStartX() {
-        return 6;
+        presetTabController.stopInlinePresetRename(commit);
     }
 
     private int[] computePresetTabWidths(int availableWidth, int createTabWidth) {
-        return computePresetTabWidths(availablePresets, availableWidth, createTabWidth);
-    }
-
-    private int[] computePresetTabWidths(List<String> tabNames, int availableWidth, int createTabWidth) {
-        return PathmindPresetTabLayout.computeWidths(
-            tabNames,
-            availableWidth,
-            createTabWidth,
-            this.font,
-            this::isPresetGroupTab,
-            label -> !isPresetDeleteDisabled(label)
-        );
-    }
-
-    private boolean doPresetTabsFit(List<String> tabNames, int availableWidth, int createTabWidth) {
-        return PathmindPresetTabLayout.fits(tabNames, availableWidth, createTabWidth, this::isPresetGroupTab);
+        return presetTabController.computePresetTabWidths(availableWidth, createTabWidth);
     }
 
     private void openTemplateWorkspaceTab(Node templateNode) {
@@ -5371,16 +4556,7 @@ public class PathmindVisualEditorScreen extends Screen {
         if (isPresetDeleteDisabled(presetName)) {
             return;
         }
-        if (presetName.equals(animatingPresetDeletionName)) {
-            return;
-        }
-        if (draggingPresetTabName != null && draggingPresetTabName.equals(presetName)) {
-            endPresetTabDrag();
-        }
-        AnimatedValue appear = presetTabAppearAnimations.computeIfAbsent(presetName, key -> new AnimatedValue(1f));
-        appear.animateTo(0f, 140, AnimationHelper::easeOutCubic);
-        animatingPresetDeletionName = presetName;
-        animatingPresetDeletionExecuteAtMs = System.currentTimeMillis() + 140L;
+        presetTabController.queueAnimatedPresetDeletion(presetName);
     }
 
     private void attemptDeletePresetImmediate(String presetName) {
@@ -5499,38 +4675,11 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void movePresetTabToEnd(String presetName) {
-        if (presetName == null || presetName.isEmpty()) {
-            return;
-        }
-
-        if (presetTabOrder.remove(presetName)) {
-            presetTabOrder.add(presetName);
-        }
+        presetTabController.movePresetTabToEnd(presetName);
     }
 
     private void syncPresetTabOrderWithAvailable() {
-        HashSet<String> availableSet = new HashSet<>(availablePresets);
-        HashSet<String> previousSet = new HashSet<>(presetTabOrder);
-
-        presetTabOrder.removeIf(name -> !availableSet.contains(name));
-        for (String preset : availablePresets) {
-            if (!presetTabOrder.contains(preset)) {
-                presetTabOrder.add(preset);
-                AnimatedValue appear = presetTabAppearAnimations.computeIfAbsent(preset, key -> new AnimatedValue(1f));
-                if (presetTabsInitialized && !previousSet.contains(preset)) {
-                    appear.setValue(0f);
-                    appear.animateTo(1f, 180, AnimationHelper::easeOutCubic);
-                } else {
-                    appear.setValue(1f);
-                }
-            }
-        }
-
-        normalizePresetTabOrder();
-
-        presetTabXAnimations.entrySet().removeIf(entry -> !availableSet.contains(entry.getKey()));
-        presetTabAppearAnimations.entrySet().removeIf(entry -> !availableSet.contains(entry.getKey()));
-        presetTabsInitialized = true;
+        presetTabController.refreshAvailablePresets();
     }
 
     private void updateImportExportPathFromPreset() {

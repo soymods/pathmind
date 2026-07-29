@@ -145,7 +145,7 @@ final class NodeCraftCommandExecutor {
             : null;
         net.minecraft.world.level.Level clientWorld;
         try {
-            clientWorld = owner.supplyFromClient(client, () -> {
+            clientWorld = NodeClientRuntimeSupport.supplyFromClient(client, () -> {
                 net.minecraft.world.level.Level world = EntityCompatibilityBridge.getWorld(client.player);
                 if (world == null) {
                     world = client.level;
@@ -163,9 +163,9 @@ final class NodeCraftCommandExecutor {
         RecipeHolder<CraftingRecipe> recipeEntry;
         Object displayEntry = null;
         try {
-            recipeEntry = owner.supplyFromClient(client, () -> findCraftingRecipe(client, targetItem, effectiveCraftMode, requiresCraftingTable));
+            recipeEntry = NodeClientRuntimeSupport.supplyFromClient(client, () -> findCraftingRecipe(client, targetItem, effectiveCraftMode, requiresCraftingTable));
             if (recipeEntry == null) {
-                displayEntry = owner.supplyFromClient(client, () -> findCraftingDisplayEntry(client, targetItem, effectiveCraftMode, requiresCraftingTable, clientWorld));
+                displayEntry = NodeClientRuntimeSupport.supplyFromClient(client, () -> findCraftingDisplayEntry(client, targetItem, effectiveCraftMode, requiresCraftingTable, clientWorld));
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -1465,7 +1465,7 @@ final class NodeCraftCommandExecutor {
         java.util.concurrent.atomic.AtomicInteger producedRef = new java.util.concurrent.atomic.AtomicInteger();
         java.util.concurrent.atomic.AtomicReference<List<Integer>> plannedSourceSlotsRef = new java.util.concurrent.atomic.AtomicReference<>();
 
-        owner.runOnClientThread(client, () -> {
+        NodeClientRuntimeSupport.runOnClientThread(client, () -> {
             MultiPlayerGameMode interactionManager = client.gameMode;
             if (interactionManager == null) {
                 errorRef.set("Cannot craft " + itemDisplayName + ": interaction manager unavailable.");
@@ -1512,7 +1512,7 @@ final class NodeCraftCommandExecutor {
             java.util.concurrent.atomic.AtomicBoolean placed = new java.util.concurrent.atomic.AtomicBoolean(false);
             final int plannedSourceSlot = plannedSourceSlots.get(ingredientIndex);
 
-            owner.runOnClientThread(client, () -> {
+            NodeClientRuntimeSupport.runOnClientThread(client, () -> {
                 MultiPlayerGameMode interactionManager = client.gameMode;
                 if (interactionManager == null) {
                     errorRef.set("Cannot craft " + itemDisplayName + ": interaction manager unavailable.");
@@ -1582,7 +1582,7 @@ final class NodeCraftCommandExecutor {
         }
 
         for (int poll = 0; poll < CRAFTING_OUTPUT_POLL_LIMIT && producedRef.get() <= 0 && errorRef.get() == null; poll++) {
-            owner.runOnClientThread(client, () -> {
+            NodeClientRuntimeSupport.runOnClientThread(client, () -> {
                 MultiPlayerGameMode interactionManager = client.gameMode;
                 if (interactionManager == null) {
                     errorRef.set("Cannot craft " + itemDisplayName + ": interaction manager unavailable.");
@@ -1620,7 +1620,7 @@ final class NodeCraftCommandExecutor {
         }
 
         if (producedRef.get() > 0) {
-            owner.runOnClientThread(client, () -> {
+            NodeClientRuntimeSupport.runOnClientThread(client, () -> {
                 MultiPlayerGameMode interactionManager = client.gameMode;
                 if (interactionManager == null) {
                     errorRef.set("Cannot craft " + itemDisplayName + ": interaction manager unavailable.");
@@ -1735,7 +1735,7 @@ final class NodeCraftCommandExecutor {
         }
 
         java.util.concurrent.atomic.AtomicInteger batchSizeRef = new java.util.concurrent.atomic.AtomicInteger();
-        owner.runOnClientThread(client, () -> {
+        NodeClientRuntimeSupport.runOnClientThread(client, () -> {
             AbstractContainerMenu handler = client.player != null ? client.player.containerMenu : null;
             batchSizeRef.set(calculateCraftBatchSize(handler, gridIngredients, registryManager, requestedCrafts));
         });

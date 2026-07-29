@@ -1410,7 +1410,7 @@ final class NodeNavigationCommandExecutor {
     }
 
     private void resetBaritonePathing(Object baritone) {
-        owner.resetBaritonePathing(baritone);
+        NodeBaritoneSupport.resetPathing(baritone);
     }
 
     private NodeParameter getParameter(String name) {

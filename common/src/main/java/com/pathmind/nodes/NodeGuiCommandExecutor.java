@@ -524,7 +524,7 @@ final class NodeGuiCommandExecutor {
     }
 
     private void runOnClientThread(Minecraft client, Runnable task) throws InterruptedException {
-        owner.runOnClientThread(client, task);
+        NodeClientRuntimeSupport.runOnClientThread(client, task);
     }
 
     private void sendNodeErrorMessage(Minecraft client, String message) {

@@ -135,7 +135,7 @@ final class NodeEntityActionCommandExecutor {
         } else {
             Entity targetEntity = parameterData != null ? parameterData.targetEntity : null;
             if (targetEntity != null) {
-                if (targetEntity.isRemoved() || targetEntity.distanceToSqr(client.player.getEyePosition()) > Node.getEntityInteractionReachSquared(client)) {
+                if (targetEntity.isRemoved() || targetEntity.distanceToSqr(client.player.getEyePosition()) > NodeClientRuntimeSupport.getEntityInteractionReachSquared(client)) {
                     restoreSneakState.run();
                     String entityName = String.valueOf(BuiltInRegistries.ENTITY_TYPE.getKey(targetEntity.getType()))
                         .replace("minecraft:", "")
@@ -148,7 +148,7 @@ final class NodeEntityActionCommandExecutor {
                 result = client.gameMode.interact(client.player, targetEntity, hand);
             } else if (client.hitResult instanceof EntityHitResult entityHit) {
                 Entity entity = entityHit.getEntity();
-                if (entity == null || entity.distanceToSqr(client.player.getEyePosition()) > Node.getEntityInteractionReachSquared(client)) {
+                if (entity == null || entity.distanceToSqr(client.player.getEyePosition()) > NodeClientRuntimeSupport.getEntityInteractionReachSquared(client)) {
                     restoreSneakState.run();
                     owner.sendNodeErrorMessage(client, tr("pathmind.error.targetTooFarToInteract"));
                     future.complete(null);
@@ -220,7 +220,7 @@ final class NodeEntityActionCommandExecutor {
         if (client == null || client.player == null || client.level == null || selections == null || selections.isEmpty()) {
             return Optional.empty();
         }
-        double reachSquared = Node.getBlockInteractionReachSquared(client);
+        double reachSquared = NodeClientRuntimeSupport.getBlockInteractionReachSquared(client);
         int radius = (int) Math.ceil(Math.sqrt(reachSquared));
         BlockPos playerPos = client.player.blockPosition();
         BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
@@ -328,7 +328,7 @@ final class NodeEntityActionCommandExecutor {
         final double shapeMaxZ = maxZ;
 
         Vec3 eyePos = client.player.getEyePosition();
-        double reachSquared = Node.getBlockInteractionReachSquared(client);
+        double reachSquared = NodeClientRuntimeSupport.getBlockInteractionReachSquared(client);
         List<Direction> orderedFaces = new ArrayList<>(List.of(Direction.values()));
         orderedFaces.sort(Comparator.comparingDouble(face -> {
             Vec3 center = faceCenter(targetPos, shapeMinX, shapeMinY, shapeMinZ, shapeMaxX, shapeMaxY, shapeMaxZ, face);
@@ -351,7 +351,7 @@ final class NodeEntityActionCommandExecutor {
         if (client == null || client.player == null || hitPos == null) {
             return false;
         }
-        return client.player.getEyePosition().distanceToSqr(hitPos) <= Node.getBlockInteractionReachSquared(client);
+        return client.player.getEyePosition().distanceToSqr(hitPos) <= NodeClientRuntimeSupport.getBlockInteractionReachSquared(client);
     }
 
     private void addUniqueHitResult(List<BlockHitResult> results, BlockHitResult candidate) {
@@ -480,7 +480,7 @@ final class NodeEntityActionCommandExecutor {
                 }
             }
             if (targetPos == null) {
-                Optional<BlockPos> nearest = owner.findNearestBlock(client, selections, Node.getBlockInteractionReach(client));
+                Optional<BlockPos> nearest = owner.findNearestBlock(client, selections, NodeClientRuntimeSupport.getBlockInteractionReach(client));
                 if (nearest.isPresent()) {
                     targetPos = nearest.get();
                 }
@@ -521,7 +521,7 @@ final class NodeEntityActionCommandExecutor {
         BlockPos finalTargetPos = targetPos;
         new Thread(() -> {
             try {
-                owner.runOnClientThread(client, () -> {
+                NodeClientRuntimeSupport.runOnClientThread(client, () -> {
                     owner.orientPlayerTowardsRuntimeTarget(client, owner.runtimeState().runtimeParameterData);
                     if (client.gameMode != null) {
                         client.gameMode.startDestroyBlock(finalTargetPos, finalBreakFace);
@@ -531,19 +531,19 @@ final class NodeEntityActionCommandExecutor {
 
                 for (int i = 0; i < ticksToBreak; i++) {
                     Thread.sleep(50L);
-                    Boolean isAir = owner.supplyFromClient(client,
+                    Boolean isAir = NodeClientRuntimeSupport.supplyFromClient(client,
                         () -> client.level == null || client.level.getBlockState(finalTargetPos).isAir());
                     if (Boolean.TRUE.equals(isAir)) {
                         break;
                     }
-                    owner.runOnClientThread(client, () -> {
+                    NodeClientRuntimeSupport.runOnClientThread(client, () -> {
                         if (client.gameMode != null) {
                             client.gameMode.continueDestroyBlock(finalTargetPos, finalBreakFace);
                         }
                     });
                 }
 
-                owner.runOnClientThread(client, () -> {
+                NodeClientRuntimeSupport.runOnClientThread(client, () -> {
                     if (client.player != null && client.player.connection != null) {
                         client.player.connection.send(new ServerboundPlayerActionPacket(
                             ServerboundPlayerActionPacket.Action.STOP_DESTROY_BLOCK,
@@ -579,7 +579,7 @@ final class NodeEntityActionCommandExecutor {
     }
 
     private double getBlockInteractionReachSquared(Minecraft client) {
-        return Node.getBlockInteractionReachSquared(client);
+        return NodeClientRuntimeSupport.getBlockInteractionReachSquared(client);
     }
 
     private List<Direction> preferredBreakFaces(Vec3 eyePos, BlockPos target) {
@@ -861,7 +861,7 @@ final class NodeEntityActionCommandExecutor {
     private void selectMerchantTrade(net.minecraft.client.Minecraft client,
                                      net.minecraft.world.inventory.MerchantMenu screenHandler,
                                      int tradeIndex) throws InterruptedException {
-        owner.runOnClientThread(client, () -> {
+        NodeClientRuntimeSupport.runOnClientThread(client, () -> {
             screenHandler.setSelectionHint(tradeIndex);
             screenHandler.tryMoveItems(tradeIndex);
             if (client.player != null && client.player.connection != null) {
@@ -878,7 +878,7 @@ final class NodeEntityActionCommandExecutor {
             return false;
         }
         final boolean[] moved = {false};
-        owner.runOnClientThread(client, () -> {
+        NodeClientRuntimeSupport.runOnClientThread(client, () -> {
             final int outputSlot = 2;
             net.minecraft.world.inventory.Slot output = screenHandler.getSlot(outputSlot);
             if (output == null) {
@@ -1042,7 +1042,7 @@ final class NodeEntityActionCommandExecutor {
                     if (hand == InteractionHand.MAIN_HAND) {
                         long durationMs = (long) Math.ceil(durationSeconds * 1000.0);
                         long deadline = System.currentTimeMillis() + durationMs;
-                        owner.runOnClientThread(client, () -> {
+                        NodeClientRuntimeSupport.runOnClientThread(client, () -> {
                             syncSelectedHotbarSlot(client);
                             performMainHandAttack(client);
                             if (client.options != null && client.options.keyAttack != null) {
@@ -1062,7 +1062,7 @@ final class NodeEntityActionCommandExecutor {
                         long deadline = System.currentTimeMillis() + durationMs;
                         boolean swung = false;
                         while (!swung || System.currentTimeMillis() < deadline) {
-                            owner.runOnClientThread(client, () -> {
+                            NodeClientRuntimeSupport.runOnClientThread(client, () -> {
                                 client.player.swing(hand);
                             });
                             swung = true;
@@ -1078,7 +1078,7 @@ final class NodeEntityActionCommandExecutor {
                     }
                 } else {
                     for (int i = 0; i < legacyCount; i++) {
-                        owner.runOnClientThread(client, () -> {
+                        NodeClientRuntimeSupport.runOnClientThread(client, () -> {
                             if (hand == InteractionHand.MAIN_HAND) {
                                 syncSelectedHotbarSlot(client);
                                 performMainHandAttack(client);
@@ -1099,7 +1099,7 @@ final class NodeEntityActionCommandExecutor {
             } finally {
                 if (releaseAttackKey) {
                     try {
-                        owner.runOnClientThread(client, () -> {
+                        NodeClientRuntimeSupport.runOnClientThread(client, () -> {
                             if (client.options != null && client.options.keyAttack != null) {
                                 client.options.keyAttack.setDown(false);
                             }
@@ -1158,7 +1158,7 @@ final class NodeEntityActionCommandExecutor {
         }
         
         Inventory inventory = client.player.getInventory();
-        int sourceSlot = owner.clampInventorySlot(inventory, owner.getIntParameter("SourceSlot", 0));
+        int sourceSlot = NodeClientRuntimeSupport.clampInventorySlot(inventory, owner.getIntParameter("SourceSlot", 0));
         EquipmentSlot equipmentSlot = parseEquipmentSlot(owner.getParameter("ArmorSlot"), EquipmentSlot.HEAD);
         
         ItemStack sourceStack = inventory.getItem(sourceSlot);
@@ -1186,7 +1186,7 @@ final class NodeEntityActionCommandExecutor {
         }
         
         Inventory inventory = client.player.getInventory();
-        int sourceSlot = owner.clampInventorySlot(inventory, owner.getIntParameter("SourceSlot", 0));
+        int sourceSlot = NodeClientRuntimeSupport.clampInventorySlot(inventory, owner.getIntParameter("SourceSlot", 0));
         InteractionHand hand = owner.resolveHand(owner.getParameter("Hand"), InteractionHand.MAIN_HAND);
         
         ItemStack sourceStack = inventory.getItem(sourceSlot);

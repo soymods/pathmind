@@ -1,54 +1,36 @@
 package com.pathmind.nodes;
 
-import com.pathmind.execution.PathmindNavigator;
 import com.google.gson.Gson;
-import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
-import java.util.LinkedHashSet;
 import java.util.Optional;
 import java.util.Locale;
 import java.util.EnumSet;
-import java.util.Objects;
-import java.util.Set;
-import java.util.HashSet;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.Executors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import com.pathmind.data.NodeGraphData;
-import com.pathmind.data.NodeGraphPersistence;
-import com.pathmind.data.PresetManager;
 import com.pathmind.routines.RoutineInputDefinition;
 import com.pathmind.routines.RoutineValueKind;
 import com.pathmind.execution.ExecutionManager;
-import com.pathmind.execution.PreciseCompletionTracker;
 import com.pathmind.ui.overlay.NodeErrorNotificationOverlay;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.BaritoneDependencyChecker;
 import com.pathmind.util.BaritoneApiProxy;
 import com.pathmind.util.BlockSelection;
-import com.pathmind.util.EntityStateOptions;
-import com.pathmind.util.InventorySlotModeHelper;
-import com.pathmind.util.PlayerInventoryBridge;
 import com.pathmind.util.PathmindI18n;
-import com.pathmind.util.RecipeCompatibilityBridge;
 import com.pathmind.util.ClientMessageSender;
 import com.pathmind.util.UiUtilsProxy;
-import java.util.Arrays;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.Identifier;
-import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
@@ -60,20 +42,8 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.chunk.LevelChunk;
-import net.minecraft.world.level.chunk.LevelChunkSection;
-import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
-import org.lwjgl.glfw.GLFW;
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
-import com.pathmind.util.CameraCompatibilityBridge;
-import com.pathmind.util.ChatScreenCompatibilityBridge;
-import com.pathmind.util.EntityCompatibilityBridge;
-import com.pathmind.util.GuiSelectionMode;
-import com.pathmind.util.GameProfileCompatibilityBridge;
-import com.pathmind.util.InputCompatibilityBridge;
 
 /**
  * Represents a single node in the Pathmind visual editor.
@@ -138,7 +108,6 @@ public class Node {
     static final int PARAMETER_SLOT_INNER_PADDING = 4;
     static final int PARAMETER_SLOT_MIN_CONTENT_WIDTH = 88;
     static final int PARAMETER_SLOT_MIN_CONTENT_HEIGHT = 32;
-    static final int PLAYER_ARMOR_SLOT_COUNT = 4;
     static final int PARAMETER_SLOT_LABEL_HEIGHT = 12;
     static final int OPERATOR_SLOT_GAP = 24;
     static final int MINIMAL_NODE_TAB_WIDTH = 6;
@@ -252,9 +221,7 @@ public class Node {
     private static final int STICKY_NOTE_HANDLE_SIZE = 8;
     static final int BOOK_PAGE_MAX_CHARS = 256;
     static final double PARAMETER_SEARCH_RADIUS = 64.0;
-    static final double DEFAULT_REACH_DISTANCE_SQUARED = 25.0D;
     static final double DEFAULT_DIRECTION_DISTANCE = 16.0;
-    static final long SNEAK_SYNC_DELAY_MS = 75L;
     private static final Object GOTO_BREAK_LOCK = new Object();
     private static final AtomicInteger ACTIVE_GOTO_BREAK_BLOCKING_REQUESTS = new AtomicInteger(0);
     private static final AtomicInteger ACTIVE_GOTO_PLACE_BLOCKING_REQUESTS = new AtomicInteger(0);
@@ -2733,14 +2700,6 @@ public class Node {
         return worldTargetResolver.findNearestOpenBlock(client, range);
     }
 
-    void resetBaritonePathing(Object baritone, Object mineProcess) {
-        NodeBaritoneSupport.resetPathing(baritone, mineProcess);
-    }
-
-    void resetBaritonePathing(Object baritone) {
-        NodeBaritoneSupport.resetPathing(baritone);
-    }
-
     private NodeCraftCommandExecutor craftCommandExecutor() {
         return new NodeCraftCommandExecutor(this);
     }
@@ -2929,18 +2888,6 @@ public class Node {
         return worldActionCommandExecutor().getPlacementReachSquared(client);
     }
 
-    static double getBlockInteractionReach(net.minecraft.client.Minecraft client) {
-        return NodeClientRuntimeSupport.getBlockInteractionReach(client);
-    }
-
-    static double getBlockInteractionReachSquared(net.minecraft.client.Minecraft client) {
-        return NodeClientRuntimeSupport.getBlockInteractionReachSquared(client);
-    }
-
-    static double getEntityInteractionReachSquared(net.minecraft.client.Minecraft client) {
-        return NodeClientRuntimeSupport.getEntityInteractionReachSquared(client);
-    }
-
     boolean isBlockReplaceable(net.minecraft.world.level.Level world, BlockPos targetPos) {
         return worldActionCommandExecutor().isBlockReplaceable(world, targetPos);
     }
@@ -3030,7 +2977,7 @@ public class Node {
     }
 
     private void applyCrouchState(net.minecraft.client.Minecraft client, boolean active) {
-        applySneakState(client, active);
+        NodeClientRuntimeSupport.applySneakState(client, active);
     }
 
     public boolean isRepeatUntilConditionMetForPolling() {
@@ -3048,34 +2995,6 @@ public class Node {
         }
         Node guard = runtimeState.activeRepeatUntilGuard;
         return guard != null && guard != this && guard.isRepeatUntilConditionMetForPolling();
-    }
-
-    void applySneakState(net.minecraft.client.Minecraft client, boolean active) {
-        NodeClientRuntimeSupport.applySneakState(client, active);
-    }
-
-    void waitForSneakSync(net.minecraft.client.Minecraft client, boolean previousState, boolean desiredState) throws InterruptedException {
-        NodeClientRuntimeSupport.waitForSneakSync(client, previousState, desiredState);
-    }
-
-    BlockHitResult raycastBlockFromOrientation(net.minecraft.client.Minecraft client, float yaw, float pitch, double distance) {
-        return NodeClientRuntimeSupport.raycastBlockFromOrientation(client, yaw, pitch, distance);
-    }
-    
-    void runOnClientThread(net.minecraft.client.Minecraft client, Runnable task) throws InterruptedException {
-        NodeClientRuntimeSupport.runOnClientThread(client, task);
-    }
-
-    <T> T supplyFromClient(net.minecraft.client.Minecraft client, java.util.function.Supplier<T> supplier) throws InterruptedException {
-        return NodeClientRuntimeSupport.supplyFromClient(client, supplier);
-    }
-
-    int clampInventorySlot(Inventory inventory, int slot) {
-        return NodeClientRuntimeSupport.clampInventorySlot(inventory, slot);
-    }
-
-    int getOffhandInventoryIndex(Inventory inventory) {
-        return NodeClientRuntimeSupport.getOffhandInventoryIndex(inventory);
     }
 
     private EquipmentSlot parseEquipmentSlot(NodeParameter parameter, EquipmentSlot defaultSlot) {

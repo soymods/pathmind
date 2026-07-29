@@ -99,11 +99,11 @@ final class NodeTargetSensorEvaluator {
             return Optional.empty();
         }
 
-        BlockHitResult freshHit = owner.raycastBlockFromOrientation(
+        BlockHitResult freshHit = NodeClientRuntimeSupport.raycastBlockFromOrientation(
             client,
             client.player.getYRot(),
             client.player.getXRot(),
-            Node.getBlockInteractionReach(client)
+            NodeClientRuntimeSupport.getBlockInteractionReach(client)
         );
         if (freshHit != null) {
             return Optional.of(freshHit);

@@ -427,7 +427,7 @@ final class NodeTextIoCommandExecutor {
                     // Tell server (and client) via standard packet (works in dev env)
                     int slot = hand == InteractionHand.MAIN_HAND
                         ? PlayerInventoryBridge.getSelectedSlot(client.player.getInventory())
-                        : Inventory.INVENTORY_SIZE + Node.PLAYER_ARMOR_SLOT_COUNT;
+                        : Inventory.INVENTORY_SIZE + NodeClientRuntimeSupport.PLAYER_ARMOR_SLOT_COUNT;
                     client.getConnection().send(
                         new ServerboundEditBookPacket(slot, pageStrings, java.util.Optional.empty())
                     );

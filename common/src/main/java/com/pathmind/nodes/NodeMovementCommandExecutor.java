@@ -72,7 +72,7 @@ final class NodeMovementCommandExecutor {
         new Thread(() -> {
             boolean interrupted = false;
             try {
-                owner.runOnClientThread(client, () -> {
+                NodeClientRuntimeSupport.runOnClientThread(client, () -> {
                     owner.orientPlayerTowardsRuntimeTarget(client, owner.runtimeState().runtimeParameterData);
                     if (client.options != null && client.options.keyUp != null) {
                         client.options.keyUp.setDown(true);
@@ -80,7 +80,7 @@ final class NodeMovementCommandExecutor {
                 });
 
                 if (useDistance) {
-                    net.minecraft.core.BlockPos startBlockPos = owner.supplyFromClient(client,
+                    net.minecraft.core.BlockPos startBlockPos = NodeClientRuntimeSupport.supplyFromClient(client,
                         () -> {
                             if (client.player == null) {
                                 return null;
@@ -107,7 +107,7 @@ final class NodeMovementCommandExecutor {
                                 stopReason = "timeout";
                                 break;
                             }
-                            net.minecraft.core.BlockPos currentBlockPos = owner.supplyFromClient(client,
+                            net.minecraft.core.BlockPos currentBlockPos = NodeClientRuntimeSupport.supplyFromClient(client,
                                 () -> {
                                     if (client.player == null) {
                                         return null;
@@ -143,7 +143,7 @@ final class NodeMovementCommandExecutor {
                 interrupted = true;
             } finally {
                 try {
-                    owner.runOnClientThread(client, () -> {
+                    NodeClientRuntimeSupport.runOnClientThread(client, () -> {
                         if (client.options != null && client.options.keyUp != null) {
                             client.options.keyUp.setDown(false);
                         }
@@ -238,7 +238,7 @@ final class NodeMovementCommandExecutor {
         InputConstants.Key inputKey = InputConstants.Type.KEYSYM.getOrCreate(keyCode);
         boolean[] handledByScreen = {false};
         try {
-            owner.runOnClientThread(client, () -> {
+            NodeClientRuntimeSupport.runOnClientThread(client, () -> {
                 if (client.screen != null) {
                     handledByScreen[0] = InputCompatibilityBridge.dispatchScreenKeyPressed(client.screen, keyCode, 0, 0);
                 }
@@ -310,7 +310,7 @@ final class NodeMovementCommandExecutor {
     }
 
     private void applyCrouchState(net.minecraft.client.Minecraft client, boolean active) {
-        owner.applySneakState(client, active);
+        NodeClientRuntimeSupport.applySneakState(client, active);
     }
     void executeSprintCommand(CompletableFuture<Void> future) {
         if (owner.preprocessAttachedParameter(EnumSet.noneOf(Node.ParameterUsage.class), future) == Node.ParameterHandlingResult.COMPLETE) {

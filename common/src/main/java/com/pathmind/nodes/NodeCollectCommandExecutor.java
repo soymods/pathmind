@@ -102,7 +102,7 @@ final class NodeCollectCommandExecutor {
                     break;
                 }
                 startCollectWithPreferredTarget(baritone, mineProcess, preferredCollectTarget.orElse(null), future, () -> {
-                    owner.resetBaritonePathing(baritone, mineProcess);
+                    NodeBaritoneSupport.resetPathing(baritone, mineProcess);
                     owner.navigationCommandExecutor().applyBaritoneCacheGuardsDuringMovement(future, false, true);
                     PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_COLLECT, future);
                     CompletableFuture.runAsync(() -> {
@@ -116,7 +116,7 @@ final class NodeCollectCommandExecutor {
             }
             case COLLECT_MULTIPLE:
                 startCollectWithPreferredTarget(baritone, mineProcess, preferredCollectTarget.orElse(null), future, () -> {
-                    owner.resetBaritonePathing(baritone, mineProcess);
+                    NodeBaritoneSupport.resetPathing(baritone, mineProcess);
                     owner.navigationCommandExecutor().applyBaritoneCacheGuardsDuringMovement(future, false, true);
                     PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_COLLECT, future);
                     CompletableFuture.runAsync(() -> {
@@ -229,7 +229,7 @@ final class NodeCollectCommandExecutor {
             return;
         }
 
-        owner.resetBaritonePathing(baritone, mineProcess);
+        NodeBaritoneSupport.resetPathing(baritone, mineProcess);
 
         CompletableFuture<Void> approachFuture = new CompletableFuture<>();
         owner.navigationCommandExecutor().applyBaritoneCacheGuardsDuringMovement(approachFuture, false, false);
@@ -266,7 +266,7 @@ final class NodeCollectCommandExecutor {
 
         Vec3 eyePos = client.player.getEyePosition();
         Vec3 center = Vec3.atCenterOf(targetPos);
-        if (eyePos.distanceToSqr(center) > Node.getBlockInteractionReachSquared(client)) {
+        if (eyePos.distanceToSqr(center) > NodeClientRuntimeSupport.getBlockInteractionReachSquared(client)) {
             NodeExecutionCompletion.fail(owner, client, future, tr("pathmind.error.targetBlockOutOfReach"));
             return;
         }
@@ -292,7 +292,7 @@ final class NodeCollectCommandExecutor {
         Direction finalBreakFace = breakFace;
         new Thread(() -> {
             try {
-                owner.runOnClientThread(client, () -> {
+                NodeClientRuntimeSupport.runOnClientThread(client, () -> {
                     owner.orientPlayerTowardsRuntimeTarget(client, runtimeState.runtimeParameterData);
                     if (client.gameMode != null) {
                         client.gameMode.startDestroyBlock(targetPos, finalBreakFace);
@@ -302,19 +302,19 @@ final class NodeCollectCommandExecutor {
 
                 for (int i = 0; i < ticksToBreak; i++) {
                     Thread.sleep(50L);
-                    Boolean isAir = owner.supplyFromClient(client,
+                    Boolean isAir = NodeClientRuntimeSupport.supplyFromClient(client,
                         () -> client.level == null || client.level.getBlockState(targetPos).isAir());
                     if (Boolean.TRUE.equals(isAir)) {
                         break;
                     }
-                    owner.runOnClientThread(client, () -> {
+                    NodeClientRuntimeSupport.runOnClientThread(client, () -> {
                         if (client.gameMode != null) {
                             client.gameMode.continueDestroyBlock(targetPos, finalBreakFace);
                         }
                     });
                 }
 
-                owner.runOnClientThread(client, () -> {
+                NodeClientRuntimeSupport.runOnClientThread(client, () -> {
                     if (client.player != null && client.player.connection != null) {
                         client.player.connection.send(new ServerboundPlayerActionPacket(
                             ServerboundPlayerActionPacket.Action.STOP_DESTROY_BLOCK,

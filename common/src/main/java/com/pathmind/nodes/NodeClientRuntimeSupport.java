@@ -11,9 +11,11 @@ import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 
 final class NodeClientRuntimeSupport {
-    private static final double DEFAULT_REACH_DISTANCE = Math.sqrt(Node.DEFAULT_REACH_DISTANCE_SQUARED);
-    private static final int PLAYER_ARMOR_SLOT_COUNT = 4;
+    private static final double DEFAULT_REACH_DISTANCE_SQUARED = 25.0D;
+    private static final double DEFAULT_REACH_DISTANCE = Math.sqrt(DEFAULT_REACH_DISTANCE_SQUARED);
+    static final int PLAYER_ARMOR_SLOT_COUNT = 4;
     private static final int PLAYER_OFFHAND_INVENTORY_INDEX = Inventory.INVENTORY_SIZE + PLAYER_ARMOR_SLOT_COUNT;
+    private static final long SNEAK_SYNC_DELAY_MS = 75L;
 
     private NodeClientRuntimeSupport() {
     }
@@ -52,7 +54,7 @@ final class NodeClientRuntimeSupport {
         if (client == null || client.isSameThread() || previousState == desiredState) {
             return;
         }
-        Thread.sleep(Node.SNEAK_SYNC_DELAY_MS);
+        Thread.sleep(SNEAK_SYNC_DELAY_MS);
     }
 
     static BlockHitResult raycastBlockFromOrientation(Minecraft client, float yaw, float pitch, double distance) {

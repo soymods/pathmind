@@ -90,21 +90,21 @@ final class NodeWorldActionCommandExecutor {
                 boolean previousSneak = false;
 
                 if (sneakWhileUsing) {
-                    previousSneak = owner.supplyFromClient(client, () -> client.player.isShiftKeyDown());
+                    previousSneak = NodeClientRuntimeSupport.supplyFromClient(client, () -> client.player.isShiftKeyDown());
                 }
 
                 int iteration = 0;
                 while (iteration < maxIterations) {
-                    ItemStack stack = owner.supplyFromClient(client, () -> client.player.getItemInHand(hand).copy());
+                    ItemStack stack = NodeClientRuntimeSupport.supplyFromClient(client, () -> client.player.getItemInHand(hand).copy());
                     if ((stack == null || stack.isEmpty()) && stopIfUnavailable) {
                         break;
                     }
                     if (sneakWhileUsing) {
-                        owner.runOnClientThread(client, () -> owner.applySneakState(client, true));
-                        owner.waitForSneakSync(client, previousSneak, true);
+                        NodeClientRuntimeSupport.runOnClientThread(client, () -> NodeClientRuntimeSupport.applySneakState(client, true));
+                        NodeClientRuntimeSupport.waitForSneakSync(client, previousSneak, true);
                     }
 
-                    owner.runOnClientThread(client, () -> {
+                    NodeClientRuntimeSupport.runOnClientThread(client, () -> {
                         boolean performed = false;
                         HitResult target = client.hitResult;
                         ItemStack currentStack = client.player.getItemInHand(hand);
@@ -136,7 +136,7 @@ final class NodeWorldActionCommandExecutor {
 
                     if (durationSeconds > 0.0) {
                         Thread.sleep((long) (durationSeconds * 1000));
-                        owner.runOnClientThread(client, () -> {
+                        NodeClientRuntimeSupport.runOnClientThread(client, () -> {
                             if (client.options != null && client.options.keyUse != null) {
                                 client.options.keyUse.setDown(false);
                             }
@@ -147,11 +147,11 @@ final class NodeWorldActionCommandExecutor {
 
                     if (sneakWhileUsing && restoreSneak) {
                         boolean sneakState = previousSneak;
-                        owner.runOnClientThread(client, () -> owner.applySneakState(client, sneakState));
+                        NodeClientRuntimeSupport.runOnClientThread(client, () -> NodeClientRuntimeSupport.applySneakState(client, sneakState));
                     }
 
                     if (useUntilEmpty) {
-                        ItemStack afterUse = owner.supplyFromClient(client, () -> client.player.getItemInHand(hand).copy());
+                        ItemStack afterUse = NodeClientRuntimeSupport.supplyFromClient(client, () -> client.player.getItemInHand(hand).copy());
                         if (afterUse == null || afterUse.isEmpty()) {
                             break;
                         }
@@ -195,7 +195,7 @@ final class NodeWorldActionCommandExecutor {
 
     private BlockHitResult resolveFreshBlockHit(net.minecraft.client.Minecraft client, HitResult cachedTarget) {
         if (client != null && client.player != null) {
-            BlockHitResult freshHit = owner.raycastBlockFromOrientation(
+            BlockHitResult freshHit = NodeClientRuntimeSupport.raycastBlockFromOrientation(
                 client,
                 client.player.getYRot(),
                 client.player.getXRot(),
@@ -215,7 +215,7 @@ final class NodeWorldActionCommandExecutor {
 
         long deadline = System.currentTimeMillis() + ITEM_USE_SYNC_TIMEOUT_MS;
         while (System.currentTimeMillis() < deadline) {
-            ItemStack current = owner.supplyFromClient(client, () -> {
+            ItemStack current = NodeClientRuntimeSupport.supplyFromClient(client, () -> {
                 if (client.player == null) {
                     return ItemStack.EMPTY;
                 }
@@ -273,7 +273,7 @@ final class NodeWorldActionCommandExecutor {
             long deadline = System.currentTimeMillis() + TRANSIENT_ENTITY_TRACK_DURATION_MS;
             while (System.currentTimeMillis() < deadline) {
                 try {
-                    owner.supplyFromClient(client, () -> {
+                    NodeClientRuntimeSupport.supplyFromClient(client, () -> {
                         TransientEntityPositionTracker.rememberNearby(client, entityId, TRANSIENT_ENTITY_TRACK_RANGE);
                         return null;
                     });
@@ -305,9 +305,9 @@ final class NodeWorldActionCommandExecutor {
             return false;
         }
         Inventory inventory = client.player.getInventory();
-        int clampedSlot = owner.clampInventorySlot(inventory, parameterData.slotIndex);
+        int clampedSlot = NodeClientRuntimeSupport.clampInventorySlot(inventory, parameterData.slotIndex);
         boolean armorSlot = clampedSlot >= Inventory.INVENTORY_SIZE
-            && clampedSlot < Inventory.INVENTORY_SIZE + Node.PLAYER_ARMOR_SLOT_COUNT;
+            && clampedSlot < Inventory.INVENTORY_SIZE + NodeClientRuntimeSupport.PLAYER_ARMOR_SLOT_COUNT;
         if (armorSlot) {
             owner.sendNodeErrorMessage(client, tr("pathmind.error.useCannotActivateArmorSlots"));
             if (future != null && !future.isDone()) {
@@ -327,7 +327,7 @@ final class NodeWorldActionCommandExecutor {
 
         java.util.concurrent.atomic.AtomicBoolean preparedRef = new java.util.concurrent.atomic.AtomicBoolean(false);
         try {
-            owner.runOnClientThread(client, () -> {
+            NodeClientRuntimeSupport.runOnClientThread(client, () -> {
                 if (hand == InteractionHand.OFF_HAND) {
                     preparedRef.set(ensureStackEquippedInOffhand(client, inventory, clampedSlot, stack));
                 } else {
@@ -377,7 +377,7 @@ final class NodeWorldActionCommandExecutor {
         if (client == null || client.player == null || inventory == null || stack == null) {
             return false;
         }
-        int offhandIndex = owner.getOffhandInventoryIndex(inventory);
+        int offhandIndex = NodeClientRuntimeSupport.getOffhandInventoryIndex(inventory);
         if (offhandIndex < 0) {
             return false;
         }
@@ -576,16 +576,16 @@ final class NodeWorldActionCommandExecutor {
 
         new Thread(() -> {
             try {
-                BlockHitResult placementHitResult = owner.supplyFromClient(client, () ->
+                BlockHitResult placementHitResult = NodeClientRuntimeSupport.supplyFromClient(client, () ->
                     owner.preparePlacementHitResult(client, placementPos, resolvedBlockId, resolvedHand, reachSquared)
                 );
-                boolean initialSneak = owner.supplyFromClient(client, () -> client.player.isShiftKeyDown());
+                boolean initialSneak = NodeClientRuntimeSupport.supplyFromClient(client, () -> client.player.isShiftKeyDown());
                 if (shouldSneak) {
-                    owner.runOnClientThread(client, () -> owner.applySneakState(client, true));
-                    owner.waitForSneakSync(client, initialSneak, true);
+                    NodeClientRuntimeSupport.runOnClientThread(client, () -> NodeClientRuntimeSupport.applySneakState(client, true));
+                    NodeClientRuntimeSupport.waitForSneakSync(client, initialSneak, true);
                 }
                 try {
-                    owner.runOnClientThread(client, () -> {
+                    NodeClientRuntimeSupport.runOnClientThread(client, () -> {
                         if (client.level.getBlockState(placementPos).is(resolvedBlock)) {
                             return;
                         }
@@ -599,7 +599,7 @@ final class NodeWorldActionCommandExecutor {
                     });
                 } finally {
                     if (shouldSneak && shouldRestoreSneak) {
-                        owner.runOnClientThread(client, () -> owner.applySneakState(client, initialSneak));
+                        NodeClientRuntimeSupport.runOnClientThread(client, () -> NodeClientRuntimeSupport.applySneakState(client, initialSneak));
                     }
                 }
                 boolean placed = owner.waitForBlockPlacement(client, placementPos, resolvedBlock);
@@ -672,7 +672,7 @@ final class NodeWorldActionCommandExecutor {
             return false;
         }
         for (int attempt = 0; attempt < 20; attempt++) {
-            boolean matches = owner.supplyFromClient(client, () -> {
+            boolean matches = NodeClientRuntimeSupport.supplyFromClient(client, () -> {
                 if (client.level == null) {
                     return false;
                 }
@@ -700,7 +700,7 @@ final class NodeWorldActionCommandExecutor {
 
         BlockPos offsetPos = hitPos.relative(side);
         for (int attempt = 0; attempt < 20; attempt++) {
-            boolean placed = owner.supplyFromClient(client, () -> {
+            boolean placed = NodeClientRuntimeSupport.supplyFromClient(client, () -> {
                 if (client.level == null) {
                     return false;
                 }
@@ -934,7 +934,6 @@ final class NodeWorldActionCommandExecutor {
         return bestResult;
     }
 
-    private static final long SNEAK_SYNC_DELAY_MS = 75L;
     private static final double[] FACE_OFFSET_SAMPLES = {0.0D, 0.32D, -0.32D, 0.48D, -0.48D};
     private static final Vec3 FACE_AXIS_X = new Vec3(1.0D, 0.0D, 0.0D);
     private static final Vec3 FACE_AXIS_Y = new Vec3(0.0D, 1.0D, 0.0D);
@@ -980,7 +979,7 @@ final class NodeWorldActionCommandExecutor {
     }
 
     double getPlacementReachSquared(net.minecraft.client.Minecraft client) {
-        return Node.getBlockInteractionReachSquared(client);
+        return NodeClientRuntimeSupport.getBlockInteractionReachSquared(client);
     }
 
     private String describeBlockState(BlockState state) {
@@ -1148,11 +1147,11 @@ final class NodeWorldActionCommandExecutor {
                 double lookDistance = parameterData != null && parameterData.resolvedLookDistance != null
                     ? parameterData.resolvedLookDistance
                     : reachDistance;
-                BlockHitResult hit = owner.supplyFromClient(client, () ->
-                    owner.raycastBlockFromOrientation(client, yaw, pitch, lookDistance)
+                BlockHitResult hit = NodeClientRuntimeSupport.supplyFromClient(client, () ->
+                    NodeClientRuntimeSupport.raycastBlockFromOrientation(client, yaw, pitch, lookDistance)
                 );
                 if (hit != null) {
-                    owner.runOnClientThread(client, () -> {
+                    NodeClientRuntimeSupport.runOnClientThread(client, () -> {
                         client.player.setYRot(yaw);
                         client.player.setXRot(pitch);
                         client.player.setYHeadRot(yaw);
@@ -1195,10 +1194,10 @@ final class NodeWorldActionCommandExecutor {
 
         new Thread(() -> {
             try {
-                BlockHitResult placementHitResult = owner.supplyFromClient(client, () ->
+                BlockHitResult placementHitResult = NodeClientRuntimeSupport.supplyFromClient(client, () ->
                     preparePlacementHitResult(client, placementPos, resolvedBlockId, resolvedHand, resolvedReachSquared)
                 );
-                owner.runOnClientThread(client, () -> {
+                NodeClientRuntimeSupport.runOnClientThread(client, () -> {
                     if (client.level.getBlockState(placementPos).is(resolvedBlock)) {
                         return;
                     }
@@ -1293,7 +1292,7 @@ final class NodeWorldActionCommandExecutor {
             return null;
         }
         Inventory inventory = client.player.getInventory();
-        int slotValue = owner.clampInventorySlot(inventory, Node.parseNodeInt(parameterNode, "Slot", 0));
+        int slotValue = NodeClientRuntimeSupport.clampInventorySlot(inventory, Node.parseNodeInt(parameterNode, "Slot", 0));
         ItemStack stack = inventory.getItem(slotValue);
         if (stack.isEmpty()) {
             owner.sendNodeErrorMessage(client, tr("pathmind.error.selectedSlotEmpty", owner.getType().getDisplayName()));
@@ -1521,7 +1520,7 @@ final class NodeWorldActionCommandExecutor {
             return;
         }
         
-        owner.resetBaritonePathing(baritone);
+        NodeBaritoneSupport.resetPathing(baritone);
         Object exploreProcess = BaritoneApiProxy.getExploreProcess(baritone);
         PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_EXPLORE, future);
         

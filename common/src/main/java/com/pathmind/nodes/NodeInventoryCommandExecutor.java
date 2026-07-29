@@ -1611,7 +1611,7 @@ final class NodeInventoryCommandExecutor {
     }
 
     private void runOnClientThread(Minecraft client, Runnable task) throws InterruptedException {
-        owner.runOnClientThread(client, task);
+        NodeClientRuntimeSupport.runOnClientThread(client, task);
     }
 
     private String getParameterString(Node node, String name) {
@@ -1635,7 +1635,7 @@ final class NodeInventoryCommandExecutor {
     }
 
     private int clampInventorySlot(Inventory inventory, int slot) {
-        return owner.clampInventorySlot(inventory, slot);
+        return NodeClientRuntimeSupport.clampInventorySlot(inventory, slot);
     }
 
     private int parseNodeInt(Node node, String name, int defaultValue) {
@@ -1663,6 +1663,6 @@ final class NodeInventoryCommandExecutor {
     }
 
     private int getOffhandInventoryIndex(Inventory inventory) {
-        return owner.getOffhandInventoryIndex(inventory);
+        return NodeClientRuntimeSupport.getOffhandInventoryIndex(inventory);
     }
 }

@@ -4213,216 +4213,23 @@ public class Node {
     }
 
     Optional<BlockPos> findNearestBlock(net.minecraft.client.Minecraft client, List<BlockSelection> selections, double range) {
-        if (client == null || client.player == null || client.level == null || selections == null || selections.isEmpty()) {
-            return Optional.empty();
-        }
-        int radius = Math.max(1, Math.min((int) Math.ceil(range), 64));
-        BlockPos playerPos = client.player.blockPosition();
-        BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
-        BlockPos bestPos = null;
-        double bestDistance = Double.MAX_VALUE;
-        double maxDistanceSq = range * range;
-
-        for (int dx = -radius; dx <= radius; dx++) {
-            for (int dy = -radius; dy <= radius; dy++) {
-                for (int dz = -radius; dz <= radius; dz++) {
-                    double offsetDistanceSq = dx * dx + dy * dy + dz * dz;
-                    if (offsetDistanceSq > maxDistanceSq) {
-                        continue;
-                    }
-                    mutable.set(playerPos.getX() + dx, playerPos.getY() + dy, playerPos.getZ() + dz);
-                    if (!client.level.hasChunk(Math.floorDiv(mutable.getX(), 16), Math.floorDiv(mutable.getZ(), 16))) {
-                        continue;
-                    }
-                    BlockState state = client.level.getBlockState(mutable);
-                    if (state.isAir()) {
-                        continue;
-                    }
-                    boolean matches = false;
-                    for (BlockSelection selection : selections) {
-                        if (selection.matches(state)) {
-                            matches = true;
-                            break;
-                        }
-                    }
-                    if (!matches) {
-                        continue;
-                    }
-                    double distance = mutable.distSqr(playerPos);
-                    if (distance < bestDistance) {
-                        bestDistance = distance;
-                        bestPos = mutable.immutable();
-                    }
-                }
-            }
-        }
-
-        return Optional.ofNullable(bestPos);
+        return worldTargetResolver.findNearestBlock(client, selections, range);
     }
 
     List<BlockPos> findBlocksWithinRange(net.minecraft.client.Minecraft client, List<BlockSelection> selections, double range) {
-        return findBlocksWithinRange(client, selections, range, 0);
+        return worldTargetResolver.findBlocksWithinRange(client, selections, range);
     }
 
     List<BlockPos> findBlocksWithinRange(net.minecraft.client.Minecraft client, List<BlockSelection> selections, double range, int maxResults) {
-        if (client == null || client.player == null || client.level == null || selections == null || selections.isEmpty()) {
-            return Collections.emptyList();
-        }
-        int resultLimit = Math.max(0, maxResults);
-        int radius = Math.max(1, (int) Math.ceil(range));
-        BlockPos playerPos = client.player.blockPosition();
-        List<BlockPos> matches = new ArrayList<>();
-        int minChunkX = Math.floorDiv(playerPos.getX() - radius, 16);
-        int maxChunkX = Math.floorDiv(playerPos.getX() + radius, 16);
-        int minChunkZ = Math.floorDiv(playerPos.getZ() - radius, 16);
-        int maxChunkZ = Math.floorDiv(playerPos.getZ() + radius, 16);
-        int worldMinY = client.level.getMinY();
-        int worldMaxY = worldMinY + client.level.getHeight() - 1;
-        int minY = Math.max(worldMinY, playerPos.getY() - radius);
-        int maxY = Math.min(worldMaxY, playerPos.getY() + radius);
-        double maxDistanceSq = range * range;
-
-        for (int chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
-            for (int chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
-                if (!client.level.hasChunk(chunkX, chunkZ)) {
-                    continue;
-                }
-                LevelChunk chunk = client.level.getChunk(chunkX, chunkZ);
-                if (chunk == null || chunk.isEmpty()) {
-                    continue;
-                }
-                LevelChunkSection[] sections = chunk.getSections();
-                if (sections == null || sections.length == 0) {
-                    continue;
-                }
-                int startX = chunkX << 4;
-                int startZ = chunkZ << 4;
-                int bottomSectionCoord = client.level.getMinSectionY();
-                BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
-                for (int sectionIndex = 0; sectionIndex < sections.length; sectionIndex++) {
-                    LevelChunkSection section = sections[sectionIndex];
-                    if (section == null || section.hasOnlyAir()) {
-                        continue;
-                    }
-                    if (!section.maybeHas(state -> !state.isAir() && matchesAnyBlock(selections, state))) {
-                        continue;
-                    }
-
-                    int sectionMinY = (bottomSectionCoord + sectionIndex) << 4;
-                    int yStart = Math.max(minY, sectionMinY);
-                    int yEnd = Math.min(maxY, sectionMinY + 15);
-                    if (yStart > yEnd) {
-                        continue;
-                    }
-
-                    for (int localX = 0; localX < 16; localX++) {
-                        int worldX = startX + localX;
-                        for (int localZ = 0; localZ < 16; localZ++) {
-                            int worldZ = startZ + localZ;
-                            for (int y = yStart; y <= yEnd; y++) {
-                                int localY = y - sectionMinY;
-                                BlockState state = section.getBlockState(localX, localY, localZ);
-                                if (state.isAir() || !matchesAnyBlock(selections, state)) {
-                                    continue;
-                                }
-                                mutable.set(worldX, y, worldZ);
-                                if (mutable.distSqr(playerPos) > maxDistanceSq) {
-                                    continue;
-                                }
-                                matches.add(mutable.immutable());
-                                if (resultLimit > 0 && matches.size() >= resultLimit) {
-                                    matches.sort(Comparator.comparingDouble(pos -> pos.distSqr(playerPos)));
-                                    return matches;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        matches.sort(Comparator.comparingDouble(pos -> pos.distSqr(playerPos)));
-        return matches;
+        return worldTargetResolver.findBlocksWithinRange(client, selections, range, maxResults);
     }
 
     Optional<BlockPos> findNearestAnyBlock(net.minecraft.client.Minecraft client, double range) {
-        if (client == null || client.player == null || client.level == null) {
-            return Optional.empty();
-        }
-        int radius = Math.max(1, Math.min((int) Math.ceil(range), 64));
-        BlockPos playerPos = client.player.blockPosition();
-        BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
-        BlockPos bestPos = null;
-        double bestDistance = Double.MAX_VALUE;
-        double maxDistanceSq = range * range;
-
-        for (int dx = -radius; dx <= radius; dx++) {
-            for (int dy = -radius; dy <= radius; dy++) {
-                for (int dz = -radius; dz <= radius; dz++) {
-                    double offsetDistanceSq = dx * dx + dy * dy + dz * dz;
-                    if (offsetDistanceSq > maxDistanceSq) {
-                        continue;
-                    }
-                    mutable.set(playerPos.getX() + dx, playerPos.getY() + dy, playerPos.getZ() + dz);
-                    if (!client.level.hasChunk(Math.floorDiv(mutable.getX(), 16), Math.floorDiv(mutable.getZ(), 16))) {
-                        continue;
-                    }
-                    BlockState state = client.level.getBlockState(mutable);
-                    if (state.isAir()) {
-                        continue;
-                    }
-                    double distance = mutable.distSqr(playerPos);
-                    if (distance < bestDistance) {
-                        bestDistance = distance;
-                        bestPos = mutable.immutable();
-                    }
-                }
-            }
-        }
-
-        return Optional.ofNullable(bestPos);
+        return worldTargetResolver.findNearestAnyBlock(client, range);
     }
 
     Optional<BlockPos> findNearestOpenBlock(net.minecraft.client.Minecraft client, int range) {
-        if (client == null || client.player == null || client.level == null) {
-            return Optional.empty();
-        }
-        int radius = Math.max(1, Math.min(range, 32));
-        BlockPos playerPos = client.player.blockPosition();
-        BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
-        BlockPos bestPos = null;
-        double bestDistance = Double.MAX_VALUE;
-
-        for (int dx = -radius; dx <= radius; dx++) {
-            for (int dy = -radius; dy <= radius; dy++) {
-                for (int dz = -radius; dz <= radius; dz++) {
-                    mutable.set(playerPos.getX() + dx, playerPos.getY() + dy, playerPos.getZ() + dz);
-                    if (!client.level.hasChunk(Math.floorDiv(mutable.getX(), 16), Math.floorDiv(mutable.getZ(), 16))) {
-                        continue;
-                    }
-                    if (!client.level.getWorldBorder().isWithinBounds(mutable)) {
-                        continue;
-                    }
-                    if (!isBlockReplaceable(client.level, mutable)) {
-                        continue;
-                    }
-                    if (!hasPlacementSupport(client.level, mutable)) {
-                        continue;
-                    }
-                    AABB blockBox = new AABB(mutable.getX(), mutable.getY(), mutable.getZ(), mutable.getX() + 1, mutable.getY() + 1, mutable.getZ() + 1);
-                    if (!client.level.getEntities(null, blockBox).isEmpty()) {
-                        continue;
-                    }
-                    double distance = mutable.distSqr(playerPos);
-                    if (distance < bestDistance) {
-                        bestDistance = distance;
-                        bestPos = mutable.immutable();
-                    }
-                }
-            }
-        }
-
-        return Optional.ofNullable(bestPos);
+        return worldTargetResolver.findNearestOpenBlock(client, range);
     }
 
     private static Method resolveClientWorldGetEntityByUuid() {
@@ -6008,7 +5815,7 @@ public class Node {
         return proximitySensorEvaluator().parseBlockSelectionList(blockId);
     }
 
-    private boolean matchesAnyBlock(List<BlockSelection> selections, BlockState state) {
+    boolean matchesAnyBlock(List<BlockSelection> selections, BlockState state) {
         return proximitySensorEvaluator().matchesAnyBlock(selections, state);
     }
 

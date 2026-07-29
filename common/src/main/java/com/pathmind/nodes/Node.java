@@ -4099,100 +4099,27 @@ public class Node {
     }
 
     void sendIncompatibleParameterMessage(Node parameterNode) {
-        net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
-        if (client == null) {
-            return;
-        }
-        if (parameterNode != null
-            && (this.type == NodeType.PLACE || this.type == NodeType.PLACE_HAND)) {
-            NodeType parameterType = parameterNode.getType();
-            // Allow PARAM_CLOSEST in any slot
-            if (parameterType == NodeType.PARAM_CLOSEST) {
-                return;
-            }
-            // Allow block parameters in slot 0 (they provide block type, not position)
-            if (parameterType == NodeType.PARAM_BLOCK
-                && parameterNode.attachments.getParentParameterSlotIndex() == 0) {
-                return;
-            }
-        }
-        sendNodeErrorMessage(client, tr("pathmind.error.incompatibleParameter", parameterNode.getType().getDisplayName(), this.type.getDisplayName()));
+        runtimeParameterResolver.sendIncompatibleParameterMessage(parameterNode);
     }
 
     void sendParameterSearchFailure(String message, CompletableFuture<Void> future) {
-        // Only surface search failures during execution contexts (future != null).
-        // UI/preview calls (future == null) should not spam chat.
-        if (future != null) {
-            NodeExecutionCompletion.failWithCurrentClient(this, future, message);
-        }
+        runtimeParameterResolver.sendParameterSearchFailure(message, future);
     }
 
     boolean reportEmptyParametersForNode(Node target, CompletableFuture<Void> future) {
-        if (target == null) {
-            return true;
-        }
-        List<String> emptyNames = new ArrayList<>();
-        collectEmptyUserEditedParameters(target, emptyNames);
-        if (emptyNames.isEmpty()) {
-            return true;
-        }
-        String joined = String.join(", ", emptyNames);
-        String subject = target.getType() != null
-            ? tr("pathmind.error.subjectNodeType", target.getType().getDisplayName())
-            : tr("pathmind.error.subjectNode");
-        String message = emptyNames.size() == 1
-            ? tr("pathmind.error.parameterEmptyOnNode", joined, subject)
-            : tr("pathmind.error.parametersEmptyOnNode", joined, subject);
-        NodeExecutionCompletion.failWithCurrentClient(this, future, message);
-        return false;
-    }
-
-    private void collectEmptyUserEditedParameters(Node target, List<String> emptyNames) {
-        if (target == null || emptyNames == null) {
-            return;
-        }
-        for (NodeParameter parameter : target.getParameters()) {
-            if (parameter == null || !parameter.isUserEdited()) {
-                continue;
-            }
-            String value = parameter.getStringValue();
-            if (value != null && !value.trim().isEmpty()) {
-                continue;
-            }
-            String defaultValue = parameter.getDefaultValue();
-            if (defaultValue != null && !defaultValue.isEmpty()) {
-                emptyNames.add(parameter.getName());
-            }
-        }
+        return runtimeParameterResolver.reportEmptyParametersForNode(target, future);
     }
 
     private boolean reportEmptyParametersForAttachedParameters(CompletableFuture<Void> future) {
-        if (!attachments.hasAttachedParameters()) {
-            return true;
-        }
-        for (Node parameterNode : attachments.getAttachedParameterNodes()) {
-            if (parameterNode == null || !parameterNode.isParameterNode()) {
-                continue;
-            }
-            if (!reportEmptyParametersForNode(parameterNode, future)) {
-                return false;
-            }
-        }
-        return true;
+        return runtimeParameterResolver.reportEmptyParametersForAttachedParameters(future);
     }
 
     void setParameterIfPresent(String name, String value) {
-        if (name == null || value == null) {
-            return;
-        }
-        NodeParameter parameter = getParameter(name);
-        if (parameter != null) {
-            parameter.setStringValue(value);
-        }
+        runtimeParameterResolver.setParameterIfPresent(name, value);
     }
 
     static String formatFloat(float value) {
-        return String.format(Locale.ROOT, "%.3f", value);
+        return NodeRuntimeParameterResolver.formatFloat(value);
     }
 
     static float normalizeLookYaw(float yaw) {
@@ -4227,92 +4154,12 @@ public class Node {
         return NodeRuntimeParameterResolver.parseDoubleOrNull(value);
     }
 
-    private double generateRandomValue(double min, double max) {
-        if (Double.isNaN(min) || Double.isNaN(max)) {
-            return 0.0;
-        }
-        double lower = min;
-        double upper = max;
-        if (lower > upper) {
-            double swap = lower;
-            lower = upper;
-            upper = swap;
-        }
-        if (lower == upper) {
-            return lower;
-        }
-        Random generator = getRandomGenerator();
-        double range = upper - lower;
-        if (generator == null) {
-            return lower + Math.random() * range;
-        }
-        return lower + generator.nextDouble() * range;
-    }
-
     double generateRandomValueWithRounding(double min, double max) {
-        double value = generateRandomValue(min, max);
-        if (!isRandomRoundingEnabled()) {
-            return value;
-        }
-        String mode = getRandomRoundingMode();
-        return switch (mode) {
-            case "floor" -> Math.floor(value);
-            case "ceil" -> Math.ceil(value);
-            default -> (double) Math.round(value);
-        };
+        return runtimeParameterResolver.generateRandomValueWithRounding(min, max);
     }
 
     Optional<Double> resolveModValue() {
-        Node left = getAttachedParameter(0);
-        Node right = getAttachedParameter(1);
-        if (left == null || right == null) {
-            return Optional.empty();
-        }
-        Optional<Double> leftNumber = resolveComparableNumberWithVariables(left, 0);
-        Optional<Double> rightNumber = resolveComparableNumberWithVariables(right, 1);
-        if (leftNumber.isEmpty() || rightNumber.isEmpty()) {
-            return Optional.empty();
-        }
-        double divisor = rightNumber.get();
-        if (divisor == 0.0) {
-            return Optional.empty();
-        }
-        return Optional.of(leftNumber.get() % divisor);
-    }
-
-    private Random getRandomGenerator() {
-        String seed = getParameterString(this, "Seed");
-        if (seed == null || seed.trim().isEmpty() || isAnySeedValue(seed)) {
-            runtimeState.randomGenerator = null;
-            runtimeState.randomSeedCache = null;
-            return null;
-        }
-        String trimmed = seed.trim();
-        if (runtimeState.randomGenerator == null || runtimeState.randomSeedCache == null || !runtimeState.randomSeedCache.equals(trimmed)) {
-            long hashedSeed = hashSeedString(trimmed);
-            runtimeState.randomGenerator = new Random(hashedSeed);
-            runtimeState.randomSeedCache = trimmed;
-        }
-        return runtimeState.randomGenerator;
-    }
-
-    private static long hashSeedString(String seed) {
-        if (seed == null) {
-            return 0L;
-        }
-        long hash = 1125899906842597L;
-        for (int i = 0; i < seed.length(); i++) {
-            hash = 31L * hash + seed.charAt(i);
-        }
-        return hash;
-    }
-
-    private boolean isAnySeedValue(String seed) {
-        if (seed == null) {
-            return true;
-        }
-        String trimmed = seed.trim();
-        return trimmed.isEmpty() || "any".equalsIgnoreCase(trimmed);
+        return runtimeParameterResolver.resolveModValue();
     }
 
     static boolean isAnySelectionValue(String value) {
@@ -6212,7 +6059,7 @@ public class Node {
         return operatorSensorEvaluator().resolveComparableNumber(node);
     }
 
-    private Optional<Double> resolveComparableNumberWithVariables(Node node, int slotIndex) {
+    Optional<Double> resolveComparableNumberWithVariables(Node node, int slotIndex) {
         return operatorSensorEvaluator().resolveComparableNumberWithVariables(node, slotIndex);
     }
 

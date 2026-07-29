@@ -3,6 +3,7 @@ package com.pathmind.nodes;
 import com.pathmind.execution.ExecutionManager;
 import com.pathmind.util.EntityCompatibilityBridge;
 import com.pathmind.util.EntityStateOptions;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -10,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
@@ -839,8 +841,8 @@ final class NodeRuntimeParameterResolver {
                             Math.sqrt(delta.x * delta.x + delta.z * delta.z))));
             float clampedPitch = Mth.clamp(pitch, -90.0F, 90.0F);
 
-            owner.setParameterIfPresent("Yaw", Node.formatFloat(yaw));
-            owner.setParameterIfPresent("Pitch", Node.formatFloat(clampedPitch));
+            setParameterIfPresent("Yaw", formatFloat(yaw));
+            setParameterIfPresent("Pitch", formatFloat(clampedPitch));
 
             if (data != null) {
                 data.targetBlockPos = targetBlockPos;
@@ -880,14 +882,14 @@ final class NodeRuntimeParameterResolver {
         }
         if (yawParam != null || pitchParam != null) {
             if (yawParam != null) {
-                owner.setParameterIfPresent("Yaw", Node.formatFloat(yawParam));
+                setParameterIfPresent("Yaw", formatFloat(yawParam));
                 if (data != null) {
                     data.resolvedYaw = yawParam;
                 }
             }
             if (pitchParam != null) {
                 float clamped = Mth.clamp(pitchParam, -90.0F, 90.0F);
-                owner.setParameterIfPresent("Pitch", Node.formatFloat(clamped));
+                setParameterIfPresent("Pitch", formatFloat(clamped));
                 if (data != null) {
                     data.resolvedPitch = clamped;
                 }
@@ -908,7 +910,7 @@ final class NodeRuntimeParameterResolver {
                     Mth.wrapDegrees(
                         client.player.getYRot()
                             + parseNodeDouble(parameterNode, "Amount", 0.0));
-            owner.setParameterIfPresent("Yaw", Node.formatFloat(yaw));
+            setParameterIfPresent("Yaw", formatFloat(yaw));
             if (data != null) {
                 data.resolvedYaw = yaw;
                 data.resolvedPitch = client.player.getXRot();
@@ -963,14 +965,14 @@ final class NodeRuntimeParameterResolver {
                     }
                 }
                 if (yaw != null) {
-                    owner.setParameterIfPresent("Yaw", Node.formatFloat(yaw));
+                    setParameterIfPresent("Yaw", formatFloat(yaw));
                     if (data != null) {
                         data.resolvedYaw = yaw;
                     }
                 }
                 if (pitch != null) {
                     float clamped = Mth.clamp(pitch, -90.0F, 90.0F);
-                    owner.setParameterIfPresent("Pitch", Node.formatFloat(clamped));
+                    setParameterIfPresent("Pitch", formatFloat(clamped));
                     if (data != null) {
                         data.resolvedPitch = clamped;
                     }
@@ -1020,8 +1022,8 @@ final class NodeRuntimeParameterResolver {
                         delta.y, Math.sqrt(delta.x * delta.x + delta.z * delta.z))));
         float clampedPitch = Mth.clamp(pitch, -90.0F, 90.0F);
 
-        owner.setParameterIfPresent("Yaw", Node.formatFloat(yaw));
-        owner.setParameterIfPresent("Pitch", Node.formatFloat(clampedPitch));
+        setParameterIfPresent("Yaw", formatFloat(yaw));
+        setParameterIfPresent("Pitch", formatFloat(clampedPitch));
 
         if (data != null) {
             data.resolvedYaw = yaw;
@@ -1111,6 +1113,214 @@ final class NodeRuntimeParameterResolver {
         if (applyPitch) {
             data.resolvedPitch = pitch;
         }
+    }
+
+    void sendIncompatibleParameterMessage(Node parameterNode) {
+        net.minecraft.client.Minecraft client =
+            net.minecraft.client.Minecraft.getInstance();
+        if (client == null) {
+            return;
+        }
+        if (parameterNode != null
+            && (owner.getType() == NodeType.PLACE
+                || owner.getType() == NodeType.PLACE_HAND)) {
+            NodeType parameterType = parameterNode.getType();
+            // Allow PARAM_CLOSEST in any slot
+            if (parameterType == NodeType.PARAM_CLOSEST) {
+                return;
+            }
+            // Allow block parameters in slot 0 (they provide block type, not position)
+            if (parameterType == NodeType.PARAM_BLOCK
+                && parameterNode.getAttachments().getParentParameterSlotIndex() == 0) {
+                return;
+            }
+        }
+        owner.sendNodeErrorMessage(
+            client,
+            Node.tr(
+                "pathmind.error.incompatibleParameter",
+                parameterNode.getType().getDisplayName(),
+                owner.getType().getDisplayName()));
+    }
+
+    void sendParameterSearchFailure(
+        String message, CompletableFuture<Void> future
+    ) {
+        // Only surface search failures during execution contexts (future != null).
+        // UI/preview calls (future == null) should not spam chat.
+        if (future != null) {
+            NodeExecutionCompletion.failWithCurrentClient(owner, future, message);
+        }
+    }
+
+    boolean reportEmptyParametersForNode(
+        Node target, CompletableFuture<Void> future
+    ) {
+        if (target == null) {
+            return true;
+        }
+        List<String> emptyNames = new ArrayList<>();
+        collectEmptyUserEditedParameters(target, emptyNames);
+        if (emptyNames.isEmpty()) {
+            return true;
+        }
+        String joined = String.join(", ", emptyNames);
+        String subject =
+            target.getType() != null
+                ? Node.tr(
+                    "pathmind.error.subjectNodeType",
+                    target.getType().getDisplayName())
+                : Node.tr("pathmind.error.subjectNode");
+        String message =
+            emptyNames.size() == 1
+                ? Node.tr("pathmind.error.parameterEmptyOnNode", joined, subject)
+                : Node.tr("pathmind.error.parametersEmptyOnNode", joined, subject);
+        NodeExecutionCompletion.failWithCurrentClient(owner, future, message);
+        return false;
+    }
+
+    private void collectEmptyUserEditedParameters(
+        Node target, List<String> emptyNames
+    ) {
+        if (target == null || emptyNames == null) {
+            return;
+        }
+        for (NodeParameter parameter : target.getParameters()) {
+            if (parameter == null || !parameter.isUserEdited()) {
+                continue;
+            }
+            String value = parameter.getStringValue();
+            if (value != null && !value.trim().isEmpty()) {
+                continue;
+            }
+            String defaultValue = parameter.getDefaultValue();
+            if (defaultValue != null && !defaultValue.isEmpty()) {
+                emptyNames.add(parameter.getName());
+            }
+        }
+    }
+
+    boolean reportEmptyParametersForAttachedParameters(
+        CompletableFuture<Void> future
+    ) {
+        if (!owner.getAttachments().hasAttachedParameters()) {
+            return true;
+        }
+        for (Node parameterNode : owner.getAttachments().getAttachedParameterNodes()) {
+            if (parameterNode == null || !parameterNode.isParameterNode()) {
+                continue;
+            }
+            if (!reportEmptyParametersForNode(parameterNode, future)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    void setParameterIfPresent(String name, String value) {
+        if (name == null || value == null) {
+            return;
+        }
+        NodeParameter parameter = owner.getParameter(name);
+        if (parameter != null) {
+            parameter.setStringValue(value);
+        }
+    }
+
+    static String formatFloat(float value) {
+        return String.format(Locale.ROOT, "%.3f", value);
+    }
+
+    double generateRandomValueWithRounding(double min, double max) {
+        double value = generateRandomValue(min, max);
+        if (!owner.isRandomRoundingEnabled()) {
+            return value;
+        }
+        String mode = owner.getRandomRoundingMode();
+        return switch (mode) {
+            case "floor" -> Math.floor(value);
+            case "ceil" -> Math.ceil(value);
+            default -> (double) Math.round(value);
+        };
+    }
+
+    private double generateRandomValue(double min, double max) {
+        if (Double.isNaN(min) || Double.isNaN(max)) {
+            return 0.0;
+        }
+        double lower = min;
+        double upper = max;
+        if (lower > upper) {
+            double swap = lower;
+            lower = upper;
+            upper = swap;
+        }
+        if (lower == upper) {
+            return lower;
+        }
+        Random generator = getRandomGenerator();
+        double range = upper - lower;
+        if (generator == null) {
+            return lower + Math.random() * range;
+        }
+        return lower + generator.nextDouble() * range;
+    }
+
+    Optional<Double> resolveModValue() {
+        Node left = owner.getAttachedParameter(0);
+        Node right = owner.getAttachedParameter(1);
+        if (left == null || right == null) {
+            return Optional.empty();
+        }
+        Optional<Double> leftNumber =
+            owner.resolveComparableNumberWithVariables(left, 0);
+        Optional<Double> rightNumber =
+            owner.resolveComparableNumberWithVariables(right, 1);
+        if (leftNumber.isEmpty() || rightNumber.isEmpty()) {
+            return Optional.empty();
+        }
+        double divisor = rightNumber.get();
+        if (divisor == 0.0) {
+            return Optional.empty();
+        }
+        return Optional.of(leftNumber.get() % divisor);
+    }
+
+    private Random getRandomGenerator() {
+        String seed = getParameterString(owner, "Seed");
+        if (seed == null || seed.trim().isEmpty() || isAnySeedValue(seed)) {
+            owner.runtimeState().randomGenerator = null;
+            owner.runtimeState().randomSeedCache = null;
+            return null;
+        }
+        String trimmed = seed.trim();
+        if (owner.runtimeState().randomGenerator == null
+            || owner.runtimeState().randomSeedCache == null
+            || !owner.runtimeState().randomSeedCache.equals(trimmed)) {
+            long hashedSeed = hashSeedString(trimmed);
+            owner.runtimeState().randomGenerator = new Random(hashedSeed);
+            owner.runtimeState().randomSeedCache = trimmed;
+        }
+        return owner.runtimeState().randomGenerator;
+    }
+
+    private static long hashSeedString(String seed) {
+        if (seed == null) {
+            return 0L;
+        }
+        long hash = 1125899906842597L;
+        for (int i = 0; i < seed.length(); i++) {
+            hash = 31L * hash + seed.charAt(i);
+        }
+        return hash;
+    }
+
+    private boolean isAnySeedValue(String seed) {
+        if (seed == null) {
+            return true;
+        }
+        String trimmed = seed.trim();
+        return trimmed.isEmpty() || "any".equalsIgnoreCase(trimmed);
     }
 
     static float normalizeLookYaw(float yaw) {

@@ -2151,7 +2151,7 @@ public class Node {
         }
     }
 
-    private void notifyParentParameterHostOfResize() {
+    void notifyParentParameterHostOfResize() {
         if (attachments.getParentParameterHost() == null || attachments.getParentParameterSlotIndex() < 0) {
             return;
         }
@@ -2163,7 +2163,7 @@ public class Node {
         updateParentControlLayout();
     }
 
-    private void notifyParentActionControlOfResize() {
+    void notifyParentActionControlOfResize() {
         if (attachments.getParentActionControl() == null) {
             return;
         }
@@ -2175,7 +2175,7 @@ public class Node {
         updateAttachedActionPosition();
     }
 
-    private void notifyParentControlOfResize() {
+    void notifyParentControlOfResize() {
         if (attachments.getParentControl() == null) {
             return;
         }
@@ -3581,21 +3581,7 @@ public class Node {
      * Recalculate node dimensions based on current content
      */
     public void recalculateDimensions() {
-        boolean shouldUpdateAttachments = NodeDimensionCalculator.recalculate(this, layoutState);
-        if (!shouldUpdateAttachments) {
-            return;
-        }
-
-        if (attachments.getAttachedSensor() != null) {
-            updateAttachedSensorPosition();
-        }
-        if (attachments.getAttachedActionNode() != null) {
-            updateAttachedActionPosition();
-        }
-        updateAttachedParameterPositions();
-        notifyParentParameterHostOfResize();
-        notifyParentActionControlOfResize();
-        notifyParentControlOfResize();
+        NodeDimensionCalculator.recalculate(this, layoutState);
     }
 
     boolean showsSensorSlotHeader() {
@@ -3615,58 +3601,19 @@ public class Node {
      * Get the height needed to display parameters
      */
     public int getParameterDisplayHeight() {
-        if (!hasParameters() && !supportsModeSelection()) {
-            return 0;
-        }
-        int parameterLineCount = getVisibleParameterLineCount();
-        if (parameterLineCount <= 0) {
-            return 0;
-        }
-        return PARAM_PADDING_TOP + (parameterLineCount * PARAM_LINE_HEIGHT) + PARAM_PADDING_BOTTOM;
+        return NodeDimensionCalculator.parameterDisplayHeight(this);
     }
 
     String getParameterWidthLabel(NodeParameter parameter) {
-        if (parameter == null) {
-            return "";
-        }
-        if (type != NodeType.PARAM_DIRECTION) {
-            return getParameterLabel(parameter);
-        }
-        String parameterName = parameter.getName();
-        if ("Mode".equalsIgnoreCase(parameterName) || "Direction".equalsIgnoreCase(parameterName)) {
-            return "";
-        }
-        if ("Yaw".equalsIgnoreCase(parameterName)
-            || "Pitch".equalsIgnoreCase(parameterName)
-            || "Distance".equalsIgnoreCase(parameterName)) {
-            return getParameterDisplayName(parameter) + ": " + parameter.getDisplayValue();
-        }
-        return getParameterLabel(parameter);
+        return NodeDimensionCalculator.parameterWidthLabel(this, parameter);
     }
 
     String getParameterWidthDisplayValue(NodeParameter parameter) {
-        if (parameter == null) {
-            return "";
-        }
-        if (type != NodeType.PARAM_DIRECTION) {
-            return getParameterDisplayValue(parameter);
-        }
-        String parameterName = parameter.getName();
-        if ("Yaw".equalsIgnoreCase(parameterName)
-            || "Pitch".equalsIgnoreCase(parameterName)
-            || "Distance".equalsIgnoreCase(parameterName)) {
-            return getParameterDisplayValue(parameter);
-        }
-        return getParameterDisplayValue(parameter);
+        return NodeDimensionCalculator.parameterWidthDisplayValue(this, parameter);
     }
 
     public String getModeDisplayLabel() {
-        if (!supportsModeSelection()) {
-            return "";
-        }
-        NodeMode nodeMode = getMode();
-        String modeName = nodeMode != null ? nodeMode.getDisplayName() : "Select Mode";
-        return "Mode: " + modeName;
+        return NodeDimensionCalculator.modeDisplayLabel(this);
     }
 
     /**

@@ -10,7 +10,25 @@ final class NodeDimensionCalculator {
     private NodeDimensionCalculator() {
     }
 
-    static boolean recalculate(Node node, NodeLayoutState layoutState) {
+    static void recalculate(Node node, NodeLayoutState layoutState) {
+        boolean shouldUpdateAttachments = recalculateSize(node, layoutState);
+        if (!shouldUpdateAttachments) {
+            return;
+        }
+
+        if (node.getAttachedSensor() != null) {
+            node.updateAttachedSensorPosition();
+        }
+        if (node.getAttachedActionNode() != null) {
+            node.updateAttachedActionPosition();
+        }
+        node.updateAttachedParameterPositions();
+        node.notifyParentParameterHostOfResize();
+        node.notifyParentActionControlOfResize();
+        node.notifyParentControlOfResize();
+    }
+
+    private static boolean recalculateSize(Node node, NodeLayoutState layoutState) {
         NodeType type = node.getType();
         if (type == NodeType.START) {
             layoutState.setSize(Node.START_END_SIZE, Node.START_END_SIZE);
@@ -33,6 +51,61 @@ final class NodeDimensionCalculator {
         int computedNodeHeight = computeHeight(node);
         layoutState.setSize(computedNodeWidth, computedNodeHeight);
         return true;
+    }
+
+    static int parameterDisplayHeight(Node node) {
+        if (!node.hasParameters() && !node.supportsModeSelection()) {
+            return 0;
+        }
+        int parameterLineCount = node.getVisibleParameterLineCount();
+        if (parameterLineCount <= 0) {
+            return 0;
+        }
+        return Node.PARAM_PADDING_TOP + (parameterLineCount * Node.PARAM_LINE_HEIGHT) + Node.PARAM_PADDING_BOTTOM;
+    }
+
+    static String parameterWidthLabel(Node node, NodeParameter parameter) {
+        if (parameter == null) {
+            return "";
+        }
+        if (node.getType() != NodeType.PARAM_DIRECTION) {
+            return node.getParameterLabel(parameter);
+        }
+        String parameterName = parameter.getName();
+        if ("Mode".equalsIgnoreCase(parameterName) || "Direction".equalsIgnoreCase(parameterName)) {
+            return "";
+        }
+        if ("Yaw".equalsIgnoreCase(parameterName)
+            || "Pitch".equalsIgnoreCase(parameterName)
+            || "Distance".equalsIgnoreCase(parameterName)) {
+            return node.getParameterDisplayName(parameter) + ": " + parameter.getDisplayValue();
+        }
+        return node.getParameterLabel(parameter);
+    }
+
+    static String parameterWidthDisplayValue(Node node, NodeParameter parameter) {
+        if (parameter == null) {
+            return "";
+        }
+        if (node.getType() != NodeType.PARAM_DIRECTION) {
+            return node.getParameterDisplayValue(parameter);
+        }
+        String parameterName = parameter.getName();
+        if ("Yaw".equalsIgnoreCase(parameterName)
+            || "Pitch".equalsIgnoreCase(parameterName)
+            || "Distance".equalsIgnoreCase(parameterName)) {
+            return node.getParameterDisplayValue(parameter);
+        }
+        return node.getParameterDisplayValue(parameter);
+    }
+
+    static String modeDisplayLabel(Node node) {
+        if (!node.supportsModeSelection()) {
+            return "";
+        }
+        NodeMode nodeMode = node.getMode();
+        String modeName = nodeMode != null ? nodeMode.getDisplayName() : "Select Mode";
+        return "Mode: " + modeName;
     }
 
     private static int computeWidth(Node node, NodeLayoutState layoutState) {

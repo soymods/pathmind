@@ -116,6 +116,7 @@ public class Node {
     private final NodeParameterValues parameterValues;
     private final NodeTextContent textContent;
     private final NodeExecutionCoordinator executionCoordinator;
+    private final NodeAttachmentCoordinator attachmentCoordinator;
     static final int MIN_WIDTH = 92;
     static final int MIN_HEIGHT = 44;
     static final int EVENT_FUNCTION_MIN_HEIGHT = 36;
@@ -335,6 +336,7 @@ public class Node {
             recalculateDimensions();
         });
         this.executionCoordinator = new NodeExecutionCoordinator(this);
+        this.attachmentCoordinator = new NodeAttachmentCoordinator(this);
         this.dynamicBooleanOperatorSlotCount = isExpandableBooleanOperatorType(type) ? 2 : 0;
         this.stickyNoteText = "";
         this.gotoAllowBreakWhileExecuting = false;
@@ -1840,7 +1842,7 @@ public class Node {
         NodeSlotLayout.updateAttachedParameterPositions(this);
     }
 
-    private void updateAttachedParameterPosition(int slotIndex) {
+    void updateAttachedParameterPosition(int slotIndex) {
         NodeSlotLayout.updateAttachedParameterPosition(this, slotIndex);
     }
 
@@ -1873,39 +1875,11 @@ public class Node {
     }
 
     public boolean attachSensor(Node sensor) {
-        if (!canAcceptSensor() || sensor == null || !sensor.isSensorNode() || sensor == this) {
-            return false;
-        }
-
-        if (attachments.isSensorAttachedTo(this, sensor)) {
-            updateAttachedSensorPosition();
-            return true;
-        }
-
-        if (sensor.attachments.getParentControl() != null) {
-            sensor.attachments.getParentControl().detachSensor();
-        }
-
-        Node previousSensor = attachments.attachSensor(this, sensor);
-        if (previousSensor != null) {
-            previousSensor.setDragging(false);
-            previousSensor.setSelected(false);
-            previousSensor.setPositionSilently(getX() + getWidth() + SENSOR_SLOT_MARGIN_HORIZONTAL, getY());
-        }
-
-        sensor.setDragging(false);
-        sensor.setSelected(false);
-
-        recalculateDimensions();
-        updateAttachedSensorPosition();
-        return true;
+        return attachmentCoordinator.attachSensor(sensor);
     }
 
     public void detachSensor() {
-        Node sensor = attachments.detachSensor();
-        if (sensor != null) {
-            recalculateDimensions();
-        }
+        attachmentCoordinator.detachSensor();
     }
 
     public boolean attachParameter(Node parameter) {
@@ -1913,7 +1887,7 @@ public class Node {
     }
 
     public boolean attachParameter(Node parameter, int slotIndex) {
-        return attachParameter(parameter, slotIndex, false);
+        return attachmentCoordinator.attachParameter(parameter, slotIndex, false);
     }
 
     /**
@@ -1922,72 +1896,7 @@ public class Node {
      * unrestricted two-arg form, so any node usable as a parameter can occupy any existing slot.
      */
     public boolean attachParameterStrict(Node parameter, int slotIndex) {
-        return attachParameter(parameter, slotIndex, true);
-    }
-
-    private boolean attachParameter(Node parameter, int slotIndex, boolean enforceCompatibility) {
-        if (parameter == null
-            || !isUsableAsParameterType(parameter.getType())
-            || parameter == this) {
-            return false;
-        }
-        if ((type == NodeType.PLACE || type == NodeType.PLACE_HAND)
-            && slotIndex == 1
-            && parameter.getType() != null) {
-            NodeType parameterType = parameter.getType();
-            if (parameterType == NodeType.PARAM_INVENTORY_SLOT) {
-                // Inventory-slot parameters should always occupy the first slot
-                slotIndex = 0;
-            }
-        }
-        if (!canAcceptParameterAt(slotIndex)) {
-            return false;
-        }
-
-        if (parameter.attachments.isAttachedToParameterHost(this, slotIndex)) {
-            parameter.recalculateDimensions();
-            refreshAttachedParameterValues();
-            recalculateDimensions();
-            updateAttachedParameterPosition(slotIndex);
-            updateParentControlLayout();
-            return true;
-        }
-
-        if (enforceCompatibility && !isParameterSupported(parameter, slotIndex)) {
-            sendIncompatibleParameterMessage(parameter);
-            return false;
-        }
-
-        Node previousHost = parameter.attachments.getParentParameterHost();
-        int previousSlot = parameter.attachments.getParentParameterSlotIndex();
-
-        if (previousHost != null && (previousHost != this || previousSlot != slotIndex)) {
-            previousHost.detachParameter(previousSlot);
-        }
-
-        Node replaced = attachments.getAttachedParameter(slotIndex);
-        if (replaced != null && replaced != parameter) {
-            replaced = attachments.detachParameter(slotIndex);
-            if (replaced != null) {
-                replaced.setSocketsHidden(false);
-                replaced.recalculateDimensions();
-                replaced.setPositionSilently(getX() + getWidth() + PARAMETER_SLOT_MARGIN_HORIZONTAL, getY());
-            }
-        }
-
-        attachments.attachParameter(this, slotIndex, parameter);
-        parameter.setDragging(false);
-        parameter.setSelected(false);
-        parameter.setSocketsHidden(true);
-        parameter.recalculateDimensions();
-
-        refreshAttachedParameterValues();
-
-        recalculateDimensions();
-        updateAttachedParameterPositions();
-        updateParentControlLayout();
-
-        return true;
+        return attachmentCoordinator.attachParameter(parameter, slotIndex, true);
     }
 
     public void detachParameter() {
@@ -1995,18 +1904,7 @@ public class Node {
     }
 
     public void detachParameter(int slotIndex) {
-        Node parameter = attachments.detachParameter(slotIndex);
-        if (parameter == null) {
-            return;
-        }
-        parameter.setSocketsHidden(false);
-        parameter.recalculateDimensions();
-        parameter.setPositionSilently(getX() + getWidth() + PARAMETER_SLOT_MARGIN_HORIZONTAL, getY());
-
-        refreshAttachedParameterValues();
-        recalculateDimensions();
-        updateAttachedParameterPositions();
-        updateParentControlLayout();
+        attachmentCoordinator.detachParameter(slotIndex);
     }
 
     public boolean addBooleanOperatorSlot() {
@@ -2043,46 +1941,31 @@ public class Node {
     }
 
     private void updateParentControlLayout() {
-        if (attachments.getParentControl() != null) {
-            attachments.getParentControl().recalculateDimensions();
-            attachments.getParentControl().updateAttachedSensorPosition();
-        }
+        attachmentCoordinator.updateParentControlLayout();
     }
 
     void notifyParentParameterHostOfResize() {
-        if (attachments.getParentParameterHost() == null || attachments.getParentParameterSlotIndex() < 0) {
-            return;
-        }
-        attachments.getParentParameterHost().onAttachedParameterResized(attachments.getParentParameterSlotIndex());
+        attachmentCoordinator.notifyParentParameterHostOfResize();
     }
 
-    private void onAttachedParameterResized(int slotIndex) {
-        recalculateDimensions();
-        updateParentControlLayout();
+    void onAttachedParameterResized(int slotIndex) {
+        attachmentCoordinator.onAttachedParameterResized(slotIndex);
     }
 
     void notifyParentActionControlOfResize() {
-        if (attachments.getParentActionControl() == null) {
-            return;
-        }
-        attachments.getParentActionControl().onAttachedActionResized();
+        attachmentCoordinator.notifyParentActionControlOfResize();
     }
 
-    private void onAttachedActionResized() {
-        recalculateDimensions();
-        updateAttachedActionPosition();
+    void onAttachedActionResized() {
+        attachmentCoordinator.onAttachedActionResized();
     }
 
     void notifyParentControlOfResize() {
-        if (attachments.getParentControl() == null) {
-            return;
-        }
-        attachments.getParentControl().onAttachedSensorResized();
+        attachmentCoordinator.notifyParentControlOfResize();
     }
 
-    private void onAttachedSensorResized() {
-        recalculateDimensions();
-        updateAttachedSensorPosition();
+    void onAttachedSensorResized() {
+        attachmentCoordinator.onAttachedSensorResized();
     }
 
     boolean applyParameterValuesFromMap(Map<String, String> values) {
@@ -2093,7 +1976,7 @@ public class Node {
         return parameterValues.adjustParameterValuesForSlot(values, slotIndex, parameterNode);
     }
 
-    private void refreshAttachedParameterValues() {
+    void refreshAttachedParameterValues() {
         parameterValues.refreshAttachedParameterValues();
     }
 
@@ -2163,45 +2046,15 @@ public class Node {
     }
 
     public boolean canAcceptActionNode(Node node) {
-        return NodeCompatibility.canAttachToSlot(this, node, NodeSlotType.ACTION, 0);
+        return attachmentCoordinator.canAcceptActionNode(node);
     }
 
     public boolean attachActionNode(Node node) {
-        if (!canAcceptActionNode(node)) {
-            return false;
-        }
-
-        if (attachments.isActionNodeAttachedTo(this, node)) {
-            updateAttachedActionPosition();
-            return true;
-        }
-
-        if (node.attachments.getParentActionControl() != null) {
-            node.attachments.getParentActionControl().detachActionNode();
-        }
-
-        Node previous = attachments.attachActionNode(this, node);
-        if (previous != null) {
-            previous.setDragging(false);
-            previous.setSelected(false);
-            previous.setPositionSilently(getX() + getWidth() + ACTION_SLOT_MARGIN_HORIZONTAL, getY());
-        }
-
-        node.setDragging(false);
-        node.setSelected(false);
-        node.setSocketsHidden(true);
-
-        recalculateDimensions();
-        updateAttachedActionPosition();
-        return true;
+        return attachmentCoordinator.attachActionNode(node);
     }
 
     public void detachActionNode() {
-        Node node = attachments.detachActionNode();
-        if (node != null) {
-            node.setSocketsHidden(false);
-            recalculateDimensions();
-        }
+        attachmentCoordinator.detachActionNode();
     }
 
     public void setSocketsHidden(boolean hidden) {

@@ -128,29 +128,12 @@ final class PathmindMarketplaceLayout {
         return PathmindMarketplaceScreen.PRESET_GRID_COLUMNS;
     }
 
-    static int cardsPerPage() {
-        return PathmindMarketplaceScreen.PRESET_GRID_COLUMNS * PathmindMarketplaceScreen.PRESET_GRID_ROWS;
-    }
-
-    static int firstVisibleCardIndex(int resultCount, int scrollOffset) {
-        if (resultCount <= 0) {
-            return 0;
-        }
-        int columns = Math.max(1, gridColumns());
-        int firstRow = Math.max(0, (scrollOffset - PathmindMarketplaceScreen.CARD_SIZE) / (PathmindMarketplaceScreen.CARD_SIZE + PathmindMarketplaceScreen.CARD_GAP));
-        int firstIndex = firstRow * columns;
-        return Math.max(0, Math.min(firstIndex, resultCount - 1));
-    }
-
-    static int lastVisibleCardIndex(PathmindMarketplaceScreen.Layout layout, int resultCount, int sectionHeaderHeight, int scrollOffset) {
-        if (resultCount <= 0) {
-            return -1;
-        }
-        int columns = Math.max(1, gridColumns());
-        int bodyHeight = layout.sectionHeight() - sectionHeaderHeight - PathmindMarketplaceScreen.FOOTER_HEIGHT;
-        int lastRow = Math.max(0, (scrollOffset + bodyHeight + PathmindMarketplaceScreen.CARD_SIZE) / (PathmindMarketplaceScreen.CARD_SIZE + PathmindMarketplaceScreen.CARD_GAP));
-        int lastIndex = (lastRow + 1) * columns - 1;
-        return Math.max(0, Math.min(lastIndex, resultCount - 1));
+    static int cardsPerPage(PathmindMarketplaceScreen.Layout layout, int sectionHeaderHeight) {
+        int availableHeight = layout.sectionHeight() - sectionHeaderHeight - PathmindMarketplaceScreen.FOOTER_HEIGHT - 2;
+        int rows = Math.max(1,
+            (availableHeight + PathmindMarketplaceScreen.CARD_GAP)
+                / (PathmindMarketplaceScreen.CARD_SIZE + PathmindMarketplaceScreen.CARD_GAP));
+        return gridColumns() * rows;
     }
 
     static int authorEntriesPerPage(PathmindMarketplaceScreen.Layout layout, int sectionHeaderHeight) {

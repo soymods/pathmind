@@ -78,7 +78,6 @@ public class PathmindMarketplaceScreen extends Screen {
     static final int FOOTER_HEIGHT = 14;
     static final int CARD_GAP = 8;
     static final int PRESET_GRID_COLUMNS = 4;
-    static final int PRESET_GRID_ROWS = 8;
     static final int CARD_MAX_WIDTH = 140;
     static final int CARD_SIZE = 128;
     private static final int BACK_BUTTON_SIZE = 18;
@@ -119,9 +118,6 @@ public class PathmindMarketplaceScreen extends Screen {
     int popupScrollOffset = 0;
     private boolean popupScrollDragging = false;
     private int popupScrollDragOffset = 0;
-    private int galleryScrollOffset = 0;
-    private boolean galleryScrollDragging = false;
-    private int galleryScrollDragOffset = 0;
     final PopupAnimationHandler presetPopupAnimation = new PopupAnimationHandler();
     final PopupAnimationHandler accountPopupAnimation = new PopupAnimationHandler();
     final PopupAnimationHandler publishPopupAnimation = new PopupAnimationHandler();
@@ -256,7 +252,6 @@ public class PathmindMarketplaceScreen extends Screen {
                     presets = List.of();
                     selectedIndex = -1;
                     pageIndex = 0;
-                    galleryScrollOffset = 0;
                     statusMessage = myPresetsOnly ? Component.translatable("pathmind.marketplace.failedLoadYourPresets").getString() : Component.translatable("pathmind.marketplace.failedLoadPresets").getString();
                     return;
                 }
@@ -395,6 +390,9 @@ public class PathmindMarketplaceScreen extends Screen {
         int headerHeight = getSectionHeaderHeight();
         int bodyY = layout.sectionY + headerHeight;
         int bodyHeight = layout.sectionHeight - headerHeight - FOOTER_HEIGHT;
+        boolean bodyHovered = isPointInRect(mouseX, mouseY, layout.bodyX, bodyY, layout.bodyWidth, bodyHeight);
+        int galleryMouseX = bodyHovered ? mouseX : Integer.MIN_VALUE;
+        int galleryMouseY = bodyHovered ? mouseY : Integer.MIN_VALUE;
         drawGalleryBackdrop(context, layout.bodyX, layout.sectionY, layout.bodyWidth, layout.sectionHeight - FOOTER_HEIGHT);
         int scissorTop = bodyY;
         context.enableScissor(layout.bodyX, scissorTop, layout.bodyX + layout.bodyWidth, bodyY + bodyHeight);
@@ -409,28 +407,22 @@ public class PathmindMarketplaceScreen extends Screen {
             return;
         }
 
-        ScrollbarHelper.Metrics galleryMetrics = null;
         if (isAuthorDirectoryMode()) {
-            renderAuthorDirectory(context, mouseX, mouseY, layout);
+            renderAuthorDirectory(context, galleryMouseX, galleryMouseY, layout);
         } else {
-            galleryMetrics = getGalleryScrollMetrics(layout);
-            galleryScrollOffset = ScrollbarHelper.clampScroll(galleryScrollOffset, galleryMetrics.maxScroll());
-            int firstVisibleIndex = getFirstVisibleCardIndex(layout, galleryScrollOffset);
-            int lastVisibleIndex = getLastVisibleCardIndex(layout, galleryScrollOffset);
-            for (int index = firstVisibleIndex; index <= lastVisibleIndex; index++) {
-                Rect rect = getCardRect(layout, index, galleryScrollOffset);
+            int entriesPerPage = getCardsPerPage(layout);
+            int startIndex = pageIndex * entriesPerPage;
+            int endIndex = Math.min(presets.size(), startIndex + entriesPerPage);
+            for (int index = startIndex; index < endIndex; index++) {
+                Rect rect = getCardRect(layout, index - startIndex, 0);
                 if (rect.y + rect.height < bodyY || rect.y > bodyY + bodyHeight) {
                     continue;
                 }
-                renderPresetCard(context, mouseX, mouseY, rect, presets.get(index), index == selectedIndex);
+                renderPresetCard(context, galleryMouseX, galleryMouseY, rect, presets.get(index), index == selectedIndex);
             }
         }
 
         context.disableScissor();
-        if (galleryMetrics != null) {
-            ScrollbarHelper.renderCutoffDividers(context, layout.bodyX, layout.bodyX + layout.bodyWidth - 1, bodyY, bodyY + bodyHeight, galleryScrollOffset, galleryMetrics.maxScroll(), UITheme.BORDER_SUBTLE);
-            ScrollbarHelper.renderSettingsStyle(context, galleryMetrics, UITheme.BACKGROUND_SIDEBAR, UITheme.BORDER_DEFAULT, UITheme.BORDER_DEFAULT);
-        }
         renderFooter(context, mouseX, mouseY, layout);
     }
 
@@ -682,6 +674,7 @@ public class PathmindMarketplaceScreen extends Screen {
         int centerX = layout.sectionX + layout.sectionWidth / 2;
         boolean canGoPrev = pageIndex > 0;
         boolean canGoNext = pageIndex < getMaxPageIndex();
+        PageHitAreas pageHits = getPageHitAreas(layout);
 
         int leftArrowWidth = this.font.width("<");
         int rightArrowWidth = this.font.width(">");
@@ -699,7 +692,9 @@ public class PathmindMarketplaceScreen extends Screen {
         cursorX += leftArrowWidth + PAGE_CONTROL_GAP;
 
         if (pageIndex > 0) {
-            context.drawString(this.font, Component.literal(Integer.toString(pageIndex)), cursorX, centerY, UITheme.TEXT_SECONDARY);
+            int color = isPointInRect(mouseX, mouseY, pageHits.previousPage().x, pageHits.previousPage().y,
+                pageHits.previousPage().width, pageHits.previousPage().height) ? UITheme.TEXT_HEADER : UITheme.TEXT_SECONDARY;
+            context.drawString(this.font, Component.literal(Integer.toString(pageIndex)), cursorX, centerY, color);
         }
         cursorX += prevPageWidth + PAGE_NUMBER_GAP;
 
@@ -707,7 +702,9 @@ public class PathmindMarketplaceScreen extends Screen {
         cursorX += currentPageWidth + PAGE_NUMBER_GAP;
 
         if (pageIndex < getMaxPageIndex()) {
-            context.drawString(this.font, Component.literal(Integer.toString(pageIndex + 2)), cursorX, centerY, UITheme.TEXT_SECONDARY);
+            int color = isPointInRect(mouseX, mouseY, pageHits.nextPage().x, pageHits.nextPage().y,
+                pageHits.nextPage().width, pageHits.nextPage().height) ? UITheme.TEXT_HEADER : UITheme.TEXT_SECONDARY;
+            context.drawString(this.font, Component.literal(Integer.toString(pageIndex + 2)), cursorX, centerY, color);
         }
         cursorX += nextPageWidth + PAGE_CONTROL_GAP;
 
@@ -1131,23 +1128,21 @@ public class PathmindMarketplaceScreen extends Screen {
 
         PageHitAreas pageHits = getPageHitAreas(layout);
         if (pageHits.leftArrow() != null && isPointInRect(mouseX, mouseY, pageHits.leftArrow().x, pageHits.leftArrow().y, pageHits.leftArrow().width, pageHits.leftArrow().height)) {
-            if (!isAuthorDirectoryMode()) {
-                int headerHeight = getSectionHeaderHeight();
-                int bodyHeight = layout.sectionHeight - headerHeight - FOOTER_HEIGHT;
-                galleryScrollOffset = ScrollbarHelper.clampScroll(galleryScrollOffset - bodyHeight, getGalleryScrollMetrics(layout).maxScroll());
-            } else {
-                pageIndex = Math.max(0, pageIndex - 1);
-            }
+            navigateToPage(layout, pageIndex - 1);
             return true;
         }
         if (pageHits.rightArrow() != null && isPointInRect(mouseX, mouseY, pageHits.rightArrow().x, pageHits.rightArrow().y, pageHits.rightArrow().width, pageHits.rightArrow().height)) {
-            if (!isAuthorDirectoryMode()) {
-                int headerHeight = getSectionHeaderHeight();
-                int bodyHeight = layout.sectionHeight - headerHeight - FOOTER_HEIGHT;
-                galleryScrollOffset = ScrollbarHelper.clampScroll(galleryScrollOffset + bodyHeight, getGalleryScrollMetrics(layout).maxScroll());
-            } else {
-                pageIndex = Math.min(getMaxPageIndex(), pageIndex + 1);
-            }
+            navigateToPage(layout, pageIndex + 1);
+            return true;
+        }
+        if (pageHits.previousPage() != null && isPointInRect(mouseX, mouseY, pageHits.previousPage().x,
+            pageHits.previousPage().y, pageHits.previousPage().width, pageHits.previousPage().height)) {
+            navigateToPage(layout, pageIndex - 1);
+            return true;
+        }
+        if (pageHits.nextPage() != null && isPointInRect(mouseX, mouseY, pageHits.nextPage().x,
+            pageHits.nextPage().y, pageHits.nextPage().width, pageHits.nextPage().height)) {
+            navigateToPage(layout, pageIndex + 1);
             return true;
         }
         if (isPointInRect(mouseX, mouseY, layout.sectionX,
@@ -1155,16 +1150,10 @@ public class PathmindMarketplaceScreen extends Screen {
             return true;
         }
 
-        if (!isAuthorDirectoryMode() && !loading) {
-            ScrollbarHelper.Metrics galleryMetrics = getGalleryScrollMetrics(layout);
-            if (galleryMetrics.maxScroll() > 0 && isPointInRect(mouseX, mouseY, galleryMetrics.trackLeft(), galleryMetrics.thumbTop(), galleryMetrics.trackWidth(), galleryMetrics.thumbHeight())) {
-                galleryScrollDragging = true;
-                galleryScrollDragOffset = mouseY - galleryMetrics.thumbTop();
-                return true;
-            }
-        }
-
-        if (isAuthorDirectoryMode()) {
+        int bodyTop = layout.sectionY + getSectionHeaderHeight();
+        int bodyHeight = layout.sectionHeight - getSectionHeaderHeight() - FOOTER_HEIGHT;
+        boolean pointerInBody = isPointInRect(mouseX, mouseY, layout.bodyX, bodyTop, layout.bodyWidth, bodyHeight);
+        if (isAuthorDirectoryMode() && pointerInBody) {
             int entriesPerPage = getAuthorEntriesPerPage(layout);
             int startIndex = pageIndex * entriesPerPage;
             int endIndex = Math.min(authorResults.size(), startIndex + entriesPerPage);
@@ -1177,14 +1166,15 @@ public class PathmindMarketplaceScreen extends Screen {
                     return true;
                 }
             }
-        } else {
+        } else if (!isAuthorDirectoryMode() && pointerInBody) {
             int headerHeight = getSectionHeaderHeight();
             int viewportTop = layout.sectionY + headerHeight;
             int viewportBottom = viewportTop + layout.sectionHeight - headerHeight - FOOTER_HEIGHT;
-            int firstVisibleIndex = getFirstVisibleCardIndex(layout, galleryScrollOffset);
-            int lastVisibleIndex = getLastVisibleCardIndex(layout, galleryScrollOffset);
-            for (int index = firstVisibleIndex; index <= lastVisibleIndex; index++) {
-                Rect rect = getCardRect(layout, index, galleryScrollOffset);
+            int entriesPerPage = getCardsPerPage(layout);
+            int startIndex = pageIndex * entriesPerPage;
+            int endIndex = Math.min(presets.size(), startIndex + entriesPerPage);
+            for (int index = startIndex; index < endIndex; index++) {
+                Rect rect = getCardRect(layout, index - startIndex, 0);
                 if (rect.y + rect.height < viewportTop || rect.y > viewportBottom) continue;
                 MarketplacePreset preset = presets.get(index);
                 int previewX = rect.x + 8;
@@ -1259,19 +1249,6 @@ public class PathmindMarketplaceScreen extends Screen {
             popupScrollOffset = ScrollbarHelper.scrollFromThumb(scrollMetrics, clampedThumbY);
             return true;
         }
-        if (galleryScrollDragging) {
-            Layout layout = getLayout();
-            ScrollbarHelper.Metrics galleryMetrics = getGalleryScrollMetrics(layout);
-            if (galleryMetrics.maxScroll() <= 0) {
-                return true;
-            }
-            int desiredThumbY = (int) click.y() - galleryScrollDragOffset;
-            int minThumbY = galleryMetrics.trackTop();
-            int maxThumbY = galleryMetrics.trackTop() + Math.max(0, galleryMetrics.viewportHeight() - galleryMetrics.thumbHeight());
-            int clampedThumbY = Math.max(minThumbY, Math.min(maxThumbY, desiredThumbY));
-            galleryScrollOffset = ScrollbarHelper.scrollFromThumb(galleryMetrics, clampedThumbY);
-            return true;
-        }
         return super.mouseDragged(click, deltaX, deltaY);
     }
 
@@ -1283,10 +1260,6 @@ public class PathmindMarketplaceScreen extends Screen {
         }
         if (popupScrollDragging) {
             popupScrollDragging = false;
-            return true;
-        }
-        if (galleryScrollDragging) {
-            galleryScrollDragging = false;
             return true;
         }
         return super.mouseReleased(click);
@@ -1327,23 +1300,14 @@ public class PathmindMarketplaceScreen extends Screen {
             return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
         }
 
-        if (!isAuthorDirectoryMode()) {
-            ScrollbarHelper.Metrics galleryMetrics = getGalleryScrollMetrics(layout);
-            int nextOffset = ScrollbarHelper.applyWheel(galleryScrollOffset, verticalAmount, 18, galleryMetrics.maxScroll());
-            if (nextOffset != galleryScrollOffset) {
-                galleryScrollOffset = nextOffset;
-                return true;
-            }
-        } else {
-            int maxPage = getMaxPageIndex();
-            if (verticalAmount < 0 && pageIndex < maxPage) {
-                pageIndex++;
-                return true;
-            }
-            if (verticalAmount > 0 && pageIndex > 0) {
-                pageIndex--;
-                return true;
-            }
+        int maxPage = getMaxPageIndex();
+        if (verticalAmount < 0 && pageIndex < maxPage) {
+            navigateToPage(layout, pageIndex + 1);
+            return true;
+        }
+        if (verticalAmount > 0 && pageIndex > 0) {
+            navigateToPage(layout, pageIndex - 1);
+            return true;
         }
         return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
     }
@@ -1612,17 +1576,6 @@ public class PathmindMarketplaceScreen extends Screen {
         int contentHeightTotal = measurePopupContentHeight(Math.max(32, popupWidth - 24));
         int maxScroll = Math.max(0, contentHeightTotal - contentHeight);
         return ScrollbarHelper.metrics(popupX + popupWidth - 12, contentTop, 4, contentHeight, maxScroll, popupScrollOffset, 20);
-    }
-
-    private ScrollbarHelper.Metrics getGalleryScrollMetrics(Layout layout) {
-        int headerHeight = getSectionHeaderHeight();
-        int bodyY = layout.sectionY + headerHeight;
-        int bodyHeight = layout.sectionHeight - headerHeight - FOOTER_HEIGHT;
-        int columns = getGridColumns();
-        int totalRows = (int) Math.ceil((double) presets.size() / Math.max(1, columns));
-        int totalContentHeight = totalRows * (CARD_SIZE + CARD_GAP);
-        int maxScroll = Math.max(0, totalContentHeight - bodyHeight);
-        return ScrollbarHelper.metrics(layout.bodyX + layout.bodyWidth - 6, bodyY, 4, bodyHeight, maxScroll, galleryScrollOffset, 20);
     }
 
     private List<String> wrapText(String text, int maxWidth, int maxLines) {
@@ -2943,20 +2896,8 @@ public class PathmindMarketplaceScreen extends Screen {
         return PathmindMarketplaceLayout.card(layout, absoluteIndex, getSectionHeaderHeight(), scrollOffset);
     }
 
-    private int getGridColumns() {
-        return PathmindMarketplaceLayout.gridColumns();
-    }
-
     private int getCardsPerPage(Layout layout) {
-        return PathmindMarketplaceLayout.cardsPerPage();
-    }
-
-    private int getFirstVisibleCardIndex(Layout layout, int scrollOffset) {
-        return PathmindMarketplaceLayout.firstVisibleCardIndex(presets.size(), scrollOffset);
-    }
-
-    private int getLastVisibleCardIndex(Layout layout, int scrollOffset) {
-        return PathmindMarketplaceLayout.lastVisibleCardIndex(layout, presets.size(), getSectionHeaderHeight(), scrollOffset);
+        return PathmindMarketplaceLayout.cardsPerPage(layout, getSectionHeaderHeight());
     }
 
     private int getAuthorEntriesPerPage(Layout layout) {
@@ -3006,15 +2947,25 @@ public class PathmindMarketplaceScreen extends Screen {
         int cursorX = centerX - totalWidth / 2;
 
         Rect leftArrow = pageIndex > 0 ? new Rect(cursorX - 2, centerY - 2, leftArrowWidth + 4, 12) : null;
-        cursorX += leftArrowWidth + PAGE_CONTROL_GAP + prevPageWidth + PAGE_NUMBER_GAP + currentPageWidth + PAGE_NUMBER_GAP + nextPageWidth + PAGE_CONTROL_GAP;
+        cursorX += leftArrowWidth + PAGE_CONTROL_GAP;
+        Rect previousPage = pageIndex > 0 ? new Rect(cursorX - 2, centerY - 2, prevPageWidth + 4, 12) : null;
+        cursorX += prevPageWidth + PAGE_NUMBER_GAP;
+        Rect currentPage = new Rect(cursorX - 2, centerY - 2, currentPageWidth + 4, 12);
+        cursorX += currentPageWidth + PAGE_NUMBER_GAP;
+        Rect nextPage = pageIndex < getMaxPageIndex() ? new Rect(cursorX - 2, centerY - 2, nextPageWidth + 4, 12) : null;
+        cursorX += nextPageWidth + PAGE_CONTROL_GAP;
         Rect rightArrow = pageIndex < getMaxPageIndex() ? new Rect(cursorX - 2, centerY - 2, rightArrowWidth + 4, 12) : null;
-        return new PageHitAreas(leftArrow, rightArrow);
+        return new PageHitAreas(leftArrow, previousPage, currentPage, nextPage, rightArrow);
     }
 
     private int getFooterContentY(Layout layout) {
         int footerY = layout.sectionY + layout.sectionHeight - FOOTER_HEIGHT;
         int footerBottom = this.height - OUTER_PADDING;
         return footerY + Math.max(6, (footerBottom - footerY - this.font.lineHeight) / 2 + 8);
+    }
+
+    private void navigateToPage(Layout layout, int targetPageIndex) {
+        pageIndex = Math.max(0, Math.min(targetPageIndex, getMaxPageIndex()));
     }
 
     static String formatTags(List<String> tags) {
@@ -3212,7 +3163,6 @@ public class PathmindMarketplaceScreen extends Screen {
         myPresetsOnly = false;
         myPresetsFilter = MyPresetsFilter.ALL;
         pageIndex = 0;
-        galleryScrollOffset = 0;
         selectedIndex = -1;
         applyFilters();
         if (closePopup) {
@@ -3226,7 +3176,6 @@ public class PathmindMarketplaceScreen extends Screen {
         viewedAuthorAvatarUrl = null;
         avatarLoader.clearViewedAuthor();
         pageIndex = 0;
-        galleryScrollOffset = 0;
         applyFilters();
     }
 
@@ -3377,7 +3326,7 @@ public class PathmindMarketplaceScreen extends Screen {
     record Rect(int x, int y, int width, int height) {
     }
 
-    private record PageHitAreas(Rect leftArrow, Rect rightArrow) {
+    private record PageHitAreas(Rect leftArrow, Rect previousPage, Rect currentPage, Rect nextPage, Rect rightArrow) {
     }
 
     record Layout(

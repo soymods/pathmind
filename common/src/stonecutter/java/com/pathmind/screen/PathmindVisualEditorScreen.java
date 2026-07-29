@@ -1,6 +1,7 @@
 package com.pathmind.screen;
 
 import com.pathmind.PathmindCommon;
+import com.pathmind.compat.CharacterEventModifiers;
 import com.pathmind.data.NodeGraphData;
 import com.pathmind.data.NodeGraphPersistence;
 import com.pathmind.data.OnboardingPresetManager;
@@ -2721,10 +2722,7 @@ public class PathmindVisualEditorScreen extends Screen {
     
     @Override
     public boolean charTyped(CharacterEvent input) {
-        int modifiers = 0;
-        if (this.minecraft != null && this.minecraft.hasShiftDown()) modifiers |= GLFW.GLFW_MOD_SHIFT;
-        if (this.minecraft != null && this.minecraft.hasControlDown()) modifiers |= GLFW.GLFW_MOD_CONTROL;
-        if (this.minecraft != null && this.minecraft.hasAltDown()) modifiers |= GLFW.GLFW_MOD_ALT;
+        int modifiers = CharacterEventModifiers.get(input, this.minecraft);
         char chr = (char) input.codepoint();
         if (firstRunTutorialOverlay.isVisible()) {
             return true;

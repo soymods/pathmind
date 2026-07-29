@@ -1,16 +1,23 @@
 package com.pathmind.nodes;
 
 import com.pathmind.execution.ExecutionManager;
+import com.pathmind.util.EntityCompatibilityBridge;
+import com.pathmind.util.EntityStateOptions;
+import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 final class NodeRuntimeParameterResolver {
@@ -449,6 +456,301 @@ final class NodeRuntimeParameterResolver {
 
     private void sendVariableError(String message, CompletableFuture<Void> future) {
         NodeExecutionCompletion.failWithCurrentClient(owner, future, message);
+    }
+
+    Optional<Vec3> resolvePositionTarget(
+        Node parameterNode, RuntimeParameterData data, CompletableFuture<Void> future
+    ) {
+        if (parameterNode == null) {
+            return Optional.empty();
+        }
+        if (parameterNode.getType() == NodeType.OPERATOR_BOOLEAN_OR) {
+            Optional<Vec3> resolved =
+                resolveNearestPositionTargetFromOrNode(parameterNode, future);
+            if (resolved.isPresent() && data != null) {
+                Vec3 vec = resolved.get();
+                data.targetVector = vec;
+                data.targetBlockPos =
+                    new BlockPos(Mth.floor(vec.x), Mth.floor(vec.y), Mth.floor(vec.z));
+            }
+            return resolved;
+        }
+        if (parameterNode != null && parameterNode.getType() == NodeType.LIST_ITEM) {
+            Node resolved =
+                owner.resolveListItemValueNode(parameterNode, future, false, data);
+            if (resolved != null) {
+                return resolvePositionTarget(resolved, data, future);
+            }
+        }
+        if (parameterNode != null
+            && parameterNode.getType() == NodeType.SENSOR_POSITION_OF) {
+            Node resolved =
+                parameterNode.getAttachedParameterOfType(
+                    NodeType.PARAM_ENTITY,
+                    NodeType.PARAM_BLOCK,
+                    NodeType.PARAM_ITEM,
+                    NodeType.PARAM_PLAYER);
+            if (resolved != null) {
+                return resolvePositionTarget(resolved, data, future);
+            }
+            return Optional.empty();
+        }
+        if (parameterNode != null
+            && parameterNode.getType() == NodeType.SENSOR_TARGETED_ENTITY) {
+            Optional<Entity> resolved = owner.getTargetedEntity();
+            if (resolved.isEmpty()) {
+                return Optional.empty();
+            }
+            Entity entity = resolved.get();
+            if (data != null) {
+                Identifier id = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType());
+                data.targetEntity = entity;
+                data.targetEntityId = id.toString();
+                data.targetBlockPos = entity.blockPosition();
+            }
+            Vec3 pos = EntityCompatibilityBridge.getPos(entity);
+            return pos != null
+                ? Optional.of(pos)
+                : Optional.of(Vec3.atCenterOf(entity.blockPosition()));
+        }
+        if (parameterNode != null
+            && parameterNode.getType() == NodeType.SENSOR_TARGETED_BLOCK) {
+            Optional<BlockPos> resolved = owner.getTargetedBlockPos();
+            if (resolved.isEmpty()) {
+                return Optional.empty();
+            }
+            if (data != null) {
+                data.targetBlockPos = resolved.get();
+            }
+            return Optional.of(Vec3.atCenterOf(resolved.get()));
+        }
+        if (data != null && data.targetVector != null) {
+            return Optional.of(data.targetVector);
+        }
+        if (data != null
+            && data.targetBlockPos != null
+            && parameterNode.getType() == NodeType.LIST_ITEM) {
+            return Optional.of(Vec3.atCenterOf(data.targetBlockPos));
+        }
+
+        NodeType parameterType = parameterNode.getType();
+
+        NodeBehaviorDefinition behaviorDefinition =
+            NodeBehaviorDefinitionRegistry.get(parameterType);
+        if (behaviorDefinition != null && behaviorDefinition.hasRuntimeBehavior()) {
+            return behaviorDefinition.resolvePositionTarget(
+                owner, parameterNode, data, future);
+        }
+
+        String xValue = getParameterString(parameterNode, "X");
+        String yValue = getParameterString(parameterNode, "Y");
+        String zValue = getParameterString(parameterNode, "Z");
+        if (xValue != null && yValue != null && zValue != null) {
+            double x = parseNodeDouble(parameterNode, "X", 0.0);
+            double y = parseNodeDouble(parameterNode, "Y", 0.0);
+            double z = parseNodeDouble(parameterNode, "Z", 0.0);
+            BlockPos pos = new BlockPos(Mth.floor(x), Mth.floor(y), Mth.floor(z));
+            if (data != null) {
+                data.targetBlockPos = pos;
+            }
+            Vec3 vector = new Vec3(x, y, z);
+            if (data != null) {
+                data.targetVector = vector;
+            }
+            return Optional.of(vector);
+        }
+
+        return Optional.empty();
+    }
+
+    private Optional<Vec3> resolveNearestPositionTargetFromOrNode(
+        Node orNode, CompletableFuture<Void> future
+    ) {
+        net.minecraft.client.Minecraft client =
+            net.minecraft.client.Minecraft.getInstance();
+        Vec3 reference =
+            client != null && client.player != null
+                ? EntityCompatibilityBridge.getPos(client.player)
+                : null;
+        if (reference == null && client != null && client.player != null) {
+            reference = Vec3.atCenterOf(client.player.blockPosition());
+        }
+
+        Optional<Vec3> firstResolved = Optional.empty();
+        Vec3 nearest = null;
+        double nearestDistanceSq = Double.MAX_VALUE;
+        List<Integer> slotIndices = orNode.getAttachedParameterSlotIndices();
+        Collections.sort(slotIndices);
+        for (Integer slotIndex : slotIndices) {
+            Node child = orNode.getAttachedParameter(slotIndex);
+            if (child == null) {
+                continue;
+            }
+            Optional<Vec3> candidate = resolvePositionTarget(child, null, future);
+            if (candidate.isEmpty()) {
+                if (future != null && future.isDone()) {
+                    return Optional.empty();
+                }
+                continue;
+            }
+            if (firstResolved.isEmpty()) {
+                firstResolved = candidate;
+            }
+            if (reference == null) {
+                continue;
+            }
+            double distanceSq = candidate.get().distanceToSqr(reference);
+            if (nearest == null || distanceSq < nearestDistanceSq) {
+                nearest = candidate.get();
+                nearestDistanceSq = distanceSq;
+            }
+        }
+
+        if (nearest != null) {
+            return Optional.of(nearest);
+        }
+        return firstResolved;
+    }
+
+    Optional<Vec3> resolveDistanceBetweenTarget(Node parameterNode) {
+        if (parameterNode == null) {
+            return Optional.empty();
+        }
+        int slotIndex = parameterNode.getParentParameterSlotIndex();
+        if (slotIndex < 0) {
+            slotIndex = 0;
+        }
+        parameterNode = owner.resolveSensorParameterNode(parameterNode, slotIndex);
+        if (parameterNode == null) {
+            return Optional.empty();
+        }
+        if (parameterNode.getType() != NodeType.PARAM_ENTITY) {
+            return resolvePositionTarget(parameterNode, null, null);
+        }
+
+        net.minecraft.client.Minecraft client =
+            net.minecraft.client.Minecraft.getInstance();
+        if (client == null || client.player == null || client.level == null) {
+            return Optional.empty();
+        }
+
+        String state = owner.getEntityParameterState(parameterNode);
+        double range = parseNodeDouble(parameterNode, "Range", 256.0);
+        double searchRadius = Math.max(1.0, range);
+        List<String> entityIds = owner.resolveEntityIdsFromParameter(parameterNode);
+        if (entityIds.isEmpty()) {
+            Entity nearestAny = null;
+            double nearestAnyDistance = Double.MAX_VALUE;
+            AABB anySearchBox = client.player.getBoundingBox().inflate(searchRadius);
+            for (Entity entity : client.level.getEntities(client.player, anySearchBox)) {
+                if (entity == null || entity.isRemoved()) {
+                    continue;
+                }
+                if (!EntityStateOptions.matchesState(entity, state)) {
+                    continue;
+                }
+                double distance = entity.distanceToSqr(client.player);
+                if (nearestAny == null || distance < nearestAnyDistance) {
+                    nearestAny = entity;
+                    nearestAnyDistance = distance;
+                }
+            }
+            if (nearestAny == null) {
+                return Optional.empty();
+            }
+            Vec3 pos = EntityCompatibilityBridge.getPos(nearestAny);
+            if (pos != null) {
+                return Optional.of(pos);
+            }
+            return Optional.of(Vec3.atCenterOf(nearestAny.blockPosition()));
+        }
+
+        AABB searchBox = client.player.getBoundingBox().inflate(searchRadius);
+
+        java.util.Set<Identifier> targetIds = new java.util.HashSet<>();
+        for (String candidateId : entityIds) {
+            Identifier id = Identifier.tryParse(candidateId);
+            if (id != null) {
+                targetIds.add(id);
+            }
+        }
+        if (targetIds.isEmpty()) {
+            return Optional.empty();
+        }
+
+        Entity nearest = null;
+        double nearestDistance = Double.MAX_VALUE;
+        for (Entity entity : client.level.getEntities(client.player, searchBox)) {
+            if (entity == null || entity.isRemoved()) {
+                continue;
+            }
+            Identifier candidateId =
+                BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType());
+            if (!targetIds.contains(candidateId)
+                || !EntityStateOptions.matchesState(entity, state)) {
+                continue;
+            }
+            double distance = entity.distanceToSqr(client.player);
+            if (nearest == null || distance < nearestDistance) {
+                nearest = entity;
+                nearestDistance = distance;
+            }
+        }
+
+        if (nearest == null) {
+            return Optional.empty();
+        }
+        Vec3 pos = EntityCompatibilityBridge.getPos(nearest);
+        if (pos != null) {
+            return Optional.of(pos);
+        }
+        return Optional.of(Vec3.atCenterOf(nearest.blockPosition()));
+    }
+
+    boolean isDistanceBetweenSupportedTarget(Node parameterNode) {
+        return parameterNode != null
+            && (owner.providesTrait(parameterNode, NodeValueTrait.ENTITY)
+                || owner.providesTrait(parameterNode, NodeValueTrait.COORDINATE)
+                || owner.providesTrait(parameterNode, NodeValueTrait.BLOCK)
+                || owner.providesTrait(parameterNode, NodeValueTrait.ITEM)
+                || owner.providesTrait(parameterNode, NodeValueTrait.PLAYER));
+    }
+
+    void applyVectorToCoordinateParameters(Vec3 targetVec) {
+        if (targetVec == null) {
+            return;
+        }
+        int x = Mth.floor(targetVec.x);
+        int y = Mth.floor(targetVec.y);
+        int z = Mth.floor(targetVec.z);
+        if (owner.runtimeState().runtimeParameterData != null) {
+            owner.runtimeState().runtimeParameterData.targetBlockPos =
+                new BlockPos(x, y, z);
+        }
+        owner.setParameterValueAndPropagate("X", Integer.toString(x));
+        owner.setParameterValueAndPropagate("Y", Integer.toString(y));
+        owner.setParameterValueAndPropagate("Z", Integer.toString(z));
+    }
+
+    boolean isPlayerAtCoordinates(
+        Integer targetX, Integer targetY, Integer targetZ
+    ) {
+        net.minecraft.client.Minecraft client =
+            net.minecraft.client.Minecraft.getInstance();
+        if (client == null || client.player == null) {
+            return false;
+        }
+        BlockPos playerPos = client.player.blockPosition();
+        if (targetX != null && playerPos.getX() != targetX) {
+            return false;
+        }
+        if (targetY != null && playerPos.getY() != targetY) {
+            return false;
+        }
+        if (targetZ != null && playerPos.getZ() != targetZ) {
+            return false;
+        }
+        return true;
     }
 
     static float normalizeLookYaw(float yaw) {

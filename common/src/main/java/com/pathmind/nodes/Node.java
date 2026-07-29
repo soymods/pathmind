@@ -78,7 +78,6 @@ import it.unimi.dsi.fastutil.ints.IntList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.TreeMap;
-import java.util.regex.Pattern;
 import java.util.Random;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -111,6 +110,7 @@ public class Node {
     private final NodeAttachments attachments;
     private final NodeRuntimeState runtimeState;
     private final NodeRuntimeParameterResolver runtimeParameterResolver;
+    private final NodeWorldTargetResolver worldTargetResolver;
     static final int MIN_WIDTH = 92;
     static final int MIN_HEIGHT = 44;
     static final int EVENT_FUNCTION_MIN_HEIGHT = 36;
@@ -268,7 +268,6 @@ public class Node {
     private static final double DEFAULT_REACH_DISTANCE = Math.sqrt(DEFAULT_REACH_DISTANCE_SQUARED);
     static final double DEFAULT_DIRECTION_DISTANCE = 16.0;
     static final long SNEAK_SYNC_DELAY_MS = 75L;
-    private static final Pattern UNSAFE_RESOURCE_ID_PATTERN = Pattern.compile("[^a-z0-9_:/.-]");
     private static final Object GOTO_BREAK_LOCK = new Object();
     private static final AtomicInteger ACTIVE_GOTO_BREAK_BLOCKING_REQUESTS = new AtomicInteger(0);
     private static final AtomicInteger ACTIVE_GOTO_PLACE_BLOCKING_REQUESTS = new AtomicInteger(0);
@@ -326,6 +325,7 @@ public class Node {
         this.attachments = new NodeAttachments();
         this.runtimeState = new NodeRuntimeState();
         this.runtimeParameterResolver = new NodeRuntimeParameterResolver(this);
+        this.worldTargetResolver = new NodeWorldTargetResolver(this);
         this.parameters = new ArrayList<>();
         this.dynamicBooleanOperatorSlotCount = isExpandableBooleanOperatorType(type) ? 2 : 0;
         this.messageLines = new ArrayList<>();
@@ -4163,111 +4163,27 @@ public class Node {
     }
 
     static boolean isAnySelectionValue(String value) {
-        if (value == null) {
-            return true;
-        }
-        String trimmed = value.trim();
-        return trimmed.isEmpty()
-            || "any".equalsIgnoreCase(trimmed)
-            || "any state".equalsIgnoreCase(trimmed);
+        return NodeWorldTargetResolver.isAnySelectionValue(value);
     }
 
     String sanitizeResourceId(String value) {
-        if (value == null) {
-            return null;
-        }
-        String trimmed = value.trim();
-        if (trimmed.isEmpty()) {
-            return "";
-        }
-        String lower = trimmed.toLowerCase(Locale.ROOT).replace(' ', '_');
-        int bracketIndex = lower.indexOf('[');
-        if (bracketIndex >= 0) {
-            lower = lower.substring(0, bracketIndex);
-        }
-        String sanitized = UNSAFE_RESOURCE_ID_PATTERN.matcher(lower).replaceAll("");
-        int firstColon = sanitized.indexOf(':');
-        if (firstColon != -1) {
-            int nextColon = sanitized.indexOf(':', firstColon + 1);
-            if (nextColon != -1) {
-                sanitized = sanitized.substring(0, firstColon + 1) + sanitized.substring(firstColon + 1).replace(':', '_');
-            }
-        }
-        return sanitized;
+        return worldTargetResolver.sanitizeResourceId(value);
     }
 
     String normalizeResourceId(String value, String defaultNamespace) {
-        if (value == null) {
-            return null;
-        }
-        String trimmed = value.trim();
-        if (trimmed.isEmpty()) {
-            return "";
-        }
-        if (isAnySelectionValue(trimmed)) {
-            return "";
-        }
-        if (!trimmed.contains(":")) {
-            return defaultNamespace + ":" + trimmed;
-        }
-        return trimmed;
+        return worldTargetResolver.normalizeResourceId(value, defaultNamespace);
     }
 
     List<BlockSelection> resolveBlocksFromParameter(Node parameterNode) {
-        List<BlockSelection> selections = new ArrayList<>();
-        String primary = getBlockParameterValue(parameterNode);
-        String listValue = getParameterString(parameterNode, "Blocks");
-        for (String entry : splitMultiValueList(listValue)) {
-            addBlockSelection(selections, entry);
-        }
-        for (String entry : splitMultiValueList(primary)) {
-            addBlockSelection(selections, entry);
-        }
-        return selections;
-    }
-
-    private void addBlockSelection(List<BlockSelection> selections, String rawValue) {
-        if (rawValue == null || rawValue.isEmpty()) {
-            return;
-        }
-        if (isAnySelectionValue(rawValue)) {
-            return;
-        }
-        BlockSelection.parse(rawValue).ifPresent(selection -> {
-            if (selection.getBlock() != null) {
-                boolean exists = selections.stream().anyMatch(existing -> existing.asString().equals(selection.asString()));
-                if (!exists) {
-                    selections.add(selection);
-                }
-            }
-        });
+        return worldTargetResolver.resolveBlocksFromParameter(parameterNode);
     }
 
     List<String> resolveItemIdsFromParameter(Node parameterNode) {
-        List<String> itemIds = new ArrayList<>();
-        if (parameterNode == null) {
-            return itemIds;
-        }
-        String listValue = getParameterString(parameterNode, "Items");
-        for (String entry : splitMultiValueList(listValue)) {
-            addItemIdentifier(itemIds, entry);
-        }
-        for (String entry : splitMultiValueList(getParameterString(parameterNode, "Item"))) {
-            addItemIdentifier(itemIds, entry);
-        }
-        return itemIds;
+        return worldTargetResolver.resolveItemIdsFromParameter(parameterNode);
     }
 
     private String resolveTradeKeyFromParameter(Node parameterNode) {
-        if (parameterNode == null) {
-            return "";
-        }
-        String trade = getParameterString(parameterNode, "Trade");
-        if (trade != null && !trade.isEmpty()) {
-            return trade;
-        }
-        String legacy = getParameterString(parameterNode, "Item");
-        return legacy != null ? legacy : "";
+        return worldTargetResolver.resolveTradeKeyFromParameter(parameterNode);
     }
 
     private NodeVillagerTradeSensorEvaluator villagerTradeSensorEvaluator() {
@@ -4285,83 +4201,15 @@ public class Node {
     }
 
     List<String> resolveEntityIdsFromParameter(Node parameterNode) {
-        List<String> entityIds = new ArrayList<>();
-        if (parameterNode == null) {
-            return entityIds;
-        }
-        for (String entry : splitMultiValueList(getParameterString(parameterNode, "Entity"))) {
-            addEntityIdentifier(entityIds, entry);
-        }
-        return entityIds;
+        return worldTargetResolver.resolveEntityIdsFromParameter(parameterNode);
     }
 
     void addItemIdentifier(List<String> itemIds, String rawValue) {
-        if (rawValue == null || rawValue.isEmpty()) {
-            return;
-        }
-        if (isAnySelectionValue(rawValue)) {
-            return;
-        }
-        String sanitized = sanitizeResourceId(rawValue);
-        if (sanitized == null || sanitized.isEmpty()) {
-            return;
-        }
-        String normalized = normalizeResourceId(sanitized, "minecraft");
-        if (!itemIds.contains(normalized)) {
-            itemIds.add(normalized);
-        }
-    }
-
-    private void addEntityIdentifier(List<String> entityIds, String rawValue) {
-        if (rawValue == null || rawValue.isEmpty()) {
-            return;
-        }
-        if (isAnySelectionValue(rawValue)) {
-            return;
-        }
-        String sanitized = sanitizeResourceId(rawValue);
-        if (sanitized == null || sanitized.isEmpty()) {
-            return;
-        }
-        String normalized = normalizeResourceId(sanitized, "minecraft");
-        if (!entityIds.contains(normalized)) {
-            entityIds.add(normalized);
-        }
+        worldTargetResolver.addItemIdentifier(itemIds, rawValue);
     }
 
     List<String> splitMultiValueList(String rawValue) {
-        if (rawValue == null) {
-            return Collections.emptyList();
-        }
-        String trimmed = rawValue.trim();
-        if (trimmed.isEmpty()) {
-            return Collections.emptyList();
-        }
-        List<String> parts = new ArrayList<>();
-        StringBuilder current = new StringBuilder();
-        int bracketDepth = 0;
-        for (int i = 0; i < trimmed.length(); i++) {
-            char c = trimmed.charAt(i);
-            if (c == '[') {
-                bracketDepth++;
-            } else if (c == ']') {
-                bracketDepth = Math.max(0, bracketDepth - 1);
-            }
-            if ((c == ',' || c == ';') && bracketDepth == 0) {
-                String entry = current.toString().trim();
-                if (!entry.isEmpty()) {
-                    parts.add(entry);
-                }
-                current.setLength(0);
-                continue;
-            }
-            current.append(c);
-        }
-        String entry = current.toString().trim();
-        if (!entry.isEmpty()) {
-            parts.add(entry);
-        }
-        return parts;
+        return worldTargetResolver.splitMultiValueList(rawValue);
     }
 
     Optional<BlockPos> findNearestBlock(net.minecraft.client.Minecraft client, List<BlockSelection> selections, double range) {

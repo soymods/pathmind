@@ -32,7 +32,6 @@ import com.pathmind.ui.control.PathmindWorkspaceChrome;
 import com.pathmind.ui.control.ToggleSwitch;
 import com.pathmind.ui.control.UiHitTest;
 import com.pathmind.ui.graph.NodeGraph;
-import com.pathmind.ui.graph.StickyNoteResizeCorner;
 import com.pathmind.ui.menu.ContextMenuSelection;
 import com.pathmind.ui.overlay.BookTextEditorOverlay;
 import com.pathmind.ui.overlay.NodeErrorNotificationOverlay;
@@ -67,7 +66,6 @@ import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 //?}
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
 import org.lwjgl.glfw.GLFW;
 
@@ -99,9 +97,6 @@ public class PathmindVisualEditorScreen extends Screen {
     static final int CREATE_PRESET_POPUP_HEIGHT = 170;
     static final int PUBLISH_PRESET_POPUP_WIDTH = 380;
     static final int PUBLISH_PRESET_POPUP_HEIGHT = 272;
-    private static final int ZOOM_BUTTON_SIZE = 14;
-    private static final int ZOOM_BUTTON_MARGIN = 6;
-    private static final int ZOOM_BUTTON_SPACING = 4;
     private static final int INFO_POPUP_WIDTH = 320;
     private static final int INFO_POPUP_HEIGHT = 180;
     static final int PRESET_DELETE_POPUP_WIDTH = 320;
@@ -280,7 +275,8 @@ public class PathmindVisualEditorScreen extends Screen {
     int settingsPopupScrollDragOffset = 0;
     AccentOption accentOption = AccentOption.SKY;
     private Boolean uiUtilsOverlayPrevEnabled = null;
-    private boolean systemCursorHidden = false;
+    private final PathmindWorkspaceViewportController workspaceViewportController =
+        new PathmindWorkspaceViewportController(new WorkspaceViewportHost());
 
     private final class NodeSearchHost implements PathmindNodeSearchController.Host {
         @Override
@@ -1106,6 +1102,73 @@ public class PathmindVisualEditorScreen extends Screen {
         }
     }
 
+    private final class WorkspaceViewportHost implements PathmindWorkspaceViewportController.Host {
+        @Override
+        public Font font() {
+            return PathmindVisualEditorScreen.this.font;
+        }
+
+        @Override
+        public int screenWidth() {
+            return PathmindVisualEditorScreen.this.width;
+        }
+
+        @Override
+        public int screenHeight() {
+            return PathmindVisualEditorScreen.this.height;
+        }
+
+        @Override
+        public int accentColor() {
+            return getAccentColor();
+        }
+
+        @Override
+        public Minecraft client() {
+            return PathmindVisualEditorScreen.this.minecraft;
+        }
+
+        @Override
+        public NodeGraph nodeGraph() {
+            return nodeGraph;
+        }
+
+        @Override
+        public Sidebar sidebar() {
+            return sidebar;
+        }
+
+        @Override
+        public boolean showGrid() {
+            return showGrid;
+        }
+
+        @Override
+        public boolean isSidebarDragActive() {
+            return isDraggingFromSidebar && sidebarDragActivated;
+        }
+
+        @Override
+        public NodeType draggingNodeType() {
+            return draggingNodeType;
+        }
+
+        @Override
+        public Node draggingSidebarNode() {
+            return draggingSidebarNode;
+        }
+
+        @Override
+        public boolean isNodeDragBlocked(NodeType nodeType) {
+            return shouldBlockBaritoneNode(nodeType) || shouldBlockUiUtilsNode(nodeType);
+        }
+
+        @Override
+        public void closePresetDropdown() {
+            presetDropdownController.close();
+        }
+    }
+
     enum AccentOption {
         SKY("Sky", UITheme.ACCENT_SKY),
         MINT("Mint", UITheme.ACCENT_MINT),
@@ -1180,7 +1243,7 @@ public class PathmindVisualEditorScreen extends Screen {
     @Override
     protected void init() {
         super.init();
-        ensureCustomCursorHidden();
+        workspaceViewportController.ensureSystemCursorHidden();
         if (uiUtilsOverlayPrevEnabled == null) {
             uiUtilsOverlayPrevEnabled = UiUtilsProxy.setOverlayEnabled(false);
         }
@@ -1355,7 +1418,7 @@ public class PathmindVisualEditorScreen extends Screen {
         boolean controlsDisabled = isPopupObscuringWorkspace();
         int chromeMouseX = controlsDisabled ? Integer.MIN_VALUE : mouseX;
         int chromeMouseY = controlsDisabled ? Integer.MIN_VALUE : mouseY;
-        renderZoomControls(context, chromeMouseX, chromeMouseY, false);
+        workspaceViewportController.renderZoomControls(context, chromeMouseX, chromeMouseY, false);
 
         if (validationExecutionController.shouldShowExecutionControls()) {
             renderRoutineWorkspaceExitButton(context, chromeMouseX, chromeMouseY);
@@ -1478,7 +1541,7 @@ public class PathmindVisualEditorScreen extends Screen {
         DrawContextBridge.startNewRootLayer(context);
         renderDraggedWorkspaceLayer(context, mouseX, mouseY, delta);
         if (isDraggingFromSidebar && sidebarDragActivated && (draggingNodeType != null || draggingSidebarNode != null)) {
-            renderDraggingNode(context, mouseX, mouseY);
+            workspaceViewportController.renderDragPreview(context, mouseX, mouseY);
         }
         renderDraggedPresetDropdownTab(context, mouseX, mouseY);
         DrawContextBridge.startNewRootLayer(context);
@@ -1494,93 +1557,16 @@ public class PathmindVisualEditorScreen extends Screen {
         firstRunTutorialController.maybeShow();
         firstRunTutorialController.render(context, this.font, mouseX, mouseY);
         DrawContextBridge.startNewRootLayer(context);
-        renderCustomCursor(context, mouseX, mouseY);
+        workspaceViewportController.renderCursor(context, mouseX, mouseY);
         } finally {
             OverlayProtection.setPathmindRendering(false);
         }
-    }
-
-    private void ensureCustomCursorHidden() {
-        if (systemCursorHidden) {
-            return;
-        }
-        PathmindCursor.hideSystemCursor(this.minecraft != null ? this.minecraft : Minecraft.getInstance());
-        systemCursorHidden = true;
-    }
-
-    private void restoreSystemCursor() {
-        if (!systemCursorHidden) {
-            return;
-        }
-        PathmindCursor.showSystemCursor(this.minecraft != null ? this.minecraft : Minecraft.getInstance());
-        systemCursorHidden = false;
     }
 
     void replayFirstRunTutorial() {
         firstRunTutorialController.replay();
     }
 
-    private void renderCustomCursor(GuiGraphics context, int mouseX, int mouseY) {
-        StickyNoteResizeCorner resizeCorner = getHoveredStickyNoteResizeCorner(mouseX, mouseY);
-        PathmindCursor.render(context, resolveCursorTexture(mouseX, mouseY, resizeCorner), mouseX, mouseY);
-    }
-
-    private Identifier resolveCursorTexture(int mouseX, int mouseY) {
-        return resolveCursorTexture(mouseX, mouseY, getHoveredStickyNoteResizeCorner(mouseX, mouseY));
-    }
-
-    private Identifier resolveCursorTexture(int mouseX, int mouseY, StickyNoteResizeCorner resizeCorner) {
-        if (nodeGraph.isConnectionCutActive()) {
-            return PathmindCursor.CUT_TEXTURE;
-        }
-        if ((isDraggingFromSidebar && sidebarDragActivated)
-            || nodeGraph.isAnyNodeBeingDragged()
-            || nodeGraph.isPanning()) {
-            return PathmindCursor.GRABBING_TEXTURE;
-        }
-
-        boolean overWorkspace = mouseX >= sidebar.getWidth() && mouseY > TITLE_BAR_HEIGHT;
-        if (overWorkspace && InputCompatibilityBridge.hasControlDown()) {
-            return PathmindCursor.CUT_TEXTURE;
-        }
-        if (sidebar.isHoveringNode()) {
-            NodeType hoveredType = sidebar.getHoveredNodeType();
-            if (shouldBlockBaritoneNode(hoveredType) || shouldBlockUiUtilsNode(hoveredType)) {
-                return PathmindCursor.DISABLED_TEXTURE;
-            }
-            return PathmindCursor.GRAB_TEXTURE;
-        }
-        Node hoveredNode = overWorkspace ? nodeGraph.getNodeAt(mouseX, mouseY) : null;
-        if (resizeCorner != null) {
-            return switch (resizeCorner) {
-                case TOP_LEFT -> PathmindCursor.SCALE_TOP_LEFT_TEXTURE;
-                case TOP_RIGHT -> PathmindCursor.SCALE_TOP_RIGHT_TEXTURE;
-                case BOTTOM_LEFT -> PathmindCursor.SCALE_BOTTOM_LEFT_TEXTURE;
-                case BOTTOM_RIGHT -> PathmindCursor.SCALE_TEXTURE;
-            };
-        }
-        if (hoveredNode != null && nodeGraph.isPointInsideInteractiveNodeControl(hoveredNode, mouseX, mouseY)) {
-            return PathmindCursor.DEFAULT_TEXTURE;
-        }
-        if (overWorkspace && (hoveredNode != null
-            || nodeGraph.getConnectionAt(mouseX, mouseY) != null)) {
-            return PathmindCursor.GRAB_TEXTURE;
-        }
-        if (!overWorkspace) {
-            return PathmindCursor.DEFAULT_TEXTURE;
-        }
-
-        return PathmindCursor.DEFAULT_TEXTURE;
-    }
-
-    private StickyNoteResizeCorner getHoveredStickyNoteResizeCorner(int mouseX, int mouseY) {
-        boolean overWorkspace = mouseX >= sidebar.getWidth() && mouseY > TITLE_BAR_HEIGHT;
-        if (!overWorkspace) {
-            return null;
-        }
-        Node hoveredNode = nodeGraph.getNodeAt(mouseX, mouseY);
-        return hoveredNode == null ? null : nodeGraph.getStickyNoteResizeCornerAt(hoveredNode, mouseX, mouseY);
-    }
     private boolean isPopupObscuringWorkspace() {
         return modalOverlayController.isObscuringWorkspace();
     }
@@ -1696,90 +1682,6 @@ public class PathmindVisualEditorScreen extends Screen {
         workspaceDialogController.refreshMissingUiUtilsPopup();
     }
     
-    private void renderDraggingNode(GuiGraphics context, int mouseX, int mouseY) {
-        if (draggingNodeType == null && draggingSidebarNode == null) return;
-
-        float scale = nodeGraph.getZoomScale();
-        if (scale <= 0.0f) {
-            scale = 1.0f;
-        }
-
-        // Create a temporary node for rendering
-        Node tempNode = draggingSidebarNode != null ? draggingSidebarNode : new Node(draggingNodeType, 0, 0);
-        tempNode.setDragging(true);
-
-        int width = tempNode.getWidth();
-        int height = tempNode.getHeight();
-        int worldMouseX = nodeGraph.screenToWorldX(mouseX);
-        int worldMouseY = nodeGraph.screenToWorldY(mouseY);
-        int[] previewPosition = nodeGraph.getSidebarDragPreviewPosition(tempNode, worldMouseX, worldMouseY);
-        int screenNodeX = nodeGraph.worldToScreenX(previewPosition[0]);
-        int screenNodeY = nodeGraph.worldToScreenY(previewPosition[1]);
-
-        var matrices = context.pose();
-        MatrixStackBridge.push(matrices);
-        MatrixStackBridge.scale(matrices, scale, scale);
-
-        int x = Math.round(screenNodeX / scale);
-        int y = Math.round(screenNodeY / scale);
-
-        // Update temp node position for rendering
-        tempNode.setPosition(x, y);
-
-        // Render the node with a slight transparency
-        int alpha = 0x80;
-        NodeType renderType = tempNode.getType();
-        int nodeColor = (tempNode.getColor() & 0x00FFFFFF) | alpha;
-
-        // Node background with transparency
-        context.fill(x, y, x + width, y + height, UITheme.DRAG_PREVIEW_BG);
-        // Draw grey outline for dragging state
-        DrawContextBridge.drawBorderInLayer(context, x, y, width, height, UITheme.DRAG_PREVIEW_BORDER);
-
-        // Node header
-        if (renderType != NodeType.START && renderType != NodeType.EVENT_FUNCTION) {
-            context.fill(x + 1, y + 1, x + width - 1, y + 14, nodeColor);
-            context.drawString(
-                this.font,
-                Component.literal(renderType == NodeType.TEMPLATE ? tempNode.getTemplateName() : renderType.getDisplayName()),
-                x + 4,
-                y + 4,
-                UITheme.TEXT_HEADER
-            );
-        }
-
-        MatrixStackBridge.pop(matrices);
-    }
-
-    private void renderZoomControls(GuiGraphics context, int mouseX, int mouseY, boolean disabled) {
-        int buttonY = getZoomButtonY();
-        NodeGraph.ZoomLevel level = nodeGraph.getZoomLevel();
-        boolean minusActive = level != NodeGraph.ZoomLevel.FOCUSED;
-        boolean plusActive = level == NodeGraph.ZoomLevel.FOCUSED;
-        drawZoomButton(context, getZoomMinusButtonX(), buttonY, mouseX, mouseY, disabled, true, minusActive);
-        drawZoomButton(context, getZoomPlusButtonX(), buttonY, mouseX, mouseY, disabled, false, plusActive);
-    }
-
-    private void drawZoomButton(GuiGraphics context, int x, int y, int mouseX, int mouseY, boolean disabled, boolean isMinus, boolean active) {
-        boolean hovered = !disabled && isPointInRect(mouseX, mouseY, x, y, ZOOM_BUTTON_SIZE, ZOOM_BUTTON_SIZE);
-        String hoverKey = isMinus ? "zoom-minus-button" : "zoom-plus-button";
-        float hoverProgress = getHoverProgress(hoverKey, hovered || active);
-        PathmindWorkspaceChrome.drawToolbarButtonFrame(context, x, y, ZOOM_BUTTON_SIZE, ZOOM_BUTTON_SIZE, hovered, active, disabled, hoverProgress, getAccentColor());
-
-        int iconColor = UITheme.TEXT_PRIMARY;
-        if (disabled) {
-            iconColor = UITheme.DROPDOWN_ACTION_DISABLED;
-        } else if (hovered) {
-            iconColor = getAccentColor();
-        }
-
-        Component iconText = Component.literal(isMinus ? "-" : "+");
-        int iconWidth = this.font.width(iconText);
-        int iconX = x + (ZOOM_BUTTON_SIZE - iconWidth) / 2 + 1;
-        int iconY = y + (ZOOM_BUTTON_SIZE - this.font.lineHeight) / 2 + 2;
-        context.drawString(this.font, iconText, iconX, iconY, iconColor);
-    }
-    
     private void renderNodeGraph(GuiGraphics context, int mouseX, int mouseY, float delta, boolean onlyDragged) {
         if (!onlyDragged) {
             // Node graph background
@@ -1790,9 +1692,7 @@ public class PathmindVisualEditorScreen extends Screen {
             context.fill(Sidebar.getCollapsedWidth(), TITLE_BAR_HEIGHT, this.width, this.height, workspaceBackground);
             
             // Render grid pattern for better visual organization
-            if (showGrid) {
-                renderGrid(context);
-            }
+            workspaceViewportController.renderGrid(context);
         }
 
         nodeGraph.updateScreenCoordinateCapturePreview(mouseX, mouseY);
@@ -1808,48 +1708,6 @@ public class PathmindVisualEditorScreen extends Screen {
         nodeGraph.renderSelectionBox(context);
     }
     
-    private void renderGrid(GuiGraphics context) {
-        int gridSize = 20;
-        int startX = Sidebar.getCollapsedWidth();
-        int startY = TITLE_BAR_HEIGHT;
-        int endX = this.width;
-        int endY = this.height;
-
-        int leftWorld = nodeGraph.screenToWorldX(startX);
-        int rightWorld = nodeGraph.screenToWorldX(endX);
-        if (rightWorld < leftWorld) {
-            int swap = leftWorld;
-            leftWorld = rightWorld;
-            rightWorld = swap;
-        }
-
-        int topWorld = nodeGraph.screenToWorldY(startY);
-        int bottomWorld = nodeGraph.screenToWorldY(endY);
-        if (bottomWorld < topWorld) {
-            int swap = topWorld;
-            topWorld = bottomWorld;
-            bottomWorld = swap;
-        }
-
-        int firstVertical = leftWorld - Math.floorMod(leftWorld, gridSize);
-        for (int worldX = firstVertical; worldX <= rightWorld + gridSize; worldX += gridSize) {
-            int screenX = nodeGraph.worldToScreenX(worldX);
-            if (screenX < startX || screenX > endX) {
-                continue;
-            }
-            context.vLine(screenX, startY, endY, UITheme.GRID_LINE);
-        }
-
-        int firstHorizontal = topWorld - Math.floorMod(topWorld, gridSize);
-        for (int worldY = firstHorizontal; worldY <= bottomWorld + gridSize; worldY += gridSize) {
-            int screenY = nodeGraph.worldToScreenY(worldY);
-            if (screenY < startY || screenY > endY) {
-                continue;
-            }
-            context.hLine(startX, endX, screenY, UITheme.GRID_LINE);
-        }
-    }
-
     //? if MC_1_21_8 {
     /*@Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
@@ -1986,14 +1844,7 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         if (!isPopupObscuringWorkspace() && button == 0) {
-            if (isPointInZoomMinus((int) mouseX, (int) mouseY)) {
-                presetDropdownController.close();
-                nodeGraph.zoomOut(getWorkspaceCenterX(), getWorkspaceCenterY());
-                return true;
-            }
-            if (isPointInZoomPlus((int) mouseX, (int) mouseY)) {
-                presetDropdownController.close();
-                nodeGraph.zoomIn(getWorkspaceCenterX(), getWorkspaceCenterY());
+            if (workspaceViewportController.handleZoomButtonClick((int) mouseX, (int) mouseY)) {
                 return true;
             }
             if (validationExecutionController.handleValidationButtonClick((int) mouseX, (int) mouseY, button)) {
@@ -3351,7 +3202,7 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         if (mouseX >= sidebar.getWidth() && mouseY > TITLE_BAR_HEIGHT && verticalAmount != 0.0) {
-            nodeGraph.zoomByScroll(verticalAmount, getWorkspaceCenterX(), getWorkspaceCenterY());
+            workspaceViewportController.zoomByScroll(verticalAmount);
             return true;
         }
 
@@ -3620,7 +3471,7 @@ public class PathmindVisualEditorScreen extends Screen {
     public void onClose() {
         nodeGraph.persistSessionViewportState();
         autoSaveWorkspace();
-        restoreSystemCursor();
+        workspaceViewportController.restoreSystemCursor();
         super.onClose();
     }
 
@@ -3632,7 +3483,7 @@ public class PathmindVisualEditorScreen extends Screen {
             UiUtilsProxy.setOverlayEnabled(uiUtilsOverlayPrevEnabled);
             uiUtilsOverlayPrevEnabled = null;
         }
-        restoreSystemCursor();
+        workspaceViewportController.restoreSystemCursor();
         super.removed();
     }
 
@@ -3996,28 +3847,6 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private int getValidationButtonY() {
         return validationExecutionController.validationButtonY();
-    }
-
-    private int getZoomPlusButtonX() {
-        return this.width - ZOOM_BUTTON_MARGIN - ZOOM_BUTTON_SIZE;
-    }
-
-    private int getZoomMinusButtonX() {
-        return getZoomPlusButtonX() - ZOOM_BUTTON_SIZE - ZOOM_BUTTON_SPACING;
-    }
-
-    private int getZoomButtonY() {
-        return this.height - ZOOM_BUTTON_MARGIN - ZOOM_BUTTON_SIZE;
-    }
-
-    private int getWorkspaceCenterX() {
-        int workspaceLeft = Sidebar.getCollapsedWidth();
-        return workspaceLeft + (this.width - workspaceLeft) / 2;
-    }
-
-    private int getWorkspaceCenterY() {
-        int workspaceTop = TITLE_BAR_HEIGHT;
-        return workspaceTop + (this.height - workspaceTop) / 2;
     }
 
     private int getStopButtonX() {
@@ -4653,14 +4482,6 @@ public class PathmindVisualEditorScreen extends Screen {
         int buttonX = getSettingsButtonX();
         int buttonY = getSettingsButtonY();
         return PathmindWorkspaceChrome.contains(mouseX, mouseY, buttonX, buttonY, BOTTOM_BUTTON_SIZE, BOTTOM_BUTTON_SIZE);
-    }
-
-    private boolean isPointInZoomMinus(int mouseX, int mouseY) {
-        return isPointInRect(mouseX, mouseY, getZoomMinusButtonX(), getZoomButtonY(), ZOOM_BUTTON_SIZE, ZOOM_BUTTON_SIZE);
-    }
-
-    private boolean isPointInZoomPlus(int mouseX, int mouseY) {
-        return isPointInRect(mouseX, mouseY, getZoomPlusButtonX(), getZoomButtonY(), ZOOM_BUTTON_SIZE, ZOOM_BUTTON_SIZE);
     }
 
     int getSettingsPopupX() {

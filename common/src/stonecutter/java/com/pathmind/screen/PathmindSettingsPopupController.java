@@ -10,12 +10,15 @@ import com.pathmind.data.SettingsManager.Settings;
 import com.pathmind.nodes.Node;
 import com.pathmind.nodes.NodeType;
 import com.pathmind.screen.PathmindVisualEditorScreen.AccentOption;
+import com.pathmind.ui.animation.AnimatedValue;
 import com.pathmind.ui.control.PathmindPopupLayout;
 import com.pathmind.ui.control.PathmindPopupRenderer;
 import com.pathmind.ui.control.PathmindSettingsRowRenderer;
 import com.pathmind.ui.overlay.NodeErrorNotificationOverlay;
 import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
+import com.pathmind.util.DropdownLayoutHelper;
+import com.pathmind.util.MatrixStackBridge;
 import com.pathmind.util.RenderStateBridge;
 import com.pathmind.util.ScrollbarHelper;
 import java.util.ArrayList;
@@ -31,6 +34,173 @@ final class PathmindSettingsPopupController {
     PathmindSettingsPopupController(PathmindVisualEditorScreen screen) {
         this.screen = screen;
     }
+
+    private static final String[] SUPPORTED_LANGUAGES = {"en_us", "es_es", "pt_br", "ru_ru", "de_de", "fr_fr", "pl_pl"};
+    private boolean languageDropdownOpen = false;
+    private final AnimatedValue languageDropdownAnimation = AnimatedValue.forHover();
+    int languageDropdownX = 0;
+    int languageDropdownY = 0;
+    int languageDropdownWidth = 0;
+    int languageDropdownClipX = 0;
+    int languageDropdownClipY = 0;
+    int languageDropdownClipWidth = 0;
+    int languageDropdownClipHeight = 0;
+
+    /** Language options draw above the popup scrim, so the screen renders them last. */
+    void renderLanguageDropdownOptions(GuiGraphics context, int mouseX, int mouseY) {
+        drawLanguageDropdownOptions(context, languageDropdownX, languageDropdownY, languageDropdownWidth, mouseX, mouseY);
+    }
+
+    boolean isLanguageDropdownOpen() {
+        return languageDropdownOpen;
+    }
+
+    void toggleLanguageDropdown() {
+        languageDropdownOpen = !languageDropdownOpen;
+    }
+
+    void closeLanguageDropdown() {
+        languageDropdownOpen = false;
+    }
+
+    /** Collapses the dropdown without animating, for a freshly opened popup. */
+    void resetLanguageDropdown() {
+        languageDropdownOpen = false;
+        languageDropdownAnimation.setValue(0f);
+    }
+
+    int supportedLanguageCount() {
+        return SUPPORTED_LANGUAGES.length;
+    }
+
+    void selectLanguage(int index) {
+        onLanguageSelected(SUPPORTED_LANGUAGES[index]);
+    }
+
+    private void drawLanguageDropdown(GuiGraphics context, int x, int y, int width, String currentLang, boolean hovered) {
+        DropdownLayoutHelper.updateOpenAnimation(languageDropdownAnimation, languageDropdownOpen);
+
+        float hoverProgress = languageDropdownOpen ? 1f : screen.getHoverProgress("settings-language-dropdown-bg", hovered);
+        UIStyleHelper.FieldPalette fieldPalette = UIStyleHelper.getDropdownFieldPalette(screen.getAccentColor(), hoverProgress, languageDropdownOpen, false);
+        UIStyleHelper.drawFieldFrame(
+            context,
+            x,
+            y,
+            width,
+            20,
+            new UIStyleHelper.FieldPalette(
+                screen.settingsPopupAnimation.getAnimatedPopupColor(fieldPalette.backgroundColor()),
+                screen.settingsPopupAnimation.getAnimatedPopupColor(fieldPalette.borderColor()),
+                screen.settingsPopupAnimation.getAnimatedPopupColor(fieldPalette.innerBorderColor()),
+                screen.settingsPopupAnimation.getAnimatedPopupColor(fieldPalette.textColor()),
+                screen.settingsPopupAnimation.getAnimatedPopupColor(fieldPalette.placeholderColor())
+            )
+        );
+
+        int labelColor = screen.settingsPopupAnimation.getAnimatedPopupColor(fieldPalette.textColor());
+        context.drawString(screen.textRenderer(), Component.literal(currentLang), x + 4, y + 6, labelColor);
+
+        int arrowCenterX = x + width - 10;
+        int arrowCenterY = y + 10;
+        UIStyleHelper.drawChevron(context, arrowCenterX, arrowCenterY, languageDropdownOpen, labelColor);
+    }
+
+    private void drawLanguageDropdownOptions(GuiGraphics context, int x, int y, int width, int mouseX, int mouseY) {
+        // Get animation progress
+        float animProgress = languageDropdownAnimation.getValue();
+
+        // Don't render options if animation is fully closed
+        if (animProgress <= 0.001f) {
+            return;
+        }
+
+        Object matrices = context.pose();
+        MatrixStackBridge.push(matrices);
+        MatrixStackBridge.translateZ(matrices, 550.0f);
+
+        int dropdownY = y + 22;
+        int fullOptionsHeight = SUPPORTED_LANGUAGES.length * 20;
+        int scissorLeft = Math.max(x, languageDropdownClipX);
+        int scissorTop = Math.max(dropdownY, languageDropdownClipY);
+        int scissorRight = Math.min(x + width, languageDropdownClipX + languageDropdownClipWidth);
+        int scissorBottom = Math.min(
+            DropdownLayoutHelper.getRevealBottom(dropdownY, fullOptionsHeight, animProgress, 1),
+            languageDropdownClipY + languageDropdownClipHeight
+        );
+
+        if (scissorRight <= scissorLeft || scissorBottom <= scissorTop) {
+            MatrixStackBridge.pop(matrices);
+            return;
+        }
+
+        context.enableScissor(scissorLeft, scissorTop, scissorRight, scissorBottom);
+
+        UIStyleHelper.ScrollContainerPalette containerPalette = UIStyleHelper.getScrollContainerPalette(screen.getAccentColor(), animProgress, languageDropdownOpen, false);
+        UIStyleHelper.drawScrollContainer(
+            context,
+            x,
+            dropdownY,
+            width,
+            fullOptionsHeight,
+            new UIStyleHelper.ScrollContainerPalette(
+                screen.settingsPopupAnimation.getAnimatedPopupColor(containerPalette.backgroundColor()),
+                screen.settingsPopupAnimation.getAnimatedPopupColor(containerPalette.borderColor()),
+                screen.settingsPopupAnimation.getAnimatedPopupColor(containerPalette.innerBorderColor()),
+                screen.settingsPopupAnimation.getAnimatedPopupColor(containerPalette.trackColor()),
+                screen.settingsPopupAnimation.getAnimatedPopupColor(containerPalette.thumbColor())
+            )
+        );
+
+        // Draw each language option
+        for (int i = 0; i < SUPPORTED_LANGUAGES.length; i++) {
+            String lang = SUPPORTED_LANGUAGES[i];
+            String langName = getLanguageDisplayName(lang);
+            int optionY = dropdownY + (i * 20);
+
+            boolean optionHovered = animProgress >= 1f && mouseX >= x && mouseX <= x + width && mouseY >= optionY && mouseY <= optionY + 20;
+            String currentLang = screen.client().getLanguageManager().getSelected();
+            boolean selected = lang.equals(currentLang);
+            UIStyleHelper.DropdownRowPalette rowPalette = UIStyleHelper.getDropdownRowPalette(screen.getAccentColor(), optionHovered ? 1f : 0f, selected, false);
+            UIStyleHelper.drawDropdownRow(
+                context,
+                x + 1,
+                optionY + 1,
+                width - 2,
+                19,
+                new UIStyleHelper.DropdownRowPalette(
+                    screen.settingsPopupAnimation.getAnimatedPopupColor(rowPalette.backgroundColor()),
+                    screen.settingsPopupAnimation.getAnimatedPopupColor(rowPalette.borderColor()),
+                    screen.settingsPopupAnimation.getAnimatedPopupColor(rowPalette.textColor())
+                )
+            );
+
+            int textColor = screen.settingsPopupAnimation.getAnimatedPopupColor(selected ? screen.getAccentColor() : rowPalette.textColor());
+            context.drawString(screen.textRenderer(), Component.literal(langName), x + 4, optionY + 6, textColor);
+        }
+
+        context.disableScissor();
+        MatrixStackBridge.pop(matrices);
+    }
+
+    private String getLanguageDisplayName(String languageCode) {
+        return Component.translatable("pathmind.language." + languageCode).getString();
+    }
+
+    private void onLanguageSelected(String languageCode) {
+        // Save to settings first
+        screen.currentSettings.language = languageCode;
+        SettingsManager.save(screen.currentSettings);
+
+        // Update Minecraft's language and reload resources
+        screen.client().options.languageCode = languageCode;
+        screen.client().getLanguageManager().setSelected(languageCode);
+        screen.client().options.save();
+        screen.client().reloadResourcePacks();
+
+        // Reload the screen to update all text
+        screen.reopenForLanguageChange();
+    }
+
 
     void renderSettingsPopup(GuiGraphics context, int mouseX, int mouseY) {
         float popupAlpha = screen.settingsPopupAnimation.getPopupAlpha();
@@ -73,18 +243,18 @@ final class PathmindSettingsPopupController {
         int languageButtonWidth = scaledWidth - 40;
 
         // Store dropdown position for rendering later
-        screen.languageDropdownX = contentX;
-        screen.languageDropdownY = languageButtonY;
-        screen.languageDropdownWidth = languageButtonWidth;
-        screen.languageDropdownClipX = bodyBounds.x();
-        screen.languageDropdownClipY = bodyBounds.y();
-        screen.languageDropdownClipWidth = bodyBounds.width();
-        screen.languageDropdownClipHeight = bodyBounds.height();
+        languageDropdownX = contentX;
+        languageDropdownY = languageButtonY;
+        languageDropdownWidth = languageButtonWidth;
+        languageDropdownClipX = bodyBounds.x();
+        languageDropdownClipY = bodyBounds.y();
+        languageDropdownClipWidth = bodyBounds.width();
+        languageDropdownClipHeight = bodyBounds.height();
 
         String currentLang = screen.client().getLanguageManager().getSelected();
-        String langDisplayName = screen.getLanguageDisplayName(currentLang);
+        String langDisplayName = getLanguageDisplayName(currentLang);
         boolean languageHovered = mouseX >= contentX && mouseX <= contentX + languageButtonWidth && mouseY >= languageButtonY && mouseY <= languageButtonY + 20;
-        screen.drawLanguageDropdown(context, contentX, languageButtonY, languageButtonWidth, langDisplayName, languageHovered);
+        drawLanguageDropdown(context, contentX, languageButtonY, languageButtonWidth, langDisplayName, languageHovered);
         RenderStateBridge.setShaderColor(1f, 1f, 1f, popupAlpha);
 
         // Adjust following sections downward by 50 pixels

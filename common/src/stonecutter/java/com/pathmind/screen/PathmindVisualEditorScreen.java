@@ -40,7 +40,6 @@ import com.pathmind.ui.sidebar.Sidebar;
 import com.pathmind.ui.tooltip.TooltipRenderer;
 import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
-import com.pathmind.util.DropdownLayoutHelper;
 import com.pathmind.util.PathmindI18n;
 import com.pathmind.validation.GraphValidationResult;
 import com.pathmind.util.BaritoneDependencyChecker;
@@ -225,16 +224,6 @@ public class PathmindVisualEditorScreen extends Screen {
     private final PathmindValidationExecutionController validationExecutionController =
         new PathmindValidationExecutionController(new ValidationExecutionHost());
     Settings currentSettings;
-    private static final String[] SUPPORTED_LANGUAGES = {"en_us", "es_es", "pt_br", "ru_ru", "de_de", "fr_fr", "pl_pl"};
-    private boolean languageDropdownOpen = false;
-    private final AnimatedValue languageDropdownAnimation = AnimatedValue.forHover();
-    int languageDropdownX = 0;
-    int languageDropdownY = 0;
-    int languageDropdownWidth = 0;
-    int languageDropdownClipX = 0;
-    int languageDropdownClipY = 0;
-    int languageDropdownClipWidth = 0;
-    int languageDropdownClipHeight = 0;
     boolean showGrid = true;
     boolean renderConnectionsOnTop = false;
     boolean showWorkspaceTooltips = true;
@@ -1592,7 +1581,7 @@ public class PathmindVisualEditorScreen extends Screen {
         // Render language dropdown options on top of scrim overlay
         if (settingsPopupAnimation.isVisible()) {
             RenderStateBridge.setShaderColor(1f, 1f, 1f, settingsPopupAnimation.getPopupAlpha());
-            drawLanguageDropdownOptions(context, languageDropdownX, languageDropdownY, languageDropdownWidth, mouseX, mouseY);
+            settingsPopupController.renderLanguageDropdownOptions(context, mouseX, mouseY);
             //? if MC_1_21_8 {
             /*RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);*/
             //?}
@@ -4155,8 +4144,7 @@ public class PathmindVisualEditorScreen extends Screen {
         clearPopupAnimation.hide();
         importExportPopupAnimation.hide();
         presetDropdownController.close();
-        languageDropdownOpen = false;
-        languageDropdownAnimation.setValue(0f);
+        settingsPopupController.resetLanguageDropdown();
         Node selectedNode = nodeGraph != null ? nodeGraph.getSelectedNode() : null;
         if (supportsNodeSettings(selectedNode)) {
             settingsNodeTargetType = selectedNode.getType();
@@ -4184,7 +4172,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     void closeSettingsPopup() {
-        languageDropdownOpen = false;
+        settingsPopupController.closeLanguageDropdown();
         nodeDelayDragging = false;
         createListRadiusDragging = false;
         settingsNodeSelectorScrollDragging = false;
@@ -4254,17 +4242,17 @@ public class PathmindVisualEditorScreen extends Screen {
         int languageButtonWidth = popupWidth - 40;
 
         if (bodyHovered && mouseXi >= contentX && mouseXi <= contentX + languageButtonWidth && mouseYi >= languageButtonY && mouseYi <= languageButtonY + 20) {
-            languageDropdownOpen = !languageDropdownOpen;
+            settingsPopupController.toggleLanguageDropdown();
             return true;
         }
 
         // Language dropdown options click
-        if (languageDropdownOpen) {
+        if (settingsPopupController.isLanguageDropdownOpen()) {
             int dropdownY = languageButtonY + 22;
-            for (int i = 0; i < SUPPORTED_LANGUAGES.length; i++) {
+            for (int i = 0; i < settingsPopupController.supportedLanguageCount(); i++) {
                 if (bodyHovered && mouseXi >= contentX && mouseXi <= contentX + languageButtonWidth &&
                     mouseYi >= dropdownY + (i * 20) && mouseYi <= dropdownY + (i * 20) + 20) {
-                    onLanguageSelected(SUPPORTED_LANGUAGES[i]);
+                    settingsPopupController.selectLanguage(i);
                     return true;
                 }
             }
@@ -4582,127 +4570,8 @@ public class PathmindVisualEditorScreen extends Screen {
         }
     }
 
-    void drawLanguageDropdown(GuiGraphics context, int x, int y, int width, String currentLang, boolean hovered) {
-        DropdownLayoutHelper.updateOpenAnimation(languageDropdownAnimation, languageDropdownOpen);
-
-        float hoverProgress = languageDropdownOpen ? 1f : getHoverProgress("settings-language-dropdown-bg", hovered);
-        UIStyleHelper.FieldPalette fieldPalette = UIStyleHelper.getDropdownFieldPalette(getAccentColor(), hoverProgress, languageDropdownOpen, false);
-        UIStyleHelper.drawFieldFrame(
-            context,
-            x,
-            y,
-            width,
-            20,
-            new UIStyleHelper.FieldPalette(
-                settingsPopupAnimation.getAnimatedPopupColor(fieldPalette.backgroundColor()),
-                settingsPopupAnimation.getAnimatedPopupColor(fieldPalette.borderColor()),
-                settingsPopupAnimation.getAnimatedPopupColor(fieldPalette.innerBorderColor()),
-                settingsPopupAnimation.getAnimatedPopupColor(fieldPalette.textColor()),
-                settingsPopupAnimation.getAnimatedPopupColor(fieldPalette.placeholderColor())
-            )
-        );
-
-        int labelColor = settingsPopupAnimation.getAnimatedPopupColor(fieldPalette.textColor());
-        context.drawString(this.font, Component.literal(currentLang), x + 4, y + 6, labelColor);
-
-        int arrowCenterX = x + width - 10;
-        int arrowCenterY = y + 10;
-        UIStyleHelper.drawChevron(context, arrowCenterX, arrowCenterY, languageDropdownOpen, labelColor);
-    }
-
-    private void drawLanguageDropdownOptions(GuiGraphics context, int x, int y, int width, int mouseX, int mouseY) {
-        // Get animation progress
-        float animProgress = languageDropdownAnimation.getValue();
-
-        // Don't render options if animation is fully closed
-        if (animProgress <= 0.001f) {
-            return;
-        }
-
-        Object matrices = context.pose();
-        MatrixStackBridge.push(matrices);
-        MatrixStackBridge.translateZ(matrices, 550.0f);
-
-        int dropdownY = y + 22;
-        int fullOptionsHeight = SUPPORTED_LANGUAGES.length * 20;
-        int scissorLeft = Math.max(x, languageDropdownClipX);
-        int scissorTop = Math.max(dropdownY, languageDropdownClipY);
-        int scissorRight = Math.min(x + width, languageDropdownClipX + languageDropdownClipWidth);
-        int scissorBottom = Math.min(
-            DropdownLayoutHelper.getRevealBottom(dropdownY, fullOptionsHeight, animProgress, 1),
-            languageDropdownClipY + languageDropdownClipHeight
-        );
-
-        if (scissorRight <= scissorLeft || scissorBottom <= scissorTop) {
-            MatrixStackBridge.pop(matrices);
-            return;
-        }
-
-        context.enableScissor(scissorLeft, scissorTop, scissorRight, scissorBottom);
-
-        UIStyleHelper.ScrollContainerPalette containerPalette = UIStyleHelper.getScrollContainerPalette(getAccentColor(), animProgress, languageDropdownOpen, false);
-        UIStyleHelper.drawScrollContainer(
-            context,
-            x,
-            dropdownY,
-            width,
-            fullOptionsHeight,
-            new UIStyleHelper.ScrollContainerPalette(
-                settingsPopupAnimation.getAnimatedPopupColor(containerPalette.backgroundColor()),
-                settingsPopupAnimation.getAnimatedPopupColor(containerPalette.borderColor()),
-                settingsPopupAnimation.getAnimatedPopupColor(containerPalette.innerBorderColor()),
-                settingsPopupAnimation.getAnimatedPopupColor(containerPalette.trackColor()),
-                settingsPopupAnimation.getAnimatedPopupColor(containerPalette.thumbColor())
-            )
-        );
-
-        // Draw each language option
-        for (int i = 0; i < SUPPORTED_LANGUAGES.length; i++) {
-            String lang = SUPPORTED_LANGUAGES[i];
-            String langName = getLanguageDisplayName(lang);
-            int optionY = dropdownY + (i * 20);
-
-            boolean optionHovered = animProgress >= 1f && mouseX >= x && mouseX <= x + width && mouseY >= optionY && mouseY <= optionY + 20;
-            String currentLang = this.minecraft.getLanguageManager().getSelected();
-            boolean selected = lang.equals(currentLang);
-            UIStyleHelper.DropdownRowPalette rowPalette = UIStyleHelper.getDropdownRowPalette(getAccentColor(), optionHovered ? 1f : 0f, selected, false);
-            UIStyleHelper.drawDropdownRow(
-                context,
-                x + 1,
-                optionY + 1,
-                width - 2,
-                19,
-                new UIStyleHelper.DropdownRowPalette(
-                    settingsPopupAnimation.getAnimatedPopupColor(rowPalette.backgroundColor()),
-                    settingsPopupAnimation.getAnimatedPopupColor(rowPalette.borderColor()),
-                    settingsPopupAnimation.getAnimatedPopupColor(rowPalette.textColor())
-                )
-            );
-
-            int textColor = settingsPopupAnimation.getAnimatedPopupColor(selected ? getAccentColor() : rowPalette.textColor());
-            context.drawString(this.font, Component.literal(langName), x + 4, optionY + 6, textColor);
-        }
-
-        context.disableScissor();
-        MatrixStackBridge.pop(matrices);
-    }
-
-    String getLanguageDisplayName(String languageCode) {
-        return Component.translatable("pathmind.language." + languageCode).getString();
-    }
-
-    private void onLanguageSelected(String languageCode) {
-        // Save to settings first
-        currentSettings.language = languageCode;
-        SettingsManager.save(currentSettings);
-
-        // Update Minecraft's language and reload resources
-        this.minecraft.options.languageCode = languageCode;
-        this.minecraft.getLanguageManager().setSelected(languageCode);
-        this.minecraft.options.save();
-        this.minecraft.reloadResourcePacks();
-
-        // Reload the screen to update all text
+    /** Rebuilds the editor so every string picks up a newly selected language. */
+    void reopenForLanguageChange() {
         this.minecraft.setScreen(null);
         this.minecraft.setScreen(new PathmindVisualEditorScreen());
     }

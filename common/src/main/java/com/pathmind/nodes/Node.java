@@ -396,9 +396,6 @@ public class Node {
     private static final String PARAM_ID_ROTATION_DISTANCE = "rotation_distance";
     private static final String PARAM_ID_LOOK_YAW = "look_yaw";
     private static final String PARAM_ID_LOOK_PITCH = "look_pitch";
-    private static final String LOOK_DIRECTION_SOURCE_KEY = "__pathmind_source";
-    private static final String LOOK_DIRECTION_AXIS_KEY = "__pathmind_look_axis";
-    private static final String LOOK_DIRECTION_SOURCE_VALUE = "look_direction";
     private static final String PARAM_ID_INVENTORY_SLOT_INDEX = "inventory_slot_index";
     private static final String PARAM_ID_INVENTORY_SLOT_MODE = "inventory_slot_mode";
     private static final String PARAM_ID_HOTBAR_SLOT = "hotbar_slot";
@@ -970,7 +967,7 @@ public class Node {
     }
 
 
-    private boolean isParameterSupported(Node parameter, int slotIndex) {
+    boolean isParameterSupported(Node parameter, int slotIndex) {
         return NodeCompatibility.canAttachToSlot(this, parameter, NodeSlotType.PARAMETER, slotIndex);
     }
 
@@ -2460,7 +2457,7 @@ public class Node {
         return adjustParameterValuesForSlot(values, slotIndex, null);
     }
 
-    private Map<String, String> adjustParameterValuesForSlot(Map<String, String> values, int slotIndex, Node parameterNode) {
+    Map<String, String> adjustParameterValuesForSlot(Map<String, String> values, int slotIndex, Node parameterNode) {
         if (values == null || values.isEmpty() || slotIndex < 0) {
             return values;
         }
@@ -4053,361 +4050,21 @@ public class Node {
     }
 
     ParameterHandlingResult preprocessAttachedParameter(EnumSet<ParameterUsage> usages, CompletableFuture<Void> future) {
-        if (attachments.hasAttachedParameters()) {
-            java.util.List<Integer> slotIndices = new java.util.ArrayList<>(attachments.getAttachedParameterSlotIndices());
-            java.util.Collections.sort(slotIndices);
-            ParameterHandlingResult result = ParameterHandlingResult.CONTINUE;
-            boolean resetRuntime = true;
-            for (int slotIndex : slotIndices) {
-                ParameterHandlingResult slotResult = preprocessParameterSlot(slotIndex, usages, future, resetRuntime);
-                resetRuntime = false;
-                if (slotResult == ParameterHandlingResult.COMPLETE) {
-                    result = ParameterHandlingResult.COMPLETE;
-                    break;
-                }
-            }
-            return result;
-        }
-
-        int slotCount = getParameterSlotCount();
-        ParameterHandlingResult result = ParameterHandlingResult.CONTINUE;
-        boolean resetRuntime = true;
-        for (int i = 0; i < slotCount; i++) {
-            ParameterHandlingResult slotResult = preprocessParameterSlot(i, usages, future, resetRuntime);
-            resetRuntime = false;
-            if (slotResult == ParameterHandlingResult.COMPLETE) {
-                result = ParameterHandlingResult.COMPLETE;
-                break;
-            }
-        }
-        return result;
+        return runtimeParameterResolver.preprocessAttachedParameter(usages, future);
     }
 
     ParameterHandlingResult preprocessParameterSlot(int slotIndex, EnumSet<ParameterUsage> usages, CompletableFuture<Void> future, boolean resetRuntimeData) {
-        if (!canAcceptParameterAt(slotIndex)) {
-            return ParameterHandlingResult.CONTINUE;
-        }
-        if (resetRuntimeData) {
-            runtimeState.runtimeParameterData = null;
-        }
-        Node parameterNode = getAttachedParameter(slotIndex);
-        return preprocessParameterNode(parameterNode, slotIndex, usages, future);
-    }
-
-    private ParameterHandlingResult preprocessParameterNode(Node parameterNode, int slotIndex, EnumSet<ParameterUsage> usages, CompletableFuture<Void> future) {
-        if (parameterNode == null) {
-            return ParameterHandlingResult.CONTINUE;
-        }
-        if (parameterNode.hasParameterSlot()) {
-            int requiredSlotCount = parameterNode.getParameterSlotCount();
-            for (int i = 0; i < requiredSlotCount; i++) {
-                if (parameterNode.isParameterSlotRequired(i) && parameterNode.getAttachedParameter(i) == null) {
-                    if (future != null && !future.isDone()) {
-                        String label = parameterNode.getParameterSlotLabel(i);
-                        NodeExecutionCompletion.failWithCurrentClient(this, future,
-                            parameterNode.getType().getDisplayName()
-                                + " requires a " + label.toLowerCase(Locale.ROOT) + " parameter before it can run.");
-                    }
-                    return ParameterHandlingResult.COMPLETE;
-                }
-            }
-        }
-        if (runtimeState.runtimeParameterData == null) {
-            runtimeState.runtimeParameterData = new RuntimeParameterData();
-        }
-
-        boolean handled = false;
-        if (parameterNode.getType() == NodeType.VARIABLE) {
-            parameterNode = resolveVariableValueNode(parameterNode, slotIndex, future);
-            if (parameterNode == null) {
-                return ParameterHandlingResult.COMPLETE;
-            }
-        }
-
-        if (!reportEmptyParametersForNode(parameterNode, future)) {
-            return ParameterHandlingResult.COMPLETE;
-        }
-
-        Map<String, String> exported = parameterNode.exportParameterValues();
-        Map<String, String> adjustedValues = adjustParameterValuesForSlot(exported, slotIndex, parameterNode);
-        if (!exported.isEmpty()) {
-            handled = applyParameterValuesFromMap(adjustedValues);
-        }
-        if (type == NodeType.WAIT) {
-            String durationValue = adjustedValues.get("Duration");
-            if (durationValue == null) {
-                durationValue = adjustedValues.get(normalizeParameterKey("Duration"));
-            }
-            if (durationValue == null) {
-                durationValue = adjustedValues.get("DurationSeconds");
-            }
-            if (durationValue == null) {
-                durationValue = adjustedValues.get(normalizeParameterKey("DurationSeconds"));
-            }
-            if (durationValue == null) {
-                durationValue = adjustedValues.get("WaitSeconds");
-            }
-            if (durationValue == null) {
-                durationValue = adjustedValues.get(normalizeParameterKey("WaitSeconds"));
-            }
-            if (durationValue == null) {
-                durationValue = adjustedValues.get("IntervalSeconds");
-            }
-            if (durationValue == null) {
-                durationValue = adjustedValues.get(normalizeParameterKey("IntervalSeconds"));
-            }
-            if (durationValue != null && !durationValue.trim().isEmpty()) {
-                String trimmedDuration = durationValue.trim();
-                Double parsedDurationSeconds = parseDoubleOrNull(trimmedDuration);
-                if (runtimeState.runtimeParameterData != null && parsedDurationSeconds != null) {
-                    runtimeState.runtimeParameterData.durationSeconds = Math.max(0.0, parsedDurationSeconds);
-                }
-                if (!handled) {
-                    setParameterValueAndPropagate("Duration", trimmedDuration);
-                    handled = true;
-                }
-            } else if (providesTrait(parameterNode, NodeValueTrait.DURATION) || providesTrait(parameterNode, NodeValueTrait.NUMBER)) {
-                handled = true;
-            }
-        }
-
-        if (parameterNode.getType() == NodeType.LIST_ITEM) {
-            Entity resolved = resolveListItemEntity(parameterNode, runtimeState.runtimeParameterData, future);
-            if (resolved != null) {
-                handled = true;
-            } else if (future != null && future.isDone()) {
-                return ParameterHandlingResult.COMPLETE;
-            }
-        }
-
-        if (usages.contains(ParameterUsage.POSITION)) {
-            Optional<Vec3> targetVec = resolvePositionTarget(parameterNode, runtimeState.runtimeParameterData, future);
-            if (targetVec.isPresent()) {
-                handled = true;
-                runtimeState.runtimeParameterData.targetVector = targetVec.get();
-                applyVectorToCoordinateParameters(targetVec.get());
-            } else if (future != null && future.isDone()) {
-                return ParameterHandlingResult.COMPLETE;
-            }
-        }
-
-        if (usages.contains(ParameterUsage.LOOK_ORIENTATION)) {
-            boolean oriented = resolveLookOrientation(parameterNode, runtimeState.runtimeParameterData, future);
-            if (oriented) {
-                handled = true;
-            } else if (future != null && future.isDone()) {
-                return ParameterHandlingResult.COMPLETE;
-            }
-        }
-
-        if (!handled && type == NodeType.MOVE_ITEM && providesTrait(parameterNode, NodeValueTrait.ITEM)) {
-            if (resolveMoveItemSlotFromItemParameter(parameterNode, slotIndex, future)) {
-                handled = true;
-            } else {
-                return ParameterHandlingResult.COMPLETE;
-            }
-        }
-        if (!handled && type == NodeType.MOVE_ITEM && providesTrait(parameterNode, NodeValueTrait.GUI)) {
-            handled = true;
-        }
-        if (!handled && isDropNodeType()
-            && (providesTrait(parameterNode, NodeValueTrait.ITEM)
-                || providesTrait(parameterNode, NodeValueTrait.INVENTORY_SLOT))) {
-            if (resolveDropParameterSelection(parameterNode, future)) {
-                handled = true;
-            } else {
-                return ParameterHandlingResult.COMPLETE;
-            }
-        }
-        if (!handled && type == NodeType.USE) {
-            if (resolveUseParameterSelection(parameterNode, future)) {
-                handled = true;
-            } else {
-                return ParameterHandlingResult.COMPLETE;
-            }
-        }
-        // Special case: block parameters in slot 0 of PLACE/PLACE_HAND nodes are valid
-        // even when usages is empty (they provide block type, not position)
-        if (!handled && usages.isEmpty() && (type == NodeType.PLACE || type == NodeType.PLACE_HAND)) {
-            NodeType parameterType = parameterNode.getType();
-            if (parameterType == NodeType.PARAM_BLOCK
-                && parameterNode.attachments.getParentParameterSlotIndex() == 0) {
-                handled = true;
-            }
-            if (parameterType == NodeType.PARAM_INVENTORY_SLOT && parameterNode.attachments.getParentParameterSlotIndex() == 0) {
-                handled = true;
-            }
-        }
-        if (!handled && type == NodeType.PRESS_KEY) {
-            if (providesTrait(parameterNode, NodeValueTrait.KEY)) {
-                String buttonValue = getParameterString(parameterNode, "Key");
-                if (buttonValue != null && !buttonValue.isBlank()) {
-                    runtimeState.runtimeParameterData.resolvedButtonValue = buttonValue;
-                    runtimeState.runtimeParameterData.resolvedButtonIsMouse = false;
-                }
-                handled = true;
-            } else if (providesTrait(parameterNode, NodeValueTrait.MOUSE_BUTTON)) {
-                String buttonValue = getParameterString(parameterNode, "MouseButton");
-                if (buttonValue != null && !buttonValue.isBlank()) {
-                    runtimeState.runtimeParameterData.resolvedButtonValue = buttonValue;
-                    runtimeState.runtimeParameterData.resolvedButtonIsMouse = true;
-                }
-                handled = true;
-            }
-        }
-        if (!handled && type == NodeType.BREAK && providesTrait(parameterNode, NodeValueTrait.BLOCK)) {
-            handled = true;
-        }
-
-        if (!handled && (type == NodeType.GOTO || type == NodeType.TRAVEL)) {
-            NodeType parameterType = parameterNode.getType();
-            if (parameterType == NodeType.PARAM_ENTITY
-                || parameterType == NodeType.PARAM_PLAYER
-                || parameterType == NodeType.PARAM_ITEM
-                || parameterType == NodeType.PARAM_BLOCK) {
-                return ParameterHandlingResult.CONTINUE;
-            }
-        }
-
-        if (!handled) {
-            if (future != null && !future.isDone()) {
-                sendIncompatibleParameterMessage(parameterNode);
-                future.complete(null);
-            }
-            return ParameterHandlingResult.COMPLETE;
-        }
-
-        return ParameterHandlingResult.CONTINUE;
+        return runtimeParameterResolver.preprocessParameterSlot(
+            slotIndex, usages, future, resetRuntimeData);
     }
 
     Node resolveVariableValueNode(Node variableNode, int slotIndex, CompletableFuture<Void> future) {
-        if (variableNode == null) {
-            return null;
-        }
-        String variableName = getParameterString(variableNode, "Variable");
-        if (variableName == null || variableName.trim().isEmpty()) {
-            sendVariableError(tr("pathmind.error.variableNameEmpty"), future);
-            return null;
-        }
-
-        ExecutionManager manager = ExecutionManager.getInstance();
-        Node startNode = resolveExecutionStartNode();
-        RuntimeValueScope scope = variableNode.getRuntimeValueScope();
-        ExecutionManager.RuntimeVariable runtimeVariable = manager.getRuntimeVariable(startNode, variableName.trim(), scope);
-        if (runtimeVariable == null) {
-            sendVariableError(tr("pathmind.error.variableNotSet", variableName.trim()), future);
-            return null;
-        }
-
-        NodeType valueType = runtimeVariable.getType();
-        if (valueType == null) {
-            sendVariableError(tr("pathmind.error.variableNoValue", variableName.trim()), future);
-            return null;
-        }
-
-        Node snapshot = createRuntimeVariableSnapshot(runtimeVariable);
-        if (type == NodeType.LOOK) {
-            snapshot = createLookVariableSnapshot(snapshot, runtimeVariable);
-        }
-        if (snapshot == null) {
-            sendVariableError(tr("pathmind.error.variableNoValue", variableName.trim()), future);
-            return null;
-        }
-
-        boolean variableSupported = isParameterSupported(snapshot, slotIndex);
-        if (!variableSupported
-            && (type == NodeType.OPERATOR_GREATER || type == NodeType.OPERATOR_LESS)) {
-            variableSupported = resolveComparableNumber(snapshot).isPresent();
-        }
-
-        if (!variableSupported) {
-            sendVariableError(tr("pathmind.error.variableUnsupportedForNode", variableName.trim(), type.getDisplayName()), future);
-            return null;
-        }
-
-        return snapshot;
-    }
-
-    private Node createLookVariableSnapshot(Node snapshot, ExecutionManager.RuntimeVariable runtimeVariable) {
-        if (snapshot == null || runtimeVariable == null || runtimeVariable.getType() != NodeType.PARAM_AMOUNT) {
-            return snapshot;
-        }
-        Map<String, String> values = runtimeVariable.getValues();
-        if (values == null || values.isEmpty()) {
-            return snapshot;
-        }
-        String source = values.get(LOOK_DIRECTION_SOURCE_KEY);
-        String axis = values.get(LOOK_DIRECTION_AXIS_KEY);
-        if (!LOOK_DIRECTION_SOURCE_VALUE.equals(source) || axis == null || axis.isEmpty()) {
-            return snapshot;
-        }
-
-        String amount = values.get("Amount");
-        if (amount == null || amount.isEmpty()) {
-            amount = values.get(normalizeParameterKey("Amount"));
-        }
-        if (amount == null || amount.isEmpty()) {
-            return snapshot;
-        }
-
-        Node rotationSnapshot = new Node(NodeType.PARAM_ROTATION, 0, 0);
-        rotationSnapshot.setSocketsHidden(true);
-        if ("Yaw".equalsIgnoreCase(axis)) {
-            rotationSnapshot.setParameterValueAndPropagate("Yaw", amount);
-            rotationSnapshot.setParameterValueAndPropagate("Pitch", "");
-        } else if ("Pitch".equalsIgnoreCase(axis)) {
-            rotationSnapshot.setParameterValueAndPropagate("Yaw", "");
-            rotationSnapshot.setParameterValueAndPropagate("Pitch", amount);
-        } else {
-            return snapshot;
-        }
-        return rotationSnapshot;
+        return runtimeParameterResolver.resolveVariableValueNode(
+            variableNode, slotIndex, future);
     }
 
     private Map<String, String> remapSingleAxisLookValues(Map<String, String> values, Node parameterNode) {
-        if (values == null || values.isEmpty() || parameterNode == null) {
-            return values;
-        }
-        String axis = null;
-        if (parameterNode.getType() == NodeType.SENSOR_LOOK_DIRECTION && parameterNode.isSensorLookSingleAxisMode()) {
-            axis = parameterNode.getSensorLookComponentKey();
-        } else {
-            String source = values.get(LOOK_DIRECTION_SOURCE_KEY);
-            if (LOOK_DIRECTION_SOURCE_VALUE.equals(source)) {
-                axis = values.get(LOOK_DIRECTION_AXIS_KEY);
-            }
-        }
-        if (axis == null || axis.isEmpty()) {
-            return values;
-        }
-
-        String amount = values.get("Amount");
-        if (amount == null || amount.isEmpty()) {
-            amount = values.get(normalizeParameterKey("Amount"));
-        }
-        if (amount == null || amount.isEmpty()) {
-            return values;
-        }
-
-        Map<String, String> remapped = new HashMap<>(values);
-        if ("Yaw".equalsIgnoreCase(axis)) {
-            remapped.put("Yaw", amount);
-            remapped.put(normalizeParameterKey("Yaw"), amount);
-            remapped.remove("Pitch");
-            remapped.remove(normalizeParameterKey("Pitch"));
-        } else if ("Pitch".equalsIgnoreCase(axis)) {
-            remapped.put("Pitch", amount);
-            remapped.put(normalizeParameterKey("Pitch"), amount);
-            remapped.remove("Yaw");
-            remapped.remove(normalizeParameterKey("Yaw"));
-        } else {
-            return values;
-        }
-        return remapped;
-    }
-
-    private void sendVariableError(String message, CompletableFuture<Void> future) {
-        NodeExecutionCompletion.failWithCurrentClient(this, future, message);
+        return runtimeParameterResolver.remapSingleAxisLookValues(values, parameterNode);
     }
 
     Optional<Vec3> resolvePositionTarget(Node parameterNode, RuntimeParameterData data, CompletableFuture<Void> future) {
@@ -4648,7 +4305,7 @@ public class Node {
                 || providesTrait(parameterNode, NodeValueTrait.PLAYER));
     }
 
-    private void applyVectorToCoordinateParameters(Vec3 targetVec) {
+    void applyVectorToCoordinateParameters(Vec3 targetVec) {
         if (targetVec == null) {
             return;
         }
@@ -4681,7 +4338,7 @@ public class Node {
         return true;
     }
 
-    private boolean resolveLookOrientation(Node parameterNode, RuntimeParameterData data, CompletableFuture<Void> future) {
+    boolean resolveLookOrientation(Node parameterNode, RuntimeParameterData data, CompletableFuture<Void> future) {
         net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
         if (client == null || client.player == null) {
             return false;
@@ -5024,7 +4681,7 @@ public class Node {
         }
     }
 
-    private boolean reportEmptyParametersForNode(Node target, CompletableFuture<Void> future) {
+    boolean reportEmptyParametersForNode(Node target, CompletableFuture<Void> future) {
         if (target == null) {
             return true;
         }

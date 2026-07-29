@@ -17,15 +17,15 @@ val commonSourceFamily = rootProject.extra["commonSourceFamily"] as String
 val packagingGeneration = rootProject.extra["packagingGeneration"] as String
 val canonicalMojangVersion = rootProject.extra["canonicalMojangVersion"] as String
 val canonicalMappingsRevision = rootProject.extra["canonicalMappingsRevision"] as String
-val stonecutterMarketplaceNode = when (commonSourceFamily) {
+val stonecutterCompatibilityNode = when (commonSourceFamily) {
     "mc-1.21.0-1.21.8" -> "1.21"
     "mc-1.21.9-1.21.10" -> "1.21.10"
     else -> null
 }
-val prepareStonecutterMarketplaceSources = stonecutterMarketplaceNode?.let { node ->
+val prepareStonecutterCompatibilitySources = stonecutterCompatibilityNode?.let { node ->
     val generatedStonecutterDirectory =
         layout.projectDirectory.dir("versions/$node/build/generated/stonecutter/stonecutter/java")
-    val generateStonecutterSources = tasks.register<Exec>("generateStonecutterMarketplaceSources") {
+    val generateStonecutterSources = tasks.register<Exec>("generateStonecutterCompatibilitySources") {
         inputs.dir(layout.projectDirectory.dir("src/stonecutter/java"))
         inputs.files(
             layout.projectDirectory.file("settings.gradle.kts"),
@@ -43,16 +43,17 @@ val prepareStonecutterMarketplaceSources = stonecutterMarketplaceNode?.let { nod
             "--no-daemon"
         )
     }
-    tasks.register<Sync>("prepareStonecutterMarketplaceSources") {
+    tasks.register<Sync>("prepareStonecutterCompatibilitySources") {
         dependsOn(generateStonecutterSources)
         from(generatedStonecutterDirectory)
         include(
             "com/pathmind/screen/PathmindMarketplaceGraphPreviewRenderer.java",
             "com/pathmind/screen/PathmindMarketplacePopupController.java",
             "com/pathmind/screen/PathmindMarketplacePreviewLoader.java",
-            "com/pathmind/screen/PathmindMarketplaceScreen.java"
+            "com/pathmind/screen/PathmindMarketplaceScreen.java",
+            "com/pathmind/screen/PathmindSettingsPopupController.java"
         )
-        into(layout.buildDirectory.dir("generated/sources/stonecutterMarketplace/main/java"))
+        into(layout.buildDirectory.dir("generated/sources/stonecutterCompatibility/main/java"))
     }
 }
 dependencies {
@@ -93,11 +94,11 @@ sourceSets {
             when {
                 commonSourceFamily == "mc-1.21.0-1.21.8" -> {
                     srcDir("src/compat/mc-1.21.0-1.21.8/java")
-                    srcDir(requireNotNull(prepareStonecutterMarketplaceSources))
+                    srcDir(requireNotNull(prepareStonecutterCompatibilitySources))
                 }
                 commonSourceFamily == "mc-1.21.9-1.21.10" -> {
                     srcDir("src/compat/mc-1.21.9-1.21.10/java")
-                    srcDir(requireNotNull(prepareStonecutterMarketplaceSources))
+                    srcDir(requireNotNull(prepareStonecutterCompatibilitySources))
                 }
                 commonSourceFamily == "mc-1.21.11" -> {
                     srcDir("src/stonecutter/java")

@@ -1,6 +1,6 @@
 package com.pathmind.screen;
 
-// Canonical settings UI shared by the default and 26.x Stonecutter proof targets.
+// Canonical settings UI shared by every supported Stonecutter target.
 
 import static com.pathmind.screen.PathmindVisualEditorScreen.*;
 
@@ -120,6 +120,28 @@ final class PathmindSettingsPopupController {
         context.hLine(sectionDividerX, popupX + scaledWidth - 16, lowDetailDividerY,
             screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.BORDER_SUBTLE));
 
+        //? if MC_1_21_10 {
+        /*int footerDividerY = lowDetailDividerY + 22;
+        int tooltipRowCenterY = (lowDetailDividerY + footerDividerY) / 2;
+        renderToggleRow(context, mouseX, mouseY, contentX, tooltipRowCenterY, Component.translatable("pathmind.settings.showTooltips").getString(), screen.showWorkspaceTooltips, popupX, scaledWidth);
+        context.hLine(sectionDividerX, popupX + scaledWidth - 16, footerDividerY,
+            screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.BORDER_SUBTLE));
+
+        int chatDividerY = footerDividerY + 22;
+        int chatRowCenterY = (footerDividerY + chatDividerY) / 2;
+        renderToggleRow(context, mouseX, mouseY, contentX, chatRowCenterY, Component.translatable("pathmind.settings.showChatErrors").getString(), screen.showChatErrors, popupX, scaledWidth);
+        context.hLine(sectionDividerX, popupX + scaledWidth - 16, chatDividerY,
+            screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.BORDER_SUBTLE));
+
+        int overlayDividerY = chatDividerY + 22;
+        int overlayRowCenterY = (chatDividerY + overlayDividerY) / 2;
+        renderToggleRow(context, mouseX, mouseY, contentX, overlayRowCenterY, Component.translatable("pathmind.settings.showHudOverlays").getString(), screen.showHudOverlays, popupX, scaledWidth);
+        context.hLine(sectionDividerX, popupX + scaledWidth - 16, overlayDividerY,
+            screen.getPopupAnimatedColor(screen.settingsPopupAnimation, UITheme.BORDER_SUBTLE));
+
+        int profilerDividerY = overlayDividerY + 22;
+        int profilerRowCenterY = (overlayDividerY + profilerDividerY) / 2;*/
+        //?} else {
         int footerDividerY = lowDetailDividerY + 22;
         int tooltipRowCenterY = (lowDetailDividerY + footerDividerY) / 2;
         renderToggleRow(context, mouseX, mouseY, contentX, tooltipRowCenterY, Component.translatable("pathmind.settings.renderConnectionsOnTop").getString(), screen.renderConnectionsOnTop, popupX, scaledWidth);
@@ -146,6 +168,7 @@ final class PathmindSettingsPopupController {
 
         int profilerDividerY = hudDividerY + 22;
         int profilerRowCenterY = (hudDividerY + profilerDividerY) / 2;
+        //?}
         renderToggleRow(context, mouseX, mouseY, contentX, profilerRowCenterY, Component.translatable("pathmind.settings.showProfilerOverlay").getString(),
             screen.currentSettings != null && Boolean.TRUE.equals(screen.currentSettings.showProfilerOverlay), popupX, scaledWidth);
         context.hLine(sectionDividerX, popupX + scaledWidth - 16, profilerDividerY,
@@ -274,6 +297,9 @@ final class PathmindSettingsPopupController {
             screen.settingsPopupAnimation
         );
 
+        //? if PRE_1_21_11 {
+        /*// Replay tutorial controls were introduced with the 1.21.11 editor.*/
+        //?} else {
         int[] replayTutorialButtonBounds = getSettingsReplayTutorialButtonBounds(popupX, popupY, scaledWidth, scaledHeight, contentX, nodeSettingsContentY);
         int replayTutorialRowCenterY = getSettingsReplayTutorialRowCenterY(popupX, popupY, scaledWidth, scaledHeight, contentX, nodeSettingsContentY);
         context.hLine(sectionDividerX, popupX + scaledWidth - 16,
@@ -293,6 +319,7 @@ final class PathmindSettingsPopupController {
             screen.getAccentColor(),
             screen.settingsPopupAnimation
         );
+        //?}
 
         PathmindPopupLayout.Rect closeButton = PathmindPopupLayout.settingsCloseButton(popupX, popupY, scaledWidth, scaledHeight, 90, 20);
         context.disableScissor();
@@ -813,6 +840,9 @@ final class PathmindSettingsPopupController {
         return clearCacheButtonBounds[1] + clearCacheButtonBounds[3] + 10;
     }
 
+    //? if PRE_1_21_11 {
+    /*// Replay tutorial controls were introduced with the 1.21.11 editor.*/
+    //?} else {
     int[] getSettingsReplayTutorialButtonBounds(int popupX, int popupY, int popupWidth, int popupHeight, int contentX, int nodeSettingsContentY) {
         int dividerY = getSettingsReplayTutorialDividerY(popupX, popupY, popupWidth, popupHeight, contentX, nodeSettingsContentY);
         int buttonY = dividerY + 8;
@@ -829,6 +859,7 @@ final class PathmindSettingsPopupController {
         int[] restoreExamplesButtonBounds = getSettingsRestoreExamplesButtonBounds(popupX, popupY, popupWidth, popupHeight, contentX, nodeSettingsContentY);
         return restoreExamplesButtonBounds[1] + restoreExamplesButtonBounds[3] + 10;
     }
+    //?}
 
     void restoreExamplePresets() {
         OnboardingPresetManager.RestoreResult result = OnboardingPresetManager.restoreExamplePresets();
@@ -1133,8 +1164,13 @@ final class PathmindSettingsPopupController {
         int contentX = popupX + 20;
         int nodeSettingsBodyY = getSettingsNodeSectionBodyY(popupY);
         int nodeSettingsContentY = getSettingsNodeSectionContentY(nodeSettingsBodyY, popupWidth - 40);
+        //? if PRE_1_21_11 {
+        /*int[] restoreExamplesButtonBounds = getSettingsRestoreExamplesButtonBounds(popupX, popupY, popupWidth, popupHeight, contentX, nodeSettingsContentY);
+        int contentBottom = restoreExamplesButtonBounds[1] + restoreExamplesButtonBounds[3];*/
+        //?} else {
         int[] replayTutorialButtonBounds = getSettingsReplayTutorialButtonBounds(popupX, popupY, popupWidth, popupHeight, contentX, nodeSettingsContentY);
         int contentBottom = replayTutorialButtonBounds[1] + replayTutorialButtonBounds[3];
+        //?}
         return Math.max(0, contentBottom - bodyBottom + 24);
     }
 

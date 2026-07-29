@@ -29,6 +29,9 @@ import com.pathmind.util.ScrollbarHelper;
 import com.pathmind.util.TextureCompatibilityBridge;
 import com.pathmind.util.TextRenderUtil;
 import com.pathmind.util.LoaderMetadata;
+//? if MC_1_21_8 {
+/*import com.pathmind.util.MatrixStackBridge;*/
+//?}
 import org.lwjgl.glfw.GLFW;
 
 import java.io.InputStream;
@@ -56,9 +59,11 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
+//? if !MC_1_21_8 {
 import net.minecraft.client.input.CharacterEvent;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
+//?}
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 
@@ -118,6 +123,11 @@ public class PathmindMarketplaceScreen extends Screen {
     int popupScrollOffset = 0;
     private boolean popupScrollDragging = false;
     private int popupScrollDragOffset = 0;
+    //? if MC_1_21_8 {
+    /*private int publishPopupScrollOffset = 0;
+    private boolean publishPopupScrollDragging = false;
+    private int publishPopupScrollDragOffset = 0;*/
+    //?}
     final PopupAnimationHandler presetPopupAnimation = new PopupAnimationHandler();
     final PopupAnimationHandler accountPopupAnimation = new PopupAnimationHandler();
     final PopupAnimationHandler publishPopupAnimation = new PopupAnimationHandler();
@@ -299,6 +309,40 @@ public class PathmindMarketplaceScreen extends Screen {
         if (basePopupVisible) {
             DrawContextBridge.startNewRootLayer(context);
         }
+        //? if MC_1_21_8 {
+        /*Object popupMatrices = context.pose();
+        if (basePopupVisible) {
+            MatrixStackBridge.push(popupMatrices);
+            MatrixStackBridge.translateZ(popupMatrices, 450.0f);
+        }
+        try {
+            if (popupPreset != null || presetPopupAnimation.isVisible()) {
+                popupController.renderPresetPopup(context, popupMouseX, popupMouseY, layout);
+            }
+            if (accountPopupOpen || accountPopupAnimation.isVisible()) {
+                popupController.renderAccountPopup(context, popupMouseX, popupMouseY, layout);
+            }
+            if (publishPopupOpen || publishPopupAnimation.isVisible()) {
+                popupController.renderPublishPopup(context, popupMouseX, popupMouseY, layout);
+            }
+        } finally {
+            if (basePopupVisible) {
+                DrawContextBridge.flush(context);
+                MatrixStackBridge.pop(popupMatrices);
+            }
+        }
+        if (confirmPopupVisible) {
+            DrawContextBridge.startNewRootLayer(context);
+            MatrixStackBridge.push(popupMatrices);
+            MatrixStackBridge.translateZ(popupMatrices, 900.0f);
+            try {
+                popupController.renderConfirmPopup(context, popupMouseX, popupMouseY, layout);
+            } finally {
+                DrawContextBridge.flush(context);
+                MatrixStackBridge.pop(popupMatrices);
+            }
+        }*/
+        //?} else {
         if (popupPreset != null || presetPopupAnimation.isVisible()) {
             popupController.renderPresetPopup(context, popupMouseX, popupMouseY, layout);
         }
@@ -312,6 +356,7 @@ public class PathmindMarketplaceScreen extends Screen {
             DrawContextBridge.startNewRootLayer(context);
             popupController.renderConfirmPopup(context, popupMouseX, popupMouseY, layout);
         }
+        //?}
         DrawContextBridge.startNewRootLayer(context);
         PathmindCursor.renderDefault(context, popupMouseX, popupMouseY);
     }
@@ -359,7 +404,11 @@ public class PathmindMarketplaceScreen extends Screen {
         drawIconButton(context, x, y, buttonWidth, SORT_BUTTON_HEIGHT, hovered, authBusy);
         String accountLabel = getAccountButtonLabel();
         Identifier avatarTexture = getOrRequestAvatarTexture();
-        if (avatarTexture != null && authSession != null) {
+        boolean showAvatar = avatarTexture != null && authSession != null;
+        //? if MC_1_21_8 {
+        /*showAvatar = showAvatar && GuiTextureRenderer.isAvailable();*/
+        //?}
+        if (showAvatar) {
             int labelColor = authBusy ? UITheme.TEXT_TERTIARY : hovered ? getAccentColor() : UITheme.TEXT_PRIMARY;
             int maxLabelWidth = Math.max(0, buttonWidth - SORT_BUTTON_HEIGHT - 10);
             String displayLabel = TextRenderUtil.trimWithEllipsis(this.font, accountLabel, maxLabelWidth);
@@ -402,7 +451,7 @@ public class PathmindMarketplaceScreen extends Screen {
             int messageColor = loading ? UITheme.TEXT_PRIMARY : UITheme.TEXT_TERTIARY;
             context.drawCenteredString(this.font, Component.literal(message),
                 layout.bodyX + layout.bodyWidth / 2, bodyY + bodyHeight / 2, messageColor);
-            context.disableScissor();
+            disableGalleryScissor(context);
             renderFooter(context, mouseX, mouseY, layout);
             return;
         }
@@ -422,8 +471,15 @@ public class PathmindMarketplaceScreen extends Screen {
             }
         }
 
-        context.disableScissor();
+        disableGalleryScissor(context);
         renderFooter(context, mouseX, mouseY, layout);
+    }
+
+    private void disableGalleryScissor(GuiGraphics context) {
+        //? if MC_1_21_8 {
+        /*DrawContextBridge.flush(context);*/
+        //?}
+        context.disableScissor();
     }
 
     private void renderFilterControls(GuiGraphics context, int mouseX, int mouseY, Layout layout) {
@@ -713,10 +769,17 @@ public class PathmindMarketplaceScreen extends Screen {
         context.drawString(this.font, Component.literal(">"), cursorX, centerY, rightArrowColor);
     }
 
+    //? if MC_1_21_8 {
+    /*Rect getPublishPopupVisibilityToggleRect(int popupX, int popupWidth, int visibilityLabelY) {
+        return new Rect(popupX + popupWidth - publishVisibilityToggle.getWidth() - 24, visibilityLabelY - 1,
+            publishVisibilityToggle.getWidth(), publishVisibilityToggle.getHeight());
+    }*/
+    //?} else {
     Rect getPublishPopupVisibilityToggleRect(int popupX, int popupY, int popupWidth) {
         return new Rect(popupX + popupWidth - publishVisibilityToggle.getWidth() - 24, popupY + 188,
             publishVisibilityToggle.getWidth(), publishVisibilityToggle.getHeight());
     }
+    //?}
 
     int drawPopupEditableField(GuiGraphics context, int mouseX, int mouseY, int x, int y, int width, String label, EditBox field) {
         return PathmindPopupRenderer.drawPopupTextFieldRow(context, this.font, field, mouseX, mouseY, x, y, width,
@@ -729,13 +792,24 @@ public class PathmindMarketplaceScreen extends Screen {
         PathmindPopupRenderer.drawPopupFieldFrame(context, x, y, width, height, hovered, focused, getAccentColor(), presetPopupAnimation);
     }
 
+    //? if MC_1_21_8 {
+    /*@Override
+    public boolean mouseClicked(double mouseXDouble, double mouseYDouble, int button) {
+        int mouseX = (int) mouseXDouble;
+        int mouseY = (int) mouseYDouble;
+        *///?} else {
     @Override
     public boolean mouseClicked(MouseButtonEvent click, boolean inBounds) {
         int mouseX = (int) click.x();
         int mouseY = (int) click.y();
         int button = click.button();
+        //?}
         if (button != 0) {
+            //? if MC_1_21_8 {
+            /*return super.mouseClicked(mouseXDouble, mouseYDouble, button);*/
+            //?} else {
             return super.mouseClicked(click, inBounds);
+            //?}
         }
 
         Layout layout = getLayout();
@@ -808,6 +882,9 @@ public class PathmindMarketplaceScreen extends Screen {
             int popupY = bounds[1];
             int popupWidth = bounds[2];
             int popupHeight = bounds[3];
+            //? if MC_1_21_8 {
+            /*ScrollbarHelper.Metrics publishScrollMetrics = getPublishPopupScrollMetrics(popupX, popupY, popupWidth, popupHeight);*/
+            //?}
             int cancelButtonX = popupX + (publishPopup.cancelButtonX - publishPopup.x);
             int authButtonX = popupX + (publishPopup.authButtonX - publishPopup.x);
             int submitButtonX = popupX + (publishPopup.submitButtonX - publishPopup.x);
@@ -815,23 +892,45 @@ public class PathmindMarketplaceScreen extends Screen {
 
             int fieldX = popupX + 12;
             int fieldWidth = popupWidth - 24;
+            //? if MC_1_21_8 {
+            /*int contentY = popupY + 40 - publishPopupScrollOffset;
+            int nameFieldY = contentY + 24;*/
+            //?} else {
             int nameFieldY = popupY + 64;
+            //?}
             int descriptionFieldY = nameFieldY + 39;
             int tagsFieldY = descriptionFieldY + 39;
+            //? if MC_1_21_8 {
+            /*int visibilityLabelY = contentY + 149;
+            Rect publishVisibilityToggleRect = getPublishPopupVisibilityToggleRect(popupX, popupWidth, visibilityLabelY);*/
+            //?} else {
             Rect publishVisibilityToggleRect = getPublishPopupVisibilityToggleRect(popupX, popupY, popupWidth);
+            //?}
 
             boolean clickedField = false;
             if (publishNameField != null && isPointInRect(mouseX, mouseY, fieldX, nameFieldY, fieldWidth, 18)) {
                 focusPublishField(publishNameField);
+                //? if MC_1_21_8 {
+                /*publishNameField.mouseClicked(mouseXDouble, mouseYDouble, button);*/
+                //?} else {
                 publishNameField.mouseClicked(click, inBounds);
+                //?}
                 clickedField = true;
             } else if (publishDescriptionField != null && isPointInRect(mouseX, mouseY, fieldX, descriptionFieldY, fieldWidth, 18)) {
                 focusPublishField(publishDescriptionField);
+                //? if MC_1_21_8 {
+                /*publishDescriptionField.mouseClicked(mouseXDouble, mouseYDouble, button);*/
+                //?} else {
                 publishDescriptionField.mouseClicked(click, inBounds);
+                //?}
                 clickedField = true;
             } else if (publishTagsField != null && isPointInRect(mouseX, mouseY, fieldX, tagsFieldY, fieldWidth, 18)) {
                 focusPublishField(publishTagsField);
+                //? if MC_1_21_8 {
+                /*publishTagsField.mouseClicked(mouseXDouble, mouseYDouble, button);*/
+                //?} else {
                 publishTagsField.mouseClicked(click, inBounds);
+                //?}
                 clickedField = true;
             } else if (isPointInRect(mouseX, mouseY, publishVisibilityToggleRect.x, publishVisibilityToggleRect.y, publishVisibilityToggleRect.width, publishVisibilityToggleRect.height)) {
                 publishVisibilityToggle.mouseClicked(mouseX, mouseY);
@@ -843,6 +942,15 @@ public class PathmindMarketplaceScreen extends Screen {
             if (clickedField) {
                 return true;
             }
+            //? if MC_1_21_8 {
+            /*if (publishScrollMetrics.maxScroll() > 0
+                && isPointInRect(mouseX, mouseY, publishScrollMetrics.trackLeft() - 3, publishScrollMetrics.trackTop(),
+                    publishScrollMetrics.trackWidth() + 6, publishScrollMetrics.viewportHeight())) {
+                publishPopupScrollDragging = true;
+                publishPopupScrollDragOffset = mouseY - publishScrollMetrics.thumbTop();
+                return true;
+            }*/
+            //?}
             if (isPointInRect(mouseX, mouseY, cancelButtonX, buttonY, publishPopup.buttonWidth, publishPopup.buttonHeight)) {
                 closePublishPopup(editorPopupMode && popupPreset == null && !presetPopupAnimation.isVisible());
                 return true;
@@ -930,15 +1038,27 @@ public class PathmindMarketplaceScreen extends Screen {
                 boolean clickedField = false;
                 if (publishNameField != null && isPointInRect(mouseX, mouseY, fieldX, nameFieldY, fieldWidth, 18)) {
                     focusPublishField(publishNameField);
+                    //? if MC_1_21_8 {
+                    /*publishNameField.mouseClicked(mouseXDouble, mouseYDouble, button);*/
+                    //?} else {
                     publishNameField.mouseClicked(click, inBounds);
+                    //?}
                     clickedField = true;
                 } else if (publishTagsField != null && isPointInRect(mouseX, mouseY, fieldX, tagsFieldY, fieldWidth, 18)) {
                     focusPublishField(publishTagsField);
+                    //? if MC_1_21_8 {
+                    /*publishTagsField.mouseClicked(mouseXDouble, mouseYDouble, button);*/
+                    //?} else {
                     publishTagsField.mouseClicked(click, inBounds);
+                    //?}
                     clickedField = true;
                 } else if (publishDescriptionField != null && isPointInRect(mouseX, mouseY, fieldX + 8, descriptionFieldY, fieldWidth - 16, 18)) {
                     focusPublishField(publishDescriptionField);
+                    //? if MC_1_21_8 {
+                    /*publishDescriptionField.mouseClicked(mouseXDouble, mouseYDouble, button);*/
+                    //?} else {
                     publishDescriptionField.mouseClicked(click, inBounds);
+                    //?}
                     clickedField = true;
                 } else if (presetVisibilityToggle.contains(mouseX, mouseY)) {
                     presetVisibilityToggle.mouseClicked(mouseX, mouseY);
@@ -1068,7 +1188,11 @@ public class PathmindMarketplaceScreen extends Screen {
                 return true;
             }
             searchField.setFocused(true);
+            //? if MC_1_21_8 {
+            /*searchField.mouseClicked(mouseXDouble, mouseYDouble, button);*/
+            //?} else {
             searchField.mouseClicked(click, inBounds);
+            //?}
             return true;
         }
         if (searchField != null) {
@@ -1217,17 +1341,48 @@ public class PathmindMarketplaceScreen extends Screen {
             }
         }
 
+        //? if MC_1_21_8 {
+        /*return super.mouseClicked(mouseXDouble, mouseYDouble, button);*/
+        //?} else {
         return super.mouseClicked(click, inBounds);
+        //?}
     }
 
+    //? if MC_1_21_8 {
+    /*@Override
+    public boolean mouseDragged(double mouseXDouble, double mouseYDouble, int button, double deltaX, double deltaY) {
+        *///?} else {
     @Override
     public boolean mouseDragged(MouseButtonEvent click, double deltaX, double deltaY) {
+        //?}
         if (presetPopupClosing) {
             return true;
         }
+        //? if MC_1_21_8 {
+        /*if (publishPopupScrollDragging && publishPopupOpen) {
+            Layout layout = getLayout();
+            PublishPopupLayout popup = getPublishPopupLayout(layout);
+            int[] bounds = publishPopupAnimation.getScaledPopupBounds(this.width, this.height, popup.width, popup.height);
+            ScrollbarHelper.Metrics scrollMetrics = getPublishPopupScrollMetrics(bounds[0], bounds[1], bounds[2], bounds[3]);
+            if (scrollMetrics.maxScroll() <= 0) {
+                return true;
+            }
+            int desiredThumbY = (int) mouseYDouble - publishPopupScrollDragOffset;
+            int minThumbY = scrollMetrics.trackTop();
+            int maxThumbY = scrollMetrics.trackTop() + Math.max(0, scrollMetrics.viewportHeight() - scrollMetrics.thumbHeight());
+            int clampedThumbY = Math.max(minThumbY, Math.min(maxThumbY, desiredThumbY));
+            publishPopupScrollOffset = ScrollbarHelper.scrollFromThumb(scrollMetrics, clampedThumbY);
+            return true;
+        }*/
+        //?}
         if (popupPreviewDragging && popupPreset != null) {
+            //? if MC_1_21_8 {
+            /*int currentX = (int) mouseXDouble;
+            int currentY = (int) mouseYDouble;*/
+            //?} else {
             int currentX = (int) click.x();
             int currentY = (int) click.y();
+            //?}
             popupPreviewPanX += currentX - popupPreviewDragLastX;
             popupPreviewPanY += currentY - popupPreviewDragLastY;
             popupPreviewDragLastX = currentX;
@@ -1242,18 +1397,31 @@ public class PathmindMarketplaceScreen extends Screen {
             if (scrollMetrics.maxScroll() <= 0) {
                 return true;
             }
+            //? if MC_1_21_8 {
+            /*int desiredThumbY = (int) mouseYDouble - popupScrollDragOffset;*/
+            //?} else {
             int desiredThumbY = (int) click.y() - popupScrollDragOffset;
+            //?}
             int minThumbY = scrollMetrics.trackTop();
             int maxThumbY = scrollMetrics.trackTop() + Math.max(0, scrollMetrics.viewportHeight() - scrollMetrics.thumbHeight());
             int clampedThumbY = Math.max(minThumbY, Math.min(maxThumbY, desiredThumbY));
             popupScrollOffset = ScrollbarHelper.scrollFromThumb(scrollMetrics, clampedThumbY);
             return true;
         }
+        //? if MC_1_21_8 {
+        /*return super.mouseDragged(mouseXDouble, mouseYDouble, button, deltaX, deltaY);*/
+        //?} else {
         return super.mouseDragged(click, deltaX, deltaY);
+        //?}
     }
 
+    //? if MC_1_21_8 {
+    /*@Override
+    public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        *///?} else {
     @Override
     public boolean mouseReleased(MouseButtonEvent click) {
+        //?}
         if (popupPreviewDragging) {
             popupPreviewDragging = false;
             return true;
@@ -1262,12 +1430,36 @@ public class PathmindMarketplaceScreen extends Screen {
             popupScrollDragging = false;
             return true;
         }
+        //? if MC_1_21_8 {
+        /*if (publishPopupScrollDragging) {
+            publishPopupScrollDragging = false;
+            return true;
+        }
+        return super.mouseReleased(mouseX, mouseY, button);*/
+        //?} else {
         return super.mouseReleased(click);
+        //?}
     }
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
         Layout layout = getLayout();
+        //? if MC_1_21_8 {
+        /*if (publishPopupOpen) {
+            PublishPopupLayout popup = getPublishPopupLayout(layout);
+            int[] bounds = publishPopupAnimation.getScaledPopupBounds(this.width, this.height, popup.width, popup.height);
+            ScrollbarHelper.Metrics scrollMetrics = getPublishPopupScrollMetrics(bounds[0], bounds[1], bounds[2], bounds[3]);
+            if (scrollMetrics.maxScroll() > 0
+                && isPointInRect((int) mouseX, (int) mouseY, bounds[0] + 8, scrollMetrics.trackTop(), bounds[2] - 16, scrollMetrics.viewportHeight())) {
+                int nextOffset = ScrollbarHelper.applyWheel(publishPopupScrollOffset, verticalAmount, 18, scrollMetrics.maxScroll());
+                if (nextOffset != publishPopupScrollOffset) {
+                    publishPopupScrollOffset = nextOffset;
+                    return true;
+                }
+            }
+            return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
+        }*/
+        //?}
         if (popupPreset != null || presetPopupAnimation.isVisible()) {
             if (popupPreset == null || presetPopupClosing) {
                 return true;
@@ -1343,13 +1535,19 @@ public class PathmindMarketplaceScreen extends Screen {
         super.removed();
     }
 
+    //? if MC_1_21_8 {
+    /*@Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        *///?} else {
     @Override
     public boolean keyPressed(KeyEvent input) {
+        int keyCode = input.key();
+        //?}
         if (pendingConfirmAction != null || confirmPopupAnimation.isVisible()) {
             if (pendingConfirmAction == null) {
                 return true;
             }
-            if (input.key() == GLFW.GLFW_KEY_ESCAPE) {
+            if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
                 closeConfirmPopup();
                 return true;
             }
@@ -1359,7 +1557,7 @@ public class PathmindMarketplaceScreen extends Screen {
             return true;
         }
         if (publishPopupOpen || popupMetadataEditing) {
-            if (input.key() == GLFW.GLFW_KEY_ESCAPE) {
+            if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
                 if (publishPopupOpen) {
                     closePublishPopup(editorPopupMode && popupPreset == null && !presetPopupAnimation.isVisible());
                 } else {
@@ -1367,61 +1565,113 @@ public class PathmindMarketplaceScreen extends Screen {
                 }
                 return true;
             }
-            if (publishNameField != null && publishNameField.isFocused() && publishNameField.keyPressed(input)) {
+            if (publishNameField != null && publishNameField.isFocused()
+                //? if MC_1_21_8 {
+                /*&& publishNameField.keyPressed(keyCode, scanCode, modifiers)) {*/
+                //?} else {
+                && publishNameField.keyPressed(input)) {
+                //?}
                 return true;
             }
-            if (publishDescriptionField != null && publishDescriptionField.isFocused() && publishDescriptionField.keyPressed(input)) {
+            if (publishDescriptionField != null && publishDescriptionField.isFocused()
+                //? if MC_1_21_8 {
+                /*&& publishDescriptionField.keyPressed(keyCode, scanCode, modifiers)) {*/
+                //?} else {
+                && publishDescriptionField.keyPressed(input)) {
+                //?}
                 return true;
             }
-            if (publishTagsField != null && publishTagsField.isFocused() && publishTagsField.keyPressed(input)) {
+            if (publishTagsField != null && publishTagsField.isFocused()
+                //? if MC_1_21_8 {
+                /*&& publishTagsField.keyPressed(keyCode, scanCode, modifiers)) {*/
+                //?} else {
+                && publishTagsField.keyPressed(input)) {
+                //?}
                 return true;
             }
-            if ((input.key() == GLFW.GLFW_KEY_ENTER || input.key() == GLFW.GLFW_KEY_KP_ENTER) && !publishBusy) {
+            if ((keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) && !publishBusy) {
                 startPublishSubmission();
                 return true;
             }
             return true;
         }
         if (sortDropdownOpen) {
-            if (input.key() == GLFW.GLFW_KEY_ESCAPE || input.key() == GLFW.GLFW_KEY_ENTER || input.key() == GLFW.GLFW_KEY_KP_ENTER) {
+            if (keyCode == GLFW.GLFW_KEY_ESCAPE || keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
                 sortDropdownOpen = false;
                 return true;
             }
         }
         if (searchField != null && searchField.isFocused()) {
-            if (input.key() == GLFW.GLFW_KEY_ESCAPE) {
+            if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
                 searchField.setFocused(false);
                 return true;
             }
+            //? if MC_1_21_8 {
+            /*if (searchField.keyPressed(keyCode, scanCode, modifiers)) {*/
+            //?} else {
             if (searchField.keyPressed(input)) {
+            //?}
                 return true;
             }
         }
-        if (input.key() == 256) { // ESC
+        if (keyCode == 256) { // ESC
             onClose();
             return true;
         }
+        //? if MC_1_21_8 {
+        /*return super.keyPressed(keyCode, scanCode, modifiers);*/
+        //?} else {
         return super.keyPressed(input);
+        //?}
     }
 
+    //? if MC_1_21_8 {
+    /*@Override
+    public boolean charTyped(char chr, int modifiers) {
+        *///?} else {
     @Override
     public boolean charTyped(CharacterEvent input) {
+        //?}
         if (publishPopupOpen || popupMetadataEditing) {
-            if (publishNameField != null && publishNameField.isFocused() && publishNameField.charTyped(input)) {
+            if (publishNameField != null && publishNameField.isFocused()
+                //? if MC_1_21_8 {
+                /*&& publishNameField.charTyped(chr, modifiers)) {*/
+                //?} else {
+                && publishNameField.charTyped(input)) {
+                //?}
                 return true;
             }
-            if (publishDescriptionField != null && publishDescriptionField.isFocused() && publishDescriptionField.charTyped(input)) {
+            if (publishDescriptionField != null && publishDescriptionField.isFocused()
+                //? if MC_1_21_8 {
+                /*&& publishDescriptionField.charTyped(chr, modifiers)) {*/
+                //?} else {
+                && publishDescriptionField.charTyped(input)) {
+                //?}
                 return true;
             }
-            if (publishTagsField != null && publishTagsField.isFocused() && publishTagsField.charTyped(input)) {
+            if (publishTagsField != null && publishTagsField.isFocused()
+                //? if MC_1_21_8 {
+                /*&& publishTagsField.charTyped(chr, modifiers)) {*/
+                //?} else {
+                && publishTagsField.charTyped(input)) {
+                //?}
                 return true;
             }
             return true;
         }
-        if (searchField != null && searchField.isFocused() && searchField.charTyped(input)) {
+        if (searchField != null && searchField.isFocused()
+            //? if MC_1_21_8 {
+            /*&& searchField.charTyped(chr, modifiers)) {*/
+            //?} else {
+            && searchField.charTyped(input)) {
+            //?}
             return true;
         }
+        //? if MC_1_21_8 {
+        /*return super.charTyped(chr, modifiers);*/
+        //?} else {
         return super.charTyped(input);
+        //?}
     }
 
     private void drawIconButton(GuiGraphics context, int x, int y, int width, int height, boolean hovered, boolean disabled) {
@@ -1577,6 +1827,33 @@ public class PathmindMarketplaceScreen extends Screen {
         int maxScroll = Math.max(0, contentHeightTotal - contentHeight);
         return ScrollbarHelper.metrics(popupX + popupWidth - 12, contentTop, 4, contentHeight, maxScroll, popupScrollOffset, 20);
     }
+
+    //? if MC_1_21_8 {
+    /*private int measurePublishPopupContentHeight(int textWidth, boolean includeStatusMessage) {
+        int height = 202;
+        if (includeStatusMessage) {
+            height += 16;
+        }
+        return height;
+    }
+
+    ScrollbarHelper.Metrics getPublishPopupScrollMetrics(int popupX, int popupY, int popupWidth, int popupHeight) {
+        int contentTop = popupY + 40;
+        int contentBottom = popupY + popupHeight - 52;
+        int contentHeight = Math.max(24, contentBottom - contentTop);
+        int contentHeightTotal = measurePublishPopupContentHeight(Math.max(32, popupWidth - 24), !publishStatusMessage.isEmpty());
+        int maxScroll = Math.max(0, contentHeightTotal - contentHeight);
+        return ScrollbarHelper.metrics(popupX + popupWidth - 12, contentTop, 4, contentHeight, maxScroll, publishPopupScrollOffset, 20);
+    }
+
+    int getPublishPopupScrollOffset() {
+        return publishPopupScrollOffset;
+    }
+
+    void setPublishPopupScrollOffset(int scrollOffset) {
+        publishPopupScrollOffset = scrollOffset;
+    }*/
+    //?}
 
     private List<String> wrapText(String text, int maxWidth, int maxLines) {
         String value = text == null || text.isBlank() ? "" : text.trim();
@@ -2015,6 +2292,11 @@ public class PathmindMarketplaceScreen extends Screen {
         publishSourcePresetName = fallback(presetName, PresetManager.getActivePreset());
         publishStatusMessage = "";
         publishStatusColor = UITheme.TEXT_SECONDARY;
+        //? if MC_1_21_8 {
+        /*publishPopupScrollOffset = 0;
+        publishPopupScrollDragging = false;
+        publishPopupScrollDragOffset = 0;*/
+        //?}
         if (publishNameField != null) {
             publishNameField.setValue(publishSourcePresetName);
         }
@@ -2119,6 +2401,11 @@ public class PathmindMarketplaceScreen extends Screen {
         publishSourcePresetName = "";
         publishStatusMessage = "";
         publishStatusColor = UITheme.TEXT_SECONDARY;
+        //? if MC_1_21_8 {
+        /*publishPopupScrollOffset = 0;
+        publishPopupScrollDragging = false;
+        publishPopupScrollDragOffset = 0;*/
+        //?}
         focusPublishField(null);
         publishPopupAnimation.hide();
         if (returnToParent && this.minecraft != null) {
@@ -3237,7 +3524,13 @@ public class PathmindMarketplaceScreen extends Screen {
         }
         String label = getAccountButtonLabel();
         int labelWidth = this.font == null ? 0 : this.font.width(label);
+        //? if MC_1_21_8 {
+        /*boolean showAvatar = getOrRequestAvatarTexture() != null && GuiTextureRenderer.isAvailable();
+        int contentWidth = showAvatar ? labelWidth + SORT_BUTTON_HEIGHT + 10 : labelWidth + 10;
+        return Math.max(ACCOUNT_BUTTON_MIN_WIDTH, contentWidth);*/
+        //?} else {
         return Math.max(ACCOUNT_BUTTON_MIN_WIDTH, labelWidth + SORT_BUTTON_HEIGHT + 10);
+        //?}
     }
 
     private String normalizeSearch(String value) {

@@ -195,8 +195,15 @@ final class PathmindMarketplacePopupController {
             int fieldY = descriptionTop + 18;
             screen.drawPopupFieldFrame(context, mouseX, mouseY, textX + 8, fieldY, textWidth - 16, 18, screen.publishDescriptionField);
             if (screen.publishDescriptionField != null) {
+                //? if MC_1_21_8 {
+                /*screen.publishDescriptionField.setPosition(textX + 14, fieldY);*/
+                //?} else {
                 screen.publishDescriptionField.setPosition(textX + 14, fieldY + 5);
+                //?}
                 screen.publishDescriptionField.setWidth(textWidth - 28);
+                //? if MC_1_21_8 {
+                /*screen.publishDescriptionField.setHeight(18);*/
+                //?}
                 screen.publishDescriptionField.render(context, mouseX, mouseY, 0f);
             }
             cursorY = descriptionTop + descriptionHeight;
@@ -359,6 +366,14 @@ final class PathmindMarketplacePopupController {
         if (popupWidth <= 0 || popupHeight <= 0) {
             return;
         }
+        //? if MC_1_21_8 {
+        /*ScrollbarHelper.Metrics scrollMetrics = screen.getPublishPopupScrollMetrics(popupX, popupY, popupWidth, popupHeight);
+        screen.setPublishPopupScrollOffset(scrollMetrics.scrollOffset());
+        int scrollOffset = screen.getPublishPopupScrollOffset();
+        int contentTop = scrollMetrics.trackTop();
+        int contentBottom = scrollMetrics.trackBottom();
+        int contentY = contentTop - scrollOffset;*/
+        //?}
         PathmindPopupRenderer.beginPopup(context, popupX, popupY, popupWidth, popupHeight, screen.publishPopupAnimation);
 
         Component title = screen.editingPreset == null ? Component.translatable("pathmind.marketplace.publishPreset") : Component.translatable("pathmind.marketplace.editMetadata");
@@ -374,7 +389,12 @@ final class PathmindMarketplacePopupController {
 
         int contentX = popupX + 12;
         int contentWidth = popupWidth - 24;
+        //? if MC_1_21_8 {
+        /*context.enableScissor(popupX + 8, contentTop, popupX + popupWidth - 8, contentBottom);
+        int sourceY = contentY;*/
+        //?} else {
         int sourceY = popupY + 40;
+        //?}
         String sourceLine = screen.editingPreset == null
             ? Component.translatable("pathmind.marketplace.sourcePresetValue", screen.fallback(screen.publishSourcePresetName, Component.translatable("pathmind.marketplace.unknown").getString())).getString()
             : Component.translatable("pathmind.marketplace.editingListingBy", screen.fallback(screen.editingPreset.getAuthorName(), Component.translatable("pathmind.marketplace.unknown").getString())).getString();
@@ -384,6 +404,16 @@ final class PathmindMarketplacePopupController {
         int fieldWidth = popupWidth - 24;
         int fieldHeight = 18;
         int labelGap = 11;
+        //? if MC_1_21_8 {
+        /*drawPublishField(context, mouseX, mouseY, contentX, contentY + 13, fieldWidth, fieldHeight, Component.translatable("pathmind.field.name").getString(), screen.publishNameField, labelGap);
+        drawPublishField(context, mouseX, mouseY, contentX, contentY + 52, fieldWidth, fieldHeight, Component.translatable("pathmind.field.description").getString(), screen.publishDescriptionField, labelGap);
+        drawPublishField(context, mouseX, mouseY, contentX, contentY + 91, fieldWidth, fieldHeight, Component.translatable("pathmind.field.tags").getString(), screen.publishTagsField, labelGap);
+
+        screen.drawWrappedValue(context, contentX, contentY + 126, contentWidth, Component.translatable("pathmind.marketplace.tagsHint").getString(),
+            screen.publishPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_TERTIARY), 2);
+
+        int visibilityLabelY = contentY + 149;*/
+        //?} else {
         drawPublishField(context, mouseX, mouseY, contentX, popupY + 53, fieldWidth, fieldHeight, Component.translatable("pathmind.field.name").getString(), screen.publishNameField, labelGap);
         drawPublishField(context, mouseX, mouseY, contentX, popupY + 92, fieldWidth, fieldHeight, Component.translatable("pathmind.field.description").getString(), screen.publishDescriptionField, labelGap);
         drawPublishField(context, mouseX, mouseY, contentX, popupY + 131, fieldWidth, fieldHeight, Component.translatable("pathmind.field.tags").getString(), screen.publishTagsField, labelGap);
@@ -392,9 +422,14 @@ final class PathmindMarketplacePopupController {
             screen.publishPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_TERTIARY), 2);
 
         int visibilityLabelY = popupY + 189;
+        //?}
         context.drawString(screen.textRenderer(), Component.translatable("pathmind.field.visibility"), contentX, visibilityLabelY,
             screen.publishPopupAnimation.getAnimatedPopupColor(UITheme.TEXT_LABEL));
+        //? if MC_1_21_8 {
+        /*PathmindMarketplaceScreen.Rect publishToggle = screen.getPublishPopupVisibilityToggleRect(popupX, popupWidth, visibilityLabelY);*/
+        //?} else {
         PathmindMarketplaceScreen.Rect publishToggle = screen.getPublishPopupVisibilityToggleRect(popupX, popupY, popupWidth);
+        //?}
         screen.publishVisibilityToggle.setValue(screen.publishVisibilityPublic);
         screen.publishVisibilityToggle.setPosition(publishToggle.x(), publishToggle.y());
         screen.publishVisibilityToggle.render(context, mouseX, mouseY, screen.publishPopupAnimation.getPopupAlpha());
@@ -408,9 +443,36 @@ final class PathmindMarketplacePopupController {
             context.drawString(screen.textRenderer(),
                 Component.literal(TextRenderUtil.trimWithEllipsis(screen.textRenderer(), screen.publishStatusMessage, contentWidth)),
                 contentX,
+                //? if MC_1_21_8 {
+                /*contentY + 204,*/
+                //?} else {
                 popupY + popupHeight - 40,
+                //?}
                 screen.publishPopupAnimation.getAnimatedPopupColor(screen.publishStatusColor));
         }
+
+        //? if MC_1_21_8 {
+        /*context.disableScissor();
+        ScrollbarHelper.renderCutoffDividers(
+            context,
+            popupX + 8,
+            popupX + popupWidth - 9,
+            contentTop,
+            contentBottom,
+            scrollOffset,
+            scrollMetrics.maxScroll(),
+            screen.publishPopupAnimation.getAnimatedPopupColor(UITheme.BORDER_SUBTLE)
+        );
+        if (scrollMetrics.maxScroll() > 0) {
+            ScrollbarHelper.renderSettingsStyle(
+                context,
+                scrollMetrics,
+                screen.publishPopupAnimation.getAnimatedPopupColor(UITheme.BACKGROUND_SIDEBAR),
+                screen.publishPopupAnimation.getAnimatedPopupColor(UITheme.BORDER_DEFAULT),
+                screen.publishPopupAnimation.getAnimatedPopupColor(UITheme.BORDER_DEFAULT)
+            );
+        }*/
+        //?}
 
         int cancelButtonX = popupX + (popup.cancelButtonX() - popup.x());
         int authButtonX = popupX + (popup.authButtonX() - popup.x());

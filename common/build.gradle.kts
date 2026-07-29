@@ -17,6 +17,44 @@ val commonSourceFamily = rootProject.extra["commonSourceFamily"] as String
 val packagingGeneration = rootProject.extra["packagingGeneration"] as String
 val canonicalMojangVersion = rootProject.extra["canonicalMojangVersion"] as String
 val canonicalMappingsRevision = rootProject.extra["canonicalMappingsRevision"] as String
+val stonecutterMarketplaceNode = when (commonSourceFamily) {
+    "mc-1.21.0-1.21.8" -> "1.21"
+    "mc-1.21.9-1.21.10" -> "1.21.10"
+    else -> null
+}
+val prepareStonecutterMarketplaceSources = stonecutterMarketplaceNode?.let { node ->
+    val generatedStonecutterDirectory =
+        layout.projectDirectory.dir("versions/$node/build/generated/stonecutter/stonecutter/java")
+    val generateStonecutterSources = tasks.register<Exec>("generateStonecutterMarketplaceSources") {
+        inputs.dir(layout.projectDirectory.dir("src/stonecutter/java"))
+        inputs.files(
+            layout.projectDirectory.file("settings.gradle.kts"),
+            layout.projectDirectory.file("stonecutter.gradle.kts"),
+            layout.projectDirectory.file("stonecutter-node.gradle.kts")
+        )
+        outputs.dir(generatedStonecutterDirectory)
+        workingDir(rootProject.projectDir)
+        val wrapperName = if (System.getProperty("os.name").startsWith("Windows", ignoreCase = true)) "gradlew.bat" else "gradlew"
+        commandLine(
+            rootProject.file(wrapperName).absolutePath,
+            "-p",
+            projectDir.absolutePath,
+            ":$node:stonecutterGenerateStonecutter",
+            "--no-daemon"
+        )
+    }
+    tasks.register<Sync>("prepareStonecutterMarketplaceSources") {
+        dependsOn(generateStonecutterSources)
+        from(generatedStonecutterDirectory)
+        include(
+            "com/pathmind/screen/PathmindMarketplaceGraphPreviewRenderer.java",
+            "com/pathmind/screen/PathmindMarketplacePopupController.java",
+            "com/pathmind/screen/PathmindMarketplacePreviewLoader.java",
+            "com/pathmind/screen/PathmindMarketplaceScreen.java"
+        )
+        into(layout.buildDirectory.dir("generated/sources/stonecutterMarketplace/main/java"))
+    }
+}
 dependencies {
     minecraft("com.mojang:minecraft:$requestedMinecraftVersion")
     when (packagingGeneration) {
@@ -53,8 +91,14 @@ sourceSets {
         java {
             srcDir("src/compat/api/pre26/java")
             when {
-                commonSourceFamily == "mc-1.21.0-1.21.8" -> srcDir("src/compat/mc-1.21.0-1.21.8/java")
-                commonSourceFamily == "mc-1.21.9-1.21.10" -> srcDir("src/compat/mc-1.21.9-1.21.10/java")
+                commonSourceFamily == "mc-1.21.0-1.21.8" -> {
+                    srcDir("src/compat/mc-1.21.0-1.21.8/java")
+                    srcDir(requireNotNull(prepareStonecutterMarketplaceSources))
+                }
+                commonSourceFamily == "mc-1.21.9-1.21.10" -> {
+                    srcDir("src/compat/mc-1.21.9-1.21.10/java")
+                    srcDir(requireNotNull(prepareStonecutterMarketplaceSources))
+                }
                 commonSourceFamily == "mc-1.21.11" -> {
                     srcDir("src/stonecutter/java")
                     srcDir("src/compat/mc-1.21.11/java")

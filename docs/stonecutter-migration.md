@@ -10,12 +10,14 @@ is incomplete. The alternate controller can be inspected with:
 ./gradlew -p common projects
 ```
 
-The initial proof targets are Minecraft 1.21.11 and 26.1. Their shared settings,
+The initial proof targets were Minecraft 1.21.11 and 26.1. Shared settings,
 marketplace, and visual-editor UI classes now live under
-`common/src/stonecutter/java`. The visual editor's single input-event API delta
-is isolated behind `CharacterEventModifiers` implementations in the relevant
-compatibility families. Older source families retain their existing overrides
-until their differences are represented explicitly and verified.
+`common/src/stonecutter/java`. The marketplace screen, popup controller, preview
+renderer, and preview loader are generated for the pre-1.21.11 families during
+the production build; only those selected generated classes are added to the
+main source set. The visual editor's single input-event API delta is isolated
+behind `CharacterEventModifiers` implementations in the relevant compatibility
+families.
 
 Stonecutter conditionals should be limited to small API or syntax differences.
 Behaviorally distinct implementations belong behind compatibility interfaces,

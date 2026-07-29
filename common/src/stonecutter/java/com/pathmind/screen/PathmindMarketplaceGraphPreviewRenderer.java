@@ -55,11 +55,19 @@ final class PathmindMarketplaceGraphPreviewRenderer {
             float viewScale = Math.max(0.18f, Math.min(1f, fitScale)) * screen.popupPreviewZoom;
             float offsetX = x + width / 2f - (bounds.minX() + bounds.width() / 2f) * viewScale + panX;
             float offsetY = y + height / 2f - (bounds.minY() + bounds.height() / 2f) * viewScale + panY;
+            //? if MC_1_21_8 {
+            /*float visibleLeft = (x + 1 - offsetX) / viewScale;
+            float visibleTop = (y + 1 - offsetY) / viewScale;
+            float visibleRight = (x + width - 1 - offsetX) / viewScale;
+            float visibleBottom = (y + height - 1 - offsetY) / viewScale;
+            context.enableScissor(x + 1, y + 1, x + width - 1, y + height - 1);*/
+            //?} else {
             float visibleLeft = (x - offsetX) / viewScale;
             float visibleTop = (y - offsetY) / viewScale;
             float visibleRight = (x + width - offsetX) / viewScale;
             float visibleBottom = (y + height - offsetY) / viewScale;
             context.enableScissor(x, y, x + width, y + height);
+            //?}
             Object matrices = context.pose();
             MatrixStackBridge.push(matrices);
             MatrixStackBridge.translate(matrices, offsetX, offsetY);

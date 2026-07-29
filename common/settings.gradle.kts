@@ -16,7 +16,10 @@ stonecutter {
     kotlinController.set(true)
     create(rootProject) {
         vcsVersion.set("1.21.11")
+        version("1.21")
+        version("1.21.10")
         version("1.21.11")
         version("26.1")
+        version("26.2")
     }
 }

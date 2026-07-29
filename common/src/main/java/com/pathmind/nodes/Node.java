@@ -2295,244 +2295,7 @@ public class Node {
     }
 
     public Map<String, String> exportParameterValues() {
-        Map<String, String> values = new HashMap<>();
-        for (NodeParameter parameter : parameters) {
-            String key = parameter.getName();
-            String value = parameter.getStringValue();
-            values.put(key, value);
-            values.put(normalizeParameterKey(key), value);
-        }
-
-        NodeBehaviorDefinition behaviorDefinition = NodeBehaviorDefinitionRegistry.get(type);
-        if (behaviorDefinition != null && behaviorDefinition.hasParameterBehavior()) {
-            return behaviorDefinition.exportValues(this, values);
-        }
-
-        switch (type) {
-            case LIST_LENGTH -> {
-                Optional<Integer> length = resolveListLengthValue(this);
-                String amount = length.map(String::valueOf).orElse("0");
-                values.put("Amount", amount);
-                values.put(normalizeParameterKey("Amount"), amount);
-                values.put("Count", amount);
-                values.put(normalizeParameterKey("Count"), amount);
-                values.put("Threshold", amount);
-                values.put(normalizeParameterKey("Threshold"), amount);
-                values.put("Value", amount);
-                values.put(normalizeParameterKey("Value"), amount);
-            }
-            case LIST_ITEM -> {
-                Node resolved = resolveListItemValueNode(this, null, false, null);
-                if (resolved != null) {
-                    return resolved.exportParameterValues();
-                }
-            }
-            case OPERATOR_RANDOM -> {
-                double min = getDoubleParameter("Min", 0.0);
-                double max = getDoubleParameter("Max", 1.0);
-                double randomValue = generateRandomValueWithRounding(min, max);
-                String value = Double.toString(randomValue);
-                values.put("Amount", value);
-                values.put(normalizeParameterKey("Amount"), value);
-                values.put("Count", value);
-                values.put(normalizeParameterKey("Count"), value);
-                values.put("Threshold", value);
-                values.put(normalizeParameterKey("Threshold"), value);
-                values.put("Value", value);
-                values.put(normalizeParameterKey("Value"), value);
-            }
-            case OPERATOR_MOD -> {
-                double modValue = resolveModValue().orElse(0.0);
-                String value = Double.toString(modValue);
-                values.put("Amount", value);
-                values.put(normalizeParameterKey("Amount"), value);
-                values.put("Count", value);
-                values.put(normalizeParameterKey("Count"), value);
-                values.put("Threshold", value);
-                values.put(normalizeParameterKey("Threshold"), value);
-                values.put("Value", value);
-                values.put(normalizeParameterKey("Value"), value);
-            }
-            case SENSOR_POSITION_OF -> {
-                Node parameterNode = getAttachedParameter(0);
-                if (parameterNode == null) {
-                    break;
-                }
-                Optional<Vec3> resolved = resolvePositionTarget(parameterNode, null, null);
-                if (resolved.isEmpty()) {
-                    break;
-                }
-                Vec3 position = resolved.get();
-                if (isSensorPositionSingleAxisMode()) {
-                    String componentKey = getSensorPositionComponentKey();
-                    String componentValue = switch (componentKey) {
-                        case "X" -> Double.toString(position.x);
-                        case "Y" -> Double.toString(position.y);
-                        case "Z" -> Double.toString(position.z);
-                        default -> "";
-                    };
-                    if (!componentValue.isEmpty()) {
-                        values.put("Amount", componentValue);
-                        values.put(normalizeParameterKey("Amount"), componentValue);
-                        values.put("Count", componentValue);
-                        values.put(normalizeParameterKey("Count"), componentValue);
-                        values.put("Threshold", componentValue);
-                        values.put(normalizeParameterKey("Threshold"), componentValue);
-                        values.put("Value", componentValue);
-                        values.put(normalizeParameterKey("Value"), componentValue);
-                    }
-                } else {
-                    String xValue = Double.toString(position.x);
-                    String yValue = Double.toString(position.y);
-                    String zValue = Double.toString(position.z);
-                    values.put("X", xValue);
-                    values.put(normalizeParameterKey("X"), xValue);
-                    values.put("Y", yValue);
-                    values.put(normalizeParameterKey("Y"), yValue);
-                    values.put("Z", zValue);
-                    values.put(normalizeParameterKey("Z"), zValue);
-                }
-            }
-            case SENSOR_DISTANCE_BETWEEN -> {
-                Node parameterNodeA = resolveSensorParameterNode(getAttachedParameter(0), 0);
-                Node parameterNodeB = resolveSensorParameterNode(getAttachedParameter(1), 1);
-                if (parameterNodeA == null || parameterNodeB == null) {
-                    break;
-                }
-                if (!isDistanceBetweenSupportedTarget(parameterNodeA)) {
-                    break;
-                }
-                if (!isDistanceBetweenSupportedTarget(parameterNodeB)) {
-                    break;
-                }
-                Optional<Vec3> resolvedA = resolveDistanceBetweenTarget(parameterNodeA);
-                Optional<Vec3> resolvedB = resolveDistanceBetweenTarget(parameterNodeB);
-                if (resolvedA.isEmpty() || resolvedB.isEmpty()) {
-                    break;
-                }
-                double distance = Math.sqrt(resolvedA.get().distanceToSqr(resolvedB.get()));
-                String distanceValue = Double.toString(distance);
-                values.put("Distance", distanceValue);
-                values.put(normalizeParameterKey("Distance"), distanceValue);
-            }
-            case SENSOR_TARGETED_BLOCK -> {
-                Optional<BlockState> targetState = getTargetedBlockState();
-                if (targetState.isEmpty()) {
-                    break;
-                }
-                BlockState state = targetState.get();
-                Identifier id = BuiltInRegistries.BLOCK.getKey(state.getBlock());
-                String blockId = "minecraft".equals(id.getNamespace()) ? id.getPath() : id.toString();
-                String stateValue = BlockSelection.describeState(state);
-                values.put("Block", blockId);
-                values.put(normalizeParameterKey("Block"), blockId);
-                values.put("State", stateValue);
-                values.put(normalizeParameterKey("State"), stateValue);
-            }
-            case SENSOR_TARGETED_ENTITY -> {
-                Optional<Entity> targetedEntity = getTargetedEntity();
-                if (targetedEntity.isEmpty()) {
-                    break;
-                }
-                Entity entity = targetedEntity.get();
-                Identifier id = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType());
-                String entityId = "minecraft".equals(id.getNamespace()) ? id.getPath() : id.toString();
-                values.put("Entity", entityId);
-                values.put(normalizeParameterKey("Entity"), entityId);
-                String stateValue = EntityStateOptions.describe(entity);
-                values.put("State", stateValue);
-                values.put(normalizeParameterKey("State"), stateValue);
-            }
-            case SENSOR_CURRENT_GUI -> {
-                guiSensorEvaluator().exportCurrentGuiValues(values);
-            }
-            case SENSOR_LOOK_DIRECTION -> {
-                Minecraft client = Minecraft.getInstance();
-                if (client != null && client.player != null) {
-                    float yaw = normalizeLookYaw(client.player.getYRot());
-                    float pitch = client.player.getXRot();
-                    String yawValue = formatFloat(yaw);
-                    String pitchValue = formatFloat(pitch);
-                    if (isSensorLookSingleAxisMode()) {
-                        String componentKey = getSensorLookComponentKey();
-                        String componentValue = "Yaw".equals(componentKey) ? yawValue : "Pitch".equals(componentKey) ? pitchValue : "";
-                        if (!componentValue.isEmpty()) {
-                            values.put("Amount", componentValue);
-                            values.put(normalizeParameterKey("Amount"), componentValue);
-                            values.put("Count", componentValue);
-                            values.put(normalizeParameterKey("Count"), componentValue);
-                            values.put("Threshold", componentValue);
-                            values.put(normalizeParameterKey("Threshold"), componentValue);
-                            values.put("Value", componentValue);
-                            values.put(normalizeParameterKey("Value"), componentValue);
-                        }
-                    } else {
-                        values.put("Yaw", yawValue);
-                        values.put(normalizeParameterKey("Yaw"), yawValue);
-                        values.put("Pitch", pitchValue);
-                        values.put(normalizeParameterKey("Pitch"), pitchValue);
-                    }
-                }
-            }
-            case SENSOR_CURRENT_HAND -> {
-                Optional<Integer> currentSlot = getCurrentHotbarSlot();
-                if (currentSlot.isEmpty()) {
-                    break;
-                }
-                String slotValue = Integer.toString(currentSlot.get());
-                values.put("Slot", slotValue);
-                values.put(normalizeParameterKey("Slot"), slotValue);
-                values.put("SourceSlot", slotValue);
-                values.put(normalizeParameterKey("SourceSlot"), slotValue);
-                values.put("TargetSlot", slotValue);
-                values.put(normalizeParameterKey("TargetSlot"), slotValue);
-            }
-            case SENSOR_IS_ON_GROUND -> {
-                Optional<Double> distanceFromGround = getDistanceFromGround();
-                if (distanceFromGround.isEmpty()) {
-                    break;
-                }
-                String distanceValue = Double.toString(distanceFromGround.get());
-                values.put("Distance", distanceValue);
-                values.put(normalizeParameterKey("Distance"), distanceValue);
-                values.put("Value", distanceValue);
-                values.put(normalizeParameterKey("Value"), distanceValue);
-            }
-            case SENSOR_TARGETED_BLOCK_FACE -> {
-                Optional<Direction> targetFace = getTargetedBlockFace();
-                if (targetFace.isEmpty()) {
-                    break;
-                }
-                String faceValue = targetFace.get().toString().toLowerCase(Locale.ROOT);
-                values.put("Side", faceValue);
-                values.put(normalizeParameterKey("Side"), faceValue);
-                values.put("Face", faceValue);
-                values.put(normalizeParameterKey("Face"), faceValue);
-                values.put("Text", faceValue);
-                values.put(normalizeParameterKey("Text"), faceValue);
-                values.put("Message", faceValue);
-                values.put(normalizeParameterKey("Message"), faceValue);
-            }
-            case SENSOR_SLOT_ITEM_COUNT -> {
-                Node slotNode = resolveSensorParameterNode(getAttachedParameter(0), 0);
-                int count = 0;
-                if (slotNode != null && providesTrait(slotNode, NodeValueTrait.INVENTORY_SLOT)) {
-                    count = Math.max(0, resolveInventorySlotCount(slotNode).orElse(0));
-                }
-                String countValue = Integer.toString(count);
-                values.put("Amount", countValue);
-                values.put(normalizeParameterKey("Amount"), countValue);
-                values.put("Count", countValue);
-                values.put(normalizeParameterKey("Count"), countValue);
-                values.put("Value", countValue);
-                values.put(normalizeParameterKey("Value"), countValue);
-            }
-            case SENSOR_FIND_TRADE -> {
-                villagerTradeSensorEvaluator().exportTradeSlotValues(values);
-            }
-        }
-
-        return values;
+        return NodeParameterValueExporter.exportParameterValues(this);
     }
 
     /**
@@ -3464,7 +3227,7 @@ public class Node {
         return worldTargetResolver.resolveTradeKeyFromParameter(parameterNode);
     }
 
-    private NodeVillagerTradeSensorEvaluator villagerTradeSensorEvaluator() {
+    NodeVillagerTradeSensorEvaluator villagerTradeSensorEvaluator() {
         return new NodeVillagerTradeSensorEvaluator(this);
     }
 
@@ -3837,7 +3600,7 @@ public class Node {
         return Character.isLetterOrDigit(character) || character == '_' || character == '-';
     }
 
-    private NodeGuiSensorEvaluator guiSensorEvaluator() {
+    NodeGuiSensorEvaluator guiSensorEvaluator() {
         return new NodeGuiSensorEvaluator(this);
     }
 
@@ -4320,7 +4083,7 @@ public class Node {
         return new NodeTargetSensorEvaluator(this);
     }
 
-    private Optional<BlockState> getTargetedBlockState() {
+    Optional<BlockState> getTargetedBlockState() {
         return targetSensorEvaluator().getTargetedBlockState();
     }
 
@@ -4336,11 +4099,11 @@ public class Node {
         return targetSensorEvaluator().getLookDirection();
     }
 
-    private Optional<Integer> getCurrentHotbarSlot() {
+    Optional<Integer> getCurrentHotbarSlot() {
         return targetSensorEvaluator().getCurrentHotbarSlot();
     }
 
-    private Optional<Direction> getTargetedBlockFace() {
+    Optional<Direction> getTargetedBlockFace() {
         return targetSensorEvaluator().getTargetedBlockFace();
     }
 
@@ -4360,7 +4123,7 @@ public class Node {
         return new NodePlayerStateSensorEvaluator(this);
     }
 
-    private Optional<Double> getDistanceFromGround() {
+    Optional<Double> getDistanceFromGround() {
         return playerStateSensorEvaluator().getDistanceFromGround();
     }
 

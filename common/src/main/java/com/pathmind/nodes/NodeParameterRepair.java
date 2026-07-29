@@ -2,9 +2,34 @@ package com.pathmind.nodes;
 
 import com.pathmind.data.SettingsManager;
 import java.util.List;
+import java.util.Locale;
 
 final class NodeParameterRepair {
+    private static final String PARAM_ID_RANDOM_ROUNDING = "random_rounding_mode";
+
     private NodeParameterRepair() {
+    }
+
+    static boolean isAmountInputEnabled(Node node) {
+        ensureAmountToggleParameters(node);
+        if (!node.hasAmountInputField()) {
+            return false;
+        }
+        if (node.hasAmountToggle()) {
+            NodeParameter useParam = node.getParameter("UseAmount");
+            return useParam != null && useParam.getBoolValue();
+        }
+        return true;
+    }
+
+    static void setAmountInputEnabled(Node node, boolean enabled) {
+        ensureAmountToggleParameters(node);
+        if (node.hasAmountToggle()) {
+            NodeParameter useParam = node.getParameter("UseAmount");
+            if (useParam != null) {
+                useParam.setStringValue(Boolean.toString(enabled));
+            }
+        }
     }
 
     static void ensureAmountToggleParameters(Node node) {
@@ -116,9 +141,93 @@ final class NodeParameterRepair {
         }
     }
 
-    private static boolean usesVillagerTradeNumberField(NodeType type) {
+    static boolean isRandomRoundingEnabled(Node node) {
+        ensureRandomRoundingParameters(node);
+        NodeParameter useParam = node.getParameter("UseRounding");
+        return useParam != null && useParam.getBoolValue();
+    }
+
+    static void setRandomRoundingEnabled(Node node, boolean enabled) {
+        ensureRandomRoundingParameters(node);
+        NodeParameter useParam = node.getParameter("UseRounding");
+        if (useParam != null) {
+            useParam.setStringValue(Boolean.toString(enabled));
+        }
+    }
+
+    static String getRandomRoundingMode(Node node) {
+        ensureRandomRoundingParameters(node);
+        NodeParameter modeParam = node.getParameter("Rounding");
+        String value = modeParam != null ? modeParam.getStringValue() : null;
+        if (value == null || value.trim().isEmpty()) {
+            return "round";
+        }
+        return normalizeRoundingMode(value);
+    }
+
+    static String getRandomRoundingModeDisplay(Node node) {
+        String mode = getRandomRoundingMode(node);
+        return switch (mode) {
+            case "floor" -> "Floor";
+            case "ceil" -> "Ceil";
+            default -> "Round";
+        };
+    }
+
+    static void setRandomRoundingMode(Node node, String mode) {
+        ensureRandomRoundingParameters(node);
+        NodeParameter modeParam = node.getParameter("Rounding");
+        String normalized = normalizeRoundingMode(mode);
+        if (modeParam == null) {
+            node.getParameters().add(new NodeParameter(PARAM_ID_RANDOM_ROUNDING, "Rounding", ParameterType.STRING, normalized));
+        } else {
+            modeParam.setStringValueFromUser(normalized);
+        }
+    }
+
+    static void repairSerializedParameters(Node node) {
+        node.ensureBooleanParameters();
+        ensureVillagerTradeNumberParameter(node);
+        ensureCreateListRadiusParameters(node);
+        ensureAmountToggleParameters(node);
+        ensureRandomRoundingParameters(node);
+        NodeDirectionParameters.ensureCombinedDirectionParameters(
+            node,
+            Node.DIRECTION_MODE_EXACT,
+            Node.DIRECTION_MODE_CARDINAL,
+            Node.DEFAULT_DIRECTION_DISTANCE
+        );
+        NodeAttributeParameters.normalizeAttributeDetectionParameters(node);
+    }
+
+    static boolean usesVillagerTradeNumberField(NodeType type) {
         return type == NodeType.TRADE
             || type == NodeType.SENSOR_VILLAGER_TRADE
             || type == NodeType.SENSOR_IN_STOCK;
+    }
+
+    static boolean isRandomRoundingParameter(Node node, NodeParameter parameter) {
+        if (parameter == null || node.getType() != NodeType.OPERATOR_RANDOM) {
+            return false;
+        }
+        String name = parameter.getName();
+        return "Rounding".equalsIgnoreCase(name) || "UseRounding".equalsIgnoreCase(name);
+    }
+
+    static String normalizeRoundingMode(String value) {
+        if (value == null) {
+            return "round";
+        }
+        String trimmed = value.trim().toLowerCase(Locale.ROOT);
+        if (trimmed.isEmpty()) {
+            return "round";
+        }
+        if (trimmed.startsWith("flo") || "down".equals(trimmed)) {
+            return "floor";
+        }
+        if (trimmed.startsWith("cei") || "up".equals(trimmed)) {
+            return "ceil";
+        }
+        return "round";
     }
 }

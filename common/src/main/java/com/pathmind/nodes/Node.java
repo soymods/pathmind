@@ -122,8 +122,8 @@ public class Node {
     static final int PARAM_PADDING_TOP = 2;
     static final int PARAM_PADDING_BOTTOM = 4;
     private static final int MAX_PARAMETER_LABEL_LENGTH = 20;
-    private static final String DIRECTION_MODE_EXACT = "exact";
-    private static final String DIRECTION_MODE_CARDINAL = "cardinal";
+    static final String DIRECTION_MODE_EXACT = "exact";
+    static final String DIRECTION_MODE_CARDINAL = "cardinal";
     private static final String BOOLEAN_MODE_LITERAL = "literal";
     private static final String BOOLEAN_MODE_VARIABLE = "variable";
     @Deprecated
@@ -381,7 +381,6 @@ public class Node {
     private static final String PARAM_ID_CREATE_LIST_RADIUS = "create_list_radius";
     private static final String PARAM_ID_CREATE_LIST_USE_BLOCK_CAP = "create_list_use_block_cap";
     private static final String PARAM_ID_CREATE_LIST_MAX_BLOCKS = "create_list_max_blocks";
-    private static final String PARAM_ID_RANDOM_ROUNDING = "random_rounding_mode";
     private static final String PARAM_ID_RANDOM_USE_ROUNDING = "random_use_rounding";
     private static final String PARAM_ID_TRADE_NUMBER = "trade_number";
     private static final String PARAM_ID_TRADE_COUNT = "trade_count";
@@ -888,7 +887,7 @@ public class Node {
     public boolean canAcceptParameter() {
         if (type == NodeType.ROUTINE_CALL) return !routineArguments.isEmpty();
         if (!NodeCompatibility.canHostSlot(type, NodeSlotType.PARAMETER)
-                || (usesVillagerTradeNumberField())
+                || NodeParameterRepair.usesVillagerTradeNumberField(type)
                 || !NodeTraitRegistry.canHostParameter(type)) {
             return false;
         }
@@ -1619,25 +1618,11 @@ public class Node {
     }
 
     public boolean isAmountInputEnabled() {
-        ensureAmountToggleParameters();
-        if (!hasAmountInputField()) {
-            return false;
-        }
-        if (hasAmountToggle()) {
-            NodeParameter useParam = getParameter("UseAmount");
-            return useParam != null && useParam.getBoolValue();
-        }
-        return true;
+        return NodeParameterRepair.isAmountInputEnabled(this);
     }
 
     public void setAmountInputEnabled(boolean enabled) {
-        ensureAmountToggleParameters();
-        if (hasAmountToggle()) {
-            NodeParameter useParam = getParameter("UseAmount");
-            if (useParam != null) {
-                useParam.setStringValue(Boolean.toString(enabled));
-            }
-        }
+        NodeParameterRepair.setAmountInputEnabled(this, enabled);
     }
 
     public int getAmountToggleLeft() {
@@ -1705,47 +1690,23 @@ public class Node {
     }
 
     public boolean isRandomRoundingEnabled() {
-        ensureRandomRoundingParameters();
-        NodeParameter useParam = getParameter("UseRounding");
-        return useParam != null && useParam.getBoolValue();
+        return NodeParameterRepair.isRandomRoundingEnabled(this);
     }
 
     public void setRandomRoundingEnabled(boolean enabled) {
-        ensureRandomRoundingParameters();
-        NodeParameter useParam = getParameter("UseRounding");
-        if (useParam != null) {
-            useParam.setStringValue(Boolean.toString(enabled));
-        }
+        NodeParameterRepair.setRandomRoundingEnabled(this, enabled);
     }
 
     public String getRandomRoundingMode() {
-        ensureRandomRoundingParameters();
-        NodeParameter modeParam = getParameter("Rounding");
-        String value = modeParam != null ? modeParam.getStringValue() : null;
-        if (value == null || value.trim().isEmpty()) {
-            return "round";
-        }
-        return normalizeRoundingMode(value);
+        return NodeParameterRepair.getRandomRoundingMode(this);
     }
 
     public String getRandomRoundingModeDisplay() {
-        String mode = getRandomRoundingMode();
-        return switch (mode) {
-            case "floor" -> "Floor";
-            case "ceil" -> "Ceil";
-            default -> "Round";
-        };
+        return NodeParameterRepair.getRandomRoundingModeDisplay(this);
     }
 
     public void setRandomRoundingMode(String mode) {
-        ensureRandomRoundingParameters();
-        NodeParameter modeParam = getParameter("Rounding");
-        String normalized = normalizeRoundingMode(mode);
-        if (modeParam == null) {
-            parameters.add(createParameter(PARAM_ID_RANDOM_ROUNDING, "Rounding", ParameterType.STRING, normalized));
-        } else {
-            modeParam.setStringValueFromUser(normalized);
-        }
+        NodeParameterRepair.setRandomRoundingMode(this, mode);
     }
 
     String normalizeOperation(String value) {
@@ -1767,16 +1728,6 @@ public class Node {
         };
     }
 
-    private void ensureAmountToggleParameters() {
-        NodeParameterRepair.ensureAmountToggleParameters(this);
-    }
-
-    private boolean usesVillagerTradeNumberField() {
-        return type == NodeType.TRADE
-            || type == NodeType.SENSOR_VILLAGER_TRADE
-            || type == NodeType.SENSOR_IN_STOCK;
-    }
-
     public void ensureVillagerTradeNumberParameter() {
         NodeParameterRepair.ensureVillagerTradeNumberParameter(this);
     }
@@ -1786,17 +1737,11 @@ public class Node {
     }
 
     public void repairSerializedParameters() {
-        ensureBooleanParameters();
-        ensureVillagerTradeNumberParameter();
-        ensureCreateListRadiusParameters();
-        ensureAmountToggleParameters();
-        ensureRandomRoundingParameters();
-        ensureCombinedDirectionParameters();
-        normalizeAttributeDetectionParameters();
+        NodeParameterRepair.repairSerializedParameters(this);
     }
 
     boolean shouldUseLegacyVillagerTradeSelection() {
-        if (!usesVillagerTradeNumberField()) {
+        if (!NodeParameterRepair.usesVillagerTradeNumberField(type)) {
             return false;
         }
         Node attached = resolveSensorParameterNode(getAttachedParameter(), 0);
@@ -1817,33 +1762,8 @@ public class Node {
         return Math.max(1, getIntParameter("Count", 1));
     }
 
-    private void ensureRandomRoundingParameters() {
-        NodeParameterRepair.ensureRandomRoundingParameters(this);
-    }
-
     boolean isRandomRoundingParameter(NodeParameter parameter) {
-        if (parameter == null || type != NodeType.OPERATOR_RANDOM) {
-            return false;
-        }
-        String name = parameter.getName();
-        return "Rounding".equalsIgnoreCase(name) || "UseRounding".equalsIgnoreCase(name);
-    }
-
-    private String normalizeRoundingMode(String value) {
-        if (value == null) {
-            return "round";
-        }
-        String trimmed = value.trim().toLowerCase(Locale.ROOT);
-        if (trimmed.isEmpty()) {
-            return "round";
-        }
-        if (trimmed.startsWith("flo") || "down".equals(trimmed)) {
-            return "floor";
-        }
-        if (trimmed.startsWith("cei") || "up".equals(trimmed)) {
-            return "ceil";
-        }
-        return "round";
+        return NodeParameterRepair.isRandomRoundingParameter(this, parameter);
     }
 
     public int getSchematicFieldDisplayHeight() {
@@ -2620,10 +2540,6 @@ public class Node {
 
     public void setDirectionModeExact(boolean exact) {
         NodeDirectionParameters.setDirectionModeExact(this, exact, DIRECTION_MODE_EXACT, DIRECTION_MODE_CARDINAL, DEFAULT_DIRECTION_DISTANCE);
-    }
-
-    private void ensureCombinedDirectionParameters() {
-        NodeDirectionParameters.ensureCombinedDirectionParameters(this, DIRECTION_MODE_EXACT, DIRECTION_MODE_CARDINAL, DEFAULT_DIRECTION_DISTANCE);
     }
 
     public boolean isBooleanModeLiteral() {

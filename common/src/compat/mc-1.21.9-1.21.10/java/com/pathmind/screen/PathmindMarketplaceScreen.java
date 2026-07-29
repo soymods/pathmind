@@ -672,8 +672,7 @@ public class PathmindMarketplaceScreen extends Screen {
         int footerY = layout.sectionY + layout.sectionHeight - FOOTER_HEIGHT;
         context.hLine(layout.sectionX, layout.sectionX + layout.sectionWidth - 1, footerY, UITheme.BORDER_SUBTLE);
 
-        int footerBottom = this.height - OUTER_PADDING;
-        int centerY = footerY + Math.max(6, (footerBottom - footerY - this.font.lineHeight) / 2 + 8);
+        int centerY = getFooterContentY(layout);
         int centerX = layout.sectionX + layout.sectionWidth / 2;
         boolean canGoPrev = pageIndex > 0;
         boolean canGoNext = pageIndex < getMaxPageIndex();
@@ -1123,6 +1122,10 @@ public class PathmindMarketplaceScreen extends Screen {
             } else {
                 pageIndex = Math.min(getMaxPageIndex(), pageIndex + 1);
             }
+            return true;
+        }
+        if (isPointInRect(mouseX, mouseY, layout.sectionX,
+            layout.sectionY + layout.sectionHeight - FOOTER_HEIGHT, layout.sectionWidth, FOOTER_HEIGHT)) {
             return true;
         }
 
@@ -2948,8 +2951,7 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     private PageHitAreas getPageHitAreas(Layout layout) {
-        int footerY = layout.sectionY + layout.sectionHeight - FOOTER_HEIGHT;
-        int centerY = footerY + 10;
+        int centerY = getFooterContentY(layout);
         int centerX = layout.sectionX + layout.sectionWidth / 2;
         int leftArrowWidth = this.font.width("<");
         int rightArrowWidth = this.font.width(">");
@@ -2964,6 +2966,12 @@ public class PathmindMarketplaceScreen extends Screen {
         cursorX += leftArrowWidth + PAGE_CONTROL_GAP + prevPageWidth + PAGE_NUMBER_GAP + currentPageWidth + PAGE_NUMBER_GAP + nextPageWidth + PAGE_CONTROL_GAP;
         Rect rightArrow = pageIndex < getMaxPageIndex() ? new Rect(cursorX - 2, centerY - 2, rightArrowWidth + 4, 12) : null;
         return new PageHitAreas(leftArrow, rightArrow);
+    }
+
+    private int getFooterContentY(Layout layout) {
+        int footerY = layout.sectionY + layout.sectionHeight - FOOTER_HEIGHT;
+        int footerBottom = this.height - OUTER_PADDING;
+        return footerY + Math.max(6, (footerBottom - footerY - this.font.lineHeight) / 2 + 8);
     }
 
     static String formatTags(List<String> tags) {

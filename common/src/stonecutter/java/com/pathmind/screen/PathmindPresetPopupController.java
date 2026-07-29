@@ -18,7 +18,15 @@ import com.pathmind.util.TextRenderUtil;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
+//? if MC_1_21_8 {
+/*// Legacy screen input callbacks use primitive parameters.*/
+//?} else {
+import net.minecraft.client.input.CharacterEvent;
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
+//?}
 import net.minecraft.network.chat.Component;
+import org.lwjgl.glfw.GLFW;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -29,6 +37,234 @@ final class PathmindPresetPopupController {
 
     PathmindPresetPopupController(PathmindVisualEditorScreen screen) {
         this.screen = screen;
+    }
+
+    //? if MC_1_21_8 {
+    /*boolean handleMouseClicked(double mouseX, double mouseY, int button) {
+        *///?} else {
+    boolean handleMouseClicked(MouseButtonEvent click, boolean inBounds) {
+        double mouseX = click.x();
+        double mouseY = click.y();
+        int button = click.button();
+        //?}
+        if (screen.createPresetPopupAnimation.isVisible()) {
+            //? if MC_1_21_8 {
+            /*if (screen.createPresetField != null && screen.createPresetField.mouseClicked(mouseX, mouseY, button)) {
+                *///?} else {
+            if (screen.createPresetField != null && screen.createPresetField.mouseClicked(click, inBounds)) {
+                //?}
+                return true;
+            }
+            handleCreatePresetPopupClick(mouseX, mouseY, button);
+            return true;
+        }
+
+        if (screen.publishPresetPopupAnimation.isVisible()) {
+            handlePublishPresetPopupClick(mouseX, mouseY, button);
+            return true;
+        }
+
+        if (screen.renamePresetPopupAnimation.isVisible()) {
+            //? if MC_1_21_8 {
+            /*if (screen.renamePresetField != null && screen.renamePresetField.mouseClicked(mouseX, mouseY, button)) {
+                *///?} else {
+            if (screen.renamePresetField != null && screen.renamePresetField.mouseClicked(click, inBounds)) {
+                //?}
+                return true;
+            }
+            handleRenamePresetPopupClick(mouseX, mouseY, button);
+            return true;
+        }
+
+        return false;
+    }
+
+    //? if MC_1_21_8 {
+    /*boolean handleMouseReleased(double mouseX, double mouseY, int button) {
+        *///?} else {
+    boolean handleMouseReleased(MouseButtonEvent click) {
+        //?}
+        if (screen.createPresetPopupAnimation.isVisible()) {
+            if (screen.createPresetField != null) {
+                //? if MC_1_21_8 {
+                /*screen.createPresetField.mouseReleased(mouseX, mouseY, button);*/
+                //?} else {
+                screen.createPresetField.mouseReleased(click);
+                //?}
+            }
+            return true;
+        }
+
+        if (screen.publishPresetPopupAnimation.isVisible()) {
+            if (screen.publishPresetNameField != null) {
+                //? if MC_1_21_8 {
+                /*screen.publishPresetNameField.mouseReleased(mouseX, mouseY, button);*/
+                //?} else {
+                screen.publishPresetNameField.mouseReleased(click);
+                //?}
+            }
+            if (screen.publishPresetDescriptionField != null) {
+                //? if MC_1_21_8 {
+                /*screen.publishPresetDescriptionField.mouseReleased(mouseX, mouseY, button);*/
+                //?} else {
+                screen.publishPresetDescriptionField.mouseReleased(click);
+                //?}
+            }
+            if (screen.publishPresetTagsField != null) {
+                //? if MC_1_21_8 {
+                /*screen.publishPresetTagsField.mouseReleased(mouseX, mouseY, button);*/
+                //?} else {
+                screen.publishPresetTagsField.mouseReleased(click);
+                //?}
+            }
+            return true;
+        }
+
+        if (screen.renamePresetPopupAnimation.isVisible()) {
+            if (screen.renamePresetField != null) {
+                //? if MC_1_21_8 {
+                /*screen.renamePresetField.mouseReleased(mouseX, mouseY, button);*/
+                //?} else {
+                screen.renamePresetField.mouseReleased(click);
+                //?}
+            }
+            return true;
+        }
+        return false;
+    }
+
+    //? if MC_1_21_8 {
+    /*boolean handleKeyPressed(int keyCode, int scanCode, int modifiers) {
+        *///?} else {
+    boolean handleKeyPressed(KeyEvent input) {
+        int keyCode = input.key();
+        //?}
+        if (screen.createPresetPopupAnimation.isVisible()) {
+            //? if MC_1_21_8 {
+            /*if (screen.createPresetField != null && screen.createPresetField.keyPressed(keyCode, scanCode, modifiers)) {
+                *///?} else {
+            if (screen.createPresetField != null && screen.createPresetField.keyPressed(input)) {
+                //?}
+                return true;
+            }
+            if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+                screen.closeCreatePresetPopup();
+                return true;
+            }
+            if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
+                screen.attemptCreatePreset();
+                return true;
+            }
+            return true;
+        }
+
+        if (screen.publishPresetPopupAnimation.isVisible()) {
+            //? if MC_1_21_8 {
+            /*if (screen.publishPresetNameField != null && screen.publishPresetNameField.keyPressed(keyCode, scanCode, modifiers)) {
+                *///?} else {
+            if (screen.publishPresetNameField != null && screen.publishPresetNameField.keyPressed(input)) {
+                //?}
+                return true;
+            }
+            //? if MC_1_21_8 {
+            /*if (screen.publishPresetDescriptionField != null && screen.publishPresetDescriptionField.keyPressed(keyCode, scanCode, modifiers)) {
+                *///?} else {
+            if (screen.publishPresetDescriptionField != null && screen.publishPresetDescriptionField.keyPressed(input)) {
+                //?}
+                return true;
+            }
+            //? if MC_1_21_8 {
+            /*if (screen.publishPresetTagsField != null && screen.publishPresetTagsField.keyPressed(keyCode, scanCode, modifiers)) {
+                *///?} else {
+            if (screen.publishPresetTagsField != null && screen.publishPresetTagsField.keyPressed(input)) {
+                //?}
+                return true;
+            }
+            if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+                screen.closePublishPresetPopup();
+                return true;
+            }
+            if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
+                screen.attemptPublishPreset();
+                return true;
+            }
+            return true;
+        }
+
+        if (screen.renamePresetPopupAnimation.isVisible()) {
+            //? if MC_1_21_8 {
+            /*if (screen.renamePresetField != null && screen.renamePresetField.keyPressed(keyCode, scanCode, modifiers)) {
+                *///?} else {
+            if (screen.renamePresetField != null && screen.renamePresetField.keyPressed(input)) {
+                //?}
+                return true;
+            }
+            if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+                screen.closeRenamePresetPopup();
+                return true;
+            }
+            if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
+                screen.attemptRenamePreset();
+                return true;
+            }
+            return true;
+        }
+
+        return false;
+    }
+
+    //? if MC_1_21_8 {
+    /*boolean handleCharTyped(char chr, int modifiers) {
+        *///?} else {
+    boolean handleCharTyped(CharacterEvent input) {
+        //?}
+        if (screen.createPresetPopupAnimation.isVisible()) {
+            //? if MC_1_21_8 {
+            /*if (screen.createPresetField != null && screen.createPresetField.charTyped(chr, modifiers)) {
+                *///?} else {
+            if (screen.createPresetField != null && screen.createPresetField.charTyped(input)) {
+                //?}
+                return true;
+            }
+            return true;
+        }
+
+        if (screen.publishPresetPopupAnimation.isVisible()) {
+            //? if MC_1_21_8 {
+            /*if (screen.publishPresetNameField != null && screen.publishPresetNameField.charTyped(chr, modifiers)) {
+                *///?} else {
+            if (screen.publishPresetNameField != null && screen.publishPresetNameField.charTyped(input)) {
+                //?}
+                return true;
+            }
+            //? if MC_1_21_8 {
+            /*if (screen.publishPresetDescriptionField != null && screen.publishPresetDescriptionField.charTyped(chr, modifiers)) {
+                *///?} else {
+            if (screen.publishPresetDescriptionField != null && screen.publishPresetDescriptionField.charTyped(input)) {
+                //?}
+                return true;
+            }
+            //? if MC_1_21_8 {
+            /*if (screen.publishPresetTagsField != null && screen.publishPresetTagsField.charTyped(chr, modifiers)) {
+                *///?} else {
+            if (screen.publishPresetTagsField != null && screen.publishPresetTagsField.charTyped(input)) {
+                //?}
+                return true;
+            }
+            return true;
+        }
+
+        if (screen.renamePresetPopupAnimation.isVisible()) {
+            //? if MC_1_21_8 {
+            /*if (screen.renamePresetField != null && screen.renamePresetField.charTyped(chr, modifiers)) {
+                *///?} else {
+            if (screen.renamePresetField != null && screen.renamePresetField.charTyped(input)) {
+                //?}
+                return true;
+            }
+            return true;
+        }
+        return false;
     }
 
     void openPublishPresetPopup() {

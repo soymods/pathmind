@@ -111,6 +111,7 @@ public class Node {
     private final NodeRuntimeState runtimeState;
     private final NodeRuntimeParameterResolver runtimeParameterResolver;
     private final NodeWorldTargetResolver worldTargetResolver;
+    private final NodeSensorCoordinator sensorCoordinator;
     static final int MIN_WIDTH = 92;
     static final int MIN_HEIGHT = 44;
     static final int EVENT_FUNCTION_MIN_HEIGHT = 36;
@@ -325,6 +326,7 @@ public class Node {
         this.runtimeState = new NodeRuntimeState();
         this.runtimeParameterResolver = new NodeRuntimeParameterResolver(this);
         this.worldTargetResolver = new NodeWorldTargetResolver(this);
+        this.sensorCoordinator = new NodeSensorCoordinator(this);
         this.parameters = new ArrayList<>();
         this.dynamicBooleanOperatorSlotCount = isExpandableBooleanOperatorType(type) ? 2 : 0;
         this.messageLines = new ArrayList<>();
@@ -4109,7 +4111,7 @@ public class Node {
         return runtimeParameterResolver.reportEmptyParametersForNode(target, future);
     }
 
-    private boolean reportEmptyParametersForAttachedParameters(CompletableFuture<Void> future) {
+    boolean reportEmptyParametersForAttachedParameters(CompletableFuture<Void> future) {
         return runtimeParameterResolver.reportEmptyParametersForAttachedParameters(future);
     }
 
@@ -4560,14 +4562,6 @@ public class Node {
 
     private NodeGuiSensorEvaluator guiSensorEvaluator() {
         return new NodeGuiSensorEvaluator(this);
-    }
-
-    private boolean isOpenGuiFilled() {
-        return guiSensorEvaluator().isOpenGuiFilled();
-    }
-
-    private boolean isCurrentGuiAvailable() {
-        return guiSensorEvaluator().getCurrentGui().isPresent();
     }
 
     private NodeTextIoCommandExecutor textIoCommandExecutor() {
@@ -5078,157 +5072,15 @@ public class Node {
     }
 
     public boolean evaluateSensor() {
-        if (!isSensorNode()) {
-            return false;
-        }
-
-        if (!reportEmptyParametersForNode(this, null)) {
-            return false;
-        }
-        if (!reportEmptyParametersForAttachedParameters(null)) {
-            return false;
-        }
-        if (!ensureRequiredSensorParameterAttached()) {
-            this.runtimeState.lastSensorResult = false;
-            return false;
-        }
-
-        boolean result = switch (type) {
-            case OPERATOR_EQUALS -> evaluateOperatorEquals();
-            case OPERATOR_NOT -> evaluateOperatorNot();
-            case OPERATOR_BOOLEAN_NOT -> evaluateOperatorBooleanNot();
-            case OPERATOR_BOOLEAN_OR -> evaluateOperatorBooleanOr();
-            case OPERATOR_BOOLEAN_AND -> evaluateOperatorBooleanAnd();
-            case OPERATOR_BOOLEAN_XOR -> evaluateOperatorBooleanXor();
-            case OPERATOR_GREATER -> evaluateOperatorGreater();
-            case OPERATOR_LESS -> evaluateOperatorLess();
-            case SENSOR_TOUCHING_BLOCK -> proximitySensorEvaluator().evaluateTouchingBlock();
-            case SENSOR_TOUCHING_ENTITY -> proximitySensorEvaluator().evaluateTouchingEntity();
-            case SENSOR_AT_COORDINATES -> proximitySensorEvaluator().evaluateAtCoordinates();
-            case SENSOR_TARGETED_BLOCK -> getTargetedBlockState().isPresent();
-            case SENSOR_TARGETED_ENTITY -> getTargetedEntity().isPresent();
-            case SENSOR_LOOK_DIRECTION -> getLookDirection().isPresent();
-            case SENSOR_CURRENT_HAND -> getCurrentHotbarSlot().isPresent();
-            case SENSOR_TARGETED_BLOCK_FACE -> getTargetedBlockFace().isPresent();
-            case SENSOR_IS_DAYTIME -> isDaytime();
-            case SENSOR_IS_RAINING -> isRaining();
-            case SENSOR_GUI_FILLED -> isOpenGuiFilled();
-            case SENSOR_CURRENT_GUI -> isCurrentGuiAvailable();
-            case SENSOR_HEALTH_BELOW -> basicSensorEvaluator().evaluateHealthBelow();
-            case SENSOR_HUNGER_BELOW -> basicSensorEvaluator().evaluateHungerBelow();
-            case SENSOR_ITEM_IN_INVENTORY -> inventorySensorEvaluator().evaluateItemInInventory();
-            case SENSOR_ITEM_IN_SLOT -> inventorySensorEvaluator().evaluateItemInSlot();
-            case SENSOR_SLOT_ITEM_COUNT -> inventorySensorEvaluator().evaluateSlotItemCount();
-            case SENSOR_IS_SWIMMING ->  isSwimming();
-            case SENSOR_IS_IN_LAVA ->  isInLava();
-            case SENSOR_IS_UNDERWATER ->  isUnderwater();
-            case SENSOR_IS_FALLING -> playerStateSensorEvaluator().evaluateFalling();
-            case SENSOR_KEY_PRESSED -> basicSensorEvaluator().evaluateKeyPressed();
-            case SENSOR_IS_RENDERED -> visibilitySensorEvaluator().evaluateRendered();
-            case SENSOR_IS_VISIBLE -> visibilitySensorEvaluator().evaluateVisible();
-            case SENSOR_VILLAGER_TRADE -> villagerTradeSensorEvaluator().evaluateVillagerTrade();
-            case SENSOR_IN_STOCK -> villagerTradeSensorEvaluator().evaluateInStock();
-            case SENSOR_CHAT_MESSAGE -> eventSensorEvaluator().evaluateChatMessage();
-            case SENSOR_JOINED_SERVER -> evaluateJoinedServerEdge();
-            case SENSOR_FABRIC_EVENT -> eventSensorEvaluator().evaluateFabricEvent();
-            case SENSOR_ATTRIBUTE_DETECTION -> evaluateAttributeDetectionSensor();
-            default -> false;
-        };
-        result = adjustBooleanToggleResult(result);
-        recordSensorResult(result);
-        return result;
-    }
-
-    private void recordSensorResult(boolean result) {
-        this.runtimeState.lastSensorResult = result;
-        this.runtimeState.hasSensorResult = true;
-        this.runtimeState.lastSensorUpdatedAt = System.currentTimeMillis();
-    }
-
-    private boolean evaluateJoinedServerEdge() {
-        boolean rawResult = eventSensorEvaluator().evaluateJoinedServer();
-        boolean edge = rawResult && !this.runtimeState.lastJoinedServerRawResult;
-        this.runtimeState.lastJoinedServerRawResult = rawResult;
-        return edge;
-    }
-
-    private boolean ensureRequiredSensorParameterAttached() {
-        if (!isSensorNode() || attachments.hasAttachedParameters() || !sensorRequiresParameterNode()) {
-            return true;
-        }
-        net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
-        if (client != null) {
-            sendNodeErrorMessage(client, tr("pathmind.error.requiresParameterNode", type.getDisplayName()));
-        }
-        return false;
-    }
-
-    private boolean sensorRequiresParameterNode() {
-        return NodeCatalog.isSensorParameterRequired(type);
-    }
-
-    private NodeEventSensorEvaluator eventSensorEvaluator() {
-        return new NodeEventSensorEvaluator(this);
+        return sensorCoordinator.evaluateSensor();
     }
 
     private NodeOperatorSensorEvaluator operatorSensorEvaluator() {
         return new NodeOperatorSensorEvaluator(this);
     }
 
-    private boolean evaluateOperatorEquals() {
-        return operatorSensorEvaluator().evaluateOperatorEquals();
-    }
-
-    private boolean evaluateOperatorNot() {
-        return operatorSensorEvaluator().evaluateOperatorNot();
-    }
-
-    private boolean evaluateOperatorBooleanNot() {
-        return operatorSensorEvaluator().evaluateOperatorBooleanNot();
-    }
-
-    private boolean evaluateOperatorBooleanOr() {
-        return operatorSensorEvaluator().evaluateOperatorBooleanOr();
-    }
-
-    private boolean evaluateOperatorBooleanAnd() {
-        return operatorSensorEvaluator().evaluateOperatorBooleanAnd();
-    }
-
-    private boolean evaluateOperatorBooleanXor() {
-        return operatorSensorEvaluator().evaluateOperatorBooleanXor();
-    }
-
-    private boolean evaluateOperatorGreater() {
-        return operatorSensorEvaluator().evaluateOperatorGreater();
-    }
-
-    private boolean evaluateOperatorLess() {
-        return operatorSensorEvaluator().evaluateOperatorLess();
-    }
-
-    private NodeAttributeDetectionEvaluator attributeDetectionEvaluator() {
-        return new NodeAttributeDetectionEvaluator(this);
-    }
-
-    private boolean evaluateAttributeDetectionSensor() {
-        return attributeDetectionEvaluator().evaluateAttributeDetectionSensor();
-    }
-
     private NodePlayerStateSensorEvaluator playerStateSensorEvaluator() {
         return new NodePlayerStateSensorEvaluator(this);
-    }
-
-    private boolean isSwimming() {
-        return playerStateSensorEvaluator().isSwimming();
-    }
-
-    private boolean isInLava() {
-        return playerStateSensorEvaluator().isInLava();
-    }
-
-    private boolean isUnderwater() {
-        return playerStateSensorEvaluator().isUnderwater();
     }
 
     private Optional<Double> getDistanceFromGround() {
@@ -5342,30 +5194,8 @@ public class Node {
         return Optional.of(stack.getCount());
     }
 
-    private boolean adjustBooleanToggleResult(boolean rawResult) {
-        if (!hasBooleanToggle()) {
-            return rawResult;
-        }
-        return booleanToggleValue == rawResult;
-    }
-
     boolean evaluateConditionFromParameters() {
-        if (attachments.getAttachedSensor() != null) {
-            boolean result = attachments.getAttachedSensor().evaluateSensor();
-            this.runtimeState.lastSensorResult = result;
-            return result;
-        }
-
-        // Legacy fallback when no sensor is attached
-        String condition = getStringParameter("Condition", "Touching Block");
-        String blockId = getStringParameter("Block", "stone");
-        String entityId = getStringParameter("Entity", "zombie");
-        int x = getIntParameter("X", 0);
-        int y = getIntParameter("Y", 64);
-        int z = getIntParameter("Z", 0);
-        boolean result = evaluateSensorCondition(SensorConditionType.fromLabel(condition), blockId, entityId, x, y, z);
-        this.runtimeState.lastSensorResult = result;
-        return result;
+        return sensorCoordinator.evaluateConditionFromParameters();
     }
 
     private NodeProximitySensorEvaluator proximitySensorEvaluator() {
@@ -5422,14 +5252,6 @@ public class Node {
 
     private NodeBasicSensorEvaluator basicSensorEvaluator() {
         return new NodeBasicSensorEvaluator(this);
-    }
-
-    private boolean isDaytime() {
-        return basicSensorEvaluator().isDaytime();
-    }
-
-    private boolean isRaining() {
-        return basicSensorEvaluator().isRaining();
     }
 
     private boolean isKeyPressed(String keyName) {

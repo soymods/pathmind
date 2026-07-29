@@ -113,6 +113,7 @@ public class Node {
     private final NodeRuntimeParameterResolver runtimeParameterResolver;
     private final NodeWorldTargetResolver worldTargetResolver;
     private final NodeSensorCoordinator sensorCoordinator;
+    private final NodeParameterValues parameterValues;
     static final int MIN_WIDTH = 92;
     static final int MIN_HEIGHT = 44;
     static final int EVENT_FUNCTION_MIN_HEIGHT = 36;
@@ -330,6 +331,7 @@ public class Node {
         this.worldTargetResolver = new NodeWorldTargetResolver(this);
         this.sensorCoordinator = new NodeSensorCoordinator(this);
         this.parameters = new ArrayList<>();
+        this.parameterValues = new NodeParameterValues(this);
         this.dynamicBooleanOperatorSlotCount = isExpandableBooleanOperatorType(type) ? 2 : 0;
         this.messageLines = new ArrayList<>();
         if (type == NodeType.MESSAGE || type == NodeType.CALCULATE) {
@@ -349,7 +351,7 @@ public class Node {
         this.routineId = "";
         this.routineInputId = "";
         this.routineArguments = new ArrayList<>();
-        initializeParameters();
+        parameterValues.initializeParameters();
         recalculateDimensions();
         resetControlState();
     }
@@ -370,10 +372,6 @@ public class Node {
         LOOK_ORIENTATION
     }
     
-    private static final Set<String> MOVE_ITEM_SOURCE_KEYS = createParameterKeySet("SourceSlot", "FirstSlot", "Count", "Amount");
-    private static final Set<String> MOVE_ITEM_TARGET_KEYS = createParameterKeySet("TargetSlot", "SecondSlot", "Count", "Amount");
-    private static final Set<String> PLACE_POSITION_BLOCK_KEYS = createParameterKeySet("Block", "Blocks", "BlockId");
-    private static final Set<String> HOTBAR_INVENTORY_SLOT_ITEM_KEYS = createParameterKeySet("Item", "Items", "Count", "Amount");
     private static final String PARAM_ID_BOOLEAN_MODE = "boolean_mode";
     private static final String PARAM_ID_BOOLEAN_TOGGLE = "boolean_toggle";
     private static final String PARAM_ID_BOOLEAN_VARIABLE = "boolean_variable";
@@ -428,22 +426,6 @@ public class Node {
         return key.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
     }
     
-    private static Set<String> createParameterKeySet(String... keys) {
-        Set<String> keySet = new HashSet<>();
-        if (keys == null) {
-            return keySet;
-        }
-        for (String key : keys) {
-            if (key == null || key.isEmpty()) {
-                continue;
-            }
-            keySet.add(key);
-            keySet.add(key.toLowerCase(Locale.ROOT));
-            keySet.add(normalizeParameterKey(key));
-        }
-        return keySet;
-    }
-
     private static NodeParameter createParameter(String id, String name, ParameterType type, String defaultValue) {
         return new NodeParameter(id, name, type, defaultValue);
     }
@@ -573,7 +555,7 @@ public class Node {
         this.mode = mode;
         // Reinitialize parameters when mode changes
         parameters.clear();
-        initializeParameters();
+        parameterValues.initializeParameters();
         
         // Restore preserved values if mode didn't change
         if (!modeChanged && !preservedValues.isEmpty()) {
@@ -2108,171 +2090,15 @@ public class Node {
     }
 
     boolean applyParameterValuesFromMap(Map<String, String> values) {
-        if (values == null || values.isEmpty()) {
-            return false;
-        }
-        boolean applied = false;
-        for (NodeParameter target : parameters) {
-            String key = target.getName();
-            String value = values.get(key);
-            if (value == null) {
-                value = values.get(normalizeParameterKey(key));
-            }
-            if (value == null) {
-                value = values.get(key.toLowerCase(Locale.ROOT));
-            }
-            if (value == null && "Resource".equalsIgnoreCase(key)) {
-                value = values.get("Block");
-                if (value == null) {
-                    value = values.get(normalizeParameterKey("Block"));
-                }
-                if (value == null) {
-                    value = values.get("Blocks");
-                }
-                if (value == null) {
-                    value = values.get(normalizeParameterKey("Blocks"));
-                }
-                if (value == null) {
-                    value = values.get("Item");
-                }
-                if (value == null) {
-                    value = values.get(normalizeParameterKey("Item"));
-                }
-                if (value == null) {
-                    value = values.get("Entity");
-                }
-                if (value == null) {
-                    value = values.get(normalizeParameterKey("Entity"));
-                }
-                if (value == null) {
-                    value = values.get("Player");
-                }
-                if (value == null) {
-                    value = values.get(normalizeParameterKey("Player"));
-                }
-            }
-            if (value != null) {
-                target.setStringValue(value);
-                applied = true;
-            }
-        }
-        return applied;
-    }
-
-    private Map<String, String> adjustParameterValuesForSlot(Map<String, String> values, int slotIndex) {
-        return adjustParameterValuesForSlot(values, slotIndex, null);
+        return parameterValues.applyParameterValuesFromMap(values);
     }
 
     Map<String, String> adjustParameterValuesForSlot(Map<String, String> values, int slotIndex, Node parameterNode) {
-        if (values == null || values.isEmpty() || slotIndex < 0) {
-            return values;
-        }
-        return switch (type) {
-            case HOTBAR -> {
-                if (parameterNode != null && parameterNode.getType() == NodeType.PARAM_INVENTORY_SLOT) {
-                    Map<String, String> adjusted = new HashMap<>(filterParameterMap(values, HOTBAR_INVENTORY_SLOT_ITEM_KEYS));
-                    adjusted.put("Item", "");
-                    adjusted.put(normalizeParameterKey("Item"), "");
-                    yield adjusted;
-                }
-                yield values;
-            }
-            case CONTROL_REPEAT -> {
-                if (parameterNode != null) {
-                    if (!values.containsKey("Count")) {
-                        String fallback = values.get("Amount");
-                        if (fallback == null) {
-                            fallback = values.get("Duration");
-                        }
-                        if (fallback == null) {
-                            fallback = values.get("Value");
-                        }
-                        if (fallback != null) {
-                            Map<String, String> adjusted = new HashMap<>(values);
-                            adjusted.put("Count", fallback);
-                            adjusted.put(normalizeParameterKey("Count"), fallback);
-                            yield adjusted;
-                        }
-                    }
-                }
-                yield values;
-            }
-            case MOVE_ITEM -> {
-                if (slotIndex == 0) {
-                    yield filterParameterMap(values, MOVE_ITEM_TARGET_KEYS);
-                } else if (slotIndex == 1) {
-                    yield filterParameterMap(values, MOVE_ITEM_SOURCE_KEYS);
-                }
-                yield values;
-            }
-            case PLACE, PLACE_HAND -> {
-                if (slotIndex == 1 && parameterNode != null) {
-                    NodeType parameterType = parameterNode.getType();
-                    if (parameterType == NodeType.PARAM_BLOCK || parameterType == NodeType.PARAM_PLACE_TARGET) {
-                        yield filterParameterMap(values, PLACE_POSITION_BLOCK_KEYS);
-                    }
-                }
-                yield values;
-            }
-            case LOOK -> {
-                if (slotIndex == 0 && parameterNode != null) {
-                    Map<String, String> remapped = remapSingleAxisLookValues(values, parameterNode);
-                    if (remapped != values) {
-                        yield remapped;
-                    }
-                }
-                yield values;
-            }
-            default -> values;
-        };
-    }
-    
-    private Map<String, String> filterParameterMap(Map<String, String> values, Set<String> keysToRemove) {
-        if (values == null || values.isEmpty() || keysToRemove == null || keysToRemove.isEmpty()) {
-            return values;
-        }
-        boolean needsFiltering = false;
-        for (String key : keysToRemove) {
-            if (values.containsKey(key)) {
-                needsFiltering = true;
-                break;
-            }
-        }
-        if (!needsFiltering) {
-            return values;
-        }
-        Map<String, String> filtered = new HashMap<>(values);
-        for (String key : keysToRemove) {
-            filtered.remove(key);
-        }
-        return filtered;
+        return parameterValues.adjustParameterValuesForSlot(values, slotIndex, parameterNode);
     }
 
     private void refreshAttachedParameterValues() {
-        if (isParameterNode()) {
-            return;
-        }
-        Map<String, String> existingValues = exportParameterValues();
-        resetParametersToDefaults();
-        if (!existingValues.isEmpty()) {
-            applyParameterValuesFromMap(existingValues);
-        }
-        if (!attachments.hasAttachedParameters()) {
-            return;
-        }
-        List<Integer> slotIndices = new ArrayList<>(attachments.getAttachedParameterSlotIndices());
-        Collections.sort(slotIndices);
-        for (Integer slotIndex : slotIndices) {
-            Node parameter = attachments.getAttachedParameter(slotIndex);
-            if (parameter == null) {
-                continue;
-            }
-            Map<String, String> exported = parameter.exportParameterValues();
-            if (!exported.isEmpty()) {
-                Map<String, String> adjusted = adjustParameterValuesForSlot(exported, slotIndex, parameter);
-                applyParameterValuesFromMap(adjusted);
-            }
-        }
+        parameterValues.refreshAttachedParameterValues();
     }
 
     private boolean canHandleParameterRuntime(Node parameter, int slotIndex) {
@@ -2391,21 +2217,6 @@ public class Node {
     }
 
     /**
-     * Initialize default parameters for each node type and mode
-     */
-    private void resetParametersToDefaults() {
-        if (isParameterNode()) {
-            return;
-        }
-        parameters.clear();
-        initializeParameters();
-    }
-
-    private void initializeParameters() {
-        NodeParameterDefaults.initialize(parameters, type, mode);
-    }
-
-    /**
      * Get all parameters for this node
      */
     public List<NodeParameter> getParameters() {
@@ -2416,64 +2227,11 @@ public class Node {
      * Get a specific parameter by name
      */
     public NodeParameter getParameter(String name) {
-        String normalizedId = NodeParameter.createDefaultId(name);
-        for (NodeParameter param : parameters) {
-            if (param.getName().equals(name) || param.getId().equals(normalizedId)) {
-                return param;
-            }
-        }
-        if ("Duration".equals(name) && (type == NodeType.WAIT || type == NodeType.PARAM_DURATION)) {
-            String defaultValue = type == NodeType.PARAM_DURATION ? "" : "0.0";
-            NodeParameter duration = new NodeParameter("Duration", ParameterType.DOUBLE, defaultValue);
-            parameters.add(duration);
-            return duration;
-        }
-        return null;
+        return parameterValues.getParameter(name);
     }
 
     public void setParameterValueAndPropagate(String name, String value) {
-        if (name == null || value == null) {
-            return;
-        }
-
-        NodeParameter parameter = getParameter(name);
-        if (parameter != null) {
-            parameter.setStringValue(value);
-        }
-
-        if (type == NodeType.PARAM_ENTITY && "Entity".equalsIgnoreCase(name)) {
-            NodeParameter stateParam = getParameter("State");
-            if (stateParam != null && stateParam.getStringValue() != null && !stateParam.getStringValue().isEmpty()) {
-                stateParam.setStringValue("");
-            }
-        }
-
-        if (attachments.hasAttachedParameters()) {
-            for (Node parameterNode : attachments.getAttachedParameterNodes()) {
-                if (parameterNode == null || !parameterNode.isParameterNode()) {
-                    continue;
-                }
-                if (isListIdentityParameter(this, name) && isListIdentityParameter(parameterNode, name)) {
-                    continue;
-                }
-                NodeParameter attachedParam = parameterNode.getParameter(name);
-                if (attachedParam != null) {
-                    attachedParam.setStringValue(value);
-                    parameterNode.recalculateDimensions();
-                }
-            }
-        }
-    }
-
-    private static boolean isListIdentityParameter(Node node, String name) {
-        if (node == null || !"List".equals(name)) {
-            return false;
-        }
-        return switch (node.getType()) {
-            case CREATE_LIST, ADD_TO_LIST, REMOVE_FIRST_FROM_LIST, REMOVE_LAST_FROM_LIST,
-                REMOVE_LIST_ITEM, REMOVE_FROM_LIST, LIST_ITEM, LIST_LENGTH -> true;
-            default -> false;
-        };
+        parameterValues.setParameterValueAndPropagate(name, value);
     }
 
     boolean shouldShowStateParameter() {
@@ -3661,7 +3419,7 @@ public class Node {
             variableNode, slotIndex, future);
     }
 
-    private Map<String, String> remapSingleAxisLookValues(Map<String, String> values, Node parameterNode) {
+    Map<String, String> remapSingleAxisLookValues(Map<String, String> values, Node parameterNode) {
         return runtimeParameterResolver.remapSingleAxisLookValues(values, parameterNode);
     }
 

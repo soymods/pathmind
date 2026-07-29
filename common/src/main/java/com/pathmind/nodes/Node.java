@@ -3514,97 +3514,47 @@ public class Node {
     }
 
     Node getAttachedParameterOfType(NodeType... allowedTypes) {
-        if (!attachments.hasAttachedParameters()) {
-            return null;
-        }
-        List<Integer> slotIndices = new ArrayList<>(attachments.getAttachedParameterSlotIndices());
-        Collections.sort(slotIndices);
-        for (Integer slotIndex : slotIndices) {
-            Node parameter = attachments.getAttachedParameter(slotIndex);
-            if (parameter == null || !parameter.isParameterNode()) {
-                continue;
-            }
-            NodeType parameterType = parameter.getType();
-            NodeType resolvedType = parameterType == NodeType.LIST_ITEM
-                ? parameter.getResolvedValueType()
-                : parameterType;
-            for (NodeType allowed : allowedTypes) {
-                if (parameterType == allowed || resolvedType == allowed) {
-                    return parameter;
-                }
-            }
-        }
-        Node fallback = getAttachedParameter();
-        if (fallback != null) {
-            sendIncompatibleParameterMessage(fallback);
-        }
-        return null;
+        return sensorCoordinator.getAttachedParameterOfType(allowedTypes);
     }
 
     boolean providesTrait(Node node, NodeValueTrait trait) {
-        if (node == null || trait == null) {
-            return false;
-        }
-        EnumSet<NodeValueTrait> traits = node.getProvidedTraits();
-        return traits.contains(trait);
+        return sensorCoordinator.providesTrait(node, trait);
     }
 
     Node resolveSensorParameterNode(Node parameterNode, int slotIndex) {
-        if (parameterNode == null) {
-            return null;
-        }
-        if (parameterNode.getType() == NodeType.VARIABLE) {
-            return resolveVariableValueNode(parameterNode, slotIndex, null);
-        }
-        return parameterNode;
-    }
-
-    private NodeTargetSensorEvaluator targetSensorEvaluator() {
-        return new NodeTargetSensorEvaluator(this);
+        return sensorCoordinator.resolveSensorParameterNode(parameterNode, slotIndex);
     }
 
     Optional<BlockState> getTargetedBlockState() {
-        return targetSensorEvaluator().getTargetedBlockState();
+        return sensorCoordinator.getTargetedBlockState();
     }
 
     Optional<BlockPos> getTargetedBlockPos() {
-        return targetSensorEvaluator().getTargetedBlockPos();
+        return sensorCoordinator.getTargetedBlockPos();
     }
 
     Optional<Entity> getTargetedEntity() {
-        return targetSensorEvaluator().getTargetedEntity();
-    }
-
-    private Optional<Direction> getLookDirection() {
-        return targetSensorEvaluator().getLookDirection();
+        return sensorCoordinator.getTargetedEntity();
     }
 
     Optional<Integer> getCurrentHotbarSlot() {
-        return targetSensorEvaluator().getCurrentHotbarSlot();
+        return sensorCoordinator.getCurrentHotbarSlot();
     }
 
     Optional<Direction> getTargetedBlockFace() {
-        return targetSensorEvaluator().getTargetedBlockFace();
+        return sensorCoordinator.getTargetedBlockFace();
     }
 
     Optional<BlockHitResult> getCurrentBlockHitResult() {
-        return targetSensorEvaluator().getCurrentBlockHitResult();
+        return sensorCoordinator.getCurrentBlockHitResult();
     }
 
     public boolean evaluateSensor() {
         return sensorCoordinator.evaluateSensor();
     }
 
-    private NodeOperatorSensorEvaluator operatorSensorEvaluator() {
-        return new NodeOperatorSensorEvaluator(this);
-    }
-
-    private NodePlayerStateSensorEvaluator playerStateSensorEvaluator() {
-        return new NodePlayerStateSensorEvaluator(this);
-    }
-
     Optional<Double> getDistanceFromGround() {
-        return playerStateSensorEvaluator().getDistanceFromGround();
+        return sensorCoordinator.getDistanceFromGround();
     }
 
     static boolean isFallingState(
@@ -3639,195 +3589,57 @@ public class Node {
         );
     }
 
-    private boolean isFalling(double distance) {
-        return playerStateSensorEvaluator().isFalling(distance);
-    }
-
     Optional<Boolean> resolveBooleanFromNode(Node node) {
-        return operatorSensorEvaluator().resolveBooleanFromNode(node);
+        return sensorCoordinator.resolveBooleanFromNode(node);
     }
 
     public Node createRuntimeVariableSnapshot(ExecutionManager.RuntimeVariable runtimeVariable) {
-        return operatorSensorEvaluator().createRuntimeVariableSnapshot(runtimeVariable);
+        return sensorCoordinator.createRuntimeVariableSnapshot(runtimeVariable);
     }
 
     /** Evaluates one attached argument into an immutable value snapshot for a routine call frame. */
     public ExecutionManager.RuntimeVariable captureAttachedRuntimeValue(int slotIndex, int executionId) {
-        Node valueNode = getAttachedParameter(slotIndex);
-        if (valueNode == null) return null;
-        if (valueNode.getType() == NodeType.VARIABLE) {
-            valueNode = resolveVariableValueNode(valueNode, slotIndex, null);
-            if (valueNode == null) return null;
-        } else if (valueNode.getType() == NodeType.ROUTINE_INPUT) {
-            ExecutionManager.RuntimeVariable framed = ExecutionManager.getInstance()
-                .getRoutineInputValue(executionId, valueNode.getRoutineInputId());
-            if (framed != null) return framed;
-        }
-        if (valueNode.isSensorNode() && NodeCatalog.isBooleanSensor(valueNode.getType())) {
-            String value = Boolean.toString(valueNode.evaluateSensor());
-            Map<String, String> values = new HashMap<>();
-            values.put("Toggle", value);
-            values.put(normalizeParameterKey("Toggle"), value);
-            return new ExecutionManager.RuntimeVariable(NodeType.PARAM_BOOLEAN, values);
-        }
-        NodeType valueType = valueNode.getResolvedValueType();
-        if (valueType == null || valueType == NodeType.ROUTINE_INPUT) valueType = valueNode.getType();
-        return new ExecutionManager.RuntimeVariable(valueType, valueNode.exportParameterValues());
+        return routineMetadata.captureAttachedRuntimeValue(slotIndex, executionId);
     }
 
     Optional<Boolean> compareParameterNodes(Node left, Node right) {
-        return operatorSensorEvaluator().compareParameterNodes(left, right);
+        return sensorCoordinator.compareParameterNodes(left, right);
     }
 
     String formatCanonicalValueMap(Map<String, String> values) {
-        return operatorSensorEvaluator().formatCanonicalValueMap(values);
+        return sensorCoordinator.formatCanonicalValueMap(values);
     }
 
     Optional<Double> resolveComparableNumber(Node node) {
-        return operatorSensorEvaluator().resolveComparableNumber(node);
+        return sensorCoordinator.resolveComparableNumber(node);
     }
 
     Optional<Double> resolveComparableNumberWithVariables(Node node, int slotIndex) {
-        return operatorSensorEvaluator().resolveComparableNumberWithVariables(node, slotIndex);
+        return sensorCoordinator.resolveComparableNumberWithVariables(node, slotIndex);
     }
 
     Optional<Integer> resolveInventorySlotCount(Node slotNode) {
-        if (slotNode == null || !providesTrait(slotNode, NodeValueTrait.INVENTORY_SLOT)) {
-            return Optional.empty();
-        }
-        net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
-        if (client == null || client.player == null) {
-            return Optional.empty();
-        }
-        Inventory inventory = client.player.getInventory();
-        AbstractContainerMenu handler = client.player.containerMenu;
-        int slotValue = parseNodeInt(slotNode, "Slot", 0);
-        SlotSelectionType selectionType = resolveInventorySlotSelectionType(slotNode);
-        SlotResolution resolved = resolveInventorySlot(handler, inventory, slotValue, selectionType);
-        if (resolved == null || resolved.slot == null) {
-            return Optional.empty();
-        }
-        ItemStack stack = resolved.slot.getItem();
-        if (stack == null || stack.isEmpty()) {
-            return Optional.of(0);
-        }
-        return Optional.of(stack.getCount());
+        return sensorCoordinator.resolveInventorySlotCount(slotNode);
     }
 
     boolean evaluateConditionFromParameters() {
         return sensorCoordinator.evaluateConditionFromParameters();
     }
 
-    private NodeProximitySensorEvaluator proximitySensorEvaluator() {
-        return new NodeProximitySensorEvaluator(this);
-    }
-
-    private boolean evaluateSensorCondition(SensorConditionType type, String blockId, String entityId, int x, int y, int z) {
-        return proximitySensorEvaluator().evaluateSensorCondition(type, blockId, entityId, x, y, z);
-    }
-
-    private boolean isTouchingBlock(String blockId) {
-        return proximitySensorEvaluator().isTouchingBlock(blockId);
-    }
-
-    private boolean isTouchingBlock(List<BlockSelection> selections) {
-        return proximitySensorEvaluator().isTouchingBlock(selections);
-    }
-
-    private boolean isTouchingEntity(String entityId) {
-        return proximitySensorEvaluator().isTouchingEntity(entityId);
-    }
-
-    private boolean isTouchingEntity(String entityId, String state) {
-        return proximitySensorEvaluator().isTouchingEntity(entityId, state);
-    }
-
-    private boolean isAtCoordinates(int x, int y, int z) {
-        return proximitySensorEvaluator().isAtCoordinates(x, y, z);
-    }
-
-    private boolean isBlockAhead(String blockId) {
-        return proximitySensorEvaluator().isBlockAhead(blockId);
-    }
-
-    private boolean isBlockAhead(List<BlockSelection> selections) {
-        return proximitySensorEvaluator().isBlockAhead(selections);
-    }
-
-    private boolean isBlockBelow(String blockId) {
-        return proximitySensorEvaluator().isBlockBelow(blockId);
-    }
-
-    private boolean isBlockBelow(List<BlockSelection> selections) {
-        return proximitySensorEvaluator().isBlockBelow(selections);
-    }
-
-    private List<BlockSelection> parseBlockSelectionList(String blockId) {
-        return proximitySensorEvaluator().parseBlockSelectionList(blockId);
-    }
-
     boolean matchesAnyBlock(List<BlockSelection> selections, BlockState state) {
-        return proximitySensorEvaluator().matchesAnyBlock(selections, state);
-    }
-
-    private NodeBasicSensorEvaluator basicSensorEvaluator() {
-        return new NodeBasicSensorEvaluator(this);
-    }
-
-    private boolean isKeyPressed(String keyName) {
-        return basicSensorEvaluator().isKeyPressed(keyName);
+        return sensorCoordinator.matchesAnyBlock(selections, state);
     }
 
     Integer resolveKeyCode(String keyName) {
-        return basicSensorEvaluator().resolveKeyCode(keyName);
+        return sensorCoordinator.resolveKeyCode(keyName);
     }
 
     Integer resolveMouseButtonCode(String buttonName) {
-        return basicSensorEvaluator().resolveMouseButtonCode(buttonName);
-    }
-
-    private boolean isHealthBelow(double amount) {
-        return basicSensorEvaluator().isHealthBelow(amount);
-    }
-
-    private boolean isHungerBelow(int amount) {
-        return basicSensorEvaluator().isHungerBelow(amount);
-    }
-
-    private NodeInventorySensorEvaluator inventorySensorEvaluator() {
-        return new NodeInventorySensorEvaluator(this);
-    }
-
-    private boolean hasItemInInventory(String itemId) {
-        return inventorySensorEvaluator().hasItemInInventory(itemId);
-    }
-
-    private boolean hasItemAmountInInventory(String itemId, int requiredAmount) {
-        return inventorySensorEvaluator().hasItemAmountInInventory(itemId, requiredAmount);
+        return sensorCoordinator.resolveMouseButtonCode(buttonName);
     }
 
     boolean stackMatchesAnyItem(ItemStack stack, List<String> itemIds) {
-        return inventorySensorEvaluator().stackMatchesAnyItem(stack, itemIds);
-    }
-
-    private NodeVisibilitySensorEvaluator visibilitySensorEvaluator() {
-        return new NodeVisibilitySensorEvaluator(this);
-    }
-
-    private boolean isResourceRendered(String resourceId) {
-        return visibilitySensorEvaluator().isResourceRendered(resourceId);
-    }
-
-    private boolean isEntityRendered(String entityId, String state) {
-        return visibilitySensorEvaluator().isEntityRendered(entityId, state);
-    }
-
-    private boolean isResourceVisible(String resourceId) {
-        return visibilitySensorEvaluator().isResourceVisible(resourceId);
-    }
-
-    private boolean isEntityVisible(String entityId, String state) {
-        return visibilitySensorEvaluator().isEntityVisible(entityId, state);
+        return sensorCoordinator.stackMatchesAnyItem(stack, itemIds);
     }
     
     void executeCommand(String command) {

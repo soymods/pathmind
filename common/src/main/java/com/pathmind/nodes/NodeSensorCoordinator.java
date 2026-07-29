@@ -1,5 +1,21 @@
 package com.pathmind.nodes;
 
+import com.pathmind.util.BlockSelection;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.BlockHitResult;
+
 final class NodeSensorCoordinator {
     private final Node owner;
 
@@ -87,6 +103,144 @@ final class NodeSensorCoordinator {
             Node.SensorConditionType.fromLabel(condition), blockId, entityId, x, y, z);
         owner.runtimeState().lastSensorResult = result;
         return result;
+    }
+
+    Node getAttachedParameterOfType(NodeType... allowedTypes) {
+        NodeAttachments attachments = owner.getAttachments();
+        if (!attachments.hasAttachedParameters()) {
+            return null;
+        }
+        List<Integer> slotIndices = new ArrayList<>(attachments.getAttachedParameterSlotIndices());
+        Collections.sort(slotIndices);
+        for (Integer slotIndex : slotIndices) {
+            Node parameter = attachments.getAttachedParameter(slotIndex);
+            if (parameter == null || !parameter.isParameterNode()) {
+                continue;
+            }
+            NodeType parameterType = parameter.getType();
+            NodeType resolvedType = parameterType == NodeType.LIST_ITEM
+                ? parameter.getResolvedValueType()
+                : parameterType;
+            for (NodeType allowed : allowedTypes) {
+                if (parameterType == allowed || resolvedType == allowed) {
+                    return parameter;
+                }
+            }
+        }
+        Node fallback = owner.getAttachedParameter();
+        if (fallback != null) {
+            owner.sendIncompatibleParameterMessage(fallback);
+        }
+        return null;
+    }
+
+    boolean providesTrait(Node node, NodeValueTrait trait) {
+        if (node == null || trait == null) {
+            return false;
+        }
+        EnumSet<NodeValueTrait> traits = node.getProvidedTraits();
+        return traits.contains(trait);
+    }
+
+    Node resolveSensorParameterNode(Node parameterNode, int slotIndex) {
+        if (parameterNode == null) {
+            return null;
+        }
+        if (parameterNode.getType() == NodeType.VARIABLE) {
+            return owner.resolveVariableValueNode(parameterNode, slotIndex, null);
+        }
+        return parameterNode;
+    }
+
+    Optional<BlockState> getTargetedBlockState() {
+        return targetSensorEvaluator().getTargetedBlockState();
+    }
+
+    Optional<BlockPos> getTargetedBlockPos() {
+        return targetSensorEvaluator().getTargetedBlockPos();
+    }
+
+    Optional<Entity> getTargetedEntity() {
+        return targetSensorEvaluator().getTargetedEntity();
+    }
+
+    Optional<Integer> getCurrentHotbarSlot() {
+        return targetSensorEvaluator().getCurrentHotbarSlot();
+    }
+
+    Optional<Direction> getTargetedBlockFace() {
+        return targetSensorEvaluator().getTargetedBlockFace();
+    }
+
+    Optional<BlockHitResult> getCurrentBlockHitResult() {
+        return targetSensorEvaluator().getCurrentBlockHitResult();
+    }
+
+    Optional<Double> getDistanceFromGround() {
+        return playerStateSensorEvaluator().getDistanceFromGround();
+    }
+
+    Optional<Boolean> resolveBooleanFromNode(Node node) {
+        return operatorSensorEvaluator().resolveBooleanFromNode(node);
+    }
+
+    Node createRuntimeVariableSnapshot(com.pathmind.execution.ExecutionManager.RuntimeVariable runtimeVariable) {
+        return operatorSensorEvaluator().createRuntimeVariableSnapshot(runtimeVariable);
+    }
+
+    Optional<Boolean> compareParameterNodes(Node left, Node right) {
+        return operatorSensorEvaluator().compareParameterNodes(left, right);
+    }
+
+    String formatCanonicalValueMap(Map<String, String> values) {
+        return operatorSensorEvaluator().formatCanonicalValueMap(values);
+    }
+
+    Optional<Double> resolveComparableNumber(Node node) {
+        return operatorSensorEvaluator().resolveComparableNumber(node);
+    }
+
+    Optional<Double> resolveComparableNumberWithVariables(Node node, int slotIndex) {
+        return operatorSensorEvaluator().resolveComparableNumberWithVariables(node, slotIndex);
+    }
+
+    Optional<Integer> resolveInventorySlotCount(Node slotNode) {
+        if (slotNode == null || !providesTrait(slotNode, NodeValueTrait.INVENTORY_SLOT)) {
+            return Optional.empty();
+        }
+        net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
+        if (client == null || client.player == null) {
+            return Optional.empty();
+        }
+        Inventory inventory = client.player.getInventory();
+        AbstractContainerMenu handler = client.player.containerMenu;
+        int slotValue = Node.parseNodeInt(slotNode, "Slot", 0);
+        SlotSelectionType selectionType = owner.resolveInventorySlotSelectionType(slotNode);
+        SlotResolution resolved = owner.resolveInventorySlot(handler, inventory, slotValue, selectionType);
+        if (resolved == null || resolved.slot == null) {
+            return Optional.empty();
+        }
+        ItemStack stack = resolved.slot.getItem();
+        if (stack == null || stack.isEmpty()) {
+            return Optional.of(0);
+        }
+        return Optional.of(stack.getCount());
+    }
+
+    boolean matchesAnyBlock(List<BlockSelection> selections, BlockState state) {
+        return proximitySensorEvaluator().matchesAnyBlock(selections, state);
+    }
+
+    boolean stackMatchesAnyItem(ItemStack stack, List<String> itemIds) {
+        return inventorySensorEvaluator().stackMatchesAnyItem(stack, itemIds);
+    }
+
+    Integer resolveKeyCode(String keyName) {
+        return basicSensorEvaluator().resolveKeyCode(keyName);
+    }
+
+    Integer resolveMouseButtonCode(String buttonName) {
+        return basicSensorEvaluator().resolveMouseButtonCode(buttonName);
     }
 
     private void recordSensorResult(boolean result) {

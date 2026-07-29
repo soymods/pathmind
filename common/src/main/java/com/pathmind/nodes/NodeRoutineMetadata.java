@@ -1,11 +1,13 @@
 package com.pathmind.nodes;
 
 import com.pathmind.data.NodeGraphData;
+import com.pathmind.execution.ExecutionManager;
 import com.pathmind.routines.RoutineInputDefinition;
 import com.pathmind.routines.RoutineValueKind;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -165,6 +167,29 @@ final class NodeRoutineMetadata {
 
     NodeGraphData.RoutineArgumentData getRoutineArgument(int slotIndex) {
         return routineArguments.get(slotIndex);
+    }
+
+    ExecutionManager.RuntimeVariable captureAttachedRuntimeValue(int slotIndex, int executionId) {
+        Node valueNode = owner.getAttachedParameter(slotIndex);
+        if (valueNode == null) return null;
+        if (valueNode.getType() == NodeType.VARIABLE) {
+            valueNode = owner.resolveVariableValueNode(valueNode, slotIndex, null);
+            if (valueNode == null) return null;
+        } else if (valueNode.getType() == NodeType.ROUTINE_INPUT) {
+            ExecutionManager.RuntimeVariable framed = ExecutionManager.getInstance()
+                .getRoutineInputValue(executionId, valueNode.getRoutineInputId());
+            if (framed != null) return framed;
+        }
+        if (valueNode.isSensorNode() && NodeCatalog.isBooleanSensor(valueNode.getType())) {
+            String value = Boolean.toString(valueNode.evaluateSensor());
+            Map<String, String> values = new HashMap<>();
+            values.put("Toggle", value);
+            values.put(Node.normalizeParameterKey("Toggle"), value);
+            return new ExecutionManager.RuntimeVariable(NodeType.PARAM_BOOLEAN, values);
+        }
+        NodeType valueType = valueNode.getResolvedValueType();
+        if (valueType == null || valueType == NodeType.ROUTINE_INPUT) valueType = valueNode.getType();
+        return new ExecutionManager.RuntimeVariable(valueType, valueNode.exportParameterValues());
     }
 
     private static NodeGraphData.RoutineArgumentData copyRoutineArgument(NodeGraphData.RoutineArgumentData source) {

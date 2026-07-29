@@ -607,7 +607,7 @@ public class Node {
         updateAttachedParameterPositions();
     }
 
-    private void setPositionSilently(int x, int y) {
+    void setPositionSilently(int x, int y) {
         layoutState.setPosition(x, y);
     }
 
@@ -1261,20 +1261,11 @@ public class Node {
     }
 
     public int getSocketY(int socketIndex, boolean isInput) {
-        return NodeGeometry.socketY(
-            getY(),
-            getHeight(),
-            socketIndex,
-            isInput ? getInputSocketCount() : getOutputSocketCount(),
-            12,
-            type == NodeType.START || type == NodeType.EVENT_FUNCTION || type == NodeType.ROUTINE_ENTRY,
-            usesMinimalNodePresentation(),
-            14,
-            6);
+        return NodeSlotLayout.socketY(this, socketIndex, isInput);
     }
     
     public int getSocketX(boolean isInput) {
-        return NodeGeometry.socketX(getX(), getWidth(), isInput, 4);
+        return NodeSlotLayout.socketX(this, isInput);
     }
     
     public void setNextOutputSocket(int socketIndex) {
@@ -1305,14 +1296,7 @@ public class Node {
     }
     
     public boolean isSocketClicked(int mouseX, int mouseY, int socketIndex, boolean isInput) {
-        if (interactionState.areSocketsHidden()) {
-            return false;
-        }
-        int socketX = getSocketX(isInput);
-        int socketY = getSocketY(socketIndex, isInput);
-        int socketRadius = 6; // Smaller size for more space
-
-        return NodeGeometry.isPointNear(socketX, socketY, socketRadius, mouseX, mouseY);
+        return NodeSlotLayout.isSocketClicked(this, mouseX, mouseY, socketIndex, isInput);
     }
 
     public int getSensorSlotLeft() {
@@ -2104,33 +2088,11 @@ public class Node {
     }
 
     public void updateAttachedParameterPositions() {
-        for (Integer slotIndex : attachments.getAttachedParameterSlotIndices()) {
-            updateAttachedParameterPosition(slotIndex);
-        }
+        NodeSlotLayout.updateAttachedParameterPositions(this);
     }
 
     private void updateAttachedParameterPosition(int slotIndex) {
-        Node parameter = getAttachedParameter(slotIndex);
-        if (parameter == null) {
-            return;
-        }
-        int parameterWidth = parameter.getWidth();
-        int parameterX = NodeGeometry.centeredChildX(
-            getParameterSlotLeft(slotIndex),
-            PARAMETER_SLOT_INNER_PADDING,
-            getParameterSlotWidth(slotIndex),
-            parameterWidth,
-            parameter.usesMinimalNodePresentation() ? MINIMAL_NODE_TAB_WIDTH : 0);
-        int parameterY = NodeGeometry.centeredChildY(
-            getParameterSlotTop(slotIndex),
-            PARAMETER_SLOT_INNER_PADDING,
-            getParameterSlotHeight(slotIndex),
-            parameter.getHeight());
-        if (parameter.hasAttachedParameter() || parameter.hasAttachedSensor() || parameter.hasAttachedActionNode()) {
-            parameter.setPosition(parameterX, parameterY);
-        } else {
-            parameter.setPositionSilently(parameterX, parameterY);
-        }
+        NodeSlotLayout.updateAttachedParameterPosition(this, slotIndex);
     }
 
     public int getActionSlotLeft() {
@@ -2154,39 +2116,11 @@ public class Node {
     }
 
     public void updateAttachedSensorPosition() {
-        if (attachments.getAttachedSensor() == null) {
-            return;
-        }
-        int sensorX = NodeGeometry.centeredChildX(
-            getSensorSlotLeft(),
-            SENSOR_SLOT_INNER_PADDING,
-            getSensorSlotWidth(),
-            attachments.getAttachedSensor().getWidth(),
-            0);
-        int sensorY = NodeGeometry.centeredChildY(
-            getSensorSlotTop(),
-            SENSOR_SLOT_INNER_PADDING,
-            getSensorSlotHeight(),
-            attachments.getAttachedSensor().getHeight());
-        attachments.getAttachedSensor().setPosition(sensorX, sensorY);
+        NodeSlotLayout.updateAttachedSensorPosition(this);
     }
 
     public void updateAttachedActionPosition() {
-        if (attachments.getAttachedActionNode() == null) {
-            return;
-        }
-        int nodeX = NodeGeometry.centeredChildX(
-            getActionSlotLeft(),
-            ACTION_SLOT_INNER_PADDING,
-            getActionSlotWidth(),
-            attachments.getAttachedActionNode().getWidth(),
-            0);
-        int nodeY = NodeGeometry.centeredChildY(
-            getActionSlotTop(),
-            ACTION_SLOT_INNER_PADDING,
-            getActionSlotHeight(),
-            attachments.getAttachedActionNode().getHeight());
-        attachments.getAttachedActionNode().setPosition(nodeX, nodeY);
+        NodeSlotLayout.updateAttachedActionPosition(this);
     }
 
     public boolean attachSensor(Node sensor) {

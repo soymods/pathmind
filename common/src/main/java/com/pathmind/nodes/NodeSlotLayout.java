@@ -12,6 +12,42 @@ final class NodeSlotLayout {
         return node.getX() + Node.SENSOR_SLOT_MARGIN_HORIZONTAL;
     }
 
+    static int socketY(Node node, int socketIndex, boolean isInput) {
+        return NodeGeometry.socketY(
+            node.getY(),
+            node.getHeight(),
+            socketIndex,
+            isInput ? node.getInputSocketCount() : node.getOutputSocketCount(),
+            12,
+            node.getType() == NodeType.START
+                || node.getType() == NodeType.EVENT_FUNCTION
+                || node.getType() == NodeType.ROUTINE_ENTRY,
+            node.usesMinimalNodePresentation(),
+            14,
+            6);
+    }
+
+    static int socketX(Node node, boolean isInput) {
+        return NodeGeometry.socketX(node.getX(), node.getWidth(), isInput, 4);
+    }
+
+    static boolean isSocketClicked(
+        Node node,
+        int mouseX,
+        int mouseY,
+        int socketIndex,
+        boolean isInput
+    ) {
+        if (!node.shouldRenderSockets()) {
+            return false;
+        }
+        int socketX = socketX(node, isInput);
+        int socketY = socketY(node, socketIndex, isInput);
+        int socketRadius = 6; // Smaller size for more space
+
+        return NodeGeometry.isPointNear(socketX, socketY, socketRadius, mouseX, mouseY);
+    }
+
     static int sensorSlotTop(Node node) {
         int top = slotAreaStartY(node);
         if (node.showsSensorSlotHeader()) {
@@ -179,6 +215,36 @@ final class NodeSlotLayout {
         return -1;
     }
 
+    static void updateAttachedParameterPositions(Node node) {
+        for (Integer slotIndex : node.getAttachedParameterSlotIndices()) {
+            updateAttachedParameterPosition(node, slotIndex);
+        }
+    }
+
+    static void updateAttachedParameterPosition(Node node, int slotIndex) {
+        Node parameter = node.getAttachedParameter(slotIndex);
+        if (parameter == null) {
+            return;
+        }
+        int parameterWidth = parameter.getWidth();
+        int parameterX = NodeGeometry.centeredChildX(
+            parameterSlotLeft(node, slotIndex),
+            Node.PARAMETER_SLOT_INNER_PADDING,
+            parameterSlotWidth(node, slotIndex),
+            parameterWidth,
+            parameter.usesMinimalNodePresentation() ? Node.MINIMAL_NODE_TAB_WIDTH : 0);
+        int parameterY = NodeGeometry.centeredChildY(
+            parameterSlotTop(node, slotIndex),
+            Node.PARAMETER_SLOT_INNER_PADDING,
+            parameterSlotHeight(node, slotIndex),
+            parameter.getHeight());
+        if (parameter.hasAttachedParameter() || parameter.hasAttachedSensor() || parameter.hasAttachedActionNode()) {
+            parameter.setPosition(parameterX, parameterY);
+        } else {
+            parameter.setPositionSilently(parameterX, parameterY);
+        }
+    }
+
     static int actionSlotLeft(Node node) {
         return node.getX() + Node.ACTION_SLOT_MARGIN_HORIZONTAL;
     }
@@ -223,6 +289,44 @@ final class NodeSlotLayout {
             actionSlotHeight(node),
             pointX,
             pointY);
+    }
+
+    static void updateAttachedSensorPosition(Node node) {
+        Node sensor = node.getAttachedSensor();
+        if (sensor == null) {
+            return;
+        }
+        int sensorX = NodeGeometry.centeredChildX(
+            sensorSlotLeft(node),
+            Node.SENSOR_SLOT_INNER_PADDING,
+            sensorSlotWidth(node),
+            sensor.getWidth(),
+            0);
+        int sensorY = NodeGeometry.centeredChildY(
+            sensorSlotTop(node),
+            Node.SENSOR_SLOT_INNER_PADDING,
+            sensorSlotHeight(node),
+            sensor.getHeight());
+        sensor.setPosition(sensorX, sensorY);
+    }
+
+    static void updateAttachedActionPosition(Node node) {
+        Node actionNode = node.getAttachedActionNode();
+        if (actionNode == null) {
+            return;
+        }
+        int nodeX = NodeGeometry.centeredChildX(
+            actionSlotLeft(node),
+            Node.ACTION_SLOT_INNER_PADDING,
+            actionSlotWidth(node),
+            actionNode.getWidth(),
+            0);
+        int nodeY = NodeGeometry.centeredChildY(
+            actionSlotTop(node),
+            Node.ACTION_SLOT_INNER_PADDING,
+            actionSlotHeight(node),
+            actionNode.getHeight());
+        actionNode.setPosition(nodeX, nodeY);
     }
 
     static int slotAreaStartY(Node node) {

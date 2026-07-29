@@ -1,7 +1,11 @@
 package com.pathmind.screen;
 
 import com.pathmind.PathmindCommon;
+//? if PRE_1_21_11 {
+/*// CharacterEvent exposes modifiers directly before 1.21.11.*/
+//?} else {
 import com.pathmind.compat.CharacterEventModifiers;
+//?}
 import com.pathmind.data.NodeGraphData;
 import com.pathmind.data.NodeGraphPersistence;
 import com.pathmind.data.OnboardingPresetManager;
@@ -63,9 +67,13 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
+//? if MC_1_21_8 {
+/*// Legacy screen input callbacks use primitive parameters.*/
+//?} else {
 import net.minecraft.client.input.CharacterEvent;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
+//?}
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
@@ -691,6 +699,23 @@ public class PathmindVisualEditorScreen extends Screen {
             DrawContextBridge.startNewRootLayer(context);
         }
 
+        //? if MC_1_21_8 {
+        /*Object popupMatrices = context.pose();
+        boolean popupDepthPushed = isPopupObscuringWorkspace();
+        if (popupDepthPushed) {
+            MatrixStackBridge.push(popupMatrices);
+            MatrixStackBridge.translateZ(popupMatrices, 450.0f);
+        }
+        try {
+            if (!isScreenPopupVisible()) {
+                setOverlayCutoutForNodeOverlay();
+            }
+            renderPopupScrimOverlay(context);
+            if (isPopupObscuringWorkspace()) {
+                DrawContextBridge.startNewRootLayer(context);
+            }
+        *///?}
+
         // Render parameter overlay if visible
         if (parameterOverlay != null && parameterOverlay.isVisible()) {
             parameterOverlay.render(context, this.font, mouseX, mouseY, delta);
@@ -738,17 +763,33 @@ public class PathmindVisualEditorScreen extends Screen {
             settingsPopupController.renderSettingsPopup(context, mouseX, mouseY);
         }
 
+        //? if MC_1_21_8 {
+        /*// Legacy rendering draws the scrim before popup contents inside the translated pose.*/
+        //?} else {
         if (!isScreenPopupVisible()) {
             setOverlayCutoutForNodeOverlay();
         }
 
         renderPopupScrimOverlay(context);
+        //?}
 
         // Render language dropdown options on top of scrim overlay
         if (settingsPopupAnimation.isVisible()) {
             RenderStateBridge.setShaderColor(1f, 1f, 1f, settingsPopupAnimation.getPopupAlpha());
             drawLanguageDropdownOptions(context, languageDropdownX, languageDropdownY, languageDropdownWidth, mouseX, mouseY);
+            //? if MC_1_21_8 {
+            /*RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);*/
+            //?}
         }
+
+        //? if MC_1_21_8 {
+        /*} finally {
+            if (popupDepthPushed) {
+                DrawContextBridge.flush(context);
+                MatrixStackBridge.pop(popupMatrices);
+            }
+        }*/
+        //?}
 
         // Render context menu on top of everything
         if (presetContextMenuOpen) {
@@ -1408,11 +1449,16 @@ public class PathmindVisualEditorScreen extends Screen {
         }
     }
 
+    //? if MC_1_21_8 {
+    /*@Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        *///?} else {
     @Override
     public boolean mouseClicked(MouseButtonEvent click, boolean inBounds) {
         double mouseX = click.x();
         double mouseY = click.y();
         int button = click.button();
+        //?}
         if (nodeGraph.isScreenCoordinateCaptureActive()) {
             if (button == 0) {
                 return nodeGraph.commitScreenCoordinateCapture((int) mouseX, (int) mouseY);
@@ -1429,7 +1475,11 @@ public class PathmindVisualEditorScreen extends Screen {
             return handleMissingUiUtilsPopupClick(mouseX, mouseY, button);
         }
         if (settingsPopupAnimation.isVisible()) {
+            //? if MC_1_21_8 {
+            /*if (handleSettingsPopupClick(mouseX, mouseY, button)) {
+                *///?} else {
             if (handleSettingsPopupClick(click, inBounds)) {
+                //?}
                 return true;
             }
             return true;
@@ -1442,7 +1492,11 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         if (createPresetPopupAnimation.isVisible()) {
+            //? if MC_1_21_8 {
+            /*if (createPresetField != null && createPresetField.mouseClicked(mouseX, mouseY, button)) {
+                *///?} else {
             if (createPresetField != null && createPresetField.mouseClicked(click, inBounds)) {
+                //?}
                 return true;
             }
             if (presetPopupController.handleCreatePresetPopupClick(mouseX, mouseY, button)) {
@@ -1459,7 +1513,11 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         if (renamePresetPopupAnimation.isVisible()) {
+            //? if MC_1_21_8 {
+            /*if (renamePresetField != null && renamePresetField.mouseClicked(mouseX, mouseY, button)) {
+                *///?} else {
             if (renamePresetField != null && renamePresetField.mouseClicked(click, inBounds)) {
+                //?}
                 return true;
             }
             if (presetPopupController.handleRenamePresetPopupClick(mouseX, mouseY, button)) {
@@ -1469,7 +1527,11 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         if (isInlinePresetRenameActive()) {
+            //? if MC_1_21_8 {
+            /*if (inlinePresetRenameField != null && inlinePresetRenameField.mouseClicked(mouseX, mouseY, button)) {
+                *///?} else {
             if (inlinePresetRenameField != null && inlinePresetRenameField.mouseClicked(click, inBounds)) {
+                //?}
                 return true;
             }
             stopInlinePresetRename(true);
@@ -1763,7 +1825,11 @@ public class PathmindVisualEditorScreen extends Screen {
             return handleNodeGraphClick(mouseX, mouseY, button);
         }
         
+        //? if MC_1_21_8 {
+        /*return super.mouseClicked(mouseX, mouseY, button);*/
+        //?} else {
         return super.mouseClicked(click, inBounds);
+        //?}
     }
     
     
@@ -2070,11 +2136,16 @@ public class PathmindVisualEditorScreen extends Screen {
         return false;
     }
     
+    //? if MC_1_21_8 {
+    /*@Override
+    public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
+        *///?} else {
     @Override
     public boolean mouseDragged(MouseButtonEvent click, double deltaX, double deltaY) {
         double mouseX = click.x();
         double mouseY = click.y();
         int button = click.button();
+        //?}
         if (nodeGraph.isScreenCoordinateCaptureActive()) {
             return true;
         }
@@ -2210,14 +2281,23 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
         
+        //? if MC_1_21_8 {
+        /*return super.mouseDragged(mouseX, mouseY, button, deltaX, deltaY);*/
+        //?} else {
         return super.mouseDragged(click, deltaX, deltaY);
+        //?}
     }
     
+    //? if MC_1_21_8 {
+    /*@Override
+    public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        *///?} else {
     @Override
     public boolean mouseReleased(MouseButtonEvent click) {
         double mouseX = click.x();
         double mouseY = click.y();
         int button = click.button();
+        //?}
         if (firstRunTutorialOverlay.isVisible()) {
             return true;
         }
@@ -2233,7 +2313,11 @@ public class PathmindVisualEditorScreen extends Screen {
             nodeDelayDragging = false;
             createListRadiusDragging = false;
             if (nodeDelayField != null) {
+                //? if MC_1_21_8 {
+                /*nodeDelayField.mouseReleased(mouseX, mouseY, button);*/
+                //?} else {
                 nodeDelayField.mouseReleased(click);
+                //?}
             }
             return true;
         }
@@ -2243,27 +2327,47 @@ public class PathmindVisualEditorScreen extends Screen {
 
         if (createPresetPopupAnimation.isVisible()) {
             if (createPresetField != null) {
+                //? if MC_1_21_8 {
+                /*createPresetField.mouseReleased(mouseX, mouseY, button);*/
+                //?} else {
                 createPresetField.mouseReleased(click);
+                //?}
             }
             return true;
         }
 
         if (publishPresetPopupAnimation.isVisible()) {
             if (publishPresetNameField != null) {
+                //? if MC_1_21_8 {
+                /*publishPresetNameField.mouseReleased(mouseX, mouseY, button);*/
+                //?} else {
                 publishPresetNameField.mouseReleased(click);
+                //?}
             }
             if (publishPresetDescriptionField != null) {
+                //? if MC_1_21_8 {
+                /*publishPresetDescriptionField.mouseReleased(mouseX, mouseY, button);*/
+                //?} else {
                 publishPresetDescriptionField.mouseReleased(click);
+                //?}
             }
             if (publishPresetTagsField != null) {
+                //? if MC_1_21_8 {
+                /*publishPresetTagsField.mouseReleased(mouseX, mouseY, button);*/
+                //?} else {
                 publishPresetTagsField.mouseReleased(click);
+                //?}
             }
             return true;
         }
 
         if (renamePresetPopupAnimation.isVisible()) {
             if (renamePresetField != null) {
+                //? if MC_1_21_8 {
+                /*renamePresetField.mouseReleased(mouseX, mouseY, button);*/
+                //?} else {
                 renamePresetField.mouseReleased(click);
+                //?}
             }
             return true;
         }
@@ -2307,7 +2411,11 @@ public class PathmindVisualEditorScreen extends Screen {
 
         if (isInlinePresetRenameActive()) {
             if (inlinePresetRenameField != null) {
+                //? if MC_1_21_8 {
+                /*inlinePresetRenameField.mouseReleased(mouseX, mouseY, button);*/
+                //?} else {
                 inlinePresetRenameField.mouseReleased(click);
+                //?}
             }
             return true;
         }
@@ -2426,14 +2534,23 @@ public class PathmindVisualEditorScreen extends Screen {
             // Stop panning on middle-click release
             nodeGraph.stopPanning();
         }
+        //? if MC_1_21_8 {
+        /*return super.mouseReleased(mouseX, mouseY, button);*/
+        //?} else {
         return super.mouseReleased(click);
+        //?}
     }
 
+    //? if MC_1_21_8 {
+    /*@Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        *///?} else {
     @Override
     public boolean keyPressed(KeyEvent input) {
         int keyCode = input.key();
         int scanCode = input.scancode();
         int modifiers = input.modifiers();
+        //?}
         if (firstRunTutorialOverlay.isVisible()) {
             return firstRunTutorialOverlay.keyPressed(keyCode, this::completeFirstRunTutorial);
         }
@@ -2459,7 +2576,11 @@ public class PathmindVisualEditorScreen extends Screen {
                 moveNodeSearchSelection(1);
                 return true;
             }
+            //? if MC_1_21_8 {
+            /*if (nodeSearchField != null && nodeSearchField.keyPressed(keyCode, scanCode, modifiers)) {
+                *///?} else {
             if (nodeSearchField != null && nodeSearchField.keyPressed(input)) {
+                //?}
                 return true;
             }
             return true;
@@ -2489,12 +2610,20 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
         if (settingsPopupAnimation.isVisible() && nodeDelayField != null && nodeDelayField.isFocused()) {
+            //? if MC_1_21_8 {
+            /*if (nodeDelayField.keyPressed(keyCode, scanCode, modifiers)) {
+                *///?} else {
             if (nodeDelayField.keyPressed(input)) {
+                //?}
                 return true;
             }
         }
         if (settingsPopupAnimation.isVisible() && settingsNodeSearchField != null && settingsNodeSearchField.isFocused()) {
+            //? if MC_1_21_8 {
+            /*if (settingsNodeSearchField.keyPressed(keyCode, scanCode, modifiers)) {
+                *///?} else {
             if (settingsNodeSearchField.keyPressed(input)) {
+                //?}
                 return true;
             }
             if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
@@ -2502,7 +2631,11 @@ public class PathmindVisualEditorScreen extends Screen {
             }
         }
         if (settingsPopupAnimation.isVisible() && createListRadiusField != null && createListRadiusField.isFocused()) {
+            //? if MC_1_21_8 {
+            /*if (createListRadiusField.keyPressed(keyCode, scanCode, modifiers)) {
+                *///?} else {
             if (createListRadiusField.keyPressed(input)) {
+                //?}
                 return true;
             }
         }
@@ -2521,7 +2654,11 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         if (createPresetPopupAnimation.isVisible()) {
+            //? if MC_1_21_8 {
+            /*if (createPresetField != null && createPresetField.keyPressed(keyCode, scanCode, modifiers)) {
+                *///?} else {
             if (createPresetField != null && createPresetField.keyPressed(input)) {
+                //?}
                 return true;
             }
 
@@ -2539,13 +2676,25 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         if (publishPresetPopupAnimation.isVisible()) {
+            //? if MC_1_21_8 {
+            /*if (publishPresetNameField != null && publishPresetNameField.keyPressed(keyCode, scanCode, modifiers)) {
+                *///?} else {
             if (publishPresetNameField != null && publishPresetNameField.keyPressed(input)) {
+                //?}
                 return true;
             }
+            //? if MC_1_21_8 {
+            /*if (publishPresetDescriptionField != null && publishPresetDescriptionField.keyPressed(keyCode, scanCode, modifiers)) {
+                *///?} else {
             if (publishPresetDescriptionField != null && publishPresetDescriptionField.keyPressed(input)) {
+                //?}
                 return true;
             }
+            //? if MC_1_21_8 {
+            /*if (publishPresetTagsField != null && publishPresetTagsField.keyPressed(keyCode, scanCode, modifiers)) {
+                *///?} else {
             if (publishPresetTagsField != null && publishPresetTagsField.keyPressed(input)) {
+                //?}
                 return true;
             }
 
@@ -2563,7 +2712,11 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         if (renamePresetPopupAnimation.isVisible()) {
+            //? if MC_1_21_8 {
+            /*if (renamePresetField != null && renamePresetField.keyPressed(keyCode, scanCode, modifiers)) {
+                *///?} else {
             if (renamePresetField != null && renamePresetField.keyPressed(input)) {
+                //?}
                 return true;
             }
 
@@ -2591,7 +2744,11 @@ public class PathmindVisualEditorScreen extends Screen {
                 return true;
             }
 
+            //? if MC_1_21_8 {
+            /*if (inlinePresetRenameField != null && inlinePresetRenameField.keyPressed(keyCode, scanCode, modifiers)) {
+                *///?} else {
             if (inlinePresetRenameField != null && inlinePresetRenameField.keyPressed(input)) {
+                //?}
                 return true;
             }
 
@@ -2717,30 +2874,59 @@ public class PathmindVisualEditorScreen extends Screen {
         // Don't handle the opening keybind - let it be ignored
         // This prevents the screen from closing when the same key is pressed
         
+        //? if MC_1_21_8 {
+        /*return super.keyPressed(keyCode, scanCode, modifiers);*/
+        //?} else {
         return super.keyPressed(input);
+        //?}
     }
     
+    //? if MC_1_21_8 {
+    /*@Override
+    public boolean charTyped(char chr, int modifiers) {
+        *///?} else {
     @Override
     public boolean charTyped(CharacterEvent input) {
+        //? if PRE_1_21_11 {
+        /*int modifiers = input.modifiers();*/
+        //?} else {
         int modifiers = CharacterEventModifiers.get(input, this.minecraft);
+        //?}
         char chr = (char) input.codepoint();
+        //?}
         if (firstRunTutorialOverlay.isVisible()) {
             return true;
         }
         if (nodeSearchOpen) {
+            //? if MC_1_21_8 {
+            /*if (nodeSearchField != null && nodeSearchField.charTyped(chr, modifiers)) {
+                *///?} else {
             if (nodeSearchField != null && nodeSearchField.charTyped(input)) {
+                //?}
                 return true;
             }
             return true;
         }
         if (settingsPopupAnimation.isVisible()) {
+            //? if MC_1_21_8 {
+            /*if (settingsNodeSearchField != null && settingsNodeSearchField.isFocused() && settingsNodeSearchField.charTyped(chr, modifiers)) {
+                *///?} else {
             if (settingsNodeSearchField != null && settingsNodeSearchField.isFocused() && settingsNodeSearchField.charTyped(input)) {
+                //?}
                 return true;
             }
+            //? if MC_1_21_8 {
+            /*if (nodeDelayField != null && nodeDelayField.isFocused() && nodeDelayField.charTyped(chr, modifiers)) {
+                *///?} else {
             if (nodeDelayField != null && nodeDelayField.isFocused() && nodeDelayField.charTyped(input)) {
+                //?}
                 return true;
             }
+            //? if MC_1_21_8 {
+            /*if (createListRadiusField != null && createListRadiusField.isFocused() && createListRadiusField.charTyped(chr, modifiers)) {
+                *///?} else {
             if (createListRadiusField != null && createListRadiusField.isFocused() && createListRadiusField.charTyped(input)) {
+                //?}
                 return true;
             }
             return true;
@@ -2753,34 +2939,58 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         if (createPresetPopupAnimation.isVisible()) {
+            //? if MC_1_21_8 {
+            /*if (createPresetField != null && createPresetField.charTyped(chr, modifiers)) {
+                *///?} else {
             if (createPresetField != null && createPresetField.charTyped(input)) {
+                //?}
                 return true;
             }
             return true;
         }
 
         if (publishPresetPopupAnimation.isVisible()) {
+            //? if MC_1_21_8 {
+            /*if (publishPresetNameField != null && publishPresetNameField.charTyped(chr, modifiers)) {
+                *///?} else {
             if (publishPresetNameField != null && publishPresetNameField.charTyped(input)) {
+                //?}
                 return true;
             }
+            //? if MC_1_21_8 {
+            /*if (publishPresetDescriptionField != null && publishPresetDescriptionField.charTyped(chr, modifiers)) {
+                *///?} else {
             if (publishPresetDescriptionField != null && publishPresetDescriptionField.charTyped(input)) {
+                //?}
                 return true;
             }
+            //? if MC_1_21_8 {
+            /*if (publishPresetTagsField != null && publishPresetTagsField.charTyped(chr, modifiers)) {
+                *///?} else {
             if (publishPresetTagsField != null && publishPresetTagsField.charTyped(input)) {
+                //?}
                 return true;
             }
             return true;
         }
 
         if (renamePresetPopupAnimation.isVisible()) {
+            //? if MC_1_21_8 {
+            /*if (renamePresetField != null && renamePresetField.charTyped(chr, modifiers)) {
+                *///?} else {
             if (renamePresetField != null && renamePresetField.charTyped(input)) {
+                //?}
                 return true;
             }
             return true;
         }
 
         if (isInlinePresetRenameActive()) {
+            //? if MC_1_21_8 {
+            /*if (inlinePresetRenameField != null && inlinePresetRenameField.charTyped(chr, modifiers)) {
+                *///?} else {
             if (inlinePresetRenameField != null && inlinePresetRenameField.charTyped(input)) {
+                //?}
                 return true;
             }
             return true;
@@ -2839,7 +3049,11 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
+        //? if MC_1_21_8 {
+        /*return super.charTyped(chr, modifiers);*/
+        //?} else {
         return super.charTyped(input);
+        //?}
     }
     
     @Override
@@ -7546,10 +7760,14 @@ public class PathmindVisualEditorScreen extends Screen {
         settingsPopupAnimation.hide();
     }
 
+    //? if MC_1_21_8 {
+    /*private boolean handleSettingsPopupClick(double mouseX, double mouseY, int button) {
+        *///?} else {
     private boolean handleSettingsPopupClick(MouseButtonEvent click, boolean inBounds) {
         double mouseX = click.x();
         double mouseY = click.y();
         int button = click.button();
+        //?}
         if (button != 0) {
             return true;
         }
@@ -7707,7 +7925,11 @@ public class PathmindVisualEditorScreen extends Screen {
             if (bodyHovered && isPointInRect(mouseXi, mouseYi, valueBoxX, valueBoxY, valueBoxWidth, valueBoxHeight)) {
                 nodeDelayField.setEditable(true);
                 nodeDelayField.setFocused(true);
+                //? if MC_1_21_8 {
+                /*nodeDelayField.mouseClicked(mouseX, mouseY, button);*/
+                //?} else {
                 nodeDelayField.mouseClicked(click, inBounds);
+                //?}
                 return true;
             } else if (nodeDelayField.isFocused()) {
                 nodeDelayField.setFocused(false);
@@ -7737,7 +7959,11 @@ public class PathmindVisualEditorScreen extends Screen {
             if (bodyHovered && isPointInRect(mouseXi, mouseYi, selectorSearchBounds[0], selectorSearchBounds[1], selectorSearchBounds[2], selectorSearchBounds[3])) {
                 settingsNodeSearchField.setEditable(true);
                 settingsNodeSearchField.setFocused(true);
+                //? if MC_1_21_8 {
+                /*settingsNodeSearchField.mouseClicked(mouseX, mouseY, button);*/
+                //?} else {
                 settingsNodeSearchField.mouseClicked(click, inBounds);
+                //?}
                 return true;
             } else if (settingsNodeSearchField.isFocused()) {
                 settingsNodeSearchField.setFocused(false);
@@ -7840,7 +8066,11 @@ public class PathmindVisualEditorScreen extends Screen {
                     if (bodyHovered && isPointInRect(mouseXi, mouseYi, radiusValueBox[0], radiusValueBox[1], radiusValueBox[2], radiusValueBox[3])) {
                         createListRadiusField.setEditable(true);
                         createListRadiusField.setFocused(true);
+                        //? if MC_1_21_8 {
+                        /*createListRadiusField.mouseClicked(mouseX, mouseY, button);*/
+                        //?} else {
                         createListRadiusField.mouseClicked(click, inBounds);
+                        //?}
                         return true;
                     } else if (createListRadiusField.isFocused()) {
                         createListRadiusField.setFocused(false);

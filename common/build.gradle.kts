@@ -51,6 +51,8 @@ val prepareStonecutterCompatibilitySources = stonecutterCompatibilityNode?.let {
             "com/pathmind/screen/PathmindMarketplacePopupController.java",
             "com/pathmind/screen/PathmindMarketplacePreviewLoader.java",
             "com/pathmind/screen/PathmindMarketplaceScreen.java",
+            "com/pathmind/screen/PathmindPresetPopupController.java",
+            "com/pathmind/screen/PathmindVisualEditorScreen.java",
             "com/pathmind/screen/PathmindSettingsPopupController.java"
         )
         into(layout.buildDirectory.dir("generated/sources/stonecutterCompatibility/main/java"))

@@ -8,6 +8,7 @@ stonecutter parameters {
     filters.include("**/com/pathmind/screen/*.java")
     constants {
         put("MC_1_21_8", current.version == "1.21")
+        put("PRE_1_21_11", current.version == "1.21" || current.version == "1.21.10")
         put("MC_26", current.version.startsWith("26."))
     }
 }

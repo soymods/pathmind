@@ -12,12 +12,13 @@ is incomplete. The alternate controller can be inspected with:
 
 The initial proof targets were Minecraft 1.21.11 and 26.1. Shared settings,
 marketplace, and visual-editor UI classes now live under
-`common/src/stonecutter/java`. The marketplace screen, popup controller, preview
-renderer, preview loader, and settings popup controller are generated for the
-pre-1.21.11 families during the production build; only those selected generated
-classes are added to the main source set. The visual editor's single input-event
-API delta is isolated behind `CharacterEventModifiers` implementations in the
-relevant compatibility families.
+`common/src/stonecutter/java`. The visual editor, preset and settings popup
+controllers, marketplace screen and popup controller, preview renderer, and
+preview loader are generated for the pre-1.21.11 families during the production
+build; only those selected generated classes are added to the main source set.
+Visual-editor input callback differences remain narrow Stonecutter branches,
+while the post-1.21.10 character-modifier API is isolated behind
+`CharacterEventModifiers`.
 
 Stonecutter conditionals should be limited to small API or syntax differences.
 Behaviorally distinct implementations belong behind compatibility interfaces,

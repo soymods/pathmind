@@ -316,6 +316,19 @@ public class PathmindVisualEditorScreen extends Screen {
     final PopupAnimationHandler settingsPopupAnimation = new PopupAnimationHandler();
     private final PathmindSettingsPopupController settingsPopupController = new PathmindSettingsPopupController(this);
     private final PathmindPresetPopupController presetPopupController = new PathmindPresetPopupController(this);
+    private final PathmindModalOverlayController modalOverlayController = new PathmindModalOverlayController(
+        new ModalOverlayHost(),
+        clearPopupAnimation,
+        importExportPopupAnimation,
+        createPresetPopupAnimation,
+        publishPresetPopupAnimation,
+        renamePresetPopupAnimation,
+        presetDeletePopupAnimation,
+        infoPopupAnimation,
+        missingBaritonePopupAnimation,
+        missingUiUtilsPopupAnimation,
+        settingsPopupAnimation
+    );
     private final FirstRunTutorialOverlay firstRunTutorialOverlay = new FirstRunTutorialOverlay();
     private boolean firstRunTutorialPending = false;
     private final AnimatedValue validationPanelAnimation = new AnimatedValue(0f, AnimationHelper::easeOutCubic);
@@ -356,11 +369,6 @@ public class PathmindVisualEditorScreen extends Screen {
     boolean settingsPopupScrollDragging = false;
     int settingsPopupScrollDragOffset = 0;
     AccentOption accentOption = AccentOption.SKY;
-    private boolean overlayCutoutActive = false;
-    private int overlayCutoutX = 0;
-    private int overlayCutoutY = 0;
-    private int overlayCutoutWidth = 0;
-    private int overlayCutoutHeight = 0;
     private Boolean uiUtilsOverlayPrevEnabled = null;
     private final List<WorkspaceTab> workspaceTabs = new ArrayList<>();
     private int activeWorkspaceTabIndex = 0;
@@ -577,6 +585,48 @@ public class PathmindVisualEditorScreen extends Screen {
         @Override
         public void setPresetGroupColor(String presetName, String colorKey) {
             PathmindVisualEditorScreen.this.setPresetGroupColor(presetName, colorKey);
+        }
+    }
+
+    private final class ModalOverlayHost implements PathmindModalOverlayController.Host {
+        @Override
+        public int screenWidth() {
+            return width;
+        }
+
+        @Override
+        public int screenHeight() {
+            return height;
+        }
+
+        @Override
+        public boolean isParameterOverlayVisible() {
+            return parameterOverlay != null && parameterOverlay.isVisible();
+        }
+
+        @Override
+        public boolean isBookTextEditorVisible() {
+            return bookTextEditorOverlay != null && bookTextEditorOverlay.isVisible();
+        }
+
+        @Override
+        public int parameterOverlayScrimColor() {
+            return parameterOverlay != null ? parameterOverlay.getScrimColor() : UITheme.OVERLAY_BACKGROUND;
+        }
+
+        @Override
+        public int bookTextEditorScrimColor() {
+            return bookTextEditorOverlay != null ? bookTextEditorOverlay.getScrimColor() : UITheme.OVERLAY_BACKGROUND;
+        }
+
+        @Override
+        public int[] parameterOverlayBounds() {
+            return parameterOverlay != null ? parameterOverlay.getScaledPopupBounds() : null;
+        }
+
+        @Override
+        public int[] bookTextEditorBounds() {
+            return bookTextEditorOverlay != null ? bookTextEditorOverlay.getScaledPopupBounds() : null;
         }
     }
 
@@ -1203,20 +1253,7 @@ public class PathmindVisualEditorScreen extends Screen {
         return hoveredNode == null ? null : nodeGraph.getStickyNoteResizeCornerAt(hoveredNode, mouseX, mouseY);
     }
     private boolean isPopupObscuringWorkspace() {
-        boolean overlayVisible = parameterOverlay != null && parameterOverlay.isVisible();
-        boolean bookOverlayVisible = bookTextEditorOverlay != null && bookTextEditorOverlay.isVisible();
-        return overlayVisible
-                || bookOverlayVisible
-                || clearPopupAnimation.isVisible()
-                || importExportPopupAnimation.isVisible()
-                || createPresetPopupAnimation.isVisible()
-                || publishPresetPopupAnimation.isVisible()
-                || renamePresetPopupAnimation.isVisible()
-                || presetDeletePopupAnimation.isVisible()
-                || infoPopupAnimation.isVisible()
-                || missingBaritonePopupAnimation.isVisible()
-                || missingUiUtilsPopupAnimation.isVisible()
-                || settingsPopupAnimation.isVisible();
+        return modalOverlayController.isObscuringWorkspace();
     }
     
     private boolean shouldShowExecutionControls() {
@@ -1299,109 +1336,23 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void resetOverlayCutout() {
-        overlayCutoutActive = false;
+        modalOverlayController.resetCutout();
     }
 
     void setOverlayCutout(int x, int y, int width, int height) {
-        overlayCutoutActive = true;
-        overlayCutoutX = x;
-        overlayCutoutY = y;
-        overlayCutoutWidth = width;
-        overlayCutoutHeight = height;
+        modalOverlayController.setCutout(x, y, width, height);
     }
 
     private boolean isScreenPopupVisible() {
-        return clearPopupAnimation.isVisible()
-            || importExportPopupAnimation.isVisible()
-            || createPresetPopupAnimation.isVisible()
-            || publishPresetPopupAnimation.isVisible()
-            || renamePresetPopupAnimation.isVisible()
-            || presetDeletePopupAnimation.isVisible()
-            || infoPopupAnimation.isVisible()
-            || missingBaritonePopupAnimation.isVisible()
-            || missingUiUtilsPopupAnimation.isVisible()
-            || settingsPopupAnimation.isVisible();
-    }
-
-    private int getActivePopupOverlayColor() {
-        if (clearPopupAnimation.isVisible()) {
-            return clearPopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND);
-        }
-        if (importExportPopupAnimation.isVisible()) {
-            return importExportPopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND);
-        }
-        if (createPresetPopupAnimation.isVisible()) {
-            return createPresetPopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND);
-        }
-        if (publishPresetPopupAnimation.isVisible()) {
-            return publishPresetPopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND);
-        }
-        if (renamePresetPopupAnimation.isVisible()) {
-            return renamePresetPopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND);
-        }
-        if (presetDeletePopupAnimation.isVisible()) {
-            return presetDeletePopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND);
-        }
-        if (infoPopupAnimation.isVisible()) {
-            return infoPopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND);
-        }
-        if (missingBaritonePopupAnimation.isVisible()) {
-            return missingBaritonePopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND);
-        }
-        if (missingUiUtilsPopupAnimation.isVisible()) {
-            return missingUiUtilsPopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND);
-        }
-        if (settingsPopupAnimation.isVisible()) {
-            return settingsPopupAnimation.getAnimatedBackgroundColor(UITheme.OVERLAY_BACKGROUND);
-        }
-        if (parameterOverlay != null && parameterOverlay.isVisible()) {
-            return parameterOverlay.getScrimColor();
-        }
-        if (bookTextEditorOverlay != null && bookTextEditorOverlay.isVisible()) {
-            return bookTextEditorOverlay.getScrimColor();
-        }
-        return UITheme.OVERLAY_BACKGROUND;
+        return modalOverlayController.isScreenPopupVisible();
     }
 
     private void renderPopupScrimOverlay(GuiGraphics context) {
-        if (!isPopupObscuringWorkspace()) {
-            return;
-        }
-        int color = getActivePopupOverlayColor();
-        if (!overlayCutoutActive || overlayCutoutWidth <= 0 || overlayCutoutHeight <= 0) {
-            DrawContextBridge.fillOverlay(context, 0, 0, this.width, this.height, color);
-            return;
-        }
-        int cutoutRight = overlayCutoutX + overlayCutoutWidth;
-        int cutoutBottom = overlayCutoutY + overlayCutoutHeight;
-        if (overlayCutoutY > 0) {
-            DrawContextBridge.fillOverlay(context, 0, 0, this.width, overlayCutoutY, color);
-        }
-        if (overlayCutoutX > 0) {
-            DrawContextBridge.fillOverlay(context, 0, overlayCutoutY, overlayCutoutX, cutoutBottom, color);
-        }
-        if (cutoutRight < this.width) {
-            DrawContextBridge.fillOverlay(context, cutoutRight, overlayCutoutY, this.width, cutoutBottom, color);
-        }
-        if (cutoutBottom < this.height) {
-            DrawContextBridge.fillOverlay(context, 0, cutoutBottom, this.width, this.height, color);
-        }
+        modalOverlayController.renderScrim(context);
     }
 
     private void setOverlayCutoutForNodeOverlay() {
-        if (parameterOverlay != null && parameterOverlay.isVisible()) {
-            int[] bounds = parameterOverlay.getScaledPopupBounds();
-            if (bounds[2] > 0 && bounds[3] > 0) {
-                setOverlayCutout(bounds[0], bounds[1], bounds[2], bounds[3]);
-            }
-            return;
-        }
-        if (bookTextEditorOverlay != null && bookTextEditorOverlay.isVisible()) {
-            int[] bounds = bookTextEditorOverlay.getScaledPopupBounds();
-            if (bounds[2] > 0 && bounds[3] > 0) {
-                setOverlayCutout(bounds[0], bounds[1], bounds[2], bounds[3]);
-            }
-        }
+        modalOverlayController.setCutoutForNodeOverlay();
     }
 
     private boolean shouldBlockBaritoneNode(NodeType nodeType) {

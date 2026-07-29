@@ -114,6 +114,7 @@ public class Node {
     private final NodeWorldTargetResolver worldTargetResolver;
     private final NodeSensorCoordinator sensorCoordinator;
     private final NodeParameterValues parameterValues;
+    private final NodeTextContent textContent;
     static final int MIN_WIDTH = 92;
     static final int MIN_HEIGHT = 44;
     static final int EVENT_FUNCTION_MIN_HEIGHT = 36;
@@ -294,10 +295,6 @@ public class Node {
     private final List<NodeParameter> parameters;
     private boolean booleanToggleValue = true;
     private int dynamicBooleanOperatorSlotCount;
-    private final List<String> messageLines;
-    private boolean messageClientSide;
-    private String bookText;
-    private final List<String> bookPages;
     private String stickyNoteText;
     private boolean gotoAllowBreakWhileExecuting;
     private boolean gotoAllowPlaceWhileExecuting;
@@ -332,14 +329,11 @@ public class Node {
         this.sensorCoordinator = new NodeSensorCoordinator(this);
         this.parameters = new ArrayList<>();
         this.parameterValues = new NodeParameterValues(this);
+        this.textContent = new NodeTextContent(type, () -> {
+            layoutState.clearMessageFieldContentWidthOverride();
+            recalculateDimensions();
+        });
         this.dynamicBooleanOperatorSlotCount = isExpandableBooleanOperatorType(type) ? 2 : 0;
-        this.messageLines = new ArrayList<>();
-        if (type == NodeType.MESSAGE || type == NodeType.CALCULATE) {
-            this.messageLines.add(getDefaultMessageLineValue());
-        }
-        this.messageClientSide = false;
-        this.bookText = "";
-        this.bookPages = new ArrayList<>();
         this.stickyNoteText = "";
         this.gotoAllowBreakWhileExecuting = false;
         this.gotoAllowPlaceWhileExecuting = false;
@@ -2362,7 +2356,7 @@ public class Node {
     }
 
     public boolean hasMessageInputFields() {
-        return type == NodeType.MESSAGE || type == NodeType.CALCULATE;
+        return textContent.hasMessageInputFields();
     }
 
     public String getStickyNoteText() {
@@ -2479,134 +2473,51 @@ public class Node {
     }
 
     public int getMessageFieldCount() {
-        return Math.max(1, messageLines.size());
+        return textContent.getMessageFieldCount();
     }
 
     public List<String> getMessageLines() {
-        return messageLines;
+        return textContent.getMessageLines();
     }
 
     public String getMessageLine(int index) {
-        if (index < 0 || index >= getMessageFieldCount()) {
-            return "";
-        }
-        if (index >= messageLines.size()) {
-            return "";
-        }
-        String value = messageLines.get(index);
-        return value == null ? "" : value;
+        return textContent.getMessageLine(index);
     }
 
     public void setMessageLine(int index, String value) {
-        if (!hasMessageInputFields() || index < 0 || index >= MAX_MESSAGE_LINES) {
-            return;
-        }
-        while (index >= messageLines.size()) {
-            messageLines.add(getDefaultMessageLineValue());
-        }
-        messageLines.set(index, sanitizeMessageLine(value));
+        textContent.setMessageLine(index, value);
     }
 
     public void setMessageLines(List<String> lines) {
-        messageLines.clear();
-        if (lines != null) {
-            for (String line : lines) {
-                if (messageLines.size() >= MAX_MESSAGE_LINES) {
-                    break;
-                }
-                messageLines.add(sanitizeMessageLine(line));
-            }
-        }
-        if (messageLines.isEmpty()) {
-            messageLines.add(getDefaultMessageLineValue());
-        }
-        layoutState.clearMessageFieldContentWidthOverride();
-        recalculateDimensions();
+        textContent.setMessageLines(lines);
     }
 
     public void addMessageLine(String value) {
-        if (!hasMessageInputFields()) {
-            return;
-        }
-        if (messageLines.size() >= MAX_MESSAGE_LINES) {
-            return;
-        }
-        String lineValue = sanitizeMessageLine(value);
-        if (type == NodeType.CALCULATE && lineValue.isBlank()) {
-            lineValue = getDefaultCalculationLineValue(messageLines.size());
-        }
-        messageLines.add(lineValue);
-        layoutState.clearMessageFieldContentWidthOverride();
-        recalculateDimensions();
+        textContent.addMessageLine(value);
     }
 
     public boolean removeMessageLine(int index) {
-        if (!hasMessageInputFields() || messageLines.size() <= 1) {
-            return false;
-        }
-        if (index < 0 || index >= messageLines.size()) {
-            return false;
-        }
-        messageLines.remove(index);
-			layoutState.clearMessageFieldContentWidthOverride();
-        recalculateDimensions();
-        return true;
+        return textContent.removeMessageLine(index);
     }
 
     public boolean isMessageClientSide() {
-        return type == NodeType.MESSAGE && messageClientSide;
+        return textContent.isMessageClientSide();
     }
 
     public boolean hasMessageScopeToggle() {
-        return type == NodeType.MESSAGE;
+        return textContent.hasMessageScopeToggle();
     }
 
     public void setMessageClientSide(boolean messageClientSide) {
-        if (type != NodeType.MESSAGE) {
-            return;
-        }
-        this.messageClientSide = messageClientSide;
+        textContent.setMessageClientSide(messageClientSide);
     }
 
     public void toggleMessageClientSide() {
-        if (type != NodeType.MESSAGE) {
-            return;
-        }
-        messageClientSide = !messageClientSide;
+        textContent.toggleMessageClientSide();
     }
 
     public String getMessageFieldLabelText(int index) {
-        if (type == NodeType.CALCULATE) {
-            return "Output " + getCalculationVariableLabel(index);
-        }
-        return getMessageFieldCount() > 1 ? "Message " + (index + 1) : "Message";
-    }
-
-    private String getDefaultMessageLineValue() {
-        return type == NodeType.CALCULATE ? getDefaultCalculationLineValue(messageLines.size()) : "Hello World";
-    }
-
-    private String sanitizeMessageLine(String value) {
-        String sanitized = value == null ? "" : value;
-        if (sanitized.length() > MAX_MESSAGE_LINE_LENGTH) {
-            return sanitized.substring(0, MAX_MESSAGE_LINE_LENGTH);
-        }
-        return sanitized;
-    }
-
-    private String getDefaultCalculationLineValue(int index) {
-        return getCalculationVariableLabel(index) + " = 0";
-    }
-
-    private String getCalculationVariableLabel(int index) {
-        int value = Math.max(0, index);
-        StringBuilder builder = new StringBuilder();
-        do {
-            int remainder = value % 26;
-            builder.insert(0, (char) ('A' + remainder));
-            value = value / 26 - 1;
-        } while (value >= 0);
-        return builder.toString();
+        return textContent.getMessageFieldLabelText(index);
     }
 
     public int getMessageFieldDisplayHeight() {
@@ -2727,133 +2638,59 @@ public class Node {
 
     // Text input methods for WRITE_BOOK and WRITE_SIGN nodes
     public boolean hasBookTextInput() {
-        return type == NodeType.WRITE_BOOK || type == NodeType.WRITE_SIGN;
+        return textContent.hasBookTextInput();
     }
 
     public boolean hasBookTextPageInput() {
-        return type == NodeType.WRITE_BOOK;
+        return textContent.hasBookTextPageInput();
     }
 
     public String getBookText() {
-        return getBookTextForPage(1);
+        return textContent.getBookText();
     }
 
     public void setBookText(String text) {
-        setBookTextForPage(1, text);
+        textContent.setBookText(text);
     }
 
     public int getBookTextMaxChars() {
-        return type == NodeType.WRITE_SIGN ? SIGN_MAX_CHARS : BOOK_PAGE_MAX_CHARS;
+        return textContent.getBookTextMaxChars();
     }
 
     public int getBookTextMaxCharsPerLine() {
-        return type == NodeType.WRITE_SIGN ? SIGN_LINE_MAX_CHARS : 0;
+        return textContent.getBookTextMaxCharsPerLine();
     }
 
     public int getBookTextMaxLines() {
-        return type == NodeType.WRITE_SIGN ? SIGN_MAX_LINES : 0;
+        return textContent.getBookTextMaxLines();
     }
 
     public int getBookTextPopupWidth() {
-        return type == NodeType.WRITE_SIGN ? 300 : 340;
+        return textContent.getBookTextPopupWidth();
     }
 
     public int getBookTextPopupHeight() {
-        return type == NodeType.WRITE_SIGN ? 230 : 280;
+        return textContent.getBookTextPopupHeight();
     }
 
     public String getBookTextEditorTitle() {
-        return type == NodeType.WRITE_SIGN ? "Edit Sign Text" : "Edit Book Text";
+        return textContent.getBookTextEditorTitle();
     }
 
     public String getBookTextForPage(int pageNumber) {
-        if (type == NodeType.WRITE_SIGN) {
-            return bookText != null ? bookText : "";
-        }
-        int pageIndex = Math.max(0, pageNumber - 1);
-        if (pageIndex < bookPages.size()) {
-            String value = bookPages.get(pageIndex);
-            return value != null ? value : "";
-        }
-        if (pageIndex == 0 && bookText != null) {
-            return bookText;
-        }
-        return "";
+        return textContent.getBookTextForPage(pageNumber);
     }
 
     public void setBookTextForPage(int pageNumber, String text) {
-        if (type == NodeType.WRITE_SIGN) {
-            bookText = normalizeSignText(text);
-            return;
-        }
-        int safePageNumber = Math.max(1, pageNumber);
-        ensureBookPageCapacity(safePageNumber);
-        String normalized = text == null ? "" : text;
-        if (normalized.length() > BOOK_PAGE_MAX_CHARS) {
-            normalized = normalized.substring(0, BOOK_PAGE_MAX_CHARS);
-        }
-        bookPages.set(safePageNumber - 1, normalized);
-        if (safePageNumber == 1) {
-            bookText = normalized;
-        }
+        textContent.setBookTextForPage(pageNumber, text);
     }
 
     public List<String> getBookPages() {
-        return new ArrayList<>(bookPages);
+        return textContent.getBookPages();
     }
 
     public void setBookPages(List<String> pages) {
-        if (type == NodeType.WRITE_SIGN) {
-            String first = (pages == null || pages.isEmpty()) ? "" : pages.get(0);
-            bookText = normalizeSignText(first);
-            return;
-        }
-        bookPages.clear();
-        if (pages != null) {
-            for (String page : pages) {
-                String normalized = page == null ? "" : page;
-                if (normalized.length() > BOOK_PAGE_MAX_CHARS) {
-                    normalized = normalized.substring(0, BOOK_PAGE_MAX_CHARS);
-                }
-                bookPages.add(normalized);
-            }
-        }
-        if (bookPages.isEmpty()) {
-            bookPages.add("");
-        }
-        bookText = bookPages.getFirst();
-    }
-
-    private void ensureBookPageCapacity(int pageNumber) {
-        int targetSize = Math.max(1, pageNumber);
-        while (bookPages.size() < targetSize) {
-            bookPages.add("");
-        }
-    }
-
-    private String normalizeSignText(String raw) {
-        String text = raw == null ? "" : raw;
-        if (text.length() > SIGN_MAX_CHARS) {
-            text = text.substring(0, SIGN_MAX_CHARS);
-        }
-        String[] split = text.split("\\n", -1);
-        int lineCount = Math.min(SIGN_MAX_LINES, split.length);
-        StringBuilder normalized = new StringBuilder();
-        for (int i = 0; i < lineCount; i++) {
-            String line = split[i] == null ? "" : split[i];
-            if (line.length() > SIGN_LINE_MAX_CHARS) {
-                line = line.substring(0, SIGN_LINE_MAX_CHARS);
-            }
-            if (i > 0) {
-                normalized.append('\n');
-            }
-            normalized.append(line);
-        }
-        String result = normalized.toString();
-        if (result.length() > SIGN_MAX_CHARS) {
-            return result.substring(0, SIGN_MAX_CHARS);
-        }
-        return result;
+        textContent.setBookPages(pages);
     }
 
     public int getBookTextDisplayHeight() {

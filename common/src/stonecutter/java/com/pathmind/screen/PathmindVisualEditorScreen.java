@@ -15,7 +15,6 @@ import com.pathmind.execution.ExecutionManager;
 import com.pathmind.marketplace.MarketplaceAuthManager;
 import com.pathmind.marketplace.MarketplacePreset;
 import com.pathmind.nodes.Node;
-import com.pathmind.nodes.NodeCatalog;
 import com.pathmind.nodes.NodeCategory;
 import com.pathmind.nodes.NodeParameter;
 import com.pathmind.nodes.NodeType;
@@ -27,7 +26,6 @@ import com.pathmind.ui.control.PathmindTextField;
 import com.pathmind.ui.control.PathmindPopupRenderer;
 import com.pathmind.ui.control.PathmindPopupLayout;
 import com.pathmind.ui.control.PathmindSettingsRowRenderer;
-import com.pathmind.ui.control.PathmindValidationPanelRenderer;
 import com.pathmind.ui.control.PathmindIconRenderer;
 import com.pathmind.ui.control.PathmindRoutineUi;
 import com.pathmind.ui.control.PathmindWorkspaceChrome;
@@ -45,7 +43,6 @@ import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.DropdownLayoutHelper;
 import com.pathmind.util.PathmindI18n;
-import com.pathmind.validation.GraphValidationIssue;
 import com.pathmind.validation.GraphValidationResult;
 import com.pathmind.util.BaritoneDependencyChecker;
 import com.pathmind.util.DrawContextBridge;
@@ -77,7 +74,6 @@ import org.lwjgl.glfw.GLFW;
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -103,18 +99,6 @@ public class PathmindVisualEditorScreen extends Screen {
     static final int CREATE_PRESET_POPUP_HEIGHT = 170;
     static final int PUBLISH_PRESET_POPUP_WIDTH = 380;
     static final int PUBLISH_PRESET_POPUP_HEIGHT = 272;
-    private static final int PLAY_BUTTON_SIZE = 18;
-    private static final int PLAY_BUTTON_MARGIN = 6;
-    private static final int STOP_BUTTON_SIZE = 18;
-    private static final int CONTROL_BUTTON_GAP = 6;
-    private static final int VALIDATION_BUTTON_SIZE = 18;
-    private static final int VALIDATION_PANEL_WIDTH = 292;
-    private static final int VALIDATION_PANEL_MAX_VISIBLE_ROWS = 8;
-    private static final int VALIDATION_PANEL_ROW_HEIGHT = 22;
-    private static final int VALIDATION_PANEL_PADDING = 8;
-    private static final int VALIDATION_PANEL_BOTTOM_PADDING = 2;
-    private static final int VALIDATION_PANEL_HEADER_HEIGHT = 34;
-    private static final int VALIDATION_PANEL_FOOTER_HEIGHT = 18;
     private static final int ZOOM_BUTTON_SIZE = 14;
     private static final int ZOOM_BUTTON_MARGIN = 6;
     private static final int ZOOM_BUTTON_SPACING = 4;
@@ -164,11 +148,6 @@ public class PathmindVisualEditorScreen extends Screen {
     static final int NODE_DELAY_MAX_MS = 500;
     static final int TEXT_FIELD_VERTICAL_PADDING = 3;
     private static final int NODE_SEARCH_FIELD_WIDTH = 180;
-    private static final int NODE_SEARCH_FIELD_HEIGHT = 22;
-    private static final int NODE_SEARCH_DROPDOWN_TOP_GAP = 2;
-    private static final int NODE_SEARCH_RESULT_HEIGHT = 18;
-    private static final int NODE_SEARCH_MAX_RESULTS = 8;
-    private static final int NODE_SEARCH_RESULT_TEXT_PADDING = 6;
     private static final Component TITLE_TEXT = Component.literal("Pathmind");
 
     NodeGraph nodeGraph;
@@ -194,15 +173,8 @@ public class PathmindVisualEditorScreen extends Screen {
     private int rightClickStartY = -1;
     private long rightClickStartTime = 0;
     private boolean cuttingConnections = false;
-    private EditBox nodeSearchField;
-    private boolean nodeSearchOpen = false;
-    private int nodeSearchFieldX = 0;
-    private int nodeSearchFieldY = 0;
-    private int nodeSearchWorldX = 0;
-    private int nodeSearchWorldY = 0;
-    private float nodeSearchScale = 1.0f;
-    private final List<NodeSearchResult> nodeSearchResults = new ArrayList<>();
-    private int nodeSearchHoverIndex = -1;
+    private final PathmindNodeSearchController nodeSearchController =
+        new PathmindNodeSearchController(new NodeSearchHost());
 
     // Workspace dialogs
     private final PopupAnimationHandler clearPopupAnimation = new PopupAnimationHandler();
@@ -269,8 +241,8 @@ public class PathmindVisualEditorScreen extends Screen {
         new PathmindFirstRunTutorialController(new FirstRunTutorialHost());
     private final PathmindWorkspaceLifecycleController workspaceLifecycleController =
         new PathmindWorkspaceLifecycleController(new WorkspaceLifecycleHost());
-    private final AnimatedValue validationPanelAnimation = new AnimatedValue(0f, AnimationHelper::easeOutCubic);
-    private boolean validationPanelOpen = false;
+    private final PathmindValidationExecutionController validationExecutionController =
+        new PathmindValidationExecutionController(new ValidationExecutionHost());
     Settings currentSettings;
     private static final String[] SUPPORTED_LANGUAGES = {"en_us", "es_es", "pt_br", "ru_ru", "de_de", "fr_fr", "pl_pl"};
     private boolean languageDropdownOpen = false;
@@ -310,24 +282,192 @@ public class PathmindVisualEditorScreen extends Screen {
     private Boolean uiUtilsOverlayPrevEnabled = null;
     private boolean systemCursorHidden = false;
 
-    private static final class NodeSearchResult {
-        private final NodeType nodeType;
-        final String label;
-        private final String categoryLabel;
-        private final int score;
-        private final NodeGraphData.RoutineDefinitionData routine;
-
-        private NodeSearchResult(NodeType nodeType, String label, String categoryLabel, int score) {
-            this(nodeType, label, categoryLabel, score, null);
+    private final class NodeSearchHost implements PathmindNodeSearchController.Host {
+        @Override
+        public Font font() {
+            return font;
         }
 
-        private NodeSearchResult(NodeType nodeType, String label, String categoryLabel, int score,
-                                 NodeGraphData.RoutineDefinitionData routine) {
-            this.nodeType = nodeType;
-            this.label = label;
-            this.categoryLabel = categoryLabel;
-            this.score = score;
-            this.routine = routine;
+        @Override
+        public int screenWidth() {
+            return width;
+        }
+
+        @Override
+        public int screenHeight() {
+            return height;
+        }
+
+        @Override
+        public int sidebarWidth() {
+            return sidebar.getWidth();
+        }
+
+        @Override
+        public int accentColor() {
+            return getAccentColor();
+        }
+
+        @Override
+        public float zoomScale() {
+            return nodeGraph.getZoomScale();
+        }
+
+        @Override
+        public int screenToWorldX(int screenX) {
+            return nodeGraph.screenToWorldX(screenX);
+        }
+
+        @Override
+        public int screenToWorldY(int screenY) {
+            return nodeGraph.screenToWorldY(screenY);
+        }
+
+        @Override
+        public int worldToScreenX(int worldX) {
+            return nodeGraph.worldToScreenX(worldX);
+        }
+
+        @Override
+        public int worldToScreenY(int worldY) {
+            return nodeGraph.worldToScreenY(worldY);
+        }
+
+        @Override
+        public boolean isNodeAvailable(NodeType nodeType) {
+            return sidebar.isNodeAvailable(nodeType);
+        }
+
+        @Override
+        public boolean baritoneAvailable() {
+            return baritoneAvailable;
+        }
+
+        @Override
+        public boolean uiUtilsAvailable() {
+            return uiUtilsAvailable;
+        }
+
+        @Override
+        public List<NodeGraphData.RoutineDefinitionData> rootRoutines() {
+            return workspaceLifecycleController.getRootRoutines();
+        }
+
+        @Override
+        public boolean shouldBlockBaritoneNode(NodeType nodeType) {
+            return PathmindVisualEditorScreen.this.shouldBlockBaritoneNode(nodeType);
+        }
+
+        @Override
+        public boolean shouldBlockUiUtilsNode(NodeType nodeType) {
+            return PathmindVisualEditorScreen.this.shouldBlockUiUtilsNode(nodeType);
+        }
+
+        @Override
+        public void addNode(NodeType nodeType) {
+            nodeGraph.addNodeFromContextMenu(nodeType);
+        }
+
+        @Override
+        public void addRoutine(NodeGraphData.RoutineDefinitionData routine) {
+            nodeGraph.addRoutineFromContextMenu(routine);
+        }
+
+        @Override
+        public EditBox createSearchField(Runnable responder) {
+            EditBox field = PathmindTextField.createInactive(font, 0, 0, 180, 22,
+                Component.translatable("pathmind.search.nodes"), 64);
+            field.setHeight(Math.max(10, 22 - TEXT_FIELD_VERTICAL_PADDING * 2));
+            field.setResponder(value -> responder.run());
+            addWidget(field);
+            return field;
+        }
+    }
+
+    private final class ValidationExecutionHost implements PathmindValidationExecutionController.Host {
+        @Override
+        public Font font() {
+            return font;
+        }
+
+        @Override
+        public int screenWidth() {
+            return width;
+        }
+
+        @Override
+        public int screenHeight() {
+            return height;
+        }
+
+        @Override
+        public int sidebarWidth() {
+            return sidebar.getWidth();
+        }
+
+        @Override
+        public int accentColor() {
+            return getAccentColor();
+        }
+
+        @Override
+        public boolean hasActiveRoutineWorkspace() {
+            return getActiveRoutineWorkspace() != null;
+        }
+
+        @Override
+        public boolean isPopupObscuringWorkspace() {
+            return PathmindVisualEditorScreen.this.isPopupObscuringWorkspace();
+        }
+
+        @Override
+        public boolean showWorkspaceTooltips() {
+            return showWorkspaceTooltips;
+        }
+
+        @Override
+        public GraphValidationResult validationResult() {
+            return nodeGraph.getValidationResult(baritoneAvailable, uiUtilsAvailable);
+        }
+
+        @Override
+        public float hoverProgress(Object key, boolean hovered) {
+            return getHoverProgress(key, hovered);
+        }
+
+        @Override
+        public void openRoutineWorkspace(String routineId) {
+            openRoutineWorkspaceTab(routineId);
+        }
+
+        @Override
+        public String activeRoutineWorkspaceId() {
+            return nodeGraph.getActiveRoutineWorkspaceId();
+        }
+
+        @Override
+        public void focusNode(String nodeId) {
+            nodeGraph.focusNodeById(nodeId, width, height, sidebar.getWidth(), TITLE_BAR_HEIGHT);
+        }
+
+        @Override
+        public void closePresetDropdown() {
+            presetDropdownController.close();
+        }
+
+        @Override
+        public void switchToRootWorkspace() {
+            switchToWorkspaceTab(0);
+        }
+
+        @Override
+        public void startExecutingAllGraphs() {
+            PathmindVisualEditorScreen.this.startExecutingAllGraphs();
+        }
+
+        @Override
+        public void stopExecutingAllGraphs() {
+            ExecutionManager.getInstance().requestStopAll();
         }
     }
 
@@ -1108,12 +1248,7 @@ public class PathmindVisualEditorScreen extends Screen {
             });
             this.addWidget(createListRadiusField);
         }
-        if (nodeSearchField == null) {
-            nodeSearchField = PathmindTextField.createInactive(this.font, 0, 0, NODE_SEARCH_FIELD_WIDTH, NODE_SEARCH_FIELD_HEIGHT, Component.translatable("pathmind.search.nodes"), 64);
-            nodeSearchField.setHeight(Math.max(10, NODE_SEARCH_FIELD_HEIGHT - TEXT_FIELD_VERTICAL_PADDING * 2));
-            nodeSearchField.setResponder(value -> updateNodeSearchMatch());
-            this.addWidget(nodeSearchField);
-        }
+        nodeSearchController.initialize();
         if (settingsNodeSearchField == null) {
             settingsNodeSearchField = PathmindTextField.createInactive(this.font, 0, 0, NODE_SEARCH_FIELD_WIDTH, SETTINGS_NODE_TYPE_SEARCH_HEIGHT, Component.translatable("pathmind.search.nodeSettings"), 64);
             settingsNodeSearchField.setSuggestion(tr("pathmind.search.nodeSettings"));
@@ -1165,7 +1300,7 @@ public class PathmindVisualEditorScreen extends Screen {
         GraphValidationResult validationResult = nodeGraph.getValidationResult(baritoneAvailable, uiUtilsAvailable);
 
         nodeGraph.setSidebarWidth(sidebar.getWidth());
-        nodeGraph.setExecutionEnabled(shouldShowExecutionControls());
+        nodeGraph.setExecutionEnabled(validationExecutionController.shouldShowExecutionControls());
         nodeGraph.updateMouseHover(mouseX, mouseY);
         renderNodeGraph(context, mouseX, mouseY, delta, false);
 
@@ -1215,31 +1350,20 @@ public class PathmindVisualEditorScreen extends Screen {
         missingBaritonePopupAnimation.tick();
         missingUiUtilsPopupAnimation.tick();
         settingsPopupAnimation.tick();
-        validationPanelAnimation.animateTo(validationPanelOpen ? 1f : 0f, UITheme.TRANSITION_ANIM_MS);
-        validationPanelAnimation.tick();
+        validationExecutionController.tick();
 
         boolean controlsDisabled = isPopupObscuringWorkspace();
         int chromeMouseX = controlsDisabled ? Integer.MIN_VALUE : mouseX;
         int chromeMouseY = controlsDisabled ? Integer.MIN_VALUE : mouseY;
-        if (controlsDisabled && validationPanelOpen) {
-            validationPanelOpen = false;
-        }
         renderZoomControls(context, chromeMouseX, chromeMouseY, false);
 
-        if (shouldShowExecutionControls()) {
+        if (validationExecutionController.shouldShowExecutionControls()) {
             renderRoutineWorkspaceExitButton(context, chromeMouseX, chromeMouseY);
-            renderStopButton(context, chromeMouseX, chromeMouseY, false);
-            renderPlayButton(context, chromeMouseX, chromeMouseY, false);
         }
-        renderValidationPanel(context, mouseX, mouseY, validationResult);
-        boolean validationButtonHovered = renderValidationButton(context, chromeMouseX, chromeMouseY, false, validationResult);
+        validationExecutionController.render(context, mouseX, mouseY, controlsDisabled, validationResult);
         renderBottomLeftWorkspaceButtons(context, mouseX, mouseY);
         renderSettingsButton(context, chromeMouseX, chromeMouseY, false);
-        if (showWorkspaceTooltips && !isPopupObscuringWorkspace() && !validationPanelOpen) {
-            if (validationButtonHovered) {
-                TooltipRenderer.render(context, this.font, Component.translatable("pathmind.validation.checks").getString(), chromeMouseX, chromeMouseY, this.width, this.height);
-            }
-        }
+        validationExecutionController.renderTooltip(context, mouseX, mouseY, controlsDisabled, validationResult);
         renderPresetDropdown(context, mouseX, mouseY, controlsDisabled);
 
         if (controlsDisabled) {
@@ -1350,7 +1474,7 @@ public class PathmindVisualEditorScreen extends Screen {
             nodeGraph.renderContextMenu(context, this.font, mouseX, mouseY);
         }
         presetContextMenuController.render(context, mouseX, mouseY);
-        renderNodeSearchField(context, mouseX, mouseY, delta);
+        nodeSearchController.render(context, mouseX, mouseY, delta);
         DrawContextBridge.startNewRootLayer(context);
         renderDraggedWorkspaceLayer(context, mouseX, mouseY, delta);
         if (isDraggingFromSidebar && sidebarDragActivated && (draggingNodeType != null || draggingSidebarNode != null)) {
@@ -1461,10 +1585,6 @@ public class PathmindVisualEditorScreen extends Screen {
         return modalOverlayController.isObscuringWorkspace();
     }
     
-    private boolean shouldShowExecutionControls() {
-        return true;
-    }
-
     private boolean handleNodeDoubleClickExecution(Node clickedNode) {
         if (clickedNode == null || this.minecraft == null || this.minecraft.player == null || this.minecraft.level == null) {
             return false;
@@ -1847,11 +1967,11 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         if (!isPopupObscuringWorkspace() && button == 0) {
-            if (handleValidationPanelClick((int) mouseX, (int) mouseY)) {
+            if (validationExecutionController.handlePanelClick((int) mouseX, (int) mouseY)) {
                 return true;
             }
         } else if (button == 0) {
-            validationPanelOpen = false;
+            validationExecutionController.closePanel();
         }
 
         if (!isPopupObscuringWorkspace() && button == 0
@@ -1860,21 +1980,9 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
-        if (!isPopupObscuringWorkspace() && button == 0 && shouldShowExecutionControls()) {
-            if (isPointInRoutineExitButton((int) mouseX, (int) mouseY)) {
-                switchToWorkspaceTab(0);
-                return true;
-            }
-            if (isPointInPlayButton((int) mouseX, (int) mouseY)) {
-                presetDropdownController.close();
-                startExecutingAllGraphs();
-                return true;
-            }
-            if (isPointInStopButton((int) mouseX, (int) mouseY)) {
-                presetDropdownController.close();
-                stopExecutingAllGraphs();
-                return true;
-            }
+        if (!isPopupObscuringWorkspace()
+            && validationExecutionController.handleExecutionClick((int) mouseX, (int) mouseY, button)) {
+            return true;
         }
 
         if (!isPopupObscuringWorkspace() && button == 0) {
@@ -1888,10 +1996,7 @@ public class PathmindVisualEditorScreen extends Screen {
                 nodeGraph.zoomIn(getWorkspaceCenterX(), getWorkspaceCenterY());
                 return true;
             }
-            if (isValidationButtonClicked((int) mouseX, (int) mouseY, button)) {
-                validationPanelOpen = !validationPanelOpen;
-                if (!validationPanelOpen) {
-                }
+            if (validationExecutionController.handleValidationButtonClick((int) mouseX, (int) mouseY, button)) {
                 return true;
             }
             if (isSettingsButtonClicked((int) mouseX, (int) mouseY, button)) {
@@ -1914,22 +2019,8 @@ public class PathmindVisualEditorScreen extends Screen {
             }
         }
 
-        if (nodeSearchOpen) {
-            if (button == 0 && nodeSearchField != null && isPointInNodeSearchField((int) mouseX, (int) mouseY)) {
-                nodeSearchField.setFocused(true);
-                return true;
-            }
-            if (button == 0) {
-                int resultIndex = getNodeSearchResultIndexAt((int) mouseX, (int) mouseY);
-                if (resultIndex >= 0 && resultIndex < nodeSearchResults.size()) {
-                    selectNodeSearchResult(nodeSearchResults.get(resultIndex));
-                    return true;
-                }
-            }
-            if (!isPointInNodeSearchBounds((int) mouseX, (int) mouseY)) {
-                closeNodeSearch();
-            }
-            return true;
+        if (nodeSearchController.isOpen()) {
+            return nodeSearchController.handleClick((int) mouseX, (int) mouseY, button);
         }
 
         if (nodeGraph.isNodeContextMenuOpen()) {
@@ -2037,7 +2128,7 @@ public class PathmindVisualEditorScreen extends Screen {
                 ContextMenuSelection selection = nodeGraph.handleContextMenuClick((int)mouseX, (int)mouseY);
                 if (selection != null && selection.shouldOpenSearch()) {
                     nodeGraph.closeContextMenu();
-                    openNodeSearch((int) mouseX, (int) mouseY);
+                    nodeSearchController.open((int) mouseX, (int) mouseY);
                 } else if (selection != null && selection.shouldCreateStickyNote()) {
                     nodeGraph.addNodeFromContextMenu(NodeType.STICKY_NOTE);
                     nodeGraph.closeContextMenu();
@@ -2752,32 +2843,27 @@ public class PathmindVisualEditorScreen extends Screen {
         if (firstRunTutorialController.isVisible()) {
             return firstRunTutorialController.keyPressed(keyCode);
         }
-        if (nodeSearchOpen) {
+        if (nodeSearchController.isOpen()) {
             if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
-                closeNodeSearch();
+                nodeSearchController.close();
                 return true;
             }
             if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
-                NodeSearchResult selected = getSelectedNodeSearchResult();
-                if (selected != null) {
-                    selectNodeSearchResult(selected);
-                } else {
-                    closeNodeSearch();
-                }
+                nodeSearchController.selectCurrentOrClose();
                 return true;
             }
             if (keyCode == GLFW.GLFW_KEY_UP) {
-                moveNodeSearchSelection(-1);
+                nodeSearchController.moveSelection(-1);
                 return true;
             }
             if (keyCode == GLFW.GLFW_KEY_DOWN) {
-                moveNodeSearchSelection(1);
+                nodeSearchController.moveSelection(1);
                 return true;
             }
             //? if MC_1_21_8 {
-            /*if (nodeSearchField != null && nodeSearchField.keyPressed(keyCode, scanCode, modifiers)) {
+            /*if (nodeSearchController.field() != null && nodeSearchController.field().keyPressed(keyCode, scanCode, modifiers)) {
                 *///?} else {
-            if (nodeSearchField != null && nodeSearchField.keyPressed(input)) {
+            if (nodeSearchController.field() != null && nodeSearchController.field().keyPressed(input)) {
                 //?}
                 return true;
             }
@@ -3024,11 +3110,11 @@ public class PathmindVisualEditorScreen extends Screen {
         if (firstRunTutorialController.isVisible()) {
             return true;
         }
-        if (nodeSearchOpen) {
+        if (nodeSearchController.isOpen()) {
             //? if MC_1_21_8 {
-            /*if (nodeSearchField != null && nodeSearchField.charTyped(chr, modifiers)) {
+            /*if (nodeSearchController.field() != null && nodeSearchController.field().charTyped(chr, modifiers)) {
                 *///?} else {
-            if (nodeSearchField != null && nodeSearchField.charTyped(input)) {
+            if (nodeSearchController.field() != null && nodeSearchController.field().charTyped(input)) {
                 //?}
                 return true;
             }
@@ -3058,7 +3144,7 @@ public class PathmindVisualEditorScreen extends Screen {
             }
             return true;
         }
-        if (validationPanelOpen) {
+        if (validationExecutionController.isPanelOpen()) {
             return true;
         }
         if (infoPopupAnimation.isVisible()) {
@@ -3888,46 +3974,6 @@ public class PathmindVisualEditorScreen extends Screen {
         bookTextEditorOverlay.show();
     }
 
-    private void renderPlayButton(GuiGraphics context, int mouseX, int mouseY, boolean disabled) {
-        int buttonX = getPlayButtonX();
-        int buttonY = getPlayButtonY();
-        boolean executing = ExecutionManager.getInstance().isGlobalExecutionActive();
-        boolean hovered = !disabled && PathmindWorkspaceChrome.contains(mouseX, mouseY, buttonX, buttonY, PLAY_BUTTON_SIZE, PLAY_BUTTON_SIZE);
-        float hoverProgress = getHoverProgress("play-button", hovered || executing);
-        PathmindWorkspaceChrome.renderPlayButton(
-            context,
-            buttonX,
-            buttonY,
-            PLAY_BUTTON_SIZE,
-            mouseX,
-            mouseY,
-            disabled,
-            executing,
-            hoverProgress,
-            getAccentColor()
-        );
-    }
-
-    private void renderStopButton(GuiGraphics context, int mouseX, int mouseY, boolean disabled) {
-        int buttonX = getStopButtonX();
-        int buttonY = getStopButtonY();
-        boolean executing = ExecutionManager.getInstance().isGlobalExecutionActive();
-        boolean hovered = !disabled && PathmindWorkspaceChrome.contains(mouseX, mouseY, buttonX, buttonY, STOP_BUTTON_SIZE, STOP_BUTTON_SIZE);
-        float hoverProgress = getHoverProgress("stop-button", hovered || executing);
-        PathmindWorkspaceChrome.renderStopButton(
-            context,
-            buttonX,
-            buttonY,
-            STOP_BUTTON_SIZE,
-            mouseX,
-            mouseY,
-            disabled,
-            executing,
-            hoverProgress,
-            getAccentColor()
-        );
-    }
-
     private void renderPresetDropdown(GuiGraphics context, int mouseX, int mouseY, boolean disabled) {
         presetDropdownController.render(context, mouseX, mouseY, disabled);
     }
@@ -3937,28 +3983,19 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private int getPlayButtonX() {
-        return PathmindWorkspaceChrome.playButtonX(this.width, PLAY_BUTTON_SIZE, PLAY_BUTTON_MARGIN);
+        return validationExecutionController.playButtonX();
     }
 
     private int getPlayButtonY() {
-        return PathmindWorkspaceChrome.playButtonY(TITLE_BAR_HEIGHT, PLAY_BUTTON_MARGIN);
+        return validationExecutionController.playButtonY();
     }
 
     private int getValidationButtonX() {
-        if (shouldShowExecutionControls()) {
-            return getPlayButtonX();
-        }
-        return this.width - VALIDATION_BUTTON_SIZE - PLAY_BUTTON_MARGIN;
+        return validationExecutionController.validationButtonX();
     }
 
     private int getValidationButtonY() {
-        if (getActiveRoutineWorkspace() != null) {
-            return getPlayButtonY() + PLAY_BUTTON_SIZE + CONTROL_BUTTON_GAP;
-        }
-        if (shouldShowExecutionControls()) {
-            return getPlayButtonY() + PLAY_BUTTON_SIZE + CONTROL_BUTTON_GAP;
-        }
-        return PathmindWorkspaceChrome.playButtonY(TITLE_BAR_HEIGHT, PLAY_BUTTON_MARGIN);
+        return validationExecutionController.validationButtonY();
     }
 
     private int getZoomPlusButtonX() {
@@ -3984,19 +4021,19 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private int getStopButtonX() {
-        return PathmindWorkspaceChrome.stopButtonX(getPlayButtonX(), CONTROL_BUTTON_GAP, STOP_BUTTON_SIZE);
+        return validationExecutionController.stopButtonX();
     }
 
     private int getStopButtonY() {
-        return getPlayButtonY();
+        return validationExecutionController.stopButtonY();
     }
 
     private int getRoutineExitButtonX() {
-        return getStopButtonX() - CONTROL_BUTTON_GAP - PLAY_BUTTON_SIZE;
+        return validationExecutionController.routineExitButtonX();
     }
 
     private int getRoutineExitButtonY() {
-        return getPlayButtonY();
+        return validationExecutionController.routineExitButtonY();
     }
 
     private boolean isPresetDeleteDisabled(String presetName) {
@@ -4115,317 +4152,6 @@ public class PathmindVisualEditorScreen extends Screen {
         if (renamePresetField != null) {
             PathmindTextField.deactivate(renamePresetField);
         }
-    }
-
-    private void openNodeSearch(int anchorX, int anchorY) {
-        int minX = sidebar.getWidth() + 8;
-        int maxX = this.width - NODE_SEARCH_FIELD_WIDTH - 8;
-        nodeSearchFieldX = Mth.clamp(anchorX, minX, Math.max(minX, maxX));
-        nodeSearchFieldY = Mth.clamp(anchorY, TITLE_BAR_HEIGHT + 8,
-            Math.max(TITLE_BAR_HEIGHT + 8, this.height - NODE_SEARCH_FIELD_HEIGHT - 8));
-        nodeSearchWorldX = nodeGraph.screenToWorldX(nodeSearchFieldX);
-        nodeSearchWorldY = nodeGraph.screenToWorldY(nodeSearchFieldY);
-        nodeSearchScale = Math.max(0.05f, nodeGraph.getZoomScale());
-        nodeSearchOpen = true;
-        if (nodeSearchField != null) {
-            nodeSearchField.setX(nodeSearchFieldX);
-            nodeSearchField.setY(nodeSearchFieldY);
-            nodeSearchField.setValue("");
-            nodeSearchField.setVisible(true);
-            nodeSearchField.setEditable(true);
-            nodeSearchField.setFocused(true);
-            nodeSearchField.setSuggestion(null);
-        }
-        nodeSearchResults.clear();
-        nodeSearchHoverIndex = -1;
-    }
-
-    private void closeNodeSearch() {
-        nodeSearchOpen = false;
-        nodeSearchResults.clear();
-        nodeSearchHoverIndex = -1;
-        if (nodeSearchField != null) {
-            PathmindTextField.deactivate(nodeSearchField);
-            nodeSearchField.setSuggestion(null);
-        }
-    }
-
-    private void updateNodeSearchMatch() {
-        if (!nodeSearchOpen || nodeSearchField == null) {
-            return;
-        }
-        String query = nodeSearchField.getValue();
-        nodeSearchField.setSuggestion(null);
-        refreshNodeSearchResults(query);
-    }
-
-    private void renderNodeSearchField(GuiGraphics context, int mouseX, int mouseY, float delta) {
-        if (!nodeSearchOpen || nodeSearchField == null) {
-            return;
-        }
-
-        updateNodeSearchLayout();
-        int transformedMouseX = toNodeSearchSpaceX(mouseX);
-        int transformedMouseY = toNodeSearchSpaceY(mouseY);
-        var matrices = context.pose();
-        MatrixStackBridge.push(matrices);
-        MatrixStackBridge.translate(matrices, nodeSearchFieldX, nodeSearchFieldY);
-        MatrixStackBridge.scale(matrices, nodeSearchScale, nodeSearchScale);
-        MatrixStackBridge.translate(matrices, -nodeSearchFieldX, -nodeSearchFieldY);
-
-        boolean focused = nodeSearchField.isFocused();
-        UIStyleHelper.FieldPalette searchPalette = UIStyleHelper.getSearchFieldPalette(getAccentColor(), focused ? 1f : 0f, focused, false);
-        UIStyleHelper.drawFieldFrame(context, nodeSearchFieldX, nodeSearchFieldY, NODE_SEARCH_FIELD_WIDTH, NODE_SEARCH_FIELD_HEIGHT, searchPalette);
-        int iconX = nodeSearchFieldX + 6;
-        int iconY = nodeSearchFieldY + (NODE_SEARCH_FIELD_HEIGHT - 9) / 2;
-        drawNodeSearchIcon(context, iconX, iconY, searchPalette.textColor());
-        int textFieldHeight = Math.max(10, NODE_SEARCH_FIELD_HEIGHT - TEXT_FIELD_VERTICAL_PADDING * 2);
-        nodeSearchField.setPosition(nodeSearchFieldX + 20, nodeSearchFieldY + TEXT_FIELD_VERTICAL_PADDING);
-        nodeSearchField.setWidth(NODE_SEARCH_FIELD_WIDTH - 26);
-        nodeSearchField.setHeight(textFieldHeight);
-        nodeSearchField.render(context, transformedMouseX, transformedMouseY, delta);
-
-        renderNodeSearchDropdown(context, mouseX, mouseY);
-        MatrixStackBridge.pop(matrices);
-    }
-
-    private void refreshNodeSearchResults(String query) {
-        nodeSearchResults.clear();
-        nodeSearchHoverIndex = -1;
-        if (query == null) {
-            return;
-        }
-        String normalizedQuery = query.trim().toLowerCase(Locale.ROOT);
-        if (normalizedQuery.isEmpty()) {
-            return;
-        }
-
-        for (NodeType nodeType : NodeType.values()) {
-            if (!sidebar.isNodeAvailable(nodeType)) {
-                continue;
-            }
-            int score = scoreNodeSearchCandidate(nodeType, normalizedQuery);
-            if (score <= 0) {
-                continue;
-            }
-            nodeSearchResults.add(new NodeSearchResult(
-                nodeType,
-                nodeType.getDisplayName(),
-                getNodeSearchCategoryLabel(nodeType),
-                score
-            ));
-        }
-        for (NodeGraphData.RoutineDefinitionData routine : workspaceLifecycleController.getRootRoutines()) {
-            if (routine == null) continue;
-            int score = scoreSearchCandidate(routine.getName(), normalizedQuery);
-            if (score > 0) nodeSearchResults.add(new NodeSearchResult(NodeType.ROUTINE_CALL, routine.getName(),
-                NodeCategory.ROUTINES.getDisplayName(), score + 20, routine));
-        }
-
-        nodeSearchResults.sort((left, right) -> {
-            int scoreCompare = Integer.compare(right.score, left.score);
-            if (scoreCompare != 0) {
-                return scoreCompare;
-            }
-            return left.label.compareToIgnoreCase(right.label);
-        });
-        if (nodeSearchResults.size() > NODE_SEARCH_MAX_RESULTS) {
-            nodeSearchResults.subList(NODE_SEARCH_MAX_RESULTS, nodeSearchResults.size()).clear();
-        }
-        if (!nodeSearchResults.isEmpty()) {
-            nodeSearchHoverIndex = 0;
-        }
-    }
-
-    private String getNodeSearchCategoryLabel(NodeType nodeType) {
-        NodeCatalog.NodePlacement placement = NodeCatalog.sidebarPlacement(nodeType, baritoneAvailable, uiUtilsAvailable);
-        NodeCategory category = placement != null ? placement.displayCategory() : NodeCatalog.category(nodeType);
-        return category.getDisplayName();
-    }
-
-    private int scoreNodeSearchCandidate(NodeType nodeType, String query) {
-        int bestScore = 0;
-        bestScore = Math.max(bestScore, scoreSearchCandidate(nodeType.getDisplayName(), query));
-        bestScore = Math.max(bestScore, scoreSearchCandidate(nodeType.getDescription(), query) - 40);
-        bestScore = Math.max(bestScore, scoreSearchCandidate(getNodeSearchCategoryLabel(nodeType), query) - 80);
-        bestScore = Math.max(bestScore, scoreSearchCandidate(nodeType.name(), query) - 100);
-        return bestScore;
-    }
-
-    private int scoreSearchCandidate(String candidate, String query) {
-        if (candidate == null || query == null) {
-            return 0;
-        }
-        String normalizedCandidate = candidate.trim().toLowerCase(Locale.ROOT);
-        if (normalizedCandidate.isEmpty() || query.isEmpty()) {
-            return 0;
-        }
-        if (normalizedCandidate.equals(query)) {
-            return 1000;
-        }
-        if (normalizedCandidate.startsWith(query)) {
-            return 800 - Math.max(0, normalizedCandidate.length() - query.length());
-        }
-        int containsIndex = normalizedCandidate.indexOf(query);
-        if (containsIndex >= 0) {
-            return 650 - containsIndex * 6;
-        }
-        int fuzzyScore = fuzzySearchScore(normalizedCandidate, query);
-        return fuzzyScore > 0 ? 300 + fuzzyScore : 0;
-    }
-
-    private int fuzzySearchScore(String candidate, String query) {
-        int score = 0;
-        int streak = 0;
-        int queryIndex = 0;
-        for (int i = 0; i < candidate.length() && queryIndex < query.length(); i++) {
-            if (candidate.charAt(i) == query.charAt(queryIndex)) {
-                score += 8 + streak * 4;
-                streak++;
-                queryIndex++;
-            } else {
-                streak = 0;
-            }
-        }
-        if (queryIndex != query.length()) {
-            return 0;
-        }
-        return Math.max(1, score - Math.max(0, candidate.length() - query.length()));
-    }
-
-    private void renderNodeSearchDropdown(GuiGraphics context, int mouseX, int mouseY) {
-        if (nodeSearchResults.isEmpty()) {
-            return;
-        }
-        int listX = nodeSearchFieldX;
-        int listY = nodeSearchFieldY + NODE_SEARCH_FIELD_HEIGHT + NODE_SEARCH_DROPDOWN_TOP_GAP;
-        int listWidth = NODE_SEARCH_FIELD_WIDTH;
-        int listHeight = nodeSearchResults.size() * NODE_SEARCH_RESULT_HEIGHT;
-        UIStyleHelper.ScrollContainerPalette containerPalette = UIStyleHelper.getScrollContainerPalette(getAccentColor(), 1f, true, false);
-        UIStyleHelper.drawScrollContainer(context, listX, listY, listWidth, listHeight, containerPalette);
-
-        int hoveredIndex = getNodeSearchResultIndexAt(mouseX, mouseY);
-        if (hoveredIndex >= 0) {
-            nodeSearchHoverIndex = hoveredIndex;
-        }
-
-        for (int i = 0; i < nodeSearchResults.size(); i++) {
-            NodeSearchResult result = nodeSearchResults.get(i);
-            int rowTop = listY + i * NODE_SEARCH_RESULT_HEIGHT;
-            boolean selected = i == nodeSearchHoverIndex;
-            UIStyleHelper.DropdownRowPalette rowPalette = UIStyleHelper.getDropdownRowPalette(getAccentColor(), selected ? 1f : 0f, selected, false);
-            if (selected) {
-                UIStyleHelper.drawDropdownRow(context, listX + 1, rowTop, listWidth - 2, NODE_SEARCH_RESULT_HEIGHT, rowPalette);
-            }
-            int textY = rowTop + Math.max(0, (NODE_SEARCH_RESULT_HEIGHT - this.font.lineHeight) / 2);
-            String label = trimToWidth(result.label, listWidth - (NODE_SEARCH_RESULT_TEXT_PADDING * 2) - 42);
-            context.drawString(this.font, Component.literal(label), listX + NODE_SEARCH_RESULT_TEXT_PADDING, textY, selected ? rowPalette.textColor() : UITheme.TEXT_PRIMARY);
-            String category = trimToWidth(result.categoryLabel, 36);
-            int categoryWidth = this.font.width(category);
-            context.drawString(this.font, Component.literal(category),
-                listX + listWidth - NODE_SEARCH_RESULT_TEXT_PADDING - categoryWidth, textY, UITheme.TEXT_TERTIARY);
-        }
-    }
-
-    private String trimToWidth(String value, int maxWidth) {
-        return TextRenderUtil.trimWithEllipsis(this.font, value, maxWidth);
-    }
-
-    private boolean isPointInNodeSearchField(int mouseX, int mouseY) {
-        int transformedMouseX = toNodeSearchSpaceX(mouseX);
-        int transformedMouseY = toNodeSearchSpaceY(mouseY);
-        return isPointInRect(transformedMouseX, transformedMouseY, nodeSearchFieldX, nodeSearchFieldY, NODE_SEARCH_FIELD_WIDTH, NODE_SEARCH_FIELD_HEIGHT);
-    }
-
-    private boolean isPointInNodeSearchBounds(int mouseX, int mouseY) {
-        int transformedMouseX = toNodeSearchSpaceX(mouseX);
-        int transformedMouseY = toNodeSearchSpaceY(mouseY);
-        int totalHeight = NODE_SEARCH_FIELD_HEIGHT + getNodeSearchDropdownHeight() + (nodeSearchResults.isEmpty() ? 0 : NODE_SEARCH_DROPDOWN_TOP_GAP);
-        return isPointInRect(transformedMouseX, transformedMouseY, nodeSearchFieldX, nodeSearchFieldY, NODE_SEARCH_FIELD_WIDTH, totalHeight);
-    }
-
-    private int getNodeSearchDropdownHeight() {
-        return nodeSearchResults.isEmpty() ? 0 : nodeSearchResults.size() * NODE_SEARCH_RESULT_HEIGHT;
-    }
-
-    private int getNodeSearchResultIndexAt(int mouseX, int mouseY) {
-        if (nodeSearchResults.isEmpty()) {
-            return -1;
-        }
-        int transformedMouseX = toNodeSearchSpaceX(mouseX);
-        int transformedMouseY = toNodeSearchSpaceY(mouseY);
-        int listX = nodeSearchFieldX;
-        int listY = nodeSearchFieldY + NODE_SEARCH_FIELD_HEIGHT + NODE_SEARCH_DROPDOWN_TOP_GAP;
-        int listHeight = getNodeSearchDropdownHeight();
-        if (!isPointInRect(transformedMouseX, transformedMouseY, listX, listY, NODE_SEARCH_FIELD_WIDTH, listHeight)) {
-            return -1;
-        }
-        int index = (transformedMouseY - listY) / NODE_SEARCH_RESULT_HEIGHT;
-        return index >= 0 && index < nodeSearchResults.size() ? index : -1;
-    }
-
-    private void updateNodeSearchLayout() {
-        nodeSearchScale = Math.max(0.05f, nodeGraph.getZoomScale());
-        int minX = sidebar.getWidth() + 8;
-        int minY = TITLE_BAR_HEIGHT + 8;
-        int scaledWidth = Math.max(1, Math.round(NODE_SEARCH_FIELD_WIDTH * nodeSearchScale));
-        int scaledHeight = Math.max(1, Math.round(NODE_SEARCH_FIELD_HEIGHT * nodeSearchScale));
-        int maxX = Math.max(minX, this.width - scaledWidth - 8);
-        int maxY = Math.max(minY, this.height - scaledHeight - 8);
-        nodeSearchFieldX = Mth.clamp(nodeGraph.worldToScreenX(nodeSearchWorldX), minX, maxX);
-        nodeSearchFieldY = Mth.clamp(nodeGraph.worldToScreenY(nodeSearchWorldY), minY, maxY);
-    }
-
-    private int toNodeSearchSpaceX(int mouseX) {
-        if (nodeSearchScale == 0.0f) {
-            return mouseX;
-        }
-        return Math.round(nodeSearchFieldX + (mouseX - nodeSearchFieldX) / nodeSearchScale);
-    }
-
-    private int toNodeSearchSpaceY(int mouseY) {
-        if (nodeSearchScale == 0.0f) {
-            return mouseY;
-        }
-        return Math.round(nodeSearchFieldY + (mouseY - nodeSearchFieldY) / nodeSearchScale);
-    }
-
-    private NodeSearchResult getSelectedNodeSearchResult() {
-        if (nodeSearchResults.isEmpty()) {
-            return null;
-        }
-        if (nodeSearchHoverIndex < 0 || nodeSearchHoverIndex >= nodeSearchResults.size()) {
-            return nodeSearchResults.get(0);
-        }
-        return nodeSearchResults.get(nodeSearchHoverIndex);
-    }
-
-    private void moveNodeSearchSelection(int direction) {
-        if (nodeSearchResults.isEmpty()) {
-            nodeSearchHoverIndex = -1;
-            return;
-        }
-        if (nodeSearchHoverIndex < 0 || nodeSearchHoverIndex >= nodeSearchResults.size()) {
-            nodeSearchHoverIndex = 0;
-            return;
-        }
-        nodeSearchHoverIndex = Mth.clamp(nodeSearchHoverIndex + direction, 0, nodeSearchResults.size() - 1);
-    }
-
-    private void selectNodeSearchResult(NodeSearchResult result) {
-        if (result == null || result.nodeType == null) {
-            return;
-        }
-        if (shouldBlockBaritoneNode(result.nodeType) || shouldBlockUiUtilsNode(result.nodeType)) {
-            return;
-        }
-        if (result.routine != null) nodeGraph.addRoutineFromContextMenu(result.routine);
-        else nodeGraph.addNodeFromContextMenu(result.nodeType);
-        closeNodeSearch();
-    }
-
-    private void drawNodeSearchIcon(GuiGraphics context, int x, int y, int color) {
-        PathmindIconRenderer.drawSearch(context, x, y, color);
     }
 
     void attemptCreatePreset() {
@@ -4823,139 +4549,6 @@ public class PathmindVisualEditorScreen extends Screen {
             importExportPopupAnimation.isVisible(), false, "workspace-import-export", PathmindWorkspaceChrome::drawImportExportIcon);
     }
 
-    private boolean renderValidationButton(GuiGraphics context, int mouseX, int mouseY, boolean disabled,
-                                           GraphValidationResult validationResult) {
-        int buttonX = getValidationButtonX();
-        int buttonY = getValidationButtonY();
-        boolean active = validationPanelOpen;
-        boolean hovered = !disabled && PathmindWorkspaceChrome.contains(mouseX, mouseY, buttonX, buttonY, VALIDATION_BUTTON_SIZE, VALIDATION_BUTTON_SIZE);
-        float hoverProgress = getHoverProgress("validation-button", hovered || active);
-        return PathmindValidationPanelRenderer.renderValidationButton(
-            context,
-            this.font,
-            buttonX,
-            buttonY,
-            VALIDATION_BUTTON_SIZE,
-            mouseX,
-            mouseY,
-            active,
-            disabled,
-            hoverProgress,
-            validationPanelAnimation.getValue(),
-            getAccentColor(),
-            validationResult
-        );
-    }
-
-    private void renderValidationPanel(GuiGraphics context, int mouseX, int mouseY, GraphValidationResult validationResult) {
-        float progress = validationPanelAnimation.getValue();
-        if (progress <= 0.001f || validationResult == null) {
-            return;
-        }
-
-        int[] bounds = getValidationPanelBounds(validationResult, progress);
-        int panelX = bounds[0];
-        int panelY = bounds[1];
-        int panelWidth = bounds[2];
-        int panelHeight = bounds[3];
-        if (panelWidth <= 0 || panelHeight <= 0) {
-            return;
-        }
-
-        context.enableScissor(panelX, panelY, panelX + panelWidth, panelY + panelHeight);
-        int issueTop = PathmindValidationPanelRenderer.renderPanelAndIssues(
-            context,
-            this.font,
-            mouseX,
-            mouseY,
-            validationResult,
-            panelX,
-            panelY,
-            panelWidth,
-            panelHeight,
-            VALIDATION_PANEL_PADDING,
-            VALIDATION_PANEL_HEADER_HEIGHT,
-            VALIDATION_PANEL_MAX_VISIBLE_ROWS,
-            VALIDATION_PANEL_ROW_HEIGHT,
-            this::getValidationIssueHoverProgress
-        );
-        PathmindValidationPanelRenderer.renderFooter(
-            context,
-            this.font,
-            validationResult,
-            panelX,
-            panelY,
-            panelWidth,
-            panelHeight,
-            VALIDATION_PANEL_PADDING,
-            VALIDATION_PANEL_FOOTER_HEIGHT,
-            VALIDATION_PANEL_MAX_VISIBLE_ROWS
-        );
-        context.disableScissor();
-    }
-
-    private boolean handleValidationPanelClick(int mouseX, int mouseY) {
-        if (isValidationButtonClicked(mouseX, mouseY, 0)) {
-            return false;
-        }
-        GraphValidationResult validationResult = nodeGraph.getValidationResult(baritoneAvailable, uiUtilsAvailable);
-        if (!validationPanelOpen) {
-            return false;
-        }
-        int[] bounds = getValidationPanelBounds(validationResult, 1f);
-        if (!isPointInRect(mouseX, mouseY, bounds[0], bounds[1], bounds[2], bounds[3])) {
-            validationPanelOpen = false;
-            return false;
-        }
-
-        PathmindValidationPanelRenderer.ClickedIssue clickedIssue = PathmindValidationPanelRenderer.findClickedIssue(
-            validationResult,
-            this.font,
-            mouseX,
-            mouseY,
-            bounds[0],
-            bounds[1],
-            bounds[2],
-            VALIDATION_PANEL_HEADER_HEIGHT,
-            VALIDATION_PANEL_MAX_VISIBLE_ROWS,
-            VALIDATION_PANEL_ROW_HEIGHT
-        );
-        if (clickedIssue.clicked()) {
-            GraphValidationIssue issue = clickedIssue.issue();
-            if (issue != null && issue.hasRoutineTarget()
-                && !issue.getRoutineId().equals(nodeGraph.getActiveRoutineWorkspaceId())) {
-                openRoutineWorkspaceTab(issue.getRoutineId());
-            }
-            if (issue != null && issue.hasNodeTarget()) {
-                nodeGraph.focusNodeById(issue.getNodeId(), this.width, this.height, sidebar.getWidth(), TITLE_BAR_HEIGHT);
-            }
-            return true;
-        }
-        return true;
-    }
-
-    private int[] getValidationPanelBounds(GraphValidationResult validationResult, float progress) {
-        return PathmindValidationPanelRenderer.getPanelBounds(
-            validationResult,
-            this.font,
-            getValidationButtonX() + VALIDATION_BUTTON_SIZE,
-            getValidationButtonY(),
-            progress,
-            VALIDATION_PANEL_WIDTH,
-            VALIDATION_PANEL_MAX_VISIBLE_ROWS,
-            VALIDATION_PANEL_HEADER_HEIGHT,
-            0,
-            VALIDATION_PANEL_FOOTER_HEIGHT,
-            VALIDATION_PANEL_BOTTOM_PADDING,
-            VALIDATION_PANEL_ROW_HEIGHT
-        );
-    }
-
-    private float getValidationIssueHoverProgress(GraphValidationIssue issue, int index, boolean hovered) {
-        String issueKey = issue == null ? "unknown-" + index : issue.getCode() + ":" + issue.getNodeId() + ":" + index;
-        return getHoverProgress("validation-issue-row:" + issueKey, hovered);
-    }
-
     float getHoverProgress(Object key, boolean hovered) {
         return HoverAnimator.getProgress(key, hovered);
     }
@@ -5060,26 +4653,6 @@ public class PathmindVisualEditorScreen extends Screen {
         int buttonX = getSettingsButtonX();
         int buttonY = getSettingsButtonY();
         return PathmindWorkspaceChrome.contains(mouseX, mouseY, buttonX, buttonY, BOTTOM_BUTTON_SIZE, BOTTOM_BUTTON_SIZE);
-    }
-
-    private boolean isValidationButtonClicked(int mouseX, int mouseY, int button) {
-        if (button != 0) return false;
-        int buttonX = getValidationButtonX();
-        int buttonY = getValidationButtonY();
-        return isPointInRect(mouseX, mouseY, buttonX, buttonY, VALIDATION_BUTTON_SIZE, VALIDATION_BUTTON_SIZE);
-    }
-
-    private boolean isPointInPlayButton(int mouseX, int mouseY) {
-        return PathmindWorkspaceChrome.contains(mouseX, mouseY, getPlayButtonX(), getPlayButtonY(), PLAY_BUTTON_SIZE, PLAY_BUTTON_SIZE);
-    }
-
-    private boolean isPointInStopButton(int mouseX, int mouseY) {
-        return PathmindWorkspaceChrome.contains(mouseX, mouseY, getStopButtonX(), getStopButtonY(), STOP_BUTTON_SIZE, STOP_BUTTON_SIZE);
-    }
-
-    private boolean isPointInRoutineExitButton(int mouseX, int mouseY) {
-        return getActiveRoutineWorkspace() != null && PathmindWorkspaceChrome.contains(
-            mouseX, mouseY, getRoutineExitButtonX(), getRoutineExitButtonY(), PLAY_BUTTON_SIZE, PLAY_BUTTON_SIZE);
     }
 
     private boolean isPointInZoomMinus(int mouseX, int mouseY) {
@@ -5660,7 +5233,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void startExecutingAllGraphs() {
-        validationPanelOpen = false;
+        validationExecutionController.closePanel();
         dismissParameterOverlay();
         isDraggingFromSidebar = false;
         draggingNodeType = null;
@@ -5697,10 +5270,6 @@ public class PathmindVisualEditorScreen extends Screen {
                 this.minecraft.setScreen(null);
             }
         }
-    }
-
-    private void stopExecutingAllGraphs() {
-        ExecutionManager.getInstance().requestStopAll();
     }
 
     void drawLanguageDropdown(GuiGraphics context, int x, int y, int width, String currentLang, boolean hovered) {

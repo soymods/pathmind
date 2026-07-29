@@ -33,6 +33,7 @@ import java.util.Set;
 import com.pathmind.nodes.Node;
 import com.pathmind.nodes.NodeParameter;
 import com.pathmind.nodes.NodeType;
+import com.pathmind.nodes.RelativeInputSupport;
 import com.pathmind.nodes.StartLaunchMode;
 import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.graph.InlineVariableRenderer.InlineVariableRender;
@@ -71,13 +72,10 @@ final class NodeRenderer {
         boolean isEditingEventNameField();
         InlineTextEditor eventNameEditor();
         Node eventNameEditingNode();
-        void renderEventNamePreview(GuiGraphics context, Font textRenderer, String value, int x, int y,
-                                    int color, int maxWidth);
         void renderPopupEditButton(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar,
                                    int mouseX, int mouseY);
         Set<String> collectRuntimeVariableNames(Node node);
         boolean shouldRenderNodeText();
-        boolean shouldBuildInlineExpressionRender(String rawText, Set<String> variableNames);
         boolean hoveringStartButton();
         void renderStartLaunchIcon(GuiGraphics context, StartLaunchMode mode, int centerX, int centerY,
                                    int color, int nodeTop, int nodeHeight);
@@ -105,6 +103,10 @@ final class NodeRenderer {
         int screenToWorldX(int screenX);
         int screenToWorldY(int screenY);
         float getTextFieldHighlightProgress(Object key, boolean hovered, boolean active);
+        UIStyleHelper.FieldPalette getLowDetailAwareFieldPalette(
+            int backgroundColor, int borderColor, int innerBorderColor,
+            int textColor, int placeholderColor, boolean isOverSidebar);
+        boolean modeDropdownOpenFor(Node node);
         boolean isCombinedDirectionNode(Node node);
         void renderDirectionModeTabs(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar,
                                      int fieldTop, int mouseX, int mouseY);
@@ -124,9 +126,6 @@ final class NodeRenderer {
         boolean parameterDropdownOpen();
         Node parameterDropdownNode();
         int parameterDropdownIndex();
-        boolean supportsRelativeInlineParameter(Node node, NodeParameter parameter);
-        boolean shouldBuildInlineExpressionRender(String rawText, Set<String> variableNames,
-                                                  boolean allowRelativeMarker);
         void updateParameterDropdown(Node node, int index, Font textRenderer, int fieldX, int fieldY,
                                      int fieldWidth, int fieldHeight);
         void renderRandomRoundingField(GuiGraphics context, Font textRenderer, Node node,
@@ -136,9 +135,41 @@ final class NodeRenderer {
         void renderParameterSlot(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar,
                                  int slotIndex);
         String getOperatorSymbol(Node node, boolean negated);
-        void renderNodeContent(GuiGraphics context, Font textRenderer, Node node, int mouseX, int mouseY,
-                               int x, int y, int width, int height, boolean isOverSidebar,
-                               boolean simpleStyle, boolean lowDetail);
+        boolean rendersInlineParameters(Node node);
+        void renderTemplateNode(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar,
+                                int mouseX, int mouseY);
+        void renderStopTargetInputField(GuiGraphics context, Font textRenderer, Node node,
+                                        boolean isOverSidebar, int mouseX, int mouseY);
+        void renderSchematicDropdownField(GuiGraphics context, Font textRenderer, Node node,
+                                          boolean isOverSidebar, int mouseX, int mouseY);
+        void renderVariableInputField(GuiGraphics context, Font textRenderer, Node node,
+                                      boolean isOverSidebar, int mouseX, int mouseY);
+        void renderCoordinateInputFields(GuiGraphics context, Font textRenderer, Node node,
+                                         boolean isOverSidebar, int mouseX, int mouseY);
+        void renderMessageInputFields(GuiGraphics context, Font textRenderer, Node node,
+                                      boolean isOverSidebar, int mouseX, int mouseY);
+        void renderMessageScopeToggle(GuiGraphics context, Font textRenderer, Node node,
+                                      boolean isOverSidebar, int mouseX, int mouseY);
+        void renderMessageButtons(GuiGraphics context, Font textRenderer, Node node,
+                                  boolean isOverSidebar, int mouseX, int mouseY);
+        void renderBooleanOperatorButtons(GuiGraphics context, Font textRenderer, Node node,
+                                          boolean isOverSidebar, int mouseX, int mouseY);
+        void renderBookTextInput(GuiGraphics context, Font textRenderer, Node node,
+                                 boolean isOverSidebar, int mouseX, int mouseY);
+        void renderSchematicDropdownList(GuiGraphics context, Font textRenderer, Node node,
+                                         boolean isOverSidebar, int mouseX, int mouseY);
+        boolean isPresetSelectorNode(Node node);
+        void renderRunPresetDropdownList(GuiGraphics context, Font textRenderer, Node node,
+                                         boolean isOverSidebar, int mouseX, int mouseY);
+        void renderBooleanToggleButton(GuiGraphics context, Font textRenderer, Node node,
+                                       boolean isOverSidebar, int mouseX, int mouseY);
+        void renderSensorSlot(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar);
+        void renderActionSlot(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar);
+        void renderRuntimeScopeButton(GuiGraphics context, Node node, boolean isOverSidebar,
+                                      int mouseX, int mouseY);
+        boolean hasRunPresetSelection(Node node);
+        void renderRunPresetOpenButton(GuiGraphics context, Font textRenderer, Node node,
+                                       boolean isOverSidebar, int mouseX, int mouseY);
     }
 
     private static final int MINIMAL_NODE_TAB_WIDTH = 6;
@@ -374,8 +405,192 @@ final class NodeRenderer {
         }
 
         renderNodeSockets(context, node, isOverSidebar, lowDetail);
-        host.renderNodeContent(context, textRenderer, node, mouseX, mouseY, x, y, width, height,
+        renderNodeContent(context, textRenderer, node, mouseX, mouseY, x, y, width, height,
             isOverSidebar, simpleStyle, lowDetail);
+    }
+
+    private void renderNodeContent(GuiGraphics context, Font textRenderer, Node node, int mouseX, int mouseY,
+                                   int x, int y, int width, int height, boolean isOverSidebar,
+                                   boolean simpleStyle, boolean lowDetail) {
+        // Render node content based on type
+        if (node.getType() == NodeType.START) {
+            renderStartContent(context, textRenderer, node, isOverSidebar, mouseX, mouseY,
+                x, y, width, height, lowDetail);
+        } else if (!simpleStyle
+            && (node.getType() == NodeType.EVENT_FUNCTION || node.getType() == NodeType.ROUTINE_ENTRY)) {
+            renderEventDefinitionContent(context, textRenderer, node, isOverSidebar, mouseX, mouseY,
+                x, y, width, height, lowDetail);
+        } else if (node.getType() == NodeType.VARIABLE || node.getType() == NodeType.ROUTINE_INPUT) {
+            renderVariableContent(context, textRenderer, node, isOverSidebar,
+                x, y, width, height, lowDetail);
+        } else if (!simpleStyle && host.isComparisonOperator(node) && !node.isExpandableBooleanOperator()) {
+            renderComparisonContent(context, textRenderer, node, isOverSidebar,
+                x, y, width, height, lowDetail);
+        } else if (node.getType() == NodeType.EVENT_CALL) {
+            renderEventCallContent(context, textRenderer, node, isOverSidebar, mouseX, mouseY,
+                x, y, width, height, lowDetail);
+        } else if (node.getType() == NodeType.TEMPLATE) {
+            host.renderTemplateNode(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+        } else {
+            if (host.rendersInlineParameters(node)) {
+                renderInlineParameterContent(context, textRenderer, node, isOverSidebar,
+                    mouseX, mouseY, x, y, width, height);
+            } else {
+                if (node.hasStopTargetInputField()) {
+                    host.renderStopTargetInputField(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+                }
+                if (node.hasSchematicDropdownField()) {
+                    host.renderSchematicDropdownField(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+                }
+                if (node.hasVariableInputField()) {
+                    host.renderVariableInputField(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+                }
+                if (node.showsModeFieldAboveParameterSlot()) {
+                    renderModeField(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+                }
+                if (node.hasParameterSlot()) {
+                    int slotCount = node.getParameterSlotCount();
+                    for (int slotIndex = 0; slotIndex < slotCount; slotIndex++) {
+                        host.renderParameterSlot(context, textRenderer, node, isOverSidebar, slotIndex);
+                    }
+                    if (node.hasCoordinateInputFields()) {
+                        host.renderCoordinateInputFields(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+                    }
+                    if (node.hasAmountInputField()) {
+                        host.renderAmountInputField(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+                    }
+                } else if (node.hasCoordinateInputFields()) {
+                    host.renderCoordinateInputFields(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+                } else if (node.hasAmountInputField()) {
+                    host.renderAmountInputField(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+                }
+                if (node.hasMessageInputFields()) {
+                    host.renderMessageInputFields(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+                    if (node.hasMessageScopeToggle()) {
+                        host.renderMessageScopeToggle(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+                    }
+                    host.renderMessageButtons(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+                }
+                if (node.isExpandableBooleanOperator()) {
+                    host.renderBooleanOperatorButtons(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+                }
+                if (node.hasBookTextInput()) {
+                    host.renderBookTextInput(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+                }
+                if (node.hasSchematicDropdownField()) {
+                    host.renderSchematicDropdownList(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+                }
+                if (host.isPresetSelectorNode(node)) {
+                    host.renderRunPresetDropdownList(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+                }
+            }
+
+            if (node.hasBooleanToggle()) {
+                host.renderBooleanToggleButton(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+            }
+            if (node.hasSensorSlot()) {
+                host.renderSensorSlot(context, textRenderer, node, isOverSidebar);
+            }
+            if (node.hasActionSlot()) {
+                host.renderActionSlot(context, textRenderer, node, isOverSidebar);
+            }
+        }
+        if (node.supportsRuntimeValueScope()) {
+            host.renderRuntimeScopeButton(context, node, isOverSidebar, mouseX, mouseY);
+        }
+        if (host.hasRunPresetSelection(node)) {
+            host.renderRunPresetOpenButton(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+        }
+    }
+
+    private void renderModeField(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar,
+                                 int mouseX, int mouseY) {
+        if (node == null || !node.showsModeFieldAboveParameterSlot()) {
+            return;
+        }
+        int fieldLeft = node.getModeFieldLeft() - host.cameraX();
+        int fieldTop = node.getModeFieldTop() - host.cameraY();
+        int fieldWidth = node.getModeFieldWidth();
+        int fieldHeight = node.getModeFieldHeight();
+        String labelText = node.getModeFieldLabelText();
+        String modeValue = node.getMode() != null ? node.getMode().getDisplayName() : "Select Mode";
+        renderDropdownSelectorField(
+            context, textRenderer, node, isOverSidebar, mouseX, mouseY,
+            fieldLeft, fieldTop, fieldWidth, fieldHeight,
+            labelText, true, modeValue
+        );
+    }
+
+    void renderDropdownSelectorField(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar,
+                                     int mouseX, int mouseY, int fieldLeft, int fieldTop, int fieldWidth,
+                                     int fieldHeight, String label, boolean includeValue, String value) {
+        int worldMouseX = host.screenToWorldX(mouseX);
+        int worldMouseY = host.screenToWorldY(mouseY);
+        int worldFieldLeft = fieldLeft + host.cameraX();
+        int worldFieldTop = fieldTop + host.cameraY();
+        boolean hovered = !isOverSidebar
+            && worldMouseX >= worldFieldLeft
+            && worldMouseX <= worldFieldLeft + fieldWidth
+            && worldMouseY >= worldFieldTop
+            && worldMouseY <= worldFieldTop + fieldHeight;
+        boolean open = host.modeDropdownOpenFor(node);
+
+        float hoverProgress = host.getTextFieldHighlightProgress(
+            node.getId() + "#selector:" + fieldLeft + ":" + fieldTop, hovered || open, false);
+        int accentColor = isOverSidebar
+            ? host.toGrayscale(host.selectedNodeAccentColor(), 0.8f)
+            : host.selectedNodeAccentColor();
+        UIStyleHelper.FieldPalette palette;
+        if (host.compactViewportMode() && !isOverSidebar) {
+            palette = new UIStyleHelper.FieldPalette(
+                open ? UITheme.BACKGROUND_INPUT : UITheme.BACKGROUND_SECONDARY,
+                open ? accentColor : UITheme.BORDER_DEFAULT,
+                UITheme.PANEL_INNER_BORDER,
+                UITheme.TEXT_PRIMARY,
+                UITheme.TEXT_TERTIARY
+            );
+        } else {
+            palette = UIStyleHelper.getDropdownFieldPalette(accentColor, hoverProgress, open, false);
+        }
+        int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : palette.textColor();
+        int labelColor = includeValue && !isOverSidebar && !(hovered || open)
+            ? UITheme.NODE_LABEL_COLOR
+            : textColor;
+
+        UIStyleHelper.drawFieldFrame(
+            context,
+            fieldLeft,
+            fieldTop,
+            fieldWidth,
+            fieldHeight,
+            host.getLowDetailAwareFieldPalette(
+                isOverSidebar ? UITheme.BACKGROUND_SECONDARY : palette.backgroundColor(),
+                isOverSidebar ? UITheme.BORDER_SUBTLE : palette.borderColor(),
+                isOverSidebar ? UITheme.PANEL_INNER_BORDER : palette.innerBorderColor(),
+                textColor,
+                palette.placeholderColor(),
+                isOverSidebar
+            )
+        );
+
+        int textY = fieldTop + (fieldHeight - textRenderer.lineHeight) / 2;
+        int textX = fieldLeft + 4;
+        int chevronCenterX = fieldLeft + fieldWidth - 8;
+        int chevronCenterY = fieldTop + fieldHeight / 2;
+
+        if (includeValue) {
+            host.drawNodeText(context, textRenderer, Component.literal(label), textX, textY, labelColor);
+            int valueStartX = textX + textRenderer.width(label) + 6;
+            int maxValueWidth = Math.max(0, chevronCenterX - 5 - valueStartX);
+            String displayValue = host.trimTextToWidth(value != null ? value : "", textRenderer, maxValueWidth);
+            host.drawNodeText(context, textRenderer, Component.literal(displayValue), valueStartX, textY, textColor);
+        } else {
+            int maxLabelWidth = Math.max(0, fieldWidth - 20);
+            String displayLabel = host.trimTextToWidth(label != null ? label : "", textRenderer, maxLabelWidth);
+            host.drawNodeText(context, textRenderer, Component.literal(displayLabel), textX, textY, textColor);
+        }
+
+        UIStyleHelper.drawChevron(context, chevronCenterX, chevronCenterY, open, textColor);
     }
 
     private void renderNodeSockets(GuiGraphics context, Node node, boolean isOverSidebar, boolean lowDetail) {
@@ -836,8 +1051,11 @@ final class NodeRenderer {
                 int paramVariableHighlightColor = isOverSidebar ? host.toGrayscale(host.selectedNodeAccentColor(), 0.85f) : host.selectedNodeAccentColor();
                 Set<String> paramVariableNames = host.collectRuntimeVariableNames(node);
                 InlineVariableRender paramRenderData = null;
-                boolean allowRelativeMarker = host.supportsRelativeInlineParameter(node, param);
-                if (host.shouldBuildInlineExpressionRender(value, paramVariableNames, allowRelativeMarker)) {
+                boolean allowRelativeMarker = RelativeInputSupport.supportsRelativeCoordinate(node, param.getName())
+                    || RelativeInputSupport.supportsRelativeLook(node, param.getName());
+                if (InlineVariableRenderer.shouldBuildInlineExpressionRender(
+                    host.compactViewportMode(), value, paramVariableNames, allowRelativeMarker
+                )) {
                     InlineVariableRender candidate = buildInlineVariableRender(
                         value,
                         paramVariableNames,
@@ -1041,7 +1259,9 @@ final class NodeRenderer {
         Set<String> eventNameVariableNames = host.collectRuntimeVariableNames(node);
         InlineVariableRender eventNameRenderData = null;
         boolean highlightPlainEventName = false;
-        if (host.shouldBuildInlineExpressionRender(value, eventNameVariableNames)) {
+        if (InlineVariableRenderer.shouldBuildInlineExpressionRender(
+            host.compactViewportMode(), value, eventNameVariableNames, false
+        )) {
             InlineVariableRender candidate = buildInlineVariableRender(value, eventNameVariableNames, isOverSidebar ? host.toGrayscale(UITheme.NODE_EVENT_TEXT, 0.85f) : UITheme.NODE_EVENT_TEXT, eventNameVariableHighlightColor);
             if (editingEventName) {
                 eventNameRenderData = candidate;
@@ -1084,7 +1304,7 @@ final class NodeRenderer {
             if (eventNameRenderData != null && host.shouldRenderNodeText()) {
                 eventNameRenderData.draw(context, textRenderer, textX, textY);
             } else {
-                host.renderEventNamePreview(context, textRenderer, display, textX, textY, textColor, boxRight - boxLeft - 8);
+                renderEventNamePreview(context, textRenderer, display, textX, textY, textColor, boxRight - boxLeft - 8);
             }
         } else {
             if (eventNameRenderData != null && host.shouldRenderNodeText()) {
@@ -1181,7 +1401,7 @@ final class NodeRenderer {
             }
         }
         if (!editingEventName) {
-            host.renderEventNamePreview(context, textRenderer, display, textX, textY, textColor, boxRight - boxLeft - 8);
+            renderEventNamePreview(context, textRenderer, display, textX, textY, textColor, boxRight - boxLeft - 8);
         } else {
             host.drawNodeText(context, textRenderer, Component.literal(display), textX, textY, textColor);
         }
@@ -1194,6 +1414,38 @@ final class NodeRenderer {
             UIStyleHelper.drawTextCaretAtBaseline(context, textRenderer, caretX, caretBaseline, boxRight - 2, UITheme.CARET_COLOR);
         }
         host.renderPopupEditButton(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+    }
+
+    private void renderEventNamePreview(GuiGraphics context, Font textRenderer, String value, int x, int y,
+                                        int baseColor, int maxWidth) {
+        if (value == null || value.isEmpty()) {
+            host.drawNodeText(context, textRenderer, Component.translatable("pathmind.field.enterName"), x, y, baseColor);
+            return;
+        }
+        if (textRenderer.width(value) <= maxWidth) {
+            host.drawNodeText(context, textRenderer, Component.literal(value), x, y, baseColor);
+            return;
+        }
+
+        String trimmed = host.trimTextToWidth(value, textRenderer, maxWidth);
+        host.drawNodeText(context, textRenderer, Component.literal(trimmed), x, y, baseColor);
+        int trimmedWidth = textRenderer.width(trimmed);
+
+        String tail = "..";
+        int tailWidth = textRenderer.width(tail);
+        if (trimmedWidth + tailWidth + 4 >= maxWidth) {
+            return;
+        }
+
+        String suffix = value.substring(Math.max(0, value.length() - 4));
+        String tailText = tail + suffix;
+        int tailTextWidth = textRenderer.width(tailText);
+        if (trimmedWidth + tailTextWidth + 4 > maxWidth) {
+            return;
+        }
+        int tailX = x + maxWidth - tailTextWidth;
+        int hintColor = host.toGrayscale(baseColor, 0.85f);
+        host.drawNodeText(context, textRenderer, Component.literal(tailText), tailX, y, hintColor);
     }
 
     static void renderSocket(GuiGraphics context, int x, int y, boolean isInput, int color) {

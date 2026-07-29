@@ -47,7 +47,6 @@ import com.pathmind.nodes.NodeConnection;
 import com.pathmind.nodes.NodeParameter;
 import com.pathmind.nodes.NodeType;
 import com.pathmind.nodes.ParameterType;
-import com.pathmind.nodes.RelativeInputSupport;
 import com.pathmind.nodes.RuntimeValueScope;
 import com.pathmind.nodes.StartLaunchMode;
 import com.pathmind.nodes.StartScreenTarget;
@@ -55,7 +54,6 @@ import com.pathmind.ui.menu.ContextMenuSelection;
 import com.pathmind.ui.animation.AnimatedValue;
 import com.pathmind.ui.animation.AnimationHelper;
 import com.pathmind.ui.animation.HoverAnimator;
-import com.pathmind.ui.control.PathmindDropdownRenderer;
 import com.pathmind.ui.control.PathmindIconRenderer;
 import com.pathmind.ui.tooltip.TooltipRenderer;
 import com.pathmind.ui.theme.UIStyleHelper;
@@ -63,7 +61,6 @@ import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.BaritoneDependencyChecker;
 import com.pathmind.util.BlockSelection;
 import com.pathmind.util.MatrixStackBridge;
-import com.pathmind.util.DropdownLayoutHelper;
 import com.pathmind.util.GuiSelectionMode;
 import com.pathmind.util.TextRenderUtil;
 import com.pathmind.util.UiUtilsProxy;
@@ -328,7 +325,7 @@ public class NodeGraph {
                                                            boolean isOverSidebar, int mouseX, int mouseY,
                                                            int fieldLeft, int fieldTop, int fieldWidth, int fieldHeight,
                                                            String label, boolean includeValue, String value) {
-            NodeGraph.this.renderDropdownSelectorField(context, textRenderer, node, isOverSidebar, mouseX, mouseY,
+            nodeRenderer.renderDropdownSelectorField(context, textRenderer, node, isOverSidebar, mouseX, mouseY,
                 fieldLeft, fieldTop, fieldWidth, fieldHeight, label, includeValue, value);
         }
         @Override public boolean isMoveItemAllAmountValue(String value) {
@@ -346,7 +343,8 @@ public class NodeGraph {
         @Override public boolean isPresetSelectorNode(Node node) { return NodeGraph.this.isPresetSelectorNode(node); }
         @Override public void renderPresetSelectorField(GuiGraphics context, Font textRenderer, Node node,
                                                          boolean isOverSidebar, int mouseX, int mouseY) {
-            NodeGraph.this.renderPresetSelectorField(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+            specializedSelectors.renderPresetField(
+                context, textRenderer, node, isOverSidebar, mouseX, mouseY);
         }
         @Override public boolean isRunPresetDropdownOpenFor(Node node) {
             return specializedSelectors.isRunPresetOpen() && specializedSelectors.getRunPresetNode() == node;
@@ -671,10 +669,6 @@ public class NodeGraph {
         @Override public boolean isEditingEventNameField() { return NodeGraph.this.isEditingEventNameField(); }
         @Override public InlineTextEditor eventNameEditor() { return inlineFields.getEventNameEditor(); }
         @Override public Node eventNameEditingNode() { return inlineFields.getEventNameEditingNode(); }
-        @Override public void renderEventNamePreview(GuiGraphics context, Font textRenderer, String value,
-                                                     int x, int y, int color, int maxWidth) {
-            NodeGraph.this.renderEventNamePreview(context, textRenderer, value, x, y, color, maxWidth);
-        }
         @Override public void renderPopupEditButton(GuiGraphics context, Font textRenderer, Node node,
                                                     boolean isOverSidebar, int mouseX, int mouseY) {
             nodeControls.renderPopupEditButton(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
@@ -683,9 +677,6 @@ public class NodeGraph {
             return NodeGraph.this.collectRuntimeVariableNames(node);
         }
         @Override public boolean shouldRenderNodeText() { return NodeGraph.this.shouldRenderNodeText(); }
-        @Override public boolean shouldBuildInlineExpressionRender(String rawText, Set<String> variableNames) {
-            return NodeGraph.this.shouldBuildInlineExpressionRender(rawText, variableNames);
-        }
         @Override public boolean hoveringStartButton() { return hoveringStartButton; }
         @Override public void renderStartLaunchIcon(GuiGraphics context, StartLaunchMode mode, int centerX,
                                                     int centerY, int color, int nodeTop, int nodeHeight) {
@@ -724,6 +715,17 @@ public class NodeGraph {
         @Override public int screenToWorldY(int screenY) { return NodeGraph.this.screenToWorldY(screenY); }
         @Override public float getTextFieldHighlightProgress(Object key, boolean hovered, boolean active) {
             return NodeGraph.this.getTextFieldHighlightProgress(key, hovered, active);
+        }
+        @Override public UIStyleHelper.FieldPalette getLowDetailAwareFieldPalette(
+            int backgroundColor, int borderColor, int innerBorderColor,
+            int textColor, int placeholderColor, boolean isOverSidebar
+        ) {
+            return NodeGraph.this.getLowDetailAwareFieldPalette(
+                backgroundColor, borderColor, innerBorderColor,
+                textColor, placeholderColor, isOverSidebar);
+        }
+        @Override public boolean modeDropdownOpenFor(Node node) {
+            return modeDropdown.isOpen() && modeDropdown.getNode() == node;
         }
         @Override public boolean isCombinedDirectionNode(Node node) {
             return nodeControls.isCombinedDirectionNode(node);
@@ -771,13 +773,6 @@ public class NodeGraph {
         @Override public boolean parameterDropdownOpen() { return parameterDropdown.isOpen(); }
         @Override public Node parameterDropdownNode() { return parameterDropdown.getNode(); }
         @Override public int parameterDropdownIndex() { return parameterDropdown.getIndex(); }
-        @Override public boolean supportsRelativeInlineParameter(Node node, NodeParameter parameter) {
-            return NodeGraph.this.supportsRelativeInlineParameter(node, parameter);
-        }
-        @Override public boolean shouldBuildInlineExpressionRender(String rawText, Set<String> variableNames,
-                                                                   boolean allowRelativeMarker) {
-            return NodeGraph.this.shouldBuildInlineExpressionRender(rawText, variableNames, allowRelativeMarker);
-        }
         @Override public void updateParameterDropdown(Node node, int index, Font textRenderer, int fieldX,
                                                       int fieldY, int fieldWidth, int fieldHeight) {
             NodeGraph.this.updateParameterDropdown(node, index, textRenderer, fieldX, fieldY, fieldWidth, fieldHeight);
@@ -797,11 +792,82 @@ public class NodeGraph {
         @Override public String getOperatorSymbol(Node node, boolean negated) {
             return nodeControls.getOperatorSymbol(node, negated);
         }
-        @Override public void renderNodeContent(GuiGraphics context, Font textRenderer, Node node, int mouseX, int mouseY,
-                                                int x, int y, int width, int height, boolean isOverSidebar,
-                                                boolean simpleStyle, boolean lowDetail) {
-            NodeGraph.this.renderNodeContent(context, textRenderer, node, mouseX, mouseY, x, y, width, height,
-                isOverSidebar, simpleStyle, lowDetail);
+        @Override public boolean rendersInlineParameters(Node node) {
+            return NodeGraph.this.rendersInlineParameters(node);
+        }
+        @Override public void renderTemplateNode(GuiGraphics context, Font textRenderer, Node node,
+                                                 boolean isOverSidebar, int mouseX, int mouseY) {
+            templateNodeRenderer.render(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+        }
+        @Override public void renderStopTargetInputField(GuiGraphics context, Font textRenderer, Node node,
+                                                         boolean isOverSidebar, int mouseX, int mouseY) {
+            NodeGraph.this.renderStopTargetInputField(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+        }
+        @Override public void renderSchematicDropdownField(GuiGraphics context, Font textRenderer, Node node,
+                                                           boolean isOverSidebar, int mouseX, int mouseY) {
+            NodeGraph.this.renderSchematicDropdownField(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+        }
+        @Override public void renderVariableInputField(GuiGraphics context, Font textRenderer, Node node,
+                                                       boolean isOverSidebar, int mouseX, int mouseY) {
+            NodeGraph.this.renderVariableInputField(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+        }
+        @Override public void renderCoordinateInputFields(GuiGraphics context, Font textRenderer, Node node,
+                                                          boolean isOverSidebar, int mouseX, int mouseY) {
+            NodeGraph.this.renderCoordinateInputFields(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+        }
+        @Override public void renderMessageInputFields(GuiGraphics context, Font textRenderer, Node node,
+                                                       boolean isOverSidebar, int mouseX, int mouseY) {
+            NodeGraph.this.renderMessageInputFields(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+        }
+        @Override public void renderMessageScopeToggle(GuiGraphics context, Font textRenderer, Node node,
+                                                       boolean isOverSidebar, int mouseX, int mouseY) {
+            nodeControls.renderMessageScopeToggle(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+        }
+        @Override public void renderMessageButtons(GuiGraphics context, Font textRenderer, Node node,
+                                                   boolean isOverSidebar, int mouseX, int mouseY) {
+            nodeControls.renderMessageButtons(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+        }
+        @Override public void renderBooleanOperatorButtons(GuiGraphics context, Font textRenderer, Node node,
+                                                           boolean isOverSidebar, int mouseX, int mouseY) {
+            nodeControls.renderBooleanOperatorButtons(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+        }
+        @Override public void renderBookTextInput(GuiGraphics context, Font textRenderer, Node node,
+                                                  boolean isOverSidebar, int mouseX, int mouseY) {
+            nodeControls.renderBookTextInput(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+        }
+        @Override public void renderSchematicDropdownList(GuiGraphics context, Font textRenderer, Node node,
+                                                          boolean isOverSidebar, int mouseX, int mouseY) {
+            NodeGraph.this.renderSchematicDropdownList(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+        }
+        @Override public boolean isPresetSelectorNode(Node node) {
+            return NodeGraph.this.isPresetSelectorNode(node);
+        }
+        @Override public void renderRunPresetDropdownList(GuiGraphics context, Font textRenderer, Node node,
+                                                          boolean isOverSidebar, int mouseX, int mouseY) {
+            NodeGraph.this.renderRunPresetDropdownList(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+        }
+        @Override public void renderBooleanToggleButton(GuiGraphics context, Font textRenderer, Node node,
+                                                        boolean isOverSidebar, int mouseX, int mouseY) {
+            nodeControls.renderBooleanToggleButton(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+        }
+        @Override public void renderSensorSlot(GuiGraphics context, Font textRenderer, Node node,
+                                               boolean isOverSidebar) {
+            nodeControls.renderSensorSlot(context, textRenderer, node, isOverSidebar);
+        }
+        @Override public void renderActionSlot(GuiGraphics context, Font textRenderer, Node node,
+                                               boolean isOverSidebar) {
+            nodeControls.renderActionSlot(context, textRenderer, node, isOverSidebar);
+        }
+        @Override public void renderRuntimeScopeButton(GuiGraphics context, Node node, boolean isOverSidebar,
+                                                       int mouseX, int mouseY) {
+            nodeControls.renderRuntimeScopeButton(context, node, isOverSidebar, mouseX, mouseY);
+        }
+        @Override public boolean hasRunPresetSelection(Node node) {
+            return NodeGraph.this.hasRunPresetSelection(node);
+        }
+        @Override public void renderRunPresetOpenButton(GuiGraphics context, Font textRenderer, Node node,
+                                                        boolean isOverSidebar, int mouseX, int mouseY) {
+            NodeGraph.this.renderRunPresetOpenButton(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
         }
     });
     private final TemplateNodeRenderer templateNodeRenderer = new TemplateNodeRenderer(new TemplateNodeRenderer.Host() {
@@ -948,16 +1014,31 @@ public class NodeGraph {
         new SpecializedSelectorController.Host() {
             @Override public int screenToWorldX(int screenX) { return NodeGraph.this.screenToWorldX(screenX); }
             @Override public int screenToWorldY(int screenY) { return NodeGraph.this.screenToWorldY(screenY); }
+            @Override public int cameraX() { return viewport.getCameraX(); }
             @Override public int cameraY() { return viewport.getCameraY(); }
             @Override public int guiScaledHeight() {
                 return Minecraft.getInstance().getWindow().getGuiScaledHeight();
             }
             @Override public float zoomScale() { return getZoomScale(); }
-            @Override public int schematicDropdownWidth(Node node) {
-                return getSchematicDropdownWidth(node);
+            @Override public Font clientTextRenderer() { return getClientTextRenderer(); }
+            @Override public boolean compactViewportMode() { return viewport.isCompactViewportMode(); }
+            @Override public boolean shouldRenderNodeText() {
+                return NodeGraph.this.shouldRenderNodeText();
             }
-            @Override public int runPresetDropdownWidth(Node node) {
-                return getRunPresetDropdownWidth(node);
+            @Override public int selectedNodeAccentColor() {
+                return nodeControls.getSelectedNodeAccentColor();
+            }
+            @Override public int toGrayscale(int color, float brightnessFactor) {
+                return nodeControls.toGrayscale(color, brightnessFactor);
+            }
+            @Override public String translate(String key) { return tr(key); }
+            @Override public String trimTextToWidth(String text, Font renderer, int maxWidth) {
+                return NodeGraph.this.trimTextToWidth(text, renderer, maxWidth);
+            }
+            @Override public void drawNodeText(
+                GuiGraphics context, Font renderer, Component text, int x, int y, int color
+            ) {
+                NodeGraph.this.drawNodeText(context, renderer, text, x, y, color);
             }
             @Override public List<String> loadSchematicOptions() {
                 return SchematicRepository.loadSchematicOptions();
@@ -971,6 +1052,15 @@ public class NodeGraph {
             @Override public String stopTargetParameterKey(Node node) {
                 return getStopTargetParameterKey(node);
             }
+            @Override public boolean isEditingStopTargetField() {
+                return NodeGraph.this.isEditingStopTargetField();
+            }
+            @Override public Node stopTargetEditingNode() {
+                return inlineFields.getStopTargetEditingNode();
+            }
+            @Override public InlineTextEditor stopTargetEditor() {
+                return inlineFields.getStopTargetEditor();
+            }
             @Override public void prepareRunPresetOpen(Node node) {
                 focusSelectedNode(node);
                 stopStopTargetEditing(true);
@@ -983,10 +1073,6 @@ public class NodeGraph {
             }
         }
     );
-    private final AnimatedValue schematicDropdownAnimation = AnimatedValue.forHover();
-    private final AnimatedValue runPresetDropdownAnimation = AnimatedValue.forHover();
-    private static final int SCHEMATIC_DROPDOWN_MAX_ROWS = 8;
-    private static final int SCHEMATIC_DROPDOWN_ROW_HEIGHT = 16;
     private final RandomRoundingController randomRounding = new RandomRoundingController(
         new RandomRoundingController.Host() {
             @Override public int cameraX() { return viewport.getCameraX(); }
@@ -1093,8 +1179,7 @@ public class NodeGraph {
         }
     );
     private static final int PARAMETER_DROPDOWN_MAX_ROWS = 8;
-    private static final int DROPDOWN_SIDE_PADDING = 6;
-    private static final int DROPDOWN_SCROLLBAR_ALLOWANCE = 8;
+    private static final int SCHEMATIC_DROPDOWN_ROW_HEIGHT = 16;
     private boolean workspaceDirty = false;
     private int nextStartNodeNumber = 1;
     private boolean validationDirty = true;
@@ -2697,100 +2782,6 @@ public class NodeGraph {
             || node == connectionController.getHoveredNode();
     }
 
-    private void renderNodeContent(GuiGraphics context, Font textRenderer, Node node, int mouseX, int mouseY,
-                                   int x, int y, int width, int height, boolean isOverSidebar,
-                                   boolean simpleStyle, boolean lowDetail) {
-        // Render node content based on type
-        if (node.getType() == NodeType.START) {
-            nodeRenderer.renderStartContent(context, textRenderer, node, isOverSidebar, mouseX, mouseY,
-                x, y, width, height, lowDetail);
-        } else if (!simpleStyle
-            && (node.getType() == NodeType.EVENT_FUNCTION || node.getType() == NodeType.ROUTINE_ENTRY)) {
-            nodeRenderer.renderEventDefinitionContent(context, textRenderer, node, isOverSidebar, mouseX, mouseY,
-                x, y, width, height, lowDetail);
-        } else if (node.getType() == NodeType.VARIABLE || node.getType() == NodeType.ROUTINE_INPUT) {
-            nodeRenderer.renderVariableContent(context, textRenderer, node, isOverSidebar,
-                x, y, width, height, lowDetail);
-        } else if (!simpleStyle && nodeControls.isComparisonOperator(node) && !node.isExpandableBooleanOperator()) {
-            nodeRenderer.renderComparisonContent(context, textRenderer, node, isOverSidebar,
-                x, y, width, height, lowDetail);
-        } else if (node.getType() == NodeType.EVENT_CALL) {
-            nodeRenderer.renderEventCallContent(context, textRenderer, node, isOverSidebar, mouseX, mouseY,
-                x, y, width, height, lowDetail);
-        } else if (node.getType() == NodeType.TEMPLATE) {
-            templateNodeRenderer.render(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
-        } else {
-            if (rendersInlineParameters(node)) {
-                nodeRenderer.renderInlineParameterContent(context, textRenderer, node, isOverSidebar,
-                    mouseX, mouseY, x, y, width, height);
-            } else {
-                if (node.hasStopTargetInputField()) {
-                    renderStopTargetInputField(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
-                }
-                if (node.hasSchematicDropdownField()) {
-                    renderSchematicDropdownField(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
-                }
-                if (node.hasVariableInputField()) {
-                    renderVariableInputField(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
-                }
-                if (node.showsModeFieldAboveParameterSlot()) {
-                    renderModeField(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
-                }
-                if (node.hasParameterSlot()) {
-                    int slotCount = node.getParameterSlotCount();
-                    for (int slotIndex = 0; slotIndex < slotCount; slotIndex++) {
-                        nodeControls.renderParameterSlot(context, textRenderer, node, isOverSidebar, slotIndex);
-                    }
-                    if (node.hasCoordinateInputFields()) {
-                        renderCoordinateInputFields(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
-                    }
-                    if (node.hasAmountInputField()) {
-                        renderAmountInputField(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
-                    }
-                } else if (node.hasCoordinateInputFields()) {
-                    renderCoordinateInputFields(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
-                } else if (node.hasAmountInputField()) {
-                    renderAmountInputField(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
-                }
-                if (node.hasMessageInputFields()) {
-                    renderMessageInputFields(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
-                    if (node.hasMessageScopeToggle()) {
-                        nodeControls.renderMessageScopeToggle(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
-                    }
-                    nodeControls.renderMessageButtons(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
-                }
-                if (node.isExpandableBooleanOperator()) {
-                    nodeControls.renderBooleanOperatorButtons(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
-                }
-                if (node.hasBookTextInput()) {
-                    nodeControls.renderBookTextInput(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
-                }
-                if (node.hasSchematicDropdownField()) {
-                    renderSchematicDropdownList(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
-                }
-                if (isPresetSelectorNode(node)) {
-                    renderRunPresetDropdownList(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
-                }
-            }
-
-            if (node.hasBooleanToggle()) {
-                nodeControls.renderBooleanToggleButton(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
-            }
-            if (node.hasSensorSlot()) {
-                nodeControls.renderSensorSlot(context, textRenderer, node, isOverSidebar);
-            }
-            if (node.hasActionSlot()) {
-                nodeControls.renderActionSlot(context, textRenderer, node, isOverSidebar);
-            }
-        }
-        if (node.supportsRuntimeValueScope()) {
-            nodeControls.renderRuntimeScopeButton(context, node, isOverSidebar, mouseX, mouseY);
-        }
-        if (hasRunPresetSelection(node)) {
-            renderRunPresetOpenButton(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
-        }
-    }
-
     private boolean hasRunPresetSelection(Node node) {
         return node != null && node.getType() == NodeType.RUN_PRESET
             && !getSelectedPresetName(node).isBlank();
@@ -2848,93 +2839,6 @@ public class NodeGraph {
 
 
 
-
-    private void renderModeField(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar,
-                                 int mouseX, int mouseY) {
-        if (node == null || !node.showsModeFieldAboveParameterSlot()) {
-            return;
-        }
-        int fieldLeft = node.getModeFieldLeft() - viewport.getCameraX();
-        int fieldTop = node.getModeFieldTop() - viewport.getCameraY();
-        int fieldWidth = node.getModeFieldWidth();
-        int fieldHeight = node.getModeFieldHeight();
-        String labelText = node.getModeFieldLabelText();
-        String modeValue = node.getMode() != null ? node.getMode().getDisplayName() : "Select Mode";
-        renderDropdownSelectorField(
-            context, textRenderer, node, isOverSidebar, mouseX, mouseY,
-            fieldLeft, fieldTop, fieldWidth, fieldHeight,
-            labelText, true, modeValue
-        );
-    }
-
-    private void renderDropdownSelectorField(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar,
-                                             int mouseX, int mouseY, int fieldLeft, int fieldTop, int fieldWidth,
-                                             int fieldHeight, String label, boolean includeValue, String value) {
-        int worldMouseX = screenToWorldX(mouseX);
-        int worldMouseY = screenToWorldY(mouseY);
-        int worldFieldLeft = fieldLeft + viewport.getCameraX();
-        int worldFieldTop = fieldTop + viewport.getCameraY();
-        boolean hovered = !isOverSidebar
-            && worldMouseX >= worldFieldLeft
-            && worldMouseX <= worldFieldLeft + fieldWidth
-            && worldMouseY >= worldFieldTop
-            && worldMouseY <= worldFieldTop + fieldHeight;
-        boolean open = modeDropdown.isOpen() && modeDropdown.getNode() == node;
-
-        float hoverProgress = getAnimatedHoverProgress(node.getId() + "#selector:" + fieldLeft + ":" + fieldTop, hovered || open);
-        int accentColor = isOverSidebar ? nodeControls.toGrayscale(nodeControls.getSelectedNodeAccentColor(), 0.8f) : nodeControls.getSelectedNodeAccentColor();
-        UIStyleHelper.FieldPalette palette;
-        if (viewport.isCompactViewportMode() && !isOverSidebar) {
-            palette = new UIStyleHelper.FieldPalette(
-                open ? UITheme.BACKGROUND_INPUT : UITheme.BACKGROUND_SECONDARY,
-                open ? accentColor : UITheme.BORDER_DEFAULT,
-                UITheme.PANEL_INNER_BORDER,
-                UITheme.TEXT_PRIMARY,
-                UITheme.TEXT_TERTIARY
-            );
-        } else {
-            palette = UIStyleHelper.getDropdownFieldPalette(accentColor, hoverProgress, open, false);
-        }
-        int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : palette.textColor();
-        int labelColor = includeValue && !isOverSidebar && !(hovered || open)
-            ? UITheme.NODE_LABEL_COLOR
-            : textColor;
-
-        UIStyleHelper.drawFieldFrame(
-            context,
-            fieldLeft,
-            fieldTop,
-            fieldWidth,
-            fieldHeight,
-            getLowDetailAwareFieldPalette(
-                isOverSidebar ? UITheme.BACKGROUND_SECONDARY : palette.backgroundColor(),
-                isOverSidebar ? UITheme.BORDER_SUBTLE : palette.borderColor(),
-                isOverSidebar ? UITheme.PANEL_INNER_BORDER : palette.innerBorderColor(),
-                textColor,
-                palette.placeholderColor(),
-                isOverSidebar
-            )
-        );
-
-        int textY = fieldTop + (fieldHeight - textRenderer.lineHeight) / 2;
-        int textX = fieldLeft + 4;
-        int chevronCenterX = fieldLeft + fieldWidth - 8;
-        int chevronCenterY = fieldTop + fieldHeight / 2;
-
-        if (includeValue) {
-            drawNodeText(context, textRenderer, Component.literal(label), textX, textY, labelColor);
-            int valueStartX = textX + textRenderer.width(label) + 6;
-            int maxValueWidth = Math.max(0, chevronCenterX - 5 - valueStartX);
-            String displayValue = trimTextToWidth(value != null ? value : "", textRenderer, maxValueWidth);
-            drawNodeText(context, textRenderer, Component.literal(displayValue), valueStartX, textY, textColor);
-        } else {
-            int maxLabelWidth = Math.max(0, fieldWidth - 20);
-            String displayLabel = trimTextToWidth(label != null ? label : "", textRenderer, maxLabelWidth);
-            drawNodeText(context, textRenderer, Component.literal(displayLabel), textX, textY, textColor);
-        }
-
-        UIStyleHelper.drawChevron(context, chevronCenterX, chevronCenterY, open, textColor);
-    }
 
     private float getAnimatedHoverProgress(Object key, boolean highlighted) {
         if (viewport.isCompactViewportMode()) {
@@ -3151,58 +3055,13 @@ public class NodeGraph {
         inlineFieldRenderer.renderMessageInputFields(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
     }
 
-    private void renderEventNamePreview(GuiGraphics context, Font textRenderer, String value, int x, int y,
-                                        int baseColor, int maxWidth) {
-        if (value == null || value.isEmpty()) {
-            drawNodeText(context, textRenderer, Component.translatable("pathmind.field.enterName"), x, y, baseColor);
-            return;
-        }
-        if (textRenderer.width(value) <= maxWidth) {
-            drawNodeText(context, textRenderer, Component.literal(value), x, y, baseColor);
-            return;
-        }
-
-        String trimmed = trimTextToWidth(value, textRenderer, maxWidth);
-        drawNodeText(context, textRenderer, Component.literal(trimmed), x, y, baseColor);
-        int trimmedWidth = textRenderer.width(trimmed);
-
-        String tail = "..";
-        int tailWidth = textRenderer.width(tail);
-        if (trimmedWidth + tailWidth + 4 >= maxWidth) {
-            return;
-        }
-
-        String suffix = value.substring(Math.max(0, value.length() - 4));
-        String tailText = tail + suffix;
-        int tailTextWidth = textRenderer.width(tailText);
-        if (trimmedWidth + tailTextWidth + 4 > maxWidth) {
-            return;
-        }
-        int tailX = x + maxWidth - tailTextWidth;
-        int hintColor = nodeControls.toGrayscale(baseColor, 0.85f);
-        drawNodeText(context, textRenderer, Component.literal(tailText), tailX, y, hintColor);
-    }
-
     private boolean shouldBuildInlineExpressionRender(String rawText, Set<String> variableNames) {
-        return shouldBuildInlineExpressionRender(rawText, variableNames, false);
-    }
-
-    private boolean shouldBuildInlineExpressionRender(String rawText, Set<String> variableNames, boolean allowRelativeMarker) {
         return InlineVariableRenderer.shouldBuildInlineExpressionRender(
-            viewport.isCompactViewportMode(), rawText, variableNames, allowRelativeMarker);
+            viewport.isCompactViewportMode(), rawText, variableNames, false);
     }
 
     static boolean isInlineArithmeticOperatorAt(String text, int index) {
         return InlineVariableRenderer.isInlineArithmeticOperatorAt(text, index);
-    }
-
-    private boolean supportsRelativeInlineParameter(Node node, NodeParameter parameter) {
-        if (node == null || parameter == null) {
-            return false;
-        }
-        String parameterName = parameter.getName();
-        return RelativeInputSupport.supportsRelativeCoordinate(node, parameterName)
-            || RelativeInputSupport.supportsRelativeLook(node, parameterName);
     }
 
     /** Returns true if value is empty or a valid arithmetic expression using numbers and/or known $variable references. */
@@ -3409,99 +3268,6 @@ public class NodeGraph {
         inlineFieldRenderer.renderStopTargetInputField(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
     }
 
-    private void renderPresetSelectorField(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar,
-                                           int mouseX, int mouseY) {
-        int labelColor = isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.NODE_LABEL_COLOR;
-        int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
-        int caretColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.CARET_COLOR;
-
-        boolean editing = isEditingStopTargetField() && inlineFields.getStopTargetEditingNode() == node;
-        if (editing) {
-            inlineFields.getStopTargetEditor().updateCaretBlink();
-        }
-        boolean open = specializedSelectors.isRunPresetOpen() && specializedSelectors.getRunPresetNode() == node;
-
-        int fieldTop = node.getStopTargetFieldInputTop() - viewport.getCameraY();
-        int fieldHeight = node.getStopTargetFieldHeight();
-        int fieldLeft = node.getStopTargetFieldLeft() - viewport.getCameraX();
-        int fieldWidth = node.getStopTargetFieldWidth();
-        int fieldBottom = fieldTop + fieldHeight;
-        int worldMouseX = screenToWorldX(mouseX);
-        int worldMouseY = screenToWorldY(mouseY);
-        boolean hovered = !isOverSidebar
-            && worldMouseX >= node.getStopTargetFieldLeft()
-            && worldMouseX <= node.getStopTargetFieldLeft() + fieldWidth
-            && worldMouseY >= node.getStopTargetFieldInputTop()
-            && worldMouseY <= node.getStopTargetFieldInputTop() + fieldHeight;
-        float hoverProgress = getAnimatedHoverProgress(node.getId() + "#presetSelector", hovered || open);
-        int accentColor = isOverSidebar ? nodeControls.toGrayscale(nodeControls.getSelectedNodeAccentColor(), 0.8f) : nodeControls.getSelectedNodeAccentColor();
-        UIStyleHelper.FieldPalette palette = UIStyleHelper.getDropdownFieldPalette(accentColor, hoverProgress, open, false);
-        int animatedTextColor = isOverSidebar ? textColor : palette.textColor();
-
-        UIStyleHelper.drawFieldFrame(
-            context,
-            fieldLeft,
-            fieldTop,
-            fieldWidth,
-            fieldHeight,
-            new UIStyleHelper.FieldPalette(
-                isOverSidebar ? UITheme.BACKGROUND_SECONDARY : palette.backgroundColor(),
-                isOverSidebar ? UITheme.BORDER_SUBTLE : palette.borderColor(),
-                isOverSidebar ? UITheme.PANEL_INNER_BORDER : palette.innerBorderColor(),
-                animatedTextColor,
-                palette.placeholderColor()
-            )
-        );
-
-        String inlineLabel = "Preset:";
-        int labelX = fieldLeft + 4;
-        int labelY = fieldTop + (fieldHeight - textRenderer.lineHeight) / 2;
-        drawNodeText(context, textRenderer, Component.literal(inlineLabel), labelX, labelY, labelColor);
-        int valueTextX = labelX + textRenderer.width(inlineLabel) + 6;
-        int maxValueWidth = Math.max(0, fieldLeft + fieldWidth - valueTextX - 16);
-
-        String value;
-        if (editing) {
-            value = inlineFields.getStopTargetEditor().getBuffer();
-        } else {
-            NodeParameter targetParam = node.getParameter(getStopTargetParameterKey(node));
-            value = targetParam != null ? targetParam.getStringValue() : "";
-        }
-        if (value == null) {
-            value = "";
-        }
-
-        String display = value;
-        int valueDrawColor = animatedTextColor;
-        if (!editing && display.isEmpty()) {
-            display = "preset";
-            valueDrawColor = isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.TEXT_SECONDARY;
-        }
-        display = editing ? display : trimTextToWidth(display, textRenderer, maxValueWidth);
-
-        int textY = fieldTop + (fieldHeight - textRenderer.lineHeight) / 2 + 1;
-        if (editing && inlineFields.getStopTargetEditor().hasSelection()) {
-            int start = Mth.clamp(inlineFields.getStopTargetEditor().getSelectionStart(), 0, display.length());
-            int end = Mth.clamp(inlineFields.getStopTargetEditor().getSelectionEnd(), 0, display.length());
-            if (start != end) {
-                int selectionStartX = valueTextX + textRenderer.width(display.substring(0, start));
-                int selectionEndX = valueTextX + textRenderer.width(display.substring(0, end));
-                context.fill(selectionStartX, fieldTop + 2, selectionEndX, fieldBottom - 2, UITheme.TEXT_SELECTION_BG);
-            }
-        }
-        drawNodeText(context, textRenderer, Component.literal(display), valueTextX, textY, valueDrawColor);
-
-        if (editing && inlineFields.getStopTargetEditor().isCaretVisible()) {
-            int caretIndex = Mth.clamp(inlineFields.getStopTargetEditor().getCaretPosition(), 0, display.length());
-            int caretX = valueTextX + textRenderer.width(display.substring(0, caretIndex));
-            caretX = Math.min(caretX, fieldLeft + fieldWidth - 2);
-            UIStyleHelper.drawTextCaret(context, caretX, fieldTop + 2, fieldBottom - 2, caretColor);
-        }
-        int chevronCenterX = fieldLeft + fieldWidth - 8;
-        int chevronCenterY = fieldTop + fieldHeight / 2;
-        UIStyleHelper.drawChevron(context, chevronCenterX, chevronCenterY, open, animatedTextColor);
-    }
-
     private void renderVariableInputField(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar,
                                           int mouseX, int mouseY) {
         inlineFieldRenderer.renderVariableInputField(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
@@ -3509,199 +3275,18 @@ public class NodeGraph {
 
     private void renderSchematicDropdownField(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar,
                                               int mouseX, int mouseY) {
-        int labelColor = isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.NODE_LABEL_COLOR;
-        int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
-
-        boolean open = specializedSelectors.isSchematicOpen() && specializedSelectors.getSchematicNode() == node;
-
-        int labelTop = node.getSchematicFieldLabelTop() - viewport.getCameraY();
-        int labelHeight = node.getSchematicFieldLabelHeight();
-        int fieldTop = node.getSchematicFieldInputTop() - viewport.getCameraY();
-        int fieldHeight = node.getSchematicFieldHeight();
-        int fieldLeft = node.getSchematicFieldLeft() - viewport.getCameraX();
-        int fieldWidth = node.getSchematicFieldWidth();
-        int worldMouseX = screenToWorldX(mouseX);
-        int worldMouseY = screenToWorldY(mouseY);
-        boolean hovered = !isOverSidebar
-            && worldMouseX >= node.getSchematicFieldLeft()
-            && worldMouseX <= node.getSchematicFieldLeft() + fieldWidth
-            && worldMouseY >= node.getSchematicFieldInputTop()
-            && worldMouseY <= node.getSchematicFieldInputTop() + fieldHeight;
-        float hoverProgress = getAnimatedHoverProgress(node.getId() + "#schematicSelector", hovered || open);
-        int accentColor = isOverSidebar ? nodeControls.toGrayscale(UITheme.SCHEMATIC_ACTIVE_BORDER, 0.8f) : UITheme.SCHEMATIC_ACTIVE_BORDER;
-        UIStyleHelper.FieldPalette palette = UIStyleHelper.getDropdownFieldPalette(accentColor, hoverProgress, open, false);
-
-        drawNodeText(context, textRenderer, Component.translatable("pathmind.field.schematic"), fieldLeft, labelTop + (labelHeight - textRenderer.lineHeight) / 2, labelColor);
-
-        int fieldBottom = fieldTop + fieldHeight;
-        UIStyleHelper.drawFieldFrame(
-            context,
-            fieldLeft,
-            fieldTop,
-            fieldWidth,
-            fieldHeight,
-            new UIStyleHelper.FieldPalette(
-                isOverSidebar ? UITheme.BACKGROUND_SECONDARY : palette.backgroundColor(),
-                isOverSidebar ? UITheme.BORDER_SUBTLE : palette.borderColor(),
-                isOverSidebar ? UITheme.PANEL_INNER_BORDER : palette.innerBorderColor(),
-                palette.textColor(),
-                palette.placeholderColor()
-            )
-        );
-
-        NodeParameter schematicParam = node.getParameter("Schematic");
-        String value = schematicParam != null ? schematicParam.getDisplayValue() : "";
-        if (value != null && !value.isEmpty() && !schematicExistsInRoots(value)) {
-            value = "";
-        }
-        if (value == null || value.isEmpty()) {
-            value = "schematic";
-            textColor = isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.TEXT_SECONDARY;
-        }
-
-        String display = trimTextToWidth(value, textRenderer, fieldWidth - 16);
-        int textX = fieldLeft + 3;
-        int textY = fieldTop + (fieldHeight - textRenderer.lineHeight) / 2 + 1;
-        int animatedTextColor = isOverSidebar ? textColor : palette.textColor();
-        drawNodeText(context, textRenderer, Component.literal(display), textX, textY, (value.equals("schematic") ? textColor : animatedTextColor));
-
-        int chevronCenterX = fieldLeft + fieldWidth - 8;
-        int chevronCenterY = fieldTop + fieldHeight / 2;
-        UIStyleHelper.drawChevron(context, chevronCenterX, chevronCenterY, open, animatedTextColor);
+        specializedSelectors.renderSchematicField(
+            context, textRenderer, node, isOverSidebar, mouseX, mouseY);
     }
 
     private void renderSchematicDropdownList(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar, int mouseX, int mouseY) {
-        float animProgress = getDropdownAnimationProgress(schematicDropdownAnimation, specializedSelectors.isSchematicOpen());
-        if (specializedSelectors.getSchematicNode() != node) {
-            return;
-        }
-        if (animProgress <= 0.001f) {
-            clearSchematicDropdownState();
-            return;
-        }
-
-        int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
-
-        List<String> options = specializedSelectors.getSchematicOptions();
-        int optionCount = options.isEmpty() ? 1 : options.size();
-        int listTop = node.getSchematicFieldInputTop() + node.getSchematicFieldHeight() + 2 - viewport.getCameraY();
-        int screenHeight = Math.round(
-            Minecraft.getInstance().getWindow().getGuiScaledHeight()
-                / Math.max(0.01f, getZoomScale())
-        );
-        DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
-            optionCount,
-            SCHEMATIC_DROPDOWN_ROW_HEIGHT,
-            SCHEMATIC_DROPDOWN_MAX_ROWS,
-            listTop,
-            screenHeight
-        );
-        int visibleCount = layout.visibleCount;
-        specializedSelectors.setSchematicScrollOffset(
-            Mth.clamp(specializedSelectors.getSchematicScrollOffset(), 0, layout.maxScrollOffset)
-        );
-
-        int dropdownWidth = getSchematicDropdownWidth(node);
-        int listLeft = node.getSchematicFieldLeft() - viewport.getCameraX();
-        int accentColor = isOverSidebar ? nodeControls.toGrayscale(UITheme.SCHEMATIC_ACTIVE_BORDER, 0.8f) : UITheme.SCHEMATIC_ACTIVE_BORDER;
-        UIStyleHelper.ScrollContainerPalette containerPalette = UIStyleHelper.getScrollContainerPalette(accentColor, animProgress, true, false);
-        UIStyleHelper.ScrollContainerPalette adjustedPalette = new UIStyleHelper.ScrollContainerPalette(
-            isOverSidebar ? UITheme.BACKGROUND_SECONDARY : containerPalette.backgroundColor(),
-            isOverSidebar ? UITheme.BORDER_SUBTLE : containerPalette.borderColor(),
-            isOverSidebar ? UITheme.PANEL_INNER_BORDER : containerPalette.innerBorderColor(),
-            containerPalette.trackColor(),
-            containerPalette.thumbColor()
-        );
-
-        int worldMouseX = screenToWorldX(mouseX);
-        int worldMouseY = screenToWorldY(mouseY);
-        specializedSelectors.setSchematicHoverIndex(PathmindDropdownRenderer.renderTextList(
-            context,
-            textRenderer,
-            PathmindDropdownRenderer.TextListSpec.builder()
-                .bounds(listLeft, listTop, dropdownWidth)
-                .rows(SCHEMATIC_DROPDOWN_ROW_HEIGHT, visibleCount, options.size())
-                .scroll(specializedSelectors.getSchematicScrollOffset(), layout.maxScrollOffset, DROPDOWN_SCROLLBAR_ALLOWANCE)
-                .animation(animProgress)
-                .hoverPoint(worldMouseX - viewport.getCameraX(), worldMouseY - viewport.getCameraY())
-                .colors(accentColor, textColor)
-                .textLayout(3, 4, false, shouldRenderNodeText())
-                .labels(tr("pathmind.dropdown.noSchematicsFound"), options::get)
-                .chrome(
-                    adjustedPalette,
-                    isOverSidebar ? UITheme.BORDER_SUBTLE : containerPalette.trackColor(),
-                    isOverSidebar ? UITheme.BORDER_HIGHLIGHT : containerPalette.thumbColor(),
-                    isOverSidebar ? UITheme.BORDER_SUBTLE : containerPalette.borderColor()
-                )
-                .build()
-        ));
+        specializedSelectors.renderSchematicDropdown(
+            context, textRenderer, node, isOverSidebar, mouseX, mouseY);
     }
 
     private void renderRunPresetDropdownList(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar, int mouseX, int mouseY) {
-        float animProgress = getDropdownAnimationProgress(runPresetDropdownAnimation, specializedSelectors.isRunPresetOpen());
-        if (specializedSelectors.getRunPresetNode() != node) {
-            return;
-        }
-        if (animProgress <= 0.001f) {
-            clearRunPresetDropdownState();
-            return;
-        }
-
-        int textColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
-
-        List<String> options = specializedSelectors.getRunPresetOptions();
-        int optionCount = options.isEmpty() ? 1 : options.size();
-        int listTop = node.getStopTargetFieldInputTop() + node.getStopTargetFieldHeight() + 2 - viewport.getCameraY();
-        int screenHeight = Math.round(
-            Minecraft.getInstance().getWindow().getGuiScaledHeight()
-                / Math.max(0.01f, getZoomScale())
-        );
-        DropdownLayoutHelper.Layout layout = DropdownLayoutHelper.calculate(
-            optionCount,
-            SCHEMATIC_DROPDOWN_ROW_HEIGHT,
-            SCHEMATIC_DROPDOWN_MAX_ROWS,
-            listTop,
-            screenHeight
-        );
-        int visibleCount = layout.visibleCount;
-        specializedSelectors.setRunPresetScrollOffset(
-            Mth.clamp(specializedSelectors.getRunPresetScrollOffset(), 0, layout.maxScrollOffset)
-        );
-
-        int dropdownWidth = getRunPresetDropdownWidth(node);
-        int listLeft = node.getStopTargetFieldLeft() - viewport.getCameraX();
-        int accentColor = isOverSidebar ? nodeControls.toGrayscale(nodeControls.getSelectedNodeAccentColor(), 0.8f) : nodeControls.getSelectedNodeAccentColor();
-        UIStyleHelper.ScrollContainerPalette containerPalette = UIStyleHelper.getScrollContainerPalette(accentColor, animProgress, true, false);
-        UIStyleHelper.ScrollContainerPalette adjustedPalette = new UIStyleHelper.ScrollContainerPalette(
-            isOverSidebar ? UITheme.BACKGROUND_SECONDARY : containerPalette.backgroundColor(),
-            isOverSidebar ? UITheme.BORDER_SUBTLE : containerPalette.borderColor(),
-            isOverSidebar ? UITheme.PANEL_INNER_BORDER : containerPalette.innerBorderColor(),
-            containerPalette.trackColor(),
-            containerPalette.thumbColor()
-        );
-
-        int worldMouseX = screenToWorldX(mouseX);
-        int worldMouseY = screenToWorldY(mouseY);
-        specializedSelectors.setRunPresetHoverIndex(PathmindDropdownRenderer.renderTextList(
-            context,
-            textRenderer,
-            PathmindDropdownRenderer.TextListSpec.builder()
-                .bounds(listLeft, listTop, dropdownWidth)
-                .rows(SCHEMATIC_DROPDOWN_ROW_HEIGHT, visibleCount, options.size())
-                .scroll(specializedSelectors.getRunPresetScrollOffset(), layout.maxScrollOffset, DROPDOWN_SCROLLBAR_ALLOWANCE)
-                .animation(animProgress)
-                .hoverPoint(worldMouseX - viewport.getCameraX(), worldMouseY - viewport.getCameraY())
-                .colors(accentColor, textColor)
-                .textLayout(3, 4, false, shouldRenderNodeText())
-                .labels(tr("pathmind.dropdown.noPresetsFound"), options::get)
-                .chrome(
-                    adjustedPalette,
-                    isOverSidebar ? UITheme.BORDER_SUBTLE : containerPalette.trackColor(),
-                    isOverSidebar ? UITheme.BORDER_HIGHLIGHT : containerPalette.thumbColor(),
-                    isOverSidebar ? UITheme.BORDER_SUBTLE : containerPalette.borderColor()
-                )
-                .build()
-        ));
+        specializedSelectors.renderRunPresetDropdown(
+            context, textRenderer, node, isOverSidebar, mouseX, mouseY);
     }
 
     public boolean isEditingCoordinateField() {
@@ -4058,34 +3643,6 @@ public class NodeGraph {
 
     private void renderModeDropdownList(GuiGraphics context, Font textRenderer, int mouseX, int mouseY) {
         modeDropdown.render(context, textRenderer, mouseX, mouseY);
-    }
-
-    private int getSchematicDropdownWidth(Node node) {
-        Font textRenderer = getClientTextRenderer();
-        if (textRenderer == null || node == null) {
-            return node != null ? node.getSchematicFieldWidth() : 0;
-        }
-        int longestLabelWidth = textRenderer.width(tr("pathmind.dropdown.noSchematicsFound"));
-        for (String option : specializedSelectors.getSchematicOptions()) {
-            if (option != null) {
-                longestLabelWidth = Math.max(longestLabelWidth, textRenderer.width(option));
-            }
-        }
-        return longestLabelWidth + DROPDOWN_SIDE_PADDING * 2 + DROPDOWN_SCROLLBAR_ALLOWANCE;
-    }
-
-    private int getRunPresetDropdownWidth(Node node) {
-        Font textRenderer = getClientTextRenderer();
-        if (textRenderer == null || node == null) {
-            return node != null ? node.getStopTargetFieldWidth() : 0;
-        }
-        int longestLabelWidth = textRenderer.width(tr("pathmind.dropdown.noPresetsFound"));
-        for (String option : specializedSelectors.getRunPresetOptions()) {
-            if (option != null) {
-                longestLabelWidth = Math.max(longestLabelWidth, textRenderer.width(option));
-            }
-        }
-        return longestLabelWidth + DROPDOWN_SIDE_PADDING * 2 + DROPDOWN_SCROLLBAR_ALLOWANCE;
     }
 
     private void openModeDropdown(Node node) {
@@ -4583,14 +4140,6 @@ public class NodeGraph {
 
     private void enableDropdownScissor(GuiGraphics context, int x, int y, int width, int height) {
         context.enableScissor(x, y, x + Math.max(1, width), y + Math.max(1, height));
-    }
-
-    private void clearSchematicDropdownState() {
-        specializedSelectors.clearSchematicState();
-    }
-
-    private void clearRunPresetDropdownState() {
-        specializedSelectors.clearRunPresetState();
     }
 
     private void clearParameterDropdownState() {

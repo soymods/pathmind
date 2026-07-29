@@ -1,6 +1,8 @@
 package com.pathmind.screen;
 
 final class PathmindMarketplaceLayout {
+    private static final int MAX_CARD_ROWS_PER_PAGE = 5;
+
     private PathmindMarketplaceLayout() {
     }
 
@@ -133,6 +135,7 @@ final class PathmindMarketplaceLayout {
         int rows = Math.max(1,
             (availableHeight + PathmindMarketplaceScreen.CARD_GAP)
                 / (PathmindMarketplaceScreen.CARD_SIZE + PathmindMarketplaceScreen.CARD_GAP));
+        rows = Math.min(MAX_CARD_ROWS_PER_PAGE, rows);
         return gridColumns() * rows;
     }
 

@@ -11,7 +11,6 @@ import com.pathmind.data.NodeGraphPersistence;
 import com.pathmind.data.PresetManager;
 import com.pathmind.data.SettingsManager;
 import com.pathmind.data.SettingsManager.Settings;
-import com.pathmind.data.WorkspaceFileAccess;
 import com.pathmind.execution.ExecutionManager;
 import com.pathmind.marketplace.MarketplaceAuthManager;
 import com.pathmind.marketplace.MarketplacePreset;
@@ -54,7 +53,6 @@ import com.pathmind.util.InputCompatibilityBridge;
 import com.pathmind.util.MatrixStackBridge;
 import com.pathmind.util.ScrollbarHelper;
 import com.pathmind.util.TextRenderUtil;
-import com.pathmind.util.VersionSupport;
 import com.pathmind.util.LoaderMetadata;
 import com.pathmind.util.RenderStateBridge;
 import com.pathmind.util.OverlayProtection;
@@ -74,15 +72,8 @@ import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
-import net.minecraft.util.Util;
-import org.lwjgl.PointerBuffer;
 import org.lwjgl.glfw.GLFW;
-import org.lwjgl.system.MemoryStack;
-import org.lwjgl.util.tinyfd.TinyFileDialogs;
 
-import java.nio.file.InvalidPathException;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -121,9 +112,6 @@ public class PathmindVisualEditorScreen extends Screen {
     private static final int[] PRESET_GROUP_COLORS = {0xFF38BDF8, 0xFF34D399, 0xFFF59E0B, 0xFFFB7185, 0xFFA78BFA};
     private static final String PRESET_GROUP_TAB_PREFIX = "__pathmind_preset_group__:";
     private static final int PRESET_GROUP_TAB_WIDTH = 10;
-    private static final boolean IS_MAC_OS = System.getProperty("os.name", "")
-            .toLowerCase(Locale.ROOT)
-            .contains("mac");
     
     // Colors now come from UITheme for consistency
     private static final int BOTTOM_BUTTON_SIZE = 18;
@@ -158,7 +146,6 @@ public class PathmindVisualEditorScreen extends Screen {
     private static final int MISSING_BARITONE_POPUP_HEIGHT = 175;
     private static final int MISSING_UI_UTILS_POPUP_WIDTH = 360;
     private static final int MISSING_UI_UTILS_POPUP_HEIGHT = 175;
-    private static final String UI_UTILS_DOWNLOAD_URL = "https://ui-utils.com";
     static final int SETTINGS_POPUP_WIDTH = 360;
     static final int SETTINGS_POPUP_HEIGHT = 408;
     static final int SETTINGS_OPTION_WIDTH = 90;
@@ -201,10 +188,7 @@ public class PathmindVisualEditorScreen extends Screen {
     private static final int NODE_SEARCH_RESULT_HEIGHT = 18;
     private static final int NODE_SEARCH_MAX_RESULTS = 8;
     private static final int NODE_SEARCH_RESULT_TEXT_PADDING = 6;
-    private static final String INFO_POPUP_AUTHOR = "soymods";
-    private static final String INFO_POPUP_TARGET_VERSION = VersionSupport.SUPPORTED_RANGE;
     private static final Component TITLE_TEXT = Component.literal("Pathmind");
-    private static final Component INFO_POPUP_TITLE_TEXT = Component.literal("Pathmind");
 
     NodeGraph nodeGraph;
     private Sidebar sidebar;
@@ -242,10 +226,7 @@ public class PathmindVisualEditorScreen extends Screen {
     // Workspace dialogs
     private final PopupAnimationHandler clearPopupAnimation = new PopupAnimationHandler();
     private final PopupAnimationHandler importExportPopupAnimation = new PopupAnimationHandler();
-    private Path lastImportExportPath;
-    private String importExportStatus = "";
-    private int importExportStatusColor = UITheme.TEXT_SECONDARY;
-    private boolean importExportBusy = false;
+    private final PathmindWorkspaceDialogController workspaceDialogController;
 
     private final PathmindPresetDropdownController presetDropdownController =
         new PathmindPresetDropdownController(new PresetDropdownHost());
@@ -779,6 +760,163 @@ public class PathmindVisualEditorScreen extends Screen {
         }
     }
 
+    private final class WorkspaceDialogHost implements PathmindWorkspaceDialogController.Host {
+        @Override
+        public Font font() {
+            return font;
+        }
+
+        @Override
+        public boolean isPointInRect(int mouseX, int mouseY, int x, int y, int width, int height) {
+            return PathmindVisualEditorScreen.this.isPointInRect(mouseX, mouseY, x, y, width, height);
+        }
+
+        @Override
+        public int[] boundedScaledPopupBounds(PopupAnimationHandler animation, int width, int height) {
+            return getBoundedScaledPopupBounds(animation, width, height);
+        }
+
+        @Override
+        public int boundedPopupContentY(int popupY, PopupAnimationHandler animation, int preferredHeight) {
+            return getBoundedPopupContentY(popupY, animation, preferredHeight);
+        }
+
+        @Override
+        public void setOverlayCutout(int x, int y, int width, int height) {
+            PathmindVisualEditorScreen.this.setOverlayCutout(x, y, width, height);
+        }
+
+        @Override
+        public void drawPopupContainer(GuiGraphics context, int x, int y, int width, int height,
+                                       PopupAnimationHandler animation) {
+            PathmindVisualEditorScreen.this.drawPopupContainer(context, x, y, width, height, animation);
+        }
+
+        @Override
+        public boolean enablePopupScissor(GuiGraphics context, int popupX, int popupY, int width, int height) {
+            return PathmindVisualEditorScreen.this.enablePopupScissor(context, popupX, popupY, width, height);
+        }
+
+        @Override
+        public void disablePopupScissor(GuiGraphics context, boolean enabled) {
+            PathmindVisualEditorScreen.this.disablePopupScissor(context, enabled);
+        }
+
+        @Override
+        public int popupAnimatedColor(PopupAnimationHandler animation, int color) {
+            return getPopupAnimatedColor(animation, color);
+        }
+
+        @Override
+        public void drawPopupTextWithEllipsis(
+            GuiGraphics context, String text, int x, int y, int maxWidth, int color
+        ) {
+            PathmindVisualEditorScreen.this.drawPopupTextWithEllipsis(
+                context, text, x, y, maxWidth, color);
+        }
+
+        @Override
+        public void drawPopupCenteredTextWithEllipsis(
+            GuiGraphics context, String text, int centerX, int y, int maxWidth, int color
+        ) {
+            PathmindVisualEditorScreen.this.drawPopupCenteredTextWithEllipsis(
+                context, text, centerX, y, maxWidth, color);
+        }
+
+        @Override
+        public void drawPopupButton(
+            GuiGraphics context, int x, int y, int width, int height, boolean hovered,
+            Component label, PathmindPopupRenderer.ButtonStyle style, PopupAnimationHandler animation
+        ) {
+            PathmindVisualEditorScreen.this.drawPopupButton(
+                context, x, y, width, height, hovered, label, style, animation);
+        }
+
+        @Override
+        public void resetBoundedPopupScroll(PopupAnimationHandler animation) {
+            PathmindVisualEditorScreen.this.resetBoundedPopupScroll(animation);
+        }
+
+        @Override
+        public void dismissParameterOverlay() {
+            PathmindVisualEditorScreen.this.dismissParameterOverlay();
+        }
+
+        @Override
+        public void closeCreatePresetPopupIfVisible() {
+            if (createPresetPopupAnimation.isVisible()) {
+                closeCreatePresetPopup();
+            }
+        }
+
+        @Override
+        public void closeSettingsPopup() {
+            PathmindVisualEditorScreen.this.closeSettingsPopup();
+        }
+
+        @Override
+        public void closePresetDropdown() {
+            presetDropdownController.close();
+        }
+
+        @Override
+        public void clearWorkspace() {
+            nodeGraph.clearWorkspace();
+        }
+
+        @Override
+        public boolean containsBaritoneNodes() {
+            return nodeGraph.containsBaritoneNodes();
+        }
+
+        @Override
+        public boolean containsUiUtilsNodes() {
+            return nodeGraph.containsUiUtilsNodes();
+        }
+
+        @Override
+        public NodeGraphData snapshotRootPresetWorkspace() {
+            return PathmindVisualEditorScreen.this.snapshotRootPresetWorkspace();
+        }
+
+        @Override
+        public String activePresetName() {
+            return activePresetName;
+        }
+
+        @Override
+        public void applyImportedPreset(String presetName, NodeGraphData importedData) {
+            PathmindVisualEditorScreen.this.applyImportedPreset(presetName, importedData);
+        }
+
+        @Override
+        public void runOnClientThread(Runnable task) {
+            PathmindVisualEditorScreen.this.runOnClientThread(task);
+        }
+
+        @Override
+        public String currentMinecraftVersion() {
+            return getCurrentMinecraftVersion();
+        }
+
+        @Override
+        public String modVersion() {
+            return getModVersion();
+        }
+
+        @Override
+        public String loaderVersion() {
+            return getLoaderVersion();
+        }
+
+        @Override
+        public void copyToClipboard(String value) {
+            if (minecraft != null && minecraft.keyboardHandler != null) {
+                minecraft.keyboardHandler.setClipboard(value);
+            }
+        }
+    }
+
     enum AccentOption {
         SKY("Sky", UITheme.ACCENT_SKY),
         MINT("Mint", UITheme.ACCENT_MINT),
@@ -797,6 +935,16 @@ public class PathmindVisualEditorScreen extends Screen {
         super(Component.translatable("screen.pathmind.visual_editor.title"));
         this.baritoneAvailable = BaritoneDependencyChecker.isBaritoneApiPresent();
         this.uiUtilsAvailable = UiUtilsProxy.isAvailable();
+        this.workspaceDialogController = new PathmindWorkspaceDialogController(
+            new WorkspaceDialogHost(),
+            baritoneAvailable,
+            uiUtilsAvailable,
+            clearPopupAnimation,
+            importExportPopupAnimation,
+            infoPopupAnimation,
+            missingBaritonePopupAnimation,
+            missingUiUtilsPopupAnimation
+        );
         this.nodeGraph = new NodeGraph();
         this.nodeGraph.setWorkspaceSaveHandler(this::saveRootPresetWorkspace);
         this.sidebar = new Sidebar(baritoneAvailable, uiUtilsAvailable);
@@ -1364,45 +1512,19 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private boolean shouldBlockBaritoneNode(NodeType nodeType) {
-        if (nodeType == null || !nodeType.requiresBaritone()) {
-            return false;
-        }
-        if (baritoneAvailable) {
-            return false;
-        }
-        resetBoundedPopupScroll(missingBaritonePopupAnimation);
-        missingBaritonePopupAnimation.show();
-        return true;
+        return workspaceDialogController.shouldBlockBaritoneNode(nodeType);
     }
 
     private void refreshMissingBaritonePopup() {
-        if (!baritoneAvailable && nodeGraph.containsBaritoneNodes()) {
-            resetBoundedPopupScroll(missingBaritonePopupAnimation);
-            missingBaritonePopupAnimation.show();
-        } else {
-            missingBaritonePopupAnimation.hide();
-        }
+        workspaceDialogController.refreshMissingBaritonePopup();
     }
 
     private boolean shouldBlockUiUtilsNode(NodeType nodeType) {
-        if (nodeType == null || !nodeType.requiresUiUtils()) {
-            return false;
-        }
-        if (uiUtilsAvailable) {
-            return false;
-        }
-        resetBoundedPopupScroll(missingUiUtilsPopupAnimation);
-        missingUiUtilsPopupAnimation.show();
-        return true;
+        return workspaceDialogController.shouldBlockUiUtilsNode(nodeType);
     }
 
     private void refreshMissingUiUtilsPopup() {
-        if (!uiUtilsAvailable && nodeGraph.containsUiUtilsNodes()) {
-            resetBoundedPopupScroll(missingUiUtilsPopupAnimation);
-            missingUiUtilsPopupAnimation.show();
-        } else {
-            missingUiUtilsPopupAnimation.hide();
-        }
+        workspaceDialogController.refreshMissingUiUtilsPopup();
     }
     
     private void renderDraggingNode(GuiGraphics context, int mouseX, int mouseY) {
@@ -2755,7 +2877,8 @@ public class PathmindVisualEditorScreen extends Screen {
                 return true;
             }
 
-            if (!importExportBusy && (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER)) {
+            if (!workspaceDialogController.isImportExportBusy()
+                && (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER)) {
                 attemptImport();
                 return true;
             }
@@ -4243,270 +4366,23 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void renderClearConfirmationPopup(GuiGraphics context, int mouseX, int mouseY) {
-        RenderStateBridge.setShaderColor(1f, 1f, 1f, clearPopupAnimation.getPopupAlpha());
-
-        int[] bounds = getBoundedScaledPopupBounds(clearPopupAnimation, 280, 150);
-        int popupX = bounds[0];
-        int popupY = bounds[1];
-        int scaledWidth = bounds[2];
-        int scaledHeight = bounds[3];
-        int contentY = getBoundedPopupContentY(popupY, clearPopupAnimation, 150);
-        setOverlayCutout(popupX, popupY, scaledWidth, scaledHeight);
-
-        drawPopupContainer(context, popupX, popupY, scaledWidth, scaledHeight, clearPopupAnimation);
-        boolean popupScissor = enablePopupScissor(context, popupX, popupY, scaledWidth, scaledHeight);
-
-        context.drawCenteredString(
-            this.font,
-            Component.translatable("pathmind.popup.clearWorkspace.title"),
-            popupX + scaledWidth / 2,
-            contentY + 14,
-            getPopupAnimatedColor(clearPopupAnimation, UITheme.TEXT_PRIMARY)
-        );
-
-        drawPopupTextWithEllipsis(
-            context,
-            Component.translatable("pathmind.popup.clearWorkspace.message").getString(),
-            popupX + 20,
-            contentY + 48,
-            scaledWidth - 40,
-            getPopupAnimatedColor(clearPopupAnimation, UITheme.TEXT_SECONDARY)
-        );
-
-        PathmindPopupLayout.ButtonRow buttonRow = PathmindPopupLayout.twoButtonRow(popupX, scaledWidth, contentY, 150, 90, 20, 16);
-        PathmindPopupLayout.Rect cancelButton = buttonRow.left();
-        PathmindPopupLayout.Rect confirmButton = buttonRow.right();
-        int buttonWidth = cancelButton.width();
-        int buttonHeight = cancelButton.height();
-        int buttonY = cancelButton.y();
-        int cancelX = cancelButton.x();
-        int confirmX = confirmButton.x();
-
-        boolean cancelHovered = isPointInRect(mouseX, mouseY, cancelX, buttonY, buttonWidth, buttonHeight);
-        boolean confirmHovered = isPointInRect(mouseX, mouseY, confirmX, buttonY, buttonWidth, buttonHeight);
-
-        drawPopupButton(context, cancelX, buttonY, buttonWidth, buttonHeight, cancelHovered,
-            Component.translatable("pathmind.button.cancel"), PathmindPopupRenderer.ButtonStyle.DEFAULT, clearPopupAnimation);
-        drawPopupButton(context, confirmX, buttonY, buttonWidth, buttonHeight, confirmHovered,
-            Component.translatable("pathmind.button.clear"), PathmindPopupRenderer.ButtonStyle.PRIMARY, clearPopupAnimation);
-        disablePopupScissor(context, popupScissor);
-        RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
+        workspaceDialogController.renderClearConfirmationPopup(context, mouseX, mouseY);
     }
 
     private void renderImportExportPopup(GuiGraphics context, int mouseX, int mouseY, float delta) {
-        RenderStateBridge.setShaderColor(1f, 1f, 1f, importExportPopupAnimation.getPopupAlpha());
-
-        int[] bounds = getBoundedScaledPopupBounds(importExportPopupAnimation, 360, 210);
-        int popupX = bounds[0];
-        int popupY = bounds[1];
-        int scaledWidth = bounds[2];
-        int scaledHeight = bounds[3];
-        int contentY = getBoundedPopupContentY(popupY, importExportPopupAnimation, 210);
-        setOverlayCutout(popupX, popupY, scaledWidth, scaledHeight);
-
-        drawPopupContainer(context, popupX, popupY, scaledWidth, scaledHeight, importExportPopupAnimation);
-        boolean popupScissor = enablePopupScissor(context, popupX, popupY, scaledWidth, scaledHeight);
-
-        context.drawCenteredString(
-            this.font,
-            Component.translatable("pathmind.popup.importExport.title"),
-            popupX + scaledWidth / 2,
-            contentY + 14,
-            getPopupAnimatedColor(importExportPopupAnimation, UITheme.TEXT_PRIMARY)
-        );
-
-        int infoY = contentY + 44;
-        String importInfo = Component.translatable("pathmind.popup.importExport.importInfo").getString();
-        drawPopupTextWithEllipsis(context, importInfo, popupX + 20, infoY, scaledWidth - 40,
-            getPopupAnimatedColor(importExportPopupAnimation, UITheme.TEXT_SECONDARY));
-
-        String exportInfo = Component.translatable("pathmind.popup.importExport.exportInfo").getString();
-        drawPopupTextWithEllipsis(context, exportInfo, popupX + 20, infoY + 14, scaledWidth - 40,
-            getPopupAnimatedColor(importExportPopupAnimation, UITheme.TEXT_SECONDARY));
-
-        Path defaultPath = NodeGraphPersistence.getDefaultSavePath();
-        if (defaultPath != null) {
-            String defaultLabel = Component.translatable("pathmind.popup.importExport.defaultSave", defaultPath.toString()).getString();
-            drawPopupTextWithEllipsis(context, defaultLabel, popupX + 20, infoY + 30, scaledWidth - 40,
-                getPopupAnimatedColor(importExportPopupAnimation, UITheme.TEXT_TERTIARY));
-        }
-
-        if (!importExportStatus.isEmpty()) {
-            int textAreaWidth = scaledWidth - 40;
-            drawPopupTextWithEllipsis(context, importExportStatus, popupX + 20, contentY + 210 - 56, textAreaWidth,
-                getPopupAnimatedColor(importExportPopupAnimation, importExportStatusColor));
-        }
-
-        PathmindPopupLayout.ThreeButtonRow buttonRow = PathmindPopupLayout.leftPairRightButtonRow(popupX, scaledWidth, contentY, 210, 100, 20, 8, 16);
-        PathmindPopupLayout.Rect importButton = buttonRow.first();
-        PathmindPopupLayout.Rect exportButton = buttonRow.second();
-        PathmindPopupLayout.Rect cancelButton = buttonRow.third();
-        int buttonWidth = importButton.width();
-        int buttonHeight = importButton.height();
-        int buttonY = importButton.y();
-        int importX = importButton.x();
-        int exportX = exportButton.x();
-        int cancelX = cancelButton.x();
-
-        boolean importHovered = !importExportBusy && isPointInRect(mouseX, mouseY, importX, buttonY, buttonWidth, buttonHeight);
-        boolean exportHovered = !importExportBusy && isPointInRect(mouseX, mouseY, exportX, buttonY, buttonWidth, buttonHeight);
-        boolean cancelHovered = isPointInRect(mouseX, mouseY, cancelX, buttonY, buttonWidth, buttonHeight);
-
-        drawPopupButton(context, importX, buttonY, buttonWidth, buttonHeight, importHovered,
-            Component.translatable("pathmind.button.import"), PathmindPopupRenderer.ButtonStyle.PRIMARY, importExportPopupAnimation);
-        drawPopupButton(context, exportX, buttonY, buttonWidth, buttonHeight, exportHovered,
-            Component.translatable("pathmind.button.export"), PathmindPopupRenderer.ButtonStyle.PRIMARY, importExportPopupAnimation);
-        drawPopupButton(context, cancelX, buttonY, buttonWidth, buttonHeight, cancelHovered,
-            Component.translatable("pathmind.button.close"), PathmindPopupRenderer.ButtonStyle.DEFAULT, importExportPopupAnimation);
-        disablePopupScissor(context, popupScissor);
-        RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
+        workspaceDialogController.renderImportExportPopup(context, mouseX, mouseY, delta);
     }
 
     private void renderInfoPopup(GuiGraphics context, int mouseX, int mouseY) {
-        RenderStateBridge.setShaderColor(1f, 1f, 1f, infoPopupAnimation.getPopupAlpha());
-
-        int[] bounds = getBoundedScaledPopupBounds(infoPopupAnimation, INFO_POPUP_WIDTH, INFO_POPUP_HEIGHT);
-        int popupX = bounds[0];
-        int popupY = bounds[1];
-        int scaledWidth = bounds[2];
-        int scaledHeight = bounds[3];
-        int contentY = getBoundedPopupContentY(popupY, infoPopupAnimation, INFO_POPUP_HEIGHT);
-        setOverlayCutout(popupX, popupY, scaledWidth, scaledHeight);
-
-        drawPopupContainer(context, popupX, popupY, scaledWidth, scaledHeight, infoPopupAnimation);
-        boolean popupScissor = enablePopupScissor(context, popupX, popupY, scaledWidth, scaledHeight);
-
-        context.drawCenteredString(
-            this.font,
-            INFO_POPUP_TITLE_TEXT,
-            popupX + scaledWidth / 2,
-            contentY + 14,
-            getPopupAnimatedColor(infoPopupAnimation, UITheme.TEXT_PRIMARY)
-        );
-
-        int textStartY = contentY + 42;
-        int lineSpacing = 12;
-        int centerX = popupX + scaledWidth / 2;
-
-        String authorLine = Component.translatable("pathmind.popup.info.createdBy", INFO_POPUP_AUTHOR).getString();
-        String targetLine = Component.translatable("pathmind.popup.info.builtForMinecraft", INFO_POPUP_TARGET_VERSION).getString();
-        String currentLine = Component.translatable("pathmind.popup.info.runningMinecraft", getCurrentMinecraftVersion()).getString();
-        String buildLine = Component.translatable("pathmind.popup.info.currentBuild", getModVersion()).getString();
-        String loaderLine = LoaderMetadata.getLoaderName() + ": " + getLoaderVersion();
-
-        int maxCenteredWidth = scaledWidth - 40;
-        drawPopupCenteredTextWithEllipsis(context, authorLine, centerX, textStartY, maxCenteredWidth, getPopupAnimatedColor(infoPopupAnimation, UITheme.TEXT_SECONDARY));
-        drawPopupCenteredTextWithEllipsis(context, targetLine, centerX, textStartY + lineSpacing, maxCenteredWidth, getPopupAnimatedColor(infoPopupAnimation, UITheme.TEXT_SECONDARY));
-        drawPopupCenteredTextWithEllipsis(context, currentLine, centerX, textStartY + lineSpacing * 2, maxCenteredWidth, getPopupAnimatedColor(infoPopupAnimation, UITheme.TEXT_SECONDARY));
-        drawPopupCenteredTextWithEllipsis(context, buildLine, centerX, textStartY + lineSpacing * 3, maxCenteredWidth, getPopupAnimatedColor(infoPopupAnimation, UITheme.TEXT_SECONDARY));
-        drawPopupCenteredTextWithEllipsis(context, loaderLine, centerX, textStartY + lineSpacing * 4, maxCenteredWidth, getPopupAnimatedColor(infoPopupAnimation, UITheme.TEXT_SECONDARY));
-
-        PathmindPopupLayout.Rect closeButton = PathmindPopupLayout.centeredButton(popupX, scaledWidth, contentY, INFO_POPUP_HEIGHT, 100, 20, 16);
-        int buttonWidth = closeButton.width();
-        int buttonHeight = closeButton.height();
-        int buttonX = closeButton.x();
-        int buttonY = closeButton.y();
-        boolean closeHovered = isPointInRect(mouseX, mouseY, buttonX, buttonY, buttonWidth, buttonHeight);
-
-        drawPopupButton(
-            context,
-            buttonX,
-            buttonY,
-            buttonWidth,
-            buttonHeight,
-            closeHovered,
-            Component.translatable("pathmind.button.close"),
-            PathmindPopupRenderer.ButtonStyle.DEFAULT,
-            infoPopupAnimation
-        );
-        disablePopupScissor(context, popupScissor);
-        RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
+        workspaceDialogController.renderInfoPopup(context, mouseX, mouseY);
     }
 
     private void renderMissingBaritonePopup(GuiGraphics context, int mouseX, int mouseY) {
-        RenderStateBridge.setShaderColor(1f, 1f, 1f, missingBaritonePopupAnimation.getPopupAlpha());
-
-        int[] bounds = getBoundedScaledPopupBounds(missingBaritonePopupAnimation, MISSING_BARITONE_POPUP_WIDTH, MISSING_BARITONE_POPUP_HEIGHT);
-        int popupX = bounds[0];
-        int popupY = bounds[1];
-        int scaledWidth = bounds[2];
-        int scaledHeight = bounds[3];
-        int contentY = getBoundedPopupContentY(popupY, missingBaritonePopupAnimation, MISSING_BARITONE_POPUP_HEIGHT);
-        setOverlayCutout(popupX, popupY, scaledWidth, scaledHeight);
-
-        drawPopupContainer(context, popupX, popupY, scaledWidth, scaledHeight, missingBaritonePopupAnimation);
-        boolean popupScissor = enablePopupScissor(context, popupX, popupY, scaledWidth, scaledHeight);
-
-        int centerX = popupX + scaledWidth / 2;
-        int messageY = contentY + 16;
-        int maxCenteredWidth = scaledWidth - 40;
-        drawPopupCenteredTextWithEllipsis(context, Component.translatable("pathmind.popup.missingBaritone.title").getString(), centerX, messageY, maxCenteredWidth, getPopupAnimatedColor(missingBaritonePopupAnimation, UITheme.TEXT_PRIMARY));
-        drawPopupCenteredTextWithEllipsis(context, Component.translatable("pathmind.popup.missingBaritone.message").getString(), centerX, messageY + 16, maxCenteredWidth, getPopupAnimatedColor(missingBaritonePopupAnimation, UITheme.TEXT_PRIMARY));
-        drawPopupCenteredTextWithEllipsis(context, BaritoneDependencyChecker.DOWNLOAD_URL, centerX, messageY + 30, maxCenteredWidth, getPopupAnimatedColor(missingBaritonePopupAnimation, UITheme.LINK_COLOR));
-
-        PathmindPopupLayout.ThreeButtonRow buttonRow = PathmindPopupLayout.threeButtonRow(popupX, scaledWidth, contentY, MISSING_BARITONE_POPUP_HEIGHT, 100, 20, 8, 10);
-        PathmindPopupLayout.Rect openButton = buttonRow.first();
-        PathmindPopupLayout.Rect copyButton = buttonRow.second();
-        PathmindPopupLayout.Rect closeButton = buttonRow.third();
-        int buttonWidth = openButton.width();
-        int buttonHeight = openButton.height();
-        int buttonY = openButton.y();
-        int openX = openButton.x();
-        int copyX = copyButton.x();
-        int closeX = closeButton.x();
-
-        boolean openHovered = isPointInRect(mouseX, mouseY, openX, buttonY, buttonWidth, buttonHeight);
-        boolean copyHovered = isPointInRect(mouseX, mouseY, copyX, buttonY, buttonWidth, buttonHeight);
-        boolean closeHovered = isPointInRect(mouseX, mouseY, closeX, buttonY, buttonWidth, buttonHeight);
-
-        drawPopupButton(context, openX, buttonY, buttonWidth, buttonHeight, openHovered, Component.translatable("pathmind.button.openLink"), PathmindPopupRenderer.ButtonStyle.PRIMARY, missingBaritonePopupAnimation);
-        drawPopupButton(context, copyX, buttonY, buttonWidth, buttonHeight, copyHovered, Component.translatable("pathmind.button.copyLink"), PathmindPopupRenderer.ButtonStyle.PRIMARY, missingBaritonePopupAnimation);
-        drawPopupButton(context, closeX, buttonY, buttonWidth, buttonHeight, closeHovered, Component.translatable("pathmind.button.close"), PathmindPopupRenderer.ButtonStyle.DEFAULT, missingBaritonePopupAnimation);
-        disablePopupScissor(context, popupScissor);
-        RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
+        workspaceDialogController.renderMissingBaritonePopup(context, mouseX, mouseY);
     }
 
     private void renderMissingUiUtilsPopup(GuiGraphics context, int mouseX, int mouseY) {
-        RenderStateBridge.setShaderColor(1f, 1f, 1f, missingUiUtilsPopupAnimation.getPopupAlpha());
-
-        int[] bounds = getBoundedScaledPopupBounds(missingUiUtilsPopupAnimation, MISSING_UI_UTILS_POPUP_WIDTH, MISSING_UI_UTILS_POPUP_HEIGHT);
-        int popupX = bounds[0];
-        int popupY = bounds[1];
-        int scaledWidth = bounds[2];
-        int scaledHeight = bounds[3];
-        int contentY = getBoundedPopupContentY(popupY, missingUiUtilsPopupAnimation, MISSING_UI_UTILS_POPUP_HEIGHT);
-        setOverlayCutout(popupX, popupY, scaledWidth, scaledHeight);
-
-        drawPopupContainer(context, popupX, popupY, scaledWidth, scaledHeight, missingUiUtilsPopupAnimation);
-        boolean popupScissor = enablePopupScissor(context, popupX, popupY, scaledWidth, scaledHeight);
-
-        int centerX = popupX + scaledWidth / 2;
-        int messageY = contentY + 16;
-        int maxCenteredWidth = scaledWidth - 40;
-        drawPopupCenteredTextWithEllipsis(context, Component.translatable("pathmind.popup.missingUiUtils.title").getString(), centerX, messageY, maxCenteredWidth, getPopupAnimatedColor(missingUiUtilsPopupAnimation, UITheme.TEXT_PRIMARY));
-        drawPopupCenteredTextWithEllipsis(context, Component.translatable("pathmind.popup.missingUiUtils.message").getString(), centerX, messageY + 16, maxCenteredWidth, getPopupAnimatedColor(missingUiUtilsPopupAnimation, UITheme.TEXT_PRIMARY));
-        drawPopupCenteredTextWithEllipsis(context, UI_UTILS_DOWNLOAD_URL, centerX, messageY + 30, maxCenteredWidth, getPopupAnimatedColor(missingUiUtilsPopupAnimation, UITheme.LINK_COLOR));
-
-        PathmindPopupLayout.ThreeButtonRow buttonRow = PathmindPopupLayout.threeButtonRow(popupX, scaledWidth, contentY, MISSING_UI_UTILS_POPUP_HEIGHT, 100, 20, 8, 10);
-        PathmindPopupLayout.Rect openButton = buttonRow.first();
-        PathmindPopupLayout.Rect copyButton = buttonRow.second();
-        PathmindPopupLayout.Rect closeButton = buttonRow.third();
-        int buttonWidth = openButton.width();
-        int buttonHeight = openButton.height();
-        int buttonY = openButton.y();
-        int openX = openButton.x();
-        int copyX = copyButton.x();
-        int closeX = closeButton.x();
-
-        boolean openHovered = isPointInRect(mouseX, mouseY, openX, buttonY, buttonWidth, buttonHeight);
-        boolean copyHovered = isPointInRect(mouseX, mouseY, copyX, buttonY, buttonWidth, buttonHeight);
-        boolean closeHovered = isPointInRect(mouseX, mouseY, closeX, buttonY, buttonWidth, buttonHeight);
-
-        drawPopupButton(context, openX, buttonY, buttonWidth, buttonHeight, openHovered, Component.translatable("pathmind.button.openLink"), PathmindPopupRenderer.ButtonStyle.PRIMARY, missingUiUtilsPopupAnimation);
-        drawPopupButton(context, copyX, buttonY, buttonWidth, buttonHeight, copyHovered, Component.translatable("pathmind.button.copyLink"), PathmindPopupRenderer.ButtonStyle.PRIMARY, missingUiUtilsPopupAnimation);
-        drawPopupButton(context, closeX, buttonY, buttonWidth, buttonHeight, closeHovered, Component.translatable("pathmind.button.close"), PathmindPopupRenderer.ButtonStyle.DEFAULT, missingUiUtilsPopupAnimation);
-        disablePopupScissor(context, popupScissor);
-        RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);
+        workspaceDialogController.renderMissingUiUtilsPopup(context, mouseX, mouseY);
     }
 
     private void drawTitle(GuiGraphics context, int mouseX, int mouseY, float underlineProgress) {
@@ -4609,231 +4485,23 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private boolean handleClearPopupClick(double mouseX, double mouseY, int button) {
-        if (button != 0) {
-            return true;
-        }
-
-        int[] bounds = getBoundedScaledPopupBounds(clearPopupAnimation, 280, 150);
-        int popupX = bounds[0];
-        int popupY = bounds[1];
-        int scaledWidth = bounds[2];
-        int scaledHeight = bounds[3];
-        int contentY = getBoundedPopupContentY(popupY, clearPopupAnimation, 150);
-        PathmindPopupLayout.ButtonRow buttonRow = PathmindPopupLayout.twoButtonRow(popupX, scaledWidth, contentY, 150, 90, 20, 16);
-        PathmindPopupLayout.Rect cancelButton = buttonRow.left();
-        PathmindPopupLayout.Rect confirmButton = buttonRow.right();
-        int buttonWidth = cancelButton.width();
-        int buttonHeight = cancelButton.height();
-        int buttonY = cancelButton.y();
-        int cancelX = cancelButton.x();
-        int confirmX = confirmButton.x();
-
-        int mouseXi = (int) mouseX;
-        int mouseYi = (int) mouseY;
-
-        if (!isPointInRect(mouseXi, mouseYi, popupX, popupY, scaledWidth, scaledHeight)) {
-            clearPopupAnimation.hide();
-            return true;
-        }
-
-        if (isPointInRect(mouseXi, mouseYi, confirmX, buttonY, buttonWidth, buttonHeight)) {
-            confirmClearWorkspace();
-            return true;
-        }
-
-        if (isPointInRect(mouseXi, mouseYi, cancelX, buttonY, buttonWidth, buttonHeight)) {
-            clearPopupAnimation.hide();
-            return true;
-        }
-
-        return true;
+        return workspaceDialogController.handleClearPopupClick(mouseX, mouseY, button);
     }
 
     private boolean handleImportExportPopupClick(double mouseX, double mouseY, int button) {
-        if (button != 0) {
-            return true;
-        }
-
-        int[] bounds = getBoundedScaledPopupBounds(importExportPopupAnimation, 360, 210);
-        int popupX = bounds[0];
-        int popupY = bounds[1];
-        int scaledWidth = bounds[2];
-        int scaledHeight = bounds[3];
-        int contentY = getBoundedPopupContentY(popupY, importExportPopupAnimation, 210);
-        PathmindPopupLayout.ThreeButtonRow buttonRow = PathmindPopupLayout.leftPairRightButtonRow(popupX, scaledWidth, contentY, 210, 100, 20, 8, 16);
-        PathmindPopupLayout.Rect importButton = buttonRow.first();
-        PathmindPopupLayout.Rect exportButton = buttonRow.second();
-        PathmindPopupLayout.Rect cancelButton = buttonRow.third();
-        int buttonWidth = importButton.width();
-        int buttonHeight = importButton.height();
-        int buttonY = importButton.y();
-        int importX = importButton.x();
-        int exportX = exportButton.x();
-        int cancelX = cancelButton.x();
-
-        int mouseXi = (int) mouseX;
-        int mouseYi = (int) mouseY;
-
-        if (!isPointInRect(mouseXi, mouseYi, popupX, popupY, scaledWidth, scaledHeight)) {
-            closeImportExportPopup();
-            return true;
-        }
-
-        if (!importExportBusy && isPointInRect(mouseXi, mouseYi, importX, buttonY, buttonWidth, buttonHeight)) {
-            attemptImport();
-            return true;
-        }
-
-        if (!importExportBusy && isPointInRect(mouseXi, mouseYi, exportX, buttonY, buttonWidth, buttonHeight)) {
-            attemptExport();
-            return true;
-        }
-
-        if (isPointInRect(mouseXi, mouseYi, cancelX, buttonY, buttonWidth, buttonHeight)) {
-            closeImportExportPopup();
-            return true;
-        }
-
-        return true;
+        return workspaceDialogController.handleImportExportPopupClick(mouseX, mouseY, button);
     }
 
     private boolean handleMissingBaritonePopupClick(double mouseX, double mouseY, int button) {
-        if (button != 0) {
-            return true;
-        }
-
-        int[] bounds = getBoundedScaledPopupBounds(missingBaritonePopupAnimation, MISSING_BARITONE_POPUP_WIDTH, MISSING_BARITONE_POPUP_HEIGHT);
-        int popupX = bounds[0];
-        int popupY = bounds[1];
-        int popupWidth = bounds[2];
-        int popupHeight = bounds[3];
-        int contentY = getBoundedPopupContentY(popupY, missingBaritonePopupAnimation, MISSING_BARITONE_POPUP_HEIGHT);
-        PathmindPopupLayout.ThreeButtonRow buttonRow = PathmindPopupLayout.threeButtonRow(popupX, popupWidth, contentY, MISSING_BARITONE_POPUP_HEIGHT, 100, 20, 8, 10);
-        PathmindPopupLayout.Rect openButton = buttonRow.first();
-        PathmindPopupLayout.Rect copyButton = buttonRow.second();
-        PathmindPopupLayout.Rect closeButton = buttonRow.third();
-        int buttonWidth = openButton.width();
-        int buttonHeight = openButton.height();
-        int buttonY = openButton.y();
-        int openX = openButton.x();
-        int copyX = copyButton.x();
-        int closeX = closeButton.x();
-
-        int mouseXi = (int) mouseX;
-        int mouseYi = (int) mouseY;
-
-        if (isPointInRect(mouseXi, mouseYi, openX, buttonY, buttonWidth, buttonHeight)) {
-            openBaritoneDownloadLink();
-            return true;
-        }
-
-        if (isPointInRect(mouseXi, mouseYi, copyX, buttonY, buttonWidth, buttonHeight)) {
-            copyBaritoneDownloadLink();
-            return true;
-        }
-
-        if (isPointInRect(mouseXi, mouseYi, closeX, buttonY, buttonWidth, buttonHeight)) {
-            missingBaritonePopupAnimation.hide();
-            return true;
-        }
-
-        return true;
+        return workspaceDialogController.handleMissingBaritonePopupClick(mouseX, mouseY, button);
     }
 
     private boolean handleMissingUiUtilsPopupClick(double mouseX, double mouseY, int button) {
-        if (button != 0) {
-            return true;
-        }
-
-        int[] bounds = getBoundedScaledPopupBounds(missingUiUtilsPopupAnimation, MISSING_UI_UTILS_POPUP_WIDTH, MISSING_UI_UTILS_POPUP_HEIGHT);
-        int popupX = bounds[0];
-        int popupY = bounds[1];
-        int popupWidth = bounds[2];
-        int popupHeight = bounds[3];
-        int contentY = getBoundedPopupContentY(popupY, missingUiUtilsPopupAnimation, MISSING_UI_UTILS_POPUP_HEIGHT);
-        PathmindPopupLayout.ThreeButtonRow buttonRow = PathmindPopupLayout.threeButtonRow(popupX, popupWidth, contentY, MISSING_UI_UTILS_POPUP_HEIGHT, 100, 20, 8, 10);
-        PathmindPopupLayout.Rect openButton = buttonRow.first();
-        PathmindPopupLayout.Rect copyButton = buttonRow.second();
-        PathmindPopupLayout.Rect closeButton = buttonRow.third();
-        int buttonWidth = openButton.width();
-        int buttonHeight = openButton.height();
-        int buttonY = openButton.y();
-        int openX = openButton.x();
-        int copyX = copyButton.x();
-        int closeX = closeButton.x();
-
-        int mouseXi = (int) mouseX;
-        int mouseYi = (int) mouseY;
-
-        if (isPointInRect(mouseXi, mouseYi, openX, buttonY, buttonWidth, buttonHeight)) {
-            openUiUtilsDownloadLink();
-            return true;
-        }
-
-        if (isPointInRect(mouseXi, mouseYi, copyX, buttonY, buttonWidth, buttonHeight)) {
-            copyUiUtilsDownloadLink();
-            return true;
-        }
-
-        if (isPointInRect(mouseXi, mouseYi, closeX, buttonY, buttonWidth, buttonHeight)) {
-            missingUiUtilsPopupAnimation.hide();
-            return true;
-        }
-
-        return true;
-    }
-
-    private void openBaritoneDownloadLink() {
-        Util.getPlatform().openUri(BaritoneDependencyChecker.DOWNLOAD_URL);
-    }
-
-    private void copyBaritoneDownloadLink() {
-        if (this.minecraft != null && this.minecraft.keyboardHandler != null) {
-            this.minecraft.keyboardHandler.setClipboard(BaritoneDependencyChecker.DOWNLOAD_URL);
-        }
-    }
-
-    private void openUiUtilsDownloadLink() {
-        Util.getPlatform().openUri(UI_UTILS_DOWNLOAD_URL);
-    }
-
-    private void copyUiUtilsDownloadLink() {
-        if (this.minecraft != null && this.minecraft.keyboardHandler != null) {
-            this.minecraft.keyboardHandler.setClipboard(UI_UTILS_DOWNLOAD_URL);
-        }
+        return workspaceDialogController.handleMissingUiUtilsPopupClick(mouseX, mouseY, button);
     }
 
     private boolean handleInfoPopupClick(double mouseX, double mouseY, int button) {
-        if (button != 0) {
-            return true;
-        }
-
-        int[] bounds = getBoundedScaledPopupBounds(infoPopupAnimation, INFO_POPUP_WIDTH, INFO_POPUP_HEIGHT);
-        int popupX = bounds[0];
-        int popupY = bounds[1];
-        int popupWidth = bounds[2];
-        int popupHeight = bounds[3];
-        int contentY = getBoundedPopupContentY(popupY, infoPopupAnimation, INFO_POPUP_HEIGHT);
-        PathmindPopupLayout.Rect closeButton = PathmindPopupLayout.centeredButton(popupX, popupWidth, contentY, INFO_POPUP_HEIGHT, 100, 20, 16);
-        int buttonWidth = closeButton.width();
-        int buttonHeight = closeButton.height();
-        int buttonX = closeButton.x();
-        int buttonY = closeButton.y();
-
-        int mouseXi = (int) mouseX;
-        int mouseYi = (int) mouseY;
-
-        if (isPointInRect(mouseXi, mouseYi, buttonX, buttonY, buttonWidth, buttonHeight)) {
-            closeInfoPopup();
-            return true;
-        }
-
-        if (!isPointInRect(mouseXi, mouseYi, popupX, popupY, popupWidth, popupHeight)) {
-            closeInfoPopup();
-            return true;
-        }
-
-        return true;
+        return workspaceDialogController.handleInfoPopupClick(mouseX, mouseY, button);
     }
 
     void drawPopupButton(GuiGraphics context, int x, int y, int width, int height, boolean hovered, Component label, boolean primary) {
@@ -4872,188 +4540,31 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     void closeInfoPopup() {
-        resetBoundedPopupScroll(infoPopupAnimation);
-        infoPopupAnimation.hide();
+        workspaceDialogController.closeInfoPopup();
     }
 
     private void openClearPopup() {
-        dismissParameterOverlay();
-        closeImportExportPopup();
-        if (createPresetPopupAnimation.isVisible()) {
-            closeCreatePresetPopup();
-        }
-        closeInfoPopup();
-        closeSettingsPopup();
-        presetDropdownController.close();
-        resetBoundedPopupScroll(clearPopupAnimation);
-        clearPopupAnimation.show();
+        workspaceDialogController.openClearPopup();
     }
 
     private void confirmClearWorkspace() {
-        nodeGraph.clearWorkspace();
-        resetBoundedPopupScroll(clearPopupAnimation);
-        clearPopupAnimation.hide();
+        workspaceDialogController.confirmClearWorkspace();
     }
 
     private void openImportExportPopup() {
-        dismissParameterOverlay();
-        clearPopupAnimation.hide();
-        if (createPresetPopupAnimation.isVisible()) {
-            closeCreatePresetPopup();
-        }
-        closeInfoPopup();
-        closeSettingsPopup();
-        presetDropdownController.close();
-        resetBoundedPopupScroll(importExportPopupAnimation);
-        importExportPopupAnimation.show();
-        clearImportExportStatus();
-        importExportBusy = false;
-        if (lastImportExportPath == null) {
-            lastImportExportPath = NodeGraphPersistence.getDefaultSavePath();
-        }
+        workspaceDialogController.openImportExportPopup();
     }
 
     private void closeImportExportPopup() {
-        resetBoundedPopupScroll(importExportPopupAnimation);
-        importExportPopupAnimation.hide();
+        workspaceDialogController.closeImportExportPopup();
     }
 
     private void attemptImport() {
-        String defaultPath = lastImportExportPath != null
-                ? lastImportExportPath.toString()
-                : Optional.ofNullable(NodeGraphPersistence.getDefaultSavePath())
-                    .map(Path::toString)
-                    .orElse("");
-        importExportBusy = true;
-        setImportExportStatus(Component.translatable("pathmind.status.waitingForImportFile").getString(), UITheme.TEXT_SECONDARY);
-        WorkspaceFileAccess.supplyAsync(() -> openWorkspaceImportDialog(defaultPath))
-            .whenComplete((selection, throwable) -> runOnClientThread(() -> {
-                if (throwable != null) {
-                    importExportBusy = false;
-                    setImportExportStatus(Component.translatable("pathmind.status.failedOpenImportDialog").getString(), UITheme.STATE_ERROR);
-                    return;
-                }
-                if (selection == null) {
-                    importExportBusy = false;
-                    setImportExportStatus(Component.translatable("pathmind.status.importCancelled").getString(), UITheme.TEXT_SECONDARY);
-                    return;
-                }
-                try {
-                    Path path = Paths.get(selection.trim());
-                    beginImportFromPath(path);
-                } catch (InvalidPathException ex) {
-                    importExportBusy = false;
-                    setImportExportStatus(Component.translatable("pathmind.status.invalidFilePath").getString(), UITheme.STATE_ERROR);
-                }
-            }));
-    }
-
-    private void beginImportFromPath(Path path) {
-        try {
-            lastImportExportPath = path;
-            Path fileName = path.getFileName();
-            String fileLabel = fileName != null ? fileName.toString() : path.toString();
-            String currentPresetName = activePresetName;
-            NodeGraphData currentPresetSnapshot = snapshotRootPresetWorkspace();
-            setImportExportStatus(Component.translatable("pathmind.status.importingWorkspace").getString(), UITheme.TEXT_SECONDARY);
-            WorkspaceFileAccess.supplyAsync(() -> {
-                if (currentPresetSnapshot != null && currentPresetName != null && !currentPresetName.isBlank()) {
-                    NodeGraphPersistence.saveNodeGraphDataForPreset(currentPresetName, currentPresetSnapshot);
-                }
-                Optional<String> importedPreset = PresetManager.importPresetFromFile(path);
-                if (importedPreset.isEmpty()) {
-                    return ImportOperationResult.failed(fileLabel);
-                }
-                NodeGraphData importedData = NodeGraphPersistence.loadNodeGraphForPreset(importedPreset.get());
-                return ImportOperationResult.succeeded(fileLabel, importedPreset.get(), importedData);
-            }).whenComplete((result, throwable) -> runOnClientThread(() -> {
-                importExportBusy = false;
-                if (throwable != null || result == null || !result.success) {
-                    setImportExportStatus(Component.translatable("pathmind.status.failedImportWorkspaceFrom", fileLabel).getString(), UITheme.STATE_ERROR);
-                    return;
-                }
-                applyImportedPreset(result.presetName, result.importedData);
-                setImportExportStatus(
-                    Component.translatable("pathmind.status.importedWorkspaceAsPreset", result.fileLabel, result.presetName).getString(),
-                    UITheme.STATE_SUCCESS
-                );
-            }));
-        } catch (InvalidPathException ex) {
-            setImportExportStatus(Component.translatable("pathmind.status.invalidFilePath").getString(), UITheme.STATE_ERROR);
-        }
+        workspaceDialogController.attemptImport();
     }
 
     private void attemptExport() {
-        Path defaultSavePath = Optional.ofNullable(lastImportExportPath)
-                .orElseGet(NodeGraphPersistence::getDefaultSavePath);
-        String defaultPathString = defaultSavePath != null ? defaultSavePath.toString() : "workspace.json";
-        importExportBusy = true;
-        setImportExportStatus(Component.translatable("pathmind.status.waitingForExportPath").getString(), UITheme.TEXT_SECONDARY);
-        WorkspaceFileAccess.supplyAsync(() -> openWorkspaceExportDialog(defaultPathString))
-            .whenComplete((selection, throwable) -> runOnClientThread(() -> {
-                if (throwable != null) {
-                    importExportBusy = false;
-                    setImportExportStatus(Component.translatable("pathmind.status.failedOpenExportDialog").getString(), UITheme.STATE_ERROR);
-                    return;
-                }
-                if (selection == null) {
-                    importExportBusy = false;
-                    setImportExportStatus(Component.translatable("pathmind.status.exportCancelled").getString(), UITheme.TEXT_SECONDARY);
-                    return;
-                }
-                try {
-                    Path path = Paths.get(selection.trim());
-                    beginExportToPath(path);
-                } catch (InvalidPathException ex) {
-                    importExportBusy = false;
-                    setImportExportStatus(Component.translatable("pathmind.status.invalidFilePath").getString(), UITheme.STATE_ERROR);
-                }
-            }));
-    }
-
-    private void beginExportToPath(Path path) {
-        try {
-            NodeGraphData snapshot = snapshotRootPresetWorkspace();
-            setImportExportStatus(Component.translatable("pathmind.status.exportingWorkspace").getString(), UITheme.TEXT_SECONDARY);
-            WorkspaceFileAccess.supplyExportAsync(() -> NodeGraphPersistence.saveNodeGraphDataToPath(snapshot, path))
-                .whenComplete((success, throwable) -> runOnClientThread(() -> {
-                    importExportBusy = false;
-                    if (throwable != null || !Boolean.TRUE.equals(success)) {
-                        setImportExportStatus(Component.translatable("pathmind.status.failedExportWorkspace").getString(), UITheme.STATE_ERROR);
-                        return;
-                    }
-                    lastImportExportPath = path;
-                    Path fileName = path.getFileName();
-                    setImportExportStatus(Component.translatable("pathmind.status.exportedWorkspaceTo", fileName != null ? fileName.toString() : path.toString()).getString(), UITheme.STATE_SUCCESS);
-                }));
-        } catch (InvalidPathException ex) {
-            setImportExportStatus(Component.translatable("pathmind.status.invalidFilePath").getString(), UITheme.STATE_ERROR);
-        }
-    }
-
-    private String openWorkspaceImportDialog(String defaultPath) {
-        try (MemoryStack stack = MemoryStack.stackPush()) {
-            PointerBuffer filters = IS_MAC_OS ? null : createJsonFilterPatterns(stack);
-            return TinyFileDialogs.tinyfd_openFileDialog(
-                Component.translatable("pathmind.dialog.importWorkspace").getString(),
-                defaultPath,
-                filters,
-                filters != null ? Component.translatable("pathmind.dialog.jsonFiles").getString() : null,
-                false
-            );
-        }
-    }
-
-    private String openWorkspaceExportDialog(String defaultPath) {
-        try (MemoryStack stack = MemoryStack.stackPush()) {
-            PointerBuffer filters = IS_MAC_OS ? null : createJsonFilterPatterns(stack);
-            return TinyFileDialogs.tinyfd_saveFileDialog(
-                Component.translatable("pathmind.dialog.exportWorkspace").getString(),
-                defaultPath,
-                filters,
-                filters != null ? Component.translatable("pathmind.dialog.jsonFiles").getString() : null
-            );
-        }
+        workspaceDialogController.attemptExport();
     }
 
     private void applyImportedPreset(String presetName, NodeGraphData importedData) {
@@ -5095,44 +4606,8 @@ public class PathmindVisualEditorScreen extends Screen {
         });
     }
 
-    private static final class ImportOperationResult {
-        private final boolean success;
-        private final String fileLabel;
-        private final String presetName;
-        private final NodeGraphData importedData;
-
-        private ImportOperationResult(boolean success, String fileLabel, String presetName, NodeGraphData importedData) {
-            this.success = success;
-            this.fileLabel = fileLabel;
-            this.presetName = presetName;
-            this.importedData = importedData;
-        }
-
-        private static ImportOperationResult succeeded(String fileLabel, String presetName, NodeGraphData importedData) {
-            return new ImportOperationResult(true, fileLabel, presetName, importedData);
-        }
-
-        private static ImportOperationResult failed(String fileLabel) {
-            return new ImportOperationResult(false, fileLabel, null, null);
-        }
-    }
-
-    private PointerBuffer createJsonFilterPatterns(MemoryStack stack) {
-        PointerBuffer filters = stack.mallocPointer(2);
-        filters.put(stack.UTF8("*.json"));
-        filters.put(stack.UTF8("*.JSON"));
-        filters.flip();
-        return filters;
-    }
-
-    private void setImportExportStatus(String message, int color) {
-        importExportStatus = message != null ? message : "";
-        importExportStatusColor = color;
-    }
-
     private void clearImportExportStatus() {
-        importExportStatus = "";
-        importExportStatusColor = UITheme.TEXT_SECONDARY;
+        workspaceDialogController.clearImportExportStatus();
     }
 
     private boolean handleNodeGraphShortcuts(int keyCode, int modifiers) {
@@ -6059,7 +5534,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void updateImportExportPathFromPreset() {
-        lastImportExportPath = NodeGraphPersistence.getDefaultSavePath();
+        workspaceDialogController.updateImportExportPathFromPreset();
     }
 
     private void switchPreset(String presetName) {

@@ -113,6 +113,7 @@ public class PathmindMarketplaceScreen extends Screen {
     private List<AuthorSummary> authorResults = List.of();
     private int selectedIndex = -1;
     private int pageIndex = 0;
+    private int galleryScrollOffset = 0;
     private boolean loading = false;
     private boolean initialFetchStarted = false;
     private String statusMessage = Component.translatable("pathmind.marketplace.loadingPublishedPresets").getString();
@@ -462,8 +463,9 @@ public class PathmindMarketplaceScreen extends Screen {
             int entriesPerPage = getCardsPerPage(layout);
             int startIndex = pageIndex * entriesPerPage;
             int endIndex = Math.min(presets.size(), startIndex + entriesPerPage);
+            galleryScrollOffset = Math.min(galleryScrollOffset, getMaxGalleryScroll(layout));
             for (int index = startIndex; index < endIndex; index++) {
-                Rect rect = getCardRect(layout, index - startIndex, 0);
+                Rect rect = getCardRect(layout, index - startIndex, galleryScrollOffset);
                 if (rect.y + rect.height < bodyY || rect.y > bodyY + bodyHeight) {
                     continue;
                 }
@@ -1298,7 +1300,7 @@ public class PathmindMarketplaceScreen extends Screen {
             int startIndex = pageIndex * entriesPerPage;
             int endIndex = Math.min(presets.size(), startIndex + entriesPerPage);
             for (int index = startIndex; index < endIndex; index++) {
-                Rect rect = getCardRect(layout, index - startIndex, 0);
+                Rect rect = getCardRect(layout, index - startIndex, galleryScrollOffset);
                 if (rect.y + rect.height < viewportTop || rect.y > viewportBottom) continue;
                 MarketplacePreset preset = presets.get(index);
                 int previewX = rect.x + 8;
@@ -1490,6 +1492,15 @@ public class PathmindMarketplaceScreen extends Screen {
         }
         if (!isPointInRect((int) mouseX, (int) mouseY, layout.sectionX, layout.sectionY, layout.sectionWidth, layout.sectionHeight)) {
             return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
+        }
+
+        if (!isAuthorDirectoryMode()) {
+            int maxScroll = getMaxGalleryScroll(layout);
+            int nextOffset = ScrollbarHelper.applyWheel(galleryScrollOffset, verticalAmount, 36, maxScroll);
+            if (nextOffset != galleryScrollOffset) {
+                galleryScrollOffset = nextOffset;
+            }
+            return true;
         }
 
         int maxPage = getMaxPageIndex();
@@ -3187,6 +3198,20 @@ public class PathmindMarketplaceScreen extends Screen {
         return PathmindMarketplaceLayout.cardsPerPage(layout, getSectionHeaderHeight());
     }
 
+    private int getMaxGalleryScroll(Layout layout) {
+        int entriesPerPage = getCardsPerPage(layout);
+        int startIndex = pageIndex * entriesPerPage;
+        int entriesOnPage = Math.max(0, Math.min(entriesPerPage, presets.size() - startIndex));
+        int rowsOnPage = (entriesOnPage + PathmindMarketplaceLayout.gridColumns() - 1)
+            / PathmindMarketplaceLayout.gridColumns();
+        if (rowsOnPage == 0) {
+            return 0;
+        }
+        int contentHeight = 2 + rowsOnPage * CARD_SIZE + (rowsOnPage - 1) * CARD_GAP;
+        int viewportHeight = layout.sectionHeight - getSectionHeaderHeight() - FOOTER_HEIGHT;
+        return Math.max(0, contentHeight - viewportHeight);
+    }
+
     private int getAuthorEntriesPerPage(Layout layout) {
         return PathmindMarketplaceLayout.authorEntriesPerPage(layout, getSectionHeaderHeight());
     }
@@ -3253,6 +3278,7 @@ public class PathmindMarketplaceScreen extends Screen {
 
     private void navigateToPage(Layout layout, int targetPageIndex) {
         pageIndex = Math.max(0, Math.min(targetPageIndex, getMaxPageIndex()));
+        galleryScrollOffset = 0;
     }
 
     static String formatTags(List<String> tags) {

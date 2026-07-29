@@ -131,12 +131,7 @@ final class PathmindMarketplaceLayout {
     }
 
     static int cardsPerPage(PathmindMarketplaceScreen.Layout layout, int sectionHeaderHeight) {
-        int availableHeight = layout.sectionHeight() - sectionHeaderHeight - PathmindMarketplaceScreen.FOOTER_HEIGHT - 2;
-        int rows = Math.max(1,
-            (availableHeight + PathmindMarketplaceScreen.CARD_GAP)
-                / (PathmindMarketplaceScreen.CARD_SIZE + PathmindMarketplaceScreen.CARD_GAP));
-        rows = Math.min(MAX_CARD_ROWS_PER_PAGE, rows);
-        return gridColumns() * rows;
+        return gridColumns() * MAX_CARD_ROWS_PER_PAGE;
     }
 
     static int authorEntriesPerPage(PathmindMarketplaceScreen.Layout layout, int sectionHeaderHeight) {

@@ -115,6 +115,7 @@ public class Node {
     private final NodeSensorCoordinator sensorCoordinator;
     private final NodeParameterValues parameterValues;
     private final NodeTextContent textContent;
+    private final NodeExecutionCoordinator executionCoordinator;
     static final int MIN_WIDTH = 92;
     static final int MIN_HEIGHT = 44;
     static final int EVENT_FUNCTION_MIN_HEIGHT = 36;
@@ -333,6 +334,7 @@ public class Node {
             layoutState.clearMessageFieldContentWidthOverride();
             recalculateDimensions();
         });
+        this.executionCoordinator = new NodeExecutionCoordinator(this);
         this.dynamicBooleanOperatorSlotCount = isExpandableBooleanOperatorType(type) ? 2 : 0;
         this.stickyNoteText = "";
         this.gotoAllowBreakWhileExecuting = false;
@@ -2821,110 +2823,7 @@ public class Node {
     }
 
     public CompletableFuture<Void> execute(int executionId) {
-        CompletableFuture<Void> future = new CompletableFuture<>();
-        net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
-
-        if (hasParameterSlot()) {
-            int requiredSlotCount = getParameterSlotCount();
-            for (int i = 0; i < requiredSlotCount; i++) {
-                if (isParameterSlotRequired(i) && getAttachedParameter(i) == null) {
-                    String label = getParameterSlotLabel(i);
-                    NodeExecutionCompletion.fail(this, client, future,
-                        type.getDisplayName() + " requires a " + label.toLowerCase(Locale.ROOT) + " parameter before it can run.");
-                    return future;
-                }
-            }
-        }
-
-        if (!reportEmptyParametersForNode(this, future)) {
-            return future;
-        }
-
-        if (requiresInGameRuntime() && (client == null || client.player == null || client.level == null)) {
-            NodeExecutionCompletion.fail(this, client, future,
-                type.getDisplayName() + " requires an in-game world before it can run.");
-            return future;
-        }
-
-        if (!requiresClientThreadExecution()) {
-            try {
-                ExecutionManager.getInstance().runWithExecutionContext(executionId,
-                    () -> NodeCommandDispatcher.execute(this, future));
-            } catch (Exception e) {
-                LOGGER.warn("Error executing node {}: {}", type, e.getMessage(), e);
-                NodeExecutionCompletion.completeExceptionally(future, e);
-            }
-            return future;
-        }
-
-        if (client != null) {
-            client.execute(() -> {
-                try {
-                    ExecutionManager.getInstance().runWithExecutionContext(executionId,
-                        () -> NodeCommandDispatcher.execute(this, future));
-                } catch (Exception e) {
-                    LOGGER.warn("Error executing node {}: {}", type, e.getMessage(), e);
-                    NodeExecutionCompletion.completeExceptionally(future, e);
-                }
-            });
-        } else {
-            NodeExecutionCompletion.completeExceptionally(future, new RuntimeException("Minecraft client not available"));
-        }
-
-        return future;
-    }
-
-    private boolean requiresInGameRuntime() {
-        if (type == null) {
-            return false;
-        }
-        if (type.requiresBaritone()) {
-            return true;
-        }
-        NodeCategory category = type.getCategory();
-        if (category == NodeCategory.NAVIGATION || category == NodeCategory.WORLD || category == NodeCategory.PLAYER) {
-            return true;
-        }
-        if (category == NodeCategory.SENSORS) {
-            return type != NodeType.SENSOR_CHAT_MESSAGE
-                && type != NodeType.SENSOR_JOINED_SERVER
-                && type != NodeType.SENSOR_FABRIC_EVENT
-                && type != NodeType.SENSOR_KEY_PRESSED;
-        }
-        if (category == NodeCategory.INTERFACE) {
-            return type != NodeType.MESSAGE && type != NodeType.STICKY_NOTE;
-        }
-        if (category == NodeCategory.PARAMETERS) {
-            return type == NodeType.PARAM_PLAYER
-                || type == NodeType.PARAM_ENTITY
-                || type == NodeType.PARAM_GUI
-                || type == NodeType.PARAM_INVENTORY_SLOT
-                || type == NodeType.PARAM_HAND
-                || type == NodeType.PARAM_PLACE_TARGET
-                || type == NodeType.PARAM_CLOSEST;
-        }
-        return false;
-    }
-
-    private boolean requiresClientThreadExecution() {
-        return switch (type) {
-            case EVENT_CALL,
-                EVENT_FUNCTION,
-                START,
-                ROUTINE_ENTRY,
-                ROUTINE_CALL,
-                ROUTINE_INPUT,
-                SET_VARIABLE,
-                CALCULATE,
-                CONTROL_REPEAT,
-                CONTROL_FOREVER,
-                START_CHAIN,
-                RUN_PRESET,
-                TEMPLATE,
-                STOP_CHAIN,
-                STOP_ALL -> false;
-            default -> true;
-        };
+        return executionCoordinator.execute(executionId);
     }
 
     ParameterHandlingResult preprocessAttachedParameter(EnumSet<ParameterUsage> usages, CompletableFuture<Void> future) {

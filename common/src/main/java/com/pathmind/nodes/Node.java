@@ -263,7 +263,6 @@ public class Node {
     private static final int STICKY_NOTE_HANDLE_SIZE = 8;
     static final int BOOK_PAGE_MAX_CHARS = 256;
     static final double PARAMETER_SEARCH_RADIUS = 64.0;
-    private static final Method CLIENT_WORLD_GET_ENTITY_BY_UUID = resolveClientWorldGetEntityByUuid();
     static final double DEFAULT_REACH_DISTANCE_SQUARED = 25.0D;
     private static final double DEFAULT_REACH_DISTANCE = Math.sqrt(DEFAULT_REACH_DISTANCE_SQUARED);
     static final double DEFAULT_DIRECTION_DISTANCE = 16.0;
@@ -4232,16 +4231,6 @@ public class Node {
         return worldTargetResolver.findNearestOpenBlock(client, range);
     }
 
-    private static Method resolveClientWorldGetEntityByUuid() {
-        try {
-            Method method = net.minecraft.client.multiplayer.ClientLevel.class.getMethod("getEntity", java.util.UUID.class);
-            method.setAccessible(true);
-            return method;
-        } catch (NoSuchMethodException ignored) {
-            return null;
-        }
-    }
-
     void resetBaritonePathing(Object baritone, Object mineProcess) {
         if (baritone == null) {
             return;
@@ -4880,60 +4869,11 @@ public class Node {
     }
 
     String getBlockParameterValue(Node node) {
-        if (node == null) {
-            return null;
-        }
-        String blockId = getParameterString(node, "Block");
-        if (blockId == null || blockId.isEmpty() || isAnySelectionValue(blockId)) {
-            return null;
-        }
-        String state = getParameterString(node, "State");
-        if (state == null || state.isEmpty() || isAnySelectionValue(state)) {
-            return blockId;
-        }
-        Optional<String> combined = BlockSelection.combine(blockId, state);
-        if (combined.isPresent()) {
-            return combined.get();
-        }
-        notifyInvalidBlockStateSelection(blockId, state);
-        return null;
+        return worldTargetResolver.getBlockParameterValue(node);
     }
 
     String getEntityParameterState(Node node) {
-        if (node == null) {
-            return "";
-        }
-        String state = getParameterString(node, "State");
-        if (state == null) {
-            return "";
-        }
-        String trimmedState = state.trim();
-        if (trimmedState.isEmpty()) {
-            return "";
-        }
-        String entityRaw = getParameterString(node, "Entity");
-        if (entityRaw == null || entityRaw.trim().isEmpty()) {
-            return "";
-        }
-        String primaryEntity = entityRaw;
-        List<String> parts = splitMultiValueList(entityRaw);
-        if (!parts.isEmpty()) {
-            primaryEntity = parts.getFirst();
-        }
-        String sanitized = sanitizeResourceId(primaryEntity);
-        String normalized = sanitized != null && !sanitized.isEmpty()
-            ? normalizeResourceId(sanitized, "minecraft")
-            : primaryEntity;
-        Identifier identifier = Identifier.tryParse(normalized);
-        if (identifier == null || !BuiltInRegistries.ENTITY_TYPE.containsKey(identifier)) {
-            return trimmedState;
-        }
-        net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
-        if (!EntityStateOptions.isStateSupported(BuiltInRegistries.ENTITY_TYPE.getOptional(identifier).orElse(null), client != null ? client.level : null, trimmedState)) {
-            notifyInvalidEntityStateSelection(primaryEntity, trimmedState);
-            return trimmedState;
-        }
-        return trimmedState;
+        return worldTargetResolver.getEntityParameterState(node);
     }
 
     double getDoubleParameter(String name, double defaultValue) {
@@ -4961,14 +4901,14 @@ public class Node {
         return NodeRuntimeParameterResolver.evaluateNumericExpression(value);
     }
 
-    private void notifyInvalidBlockStateSelection(String blockId, String state) {
+    void notifyInvalidBlockStateSelection(String blockId, String state) {
         net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
         String blockLabel = (blockId == null || blockId.isEmpty()) ? tr("pathmind.error.selectedBlock") : blockId;
         String stateLabel = state == null || state.isEmpty() ? tr("pathmind.error.unspecifiedState") : state;
         sendNodeErrorMessage(client, tr("pathmind.error.invalidBlockState", stateLabel, blockLabel, type.getDisplayName()));
     }
 
-    private void notifyInvalidEntityStateSelection(String entityId, String state) {
+    void notifyInvalidEntityStateSelection(String entityId, String state) {
         net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
         String entityLabel = (entityId == null || entityId.isEmpty()) ? tr("pathmind.error.selectedEntity") : entityId;
         String stateLabel = state == null || state.isEmpty() ? tr("pathmind.error.unspecifiedState") : state;
@@ -4976,55 +4916,15 @@ public class Node {
     }
 
     Optional<BlockPos> findNearestDroppedItem(net.minecraft.client.Minecraft client, Item item, double range) {
-        if (client == null || client.player == null || client.level == null || item == null) {
-            return Optional.empty();
-        }
-        double searchRadius = Math.max(1.0, range);
-        AABB searchBox = client.player.getBoundingBox().inflate(searchRadius);
-        List<ItemEntity> entities = client.level.getEntitiesOfClass(ItemEntity.class, searchBox,
-            entity -> entity != null && !entity.isRemoved() && !entity.getItem().isEmpty() && entity.getItem().is(item));
-        if (entities.isEmpty()) {
-            return Optional.empty();
-        }
-        ItemEntity nearest = Collections.min(entities, Comparator.comparingDouble(entity -> entity.distanceToSqr(client.player)));
-        return Optional.of(nearest.blockPosition());
+        return worldTargetResolver.findNearestDroppedItem(client, item, range);
     }
 
     Optional<Entity> findNearestEntity(net.minecraft.client.Minecraft client, EntityType<?> entityType, double range) {
-        return findNearestEntity(client, entityType, range, "");
+        return worldTargetResolver.findNearestEntity(client, entityType, range);
     }
 
     Optional<Entity> findNearestEntity(net.minecraft.client.Minecraft client, EntityType<?> entityType, double range, String state) {
-        if (client == null || client.player == null || client.level == null || entityType == null) {
-            return Optional.empty();
-        }
-        double searchRadius = Math.max(1.0, range);
-        AABB searchBox = client.player.getBoundingBox().inflate(searchRadius);
-        Identifier targetTypeId = BuiltInRegistries.ENTITY_TYPE.getKey(entityType);
-        List<Entity> matches = client.level.getEntities(
-            client.player,
-            searchBox,
-            entity -> {
-                if (entity == null) {
-                    return false;
-                }
-                EntityType<?> candidateType = entity.getType();
-                boolean sameType = candidateType == entityType;
-                if (!sameType) {
-                    Identifier candidateId = BuiltInRegistries.ENTITY_TYPE.getKey(candidateType);
-                    sameType = targetTypeId.equals(candidateId);
-                }
-                return sameType && EntityStateOptions.matchesState(entity, state);
-            }
-        );
-        if (matches.isEmpty()) {
-            return Optional.empty();
-        }
-        for (Entity match : matches) {
-            TransientEntityPositionTracker.remember(match);
-        }
-        Entity nearest = Collections.min(matches, Comparator.comparingDouble(entity -> entity.distanceToSqr(client.player)));
-        return Optional.of(nearest);
+        return worldTargetResolver.findNearestEntity(client, entityType, range, state);
     }
 
     Entity resolveListItemEntity(Node listNode, RuntimeParameterData data, CompletableFuture<Void> future) {
@@ -5290,72 +5190,15 @@ public class Node {
     }
 
     Entity resolveEntityByUuid(net.minecraft.client.Minecraft client, java.util.UUID uuid) {
-        if (client == null || client.level == null || uuid == null) {
-            return null;
-        }
-        if (CLIENT_WORLD_GET_ENTITY_BY_UUID != null) {
-            try {
-                Object result = CLIENT_WORLD_GET_ENTITY_BY_UUID.invoke(client.level, uuid);
-                if (result instanceof Entity entity) {
-                    return entity;
-                }
-            } catch (IllegalAccessException | java.lang.reflect.InvocationTargetException ignored) {
-                // fall through to manual search
-            }
-        }
-
-        if (client.player != null && uuid.equals(client.player.getUUID())) {
-            return client.player;
-        }
-        for (AbstractClientPlayer player : client.level.players()) {
-            if (player != null && uuid.equals(player.getUUID())) {
-                return player;
-            }
-        }
-
-        double searchRadius = 96.0;
-        if (client.options != null) {
-            int viewDistance = client.options.renderDistance().get();
-            searchRadius = Math.max(searchRadius, viewDistance * 16.0);
-        }
-        AABB searchBox = client.player != null
-            ? client.player.getBoundingBox().inflate(searchRadius)
-            : new AABB(-searchRadius, -searchRadius, -searchRadius, searchRadius, searchRadius, searchRadius);
-        List<Entity> matches = client.level.getEntities(
-            client.player,
-            searchBox,
-            entity -> entity != null && uuid.equals(entity.getUUID())
-        );
-        return matches.isEmpty() ? null : matches.getFirst();
+        return worldTargetResolver.resolveEntityByUuid(client, uuid);
     }
 
     private List<Entity> findEntitiesByType(net.minecraft.client.Minecraft client, EntityType<?> entityType, double range, String state) {
-        if (client == null || client.player == null || client.level == null || entityType == null) {
-            return Collections.emptyList();
-        }
-        double searchRadius = Math.max(1.0, range);
-        AABB searchBox = client.player.getBoundingBox().inflate(searchRadius);
-        return client.level.getEntities(
-            client.player,
-            searchBox,
-            entity -> entity.getType() == entityType && EntityStateOptions.matchesState(entity, state)
-        );
+        return worldTargetResolver.findEntitiesByType(client, entityType, range, state);
     }
 
     List<ItemEntity> findItemsByType(net.minecraft.client.Minecraft client, Item item, double range) {
-        if (client == null || client.player == null || client.level == null || item == null) {
-            return Collections.emptyList();
-        }
-        double searchRadius = Math.max(1.0, range);
-        AABB searchBox = client.player.getBoundingBox().inflate(searchRadius);
-        return client.level.getEntitiesOfClass(
-            ItemEntity.class,
-            searchBox,
-            entity -> entity != null
-                && !entity.isRemoved()
-                && !entity.getItem().isEmpty()
-                && entity.getItem().is(item)
-        );
+        return worldTargetResolver.findItemsByType(client, item, range);
     }
     
     InteractionHand resolveHand(NodeParameter parameter, InteractionHand defaultHand) {

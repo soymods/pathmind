@@ -2235,45 +2235,7 @@ public class Node {
     }
 
     boolean shouldShowStateParameter() {
-        if (type == NodeType.PARAM_BLOCK) {
-            String blockValue = getParameterString(this, "Block");
-            if (blockValue == null || blockValue.isEmpty()) {
-                return false;
-            }
-            String stripped = BlockSelection.stripState(blockValue);
-            if (stripped == null || stripped.isEmpty()) {
-                return false;
-            }
-            String sanitized = sanitizeResourceId(stripped);
-            if (sanitized == null || sanitized.isEmpty()) {
-                return false;
-            }
-            String normalized = normalizeResourceId(sanitized, "minecraft");
-            return !BlockSelection.getStateOptions(normalized).isEmpty();
-        }
-        if (type == NodeType.PARAM_ENTITY) {
-            String entityValue = getParameterString(this, "Entity");
-            if (entityValue == null || entityValue.isEmpty()) {
-                return false;
-            }
-            String primary = entityValue;
-            List<String> parts = splitMultiValueList(entityValue);
-            if (!parts.isEmpty()) {
-                primary = parts.getFirst();
-            }
-            String sanitized = sanitizeResourceId(primary);
-            if (sanitized == null || sanitized.isEmpty()) {
-                return false;
-            }
-            String normalized = normalizeResourceId(sanitized, "minecraft");
-            Identifier identifier = Identifier.tryParse(normalized);
-            if (identifier == null || !BuiltInRegistries.ENTITY_TYPE.containsKey(identifier)) {
-                return false;
-            }
-            net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
-            return !EntityStateOptions.getOptions(BuiltInRegistries.ENTITY_TYPE.getOptional(identifier).orElse(null), client != null ? client.level : null).isEmpty();
-        }
-        return false;
+        return NodeAttributeParameters.shouldShowStateParameter(this);
     }
 
     int getMaxParameterLabelLength() {
@@ -2329,47 +2291,7 @@ public class Node {
     }
 
     int getVisibleParameterLineCount() {
-        if (type == NodeType.PARAM_DIRECTION) {
-            int count = 1;
-            for (NodeParameter param : parameters) {
-                if (param == null) {
-                    continue;
-                }
-                String label = getParameterLabel(param);
-                if (label != null && !label.isEmpty()) {
-                    count++;
-                }
-            }
-            return count;
-        }
-        if (type == NodeType.PARAM_BOOLEAN) {
-            ensureBooleanParameters();
-            int count = 1;
-            for (NodeParameter param : parameters) {
-                if (param == null) {
-                    continue;
-                }
-                String label = getParameterLabel(param);
-                if (label != null && !label.isEmpty()) {
-                    count++;
-                }
-            }
-            return count;
-        }
-        int count = 0;
-        for (NodeParameter param : parameters) {
-            if (param == null) {
-                continue;
-            }
-            String label = getParameterLabel(param);
-            if (label != null && !label.isEmpty()) {
-                count++;
-            }
-        }
-        if (supportsModeSelection()) {
-            count++;
-        }
-        return count;
+        return NodeAttributeParameters.getVisibleParameterLineCount(this);
     }
 
     public Map<String, String> exportParameterValues() {

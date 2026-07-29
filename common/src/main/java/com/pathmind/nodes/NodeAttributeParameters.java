@@ -1,7 +1,10 @@
 package com.pathmind.nodes;
 
+import com.pathmind.util.BlockSelection;
+import com.pathmind.util.EntityStateOptions;
 import com.pathmind.util.GuiSelectionMode;
 import java.util.List;
+import net.minecraft.client.Minecraft;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.Item;
@@ -160,6 +163,92 @@ final class NodeAttributeParameters {
         }
         int maxContentLength = Math.max(0, node.getMaxParameterLabelLength() - 3);
         return text.substring(0, maxContentLength) + "...";
+    }
+
+    static boolean shouldShowStateParameter(Node node) {
+        if (node.getType() == NodeType.PARAM_BLOCK) {
+            String blockValue = Node.getParameterString(node, "Block");
+            if (blockValue == null || blockValue.isEmpty()) {
+                return false;
+            }
+            String stripped = BlockSelection.stripState(blockValue);
+            if (stripped == null || stripped.isEmpty()) {
+                return false;
+            }
+            String sanitized = node.sanitizeResourceId(stripped);
+            if (sanitized == null || sanitized.isEmpty()) {
+                return false;
+            }
+            String normalized = node.normalizeResourceId(sanitized, "minecraft");
+            return !BlockSelection.getStateOptions(normalized).isEmpty();
+        }
+        if (node.getType() == NodeType.PARAM_ENTITY) {
+            String entityValue = Node.getParameterString(node, "Entity");
+            if (entityValue == null || entityValue.isEmpty()) {
+                return false;
+            }
+            String primary = entityValue;
+            List<String> parts = node.splitMultiValueList(entityValue);
+            if (!parts.isEmpty()) {
+                primary = parts.getFirst();
+            }
+            String sanitized = node.sanitizeResourceId(primary);
+            if (sanitized == null || sanitized.isEmpty()) {
+                return false;
+            }
+            String normalized = node.normalizeResourceId(sanitized, "minecraft");
+            Identifier identifier = Identifier.tryParse(normalized);
+            if (identifier == null || !BuiltInRegistries.ENTITY_TYPE.containsKey(identifier)) {
+                return false;
+            }
+            Minecraft client = Minecraft.getInstance();
+            return !EntityStateOptions.getOptions(BuiltInRegistries.ENTITY_TYPE.getOptional(identifier).orElse(null), client != null ? client.level : null).isEmpty();
+        }
+        return false;
+    }
+
+    static int getVisibleParameterLineCount(Node node) {
+        if (node.getType() == NodeType.PARAM_DIRECTION) {
+            int count = 1;
+            for (NodeParameter param : node.getParameters()) {
+                if (param == null) {
+                    continue;
+                }
+                String label = getParameterLabel(node, param);
+                if (label != null && !label.isEmpty()) {
+                    count++;
+                }
+            }
+            return count;
+        }
+        if (node.getType() == NodeType.PARAM_BOOLEAN) {
+            node.ensureBooleanParameters();
+            int count = 1;
+            for (NodeParameter param : node.getParameters()) {
+                if (param == null) {
+                    continue;
+                }
+                String label = getParameterLabel(node, param);
+                if (label != null && !label.isEmpty()) {
+                    count++;
+                }
+            }
+            return count;
+        }
+        int count = 0;
+        for (NodeParameter param : node.getParameters()) {
+            if (param == null) {
+                continue;
+            }
+            String label = getParameterLabel(node, param);
+            if (label != null && !label.isEmpty()) {
+                count++;
+            }
+        }
+        if (node.supportsModeSelection()) {
+            count++;
+        }
+        return count;
     }
 
     private static boolean isEnchantedBookTrade(Node node) {

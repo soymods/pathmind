@@ -16,7 +16,6 @@ import com.pathmind.data.WorkspaceFileAccess;
 import com.pathmind.execution.ExecutionManager;
 import com.pathmind.marketplace.MarketplaceAuthManager;
 import com.pathmind.marketplace.MarketplacePreset;
-import com.pathmind.marketplace.MarketplaceService;
 import com.pathmind.nodes.Node;
 import com.pathmind.nodes.NodeCatalog;
 import com.pathmind.nodes.NodeCategory;
@@ -83,7 +82,6 @@ import org.lwjgl.glfw.GLFW;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.util.tinyfd.TinyFileDialogs;
 
-import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -4241,7 +4239,7 @@ public class PathmindVisualEditorScreen extends Screen {
         return true;
     }
 
-    private void stopInlinePresetRename(boolean commit) {
+    void stopInlinePresetRename(boolean commit) {
         if (!isInlinePresetRenameActive()) {
             return;
         }
@@ -4696,7 +4694,7 @@ public class PathmindVisualEditorScreen extends Screen {
         return nodeGraph.exportGraphDataSnapshot();
     }
 
-    private boolean saveRootPresetWorkspace() {
+    boolean saveRootPresetWorkspace() {
         return NodeGraphPersistence.saveNodeGraphDataForPreset(activePresetName, snapshotRootPresetWorkspace());
     }
 
@@ -5138,7 +5136,7 @@ public class PathmindVisualEditorScreen extends Screen {
         return popupY - getBoundedPopupScrollOffset(animation, preferredHeight);
     }
 
-    private void resetBoundedPopupScroll(PopupAnimationHandler animation) {
+    void resetBoundedPopupScroll(PopupAnimationHandler animation) {
         popupScrollOffsets.remove(animation);
     }
 
@@ -5429,7 +5427,7 @@ public class PathmindVisualEditorScreen extends Screen {
         return PathmindPopupRenderer.animatedColor(animation, baseColor);
     }
 
-    private void closeInfoPopup() {
+    void closeInfoPopup() {
         resetBoundedPopupScroll(infoPopupAnimation);
         infoPopupAnimation.hide();
     }
@@ -5974,113 +5972,15 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void openPublishPresetPopup() {
-        presetDropdownController.close();
-        clearPublishPresetStatus();
-        closeInfoPopup();
-        stopInlinePresetRename(false);
-        closeCreatePresetPopup();
-        closeRenamePresetPopup();
-        closeSettingsPopup();
-        saveRootPresetWorkspace();
-        PresetManager.setActivePreset(activePresetName);
-        publishPresetSession = MarketplaceAuthManager.getCachedSession().orElse(null);
-        Optional<String> linkedPresetId = PresetManager.getMarketplaceLinkedPresetId(activePresetName);
-        if (publishPresetSession != null && linkedPresetId.isPresent()) {
-            publishPresetBusy = true;
-            setPublishPresetStatus(Component.translatable("pathmind.status.openingPublishedPreset").getString(), UITheme.TEXT_SECONDARY);
-            PathmindMarketplaceFlowController.resolveLinkedPreset(this.minecraft, publishPresetSession, linkedPresetId, result -> {
-                publishPresetBusy = false;
-                if (result.status() == PathmindMarketplaceFlowController.LinkedPresetStatus.FOUND) {
-                    publishPresetSession = result.session();
-                    clearPublishPresetStatus();
-                    if (this.minecraft != null) {
-                        this.minecraft.setScreen(new PathmindMarketplaceScreen(this, false, null, result.preset()));
-                    }
-                    return;
-                }
-                if (result.status() == PathmindMarketplaceFlowController.LinkedPresetStatus.SESSION_EXPIRED) {
-                    publishPresetSession = null;
-                    setPublishPresetStatus(Component.translatable("pathmind.status.sessionExpiredSignInAgain").getString(), UITheme.STATE_WARNING);
-                } else {
-                    publishPresetSession = result.session();
-                    setPublishPresetStatus(Component.translatable("pathmind.marketplace.linkedPresetNotFound").getString(), UITheme.STATE_WARNING);
-                }
-                openRawPublishPresetPopup();
-            });
-            return;
-        }
-        openRawPublishPresetPopup();
-    }
-
-    private void openRawPublishPresetPopup() {
-        publishPresetEditingPreset = null;
-        resetBoundedPopupScroll(publishPresetPopupAnimation);
-        publishPresetPopupAnimation.show();
-        if (publishPresetNameField != null) {
-            publishPresetNameField.setValue(activePresetName);
-            publishPresetNameField.setVisible(true);
-            publishPresetNameField.setEditable(true);
-            publishPresetNameField.setFocused(true);
-        }
-        if (publishPresetDescriptionField != null) {
-            publishPresetDescriptionField.setValue("");
-            publishPresetDescriptionField.setVisible(true);
-            publishPresetDescriptionField.setEditable(true);
-            publishPresetDescriptionField.setFocused(false);
-        }
-        if (publishPresetTagsField != null) {
-            publishPresetTagsField.setValue("");
-            publishPresetTagsField.setVisible(true);
-            publishPresetTagsField.setEditable(true);
-            publishPresetTagsField.setFocused(false);
-        }
-        publishPresetPublic = true;
+        presetPopupController.openPublishPresetPopup();
     }
 
     void reopenPublishPresetPopup(String presetName) {
-        saveRootPresetWorkspace();
-        PresetManager.setActivePreset(activePresetName);
-        clearPublishPresetStatus();
-        publishPresetSession = MarketplaceAuthManager.getCachedSession().orElse(null);
-        publishPresetEditingPreset = null;
-        resetBoundedPopupScroll(publishPresetPopupAnimation);
-        publishPresetPopupAnimation.show();
-        if (publishPresetNameField != null) {
-            publishPresetNameField.setValue(fallback(presetName, activePresetName));
-            publishPresetNameField.setVisible(true);
-            publishPresetNameField.setEditable(true);
-            publishPresetNameField.setFocused(true);
-        }
-        if (publishPresetDescriptionField != null) {
-            publishPresetDescriptionField.setValue("");
-            publishPresetDescriptionField.setVisible(true);
-            publishPresetDescriptionField.setEditable(true);
-            publishPresetDescriptionField.setFocused(false);
-        }
-        if (publishPresetTagsField != null) {
-            publishPresetTagsField.setValue("");
-            publishPresetTagsField.setVisible(true);
-            publishPresetTagsField.setEditable(true);
-            publishPresetTagsField.setFocused(false);
-        }
-        publishPresetPublic = true;
+        presetPopupController.reopenPublishPresetPopup(presetName);
     }
 
     void closePublishPresetPopup() {
-        resetBoundedPopupScroll(publishPresetPopupAnimation);
-        publishPresetPopupAnimation.hide();
-        publishPresetBusy = false;
-        publishPresetEditingPreset = null;
-        clearPublishPresetStatus();
-        if (publishPresetNameField != null) {
-            PathmindTextField.deactivate(publishPresetNameField);
-        }
-        if (publishPresetDescriptionField != null) {
-            PathmindTextField.deactivate(publishPresetDescriptionField);
-        }
-        if (publishPresetTagsField != null) {
-            PathmindTextField.deactivate(publishPresetTagsField);
-        }
+        presetPopupController.closePublishPresetPopup();
     }
 
     private void openRenamePresetPopup(String presetName) {
@@ -6493,112 +6393,11 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     void attemptPublishPreset() {
-        if (publishPresetBusy) {
-            return;
-        }
-        if (publishPresetNameField == null) {
-            return;
-        }
-
-        String desiredName = publishPresetNameField.getValue();
-        if (desiredName == null || desiredName.trim().isEmpty()) {
-            setPublishPresetStatus(Component.translatable("pathmind.status.enterPresetName").getString(), UITheme.STATE_ERROR);
-            return;
-        }
-
-        if (publishPresetSession == null) {
-            setPublishPresetStatus(Component.translatable("pathmind.status.signInBeforePublishing").getString(), UITheme.STATE_WARNING);
-            return;
-        }
-
-        saveRootPresetWorkspace();
-        PresetManager.setActivePreset(activePresetName);
-        Path presetPath = PresetManager.getPresetPath(activePresetName);
-        if (presetPath == null || !Files.exists(presetPath)) {
-            setPublishPresetStatus(Component.translatable("pathmind.status.currentPresetFileMissing").getString(), UITheme.STATE_ERROR);
-            return;
-        }
-
-        publishPresetBusy = true;
-        setPublishPresetStatus(Component.translatable("pathmind.status.publishingPreset").getString(), UITheme.TEXT_SECONDARY);
-        MarketplaceService.PublishRequest request = PathmindMarketplaceActions.publishRequest(
-                presetPath,
-                null,
-                desiredName.trim(),
-                fallback(publishPresetSession.getDisplayName(), fallback(publishPresetSession.getEmail(), Component.translatable("pathmind.status.discordUser").getString())),
-                publishPresetDescriptionField == null ? "" : publishPresetDescriptionField.getValue().trim(),
-                publishPresetTagsField == null ? "" : publishPresetTagsField.getValue(),
-                getCurrentMinecraftVersion(),
-                getModVersion(),
-                publishPresetPublic
-        );
-        PathmindMarketplaceFlowController.submitPublish(this.minecraft, null, request, result -> {
-            if (result.status() == PathmindMarketplaceFlowController.PublishStatus.SESSION_EXPIRED) {
-                publishPresetBusy = false;
-                publishPresetSession = null;
-                setPublishPresetStatus(Component.translatable("pathmind.status.sessionExpiredSignInAgain").getString(), UITheme.STATE_WARNING);
-                return;
-            }
-            publishPresetSession = result.session();
-            if (result.status() == PathmindMarketplaceFlowController.PublishStatus.RATE_LIMITED) {
-                publishPresetBusy = false;
-                setPublishPresetStatus(result.limitMessage(), UITheme.STATE_WARNING);
-                return;
-            }
-            finishPublishPreset(result.preset(), result.throwable());
-        });
+        presetPopupController.attemptPublishPreset();
     }
 
     void startPublishPresetSignIn() {
-        if (publishPresetBusy) {
-            return;
-        }
-        publishPresetBusy = true;
-        setPublishPresetStatus(Component.translatable("pathmind.status.openingDiscordSignIn").getString(), UITheme.TEXT_SECONDARY);
-        PathmindMarketplaceAsyncController.startDiscordSignIn(this.minecraft, (session, throwable) -> {
-            publishPresetBusy = false;
-            if (throwable != null || session == null) {
-                publishPresetSession = null;
-                setPublishPresetStatus(fallback(throwable == null ? null : throwable.getMessage(), Component.translatable("pathmind.status.discordSignInFailed").getString()), UITheme.STATE_ERROR);
-                return;
-            }
-            publishPresetSession = session;
-            setPublishPresetStatus(Component.translatable("pathmind.status.signedInAs", fallback(session.getDisplayName(), fallback(session.getEmail(), Component.translatable("pathmind.status.discordUser").getString()))).getString(), getAccentColor());
-        });
-    }
-
-    private void finishPublishPreset(MarketplacePreset preset, Throwable throwable) {
-        publishPresetBusy = false;
-        if (throwable != null) {
-            setPublishPresetStatus(buildPublishFailureMessage(throwable), UITheme.STATE_ERROR);
-            return;
-        }
-        closePublishPresetPopup();
-        if (preset != null) {
-            PresetManager.setMarketplaceLinkedPreset(activePresetName, preset.getId());
-        }
-        if (this.minecraft != null && this.minecraft.player != null) {
-            this.minecraft.player.displayClientMessage(Component.translatable("pathmind.status.presetPublished"), true);
-        }
-        if (this.minecraft != null && preset != null) {
-            this.minecraft.setScreen(new PathmindMarketplaceScreen(this, false, null, preset));
-        }
-    }
-
-    private String buildPublishFailureMessage(Throwable throwable) {
-        Throwable current = throwable;
-        while (current != null && current.getCause() != null && current.getCause() != current) {
-            current = current.getCause();
-        }
-        String message = current == null ? null : current.getMessage();
-        if (message == null || message.isBlank()) {
-            return Component.translatable("pathmind.status.publishFailed").getString();
-        }
-        String normalized = message.replace('\n', ' ').replace('\r', ' ').trim();
-        if (normalized.length() > 120) {
-            normalized = normalized.substring(0, 117) + "...";
-        }
-        return normalized;
+        presetPopupController.startPublishPresetSignIn();
     }
 
     void attemptRenamePreset() {
@@ -6745,12 +6544,12 @@ public class PathmindVisualEditorScreen extends Screen {
         createPresetStatusColor = UITheme.TEXT_SECONDARY;
     }
 
-    private void setPublishPresetStatus(String message, int color) {
+    void setPublishPresetStatus(String message, int color) {
         publishPresetStatus = message != null ? message : "";
         publishPresetStatusColor = color;
     }
 
-    private void clearPublishPresetStatus() {
+    void clearPublishPresetStatus() {
         publishPresetStatus = "";
         publishPresetStatusColor = UITheme.TEXT_SECONDARY;
     }
@@ -7266,12 +7065,20 @@ public class PathmindVisualEditorScreen extends Screen {
         return this.height;
     }
 
-    Font textRenderer() {
-        return this.font;
-    }
-
     Minecraft client() {
         return this.minecraft;
+    }
+
+    String activePresetName() {
+        return activePresetName;
+    }
+
+    void closePresetDropdown() {
+        presetDropdownController.close();
+    }
+
+    Font textRenderer() {
+        return this.font;
     }
 
     int[] getSettingsPopupBodyBounds(int popupX, int popupY, int popupWidth, int popupHeight) {
@@ -7440,7 +7247,7 @@ public class PathmindVisualEditorScreen extends Screen {
         settingsPopupAnimation.show();
     }
 
-    private void closeSettingsPopup() {
+    void closeSettingsPopup() {
         languageDropdownOpen = false;
         nodeDelayDragging = false;
         createListRadiusDragging = false;
@@ -7992,7 +7799,7 @@ public class PathmindVisualEditorScreen extends Screen {
         return (TITLE_BAR_HEIGHT - PRESET_MENU_BUTTON_SIZE) / 2;
     }
 
-    private String getModVersion() {
+    String getModVersion() {
         return LoaderMetadata.getModVersion(PathmindCommon.MOD_ID);
     }
 
@@ -8000,7 +7807,7 @@ public class PathmindVisualEditorScreen extends Screen {
         return LoaderMetadata.getLoaderVersion();
     }
 
-    private String getCurrentMinecraftVersion() {
+    String getCurrentMinecraftVersion() {
         return this.minecraft != null ? this.minecraft.getLaunchedVersion() : "Unknown";
     }
 

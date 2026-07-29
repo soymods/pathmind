@@ -117,6 +117,8 @@ public class Node {
     private final NodeTextContent textContent;
     private final NodeExecutionCoordinator executionCoordinator;
     private final NodeAttachmentCoordinator attachmentCoordinator;
+    private final NodeRoutineMetadata routineMetadata;
+    private final NodeEditorMetadata editorMetadata;
     static final int MIN_WIDTH = 92;
     static final int MIN_HEIGHT = 44;
     static final int EVENT_FUNCTION_MIN_HEIGHT = 36;
@@ -301,18 +303,6 @@ public class Node {
     private boolean gotoAllowBreakWhileExecuting;
     private boolean gotoAllowPlaceWhileExecuting;
     private boolean keyPressedActivatesInGuis;
-    private String templateName;
-    private int templateVersion;
-    private NodeGraphData templateGraphData;
-    private RuntimeValueScope runtimeValueScope;
-    private String routineId;
-    private String routineInputId;
-    private final List<NodeGraphData.RoutineArgumentData> routineArguments;
-
-    private boolean usesTemplateBacking() {
-        return type == NodeType.TEMPLATE;
-    }
-
     public Node(NodeType type, int x, int y) {
         this.id = java.util.UUID.randomUUID().toString();
         this.type = type;
@@ -337,18 +327,13 @@ public class Node {
         });
         this.executionCoordinator = new NodeExecutionCoordinator(this);
         this.attachmentCoordinator = new NodeAttachmentCoordinator(this);
+        this.routineMetadata = new NodeRoutineMetadata(this);
+        this.editorMetadata = new NodeEditorMetadata(type);
         this.dynamicBooleanOperatorSlotCount = isExpandableBooleanOperatorType(type) ? 2 : 0;
         this.stickyNoteText = "";
         this.gotoAllowBreakWhileExecuting = false;
         this.gotoAllowPlaceWhileExecuting = false;
         this.keyPressedActivatesInGuis = true;
-        this.templateName = usesTemplateBacking() ? "Template" : "";
-        this.templateVersion = 0;
-        this.templateGraphData = null;
-        this.runtimeValueScope = RuntimeValueScope.GLOBAL;
-        this.routineId = "";
-        this.routineInputId = "";
-        this.routineArguments = new ArrayList<>();
         parameterValues.initializeParameters();
         recalculateDimensions();
         resetControlState();
@@ -652,148 +637,68 @@ public class Node {
     }
 
     public String getRoutineId() {
-        return routineId == null ? "" : routineId;
+        return routineMetadata.getRoutineId();
     }
 
     public String getRoutineInputId() {
-        return routineInputId == null ? "" : routineInputId;
+        return routineMetadata.getRoutineInputId();
     }
 
     public void setRoutineIdentity(String routineId, String inputId) {
-        this.routineId = routineId == null ? "" : routineId;
-        this.routineInputId = inputId == null ? "" : inputId;
+        routineMetadata.setRoutineIdentity(routineId, inputId);
     }
 
     public static Node createRoutineEntry(String routineId, String label, int x, int y) {
-        Node node = new Node(NodeType.ROUTINE_ENTRY, x, y);
-        node.setRoutineIdentity(routineId, "");
-        node.getParameter("Name").setStringValue(label == null ? "Routine" : label);
-        node.recalculateDimensions();
-        return node;
+        return NodeRoutineMetadata.createRoutineEntry(routineId, label, x, y);
     }
 
     public static Node createRoutineInput(String routineId, RoutineInputDefinition input, int x, int y) {
-        Node node = new Node(NodeType.ROUTINE_INPUT, x, y);
-        node.setRoutineIdentity(routineId, input == null ? "" : input.getId());
-        if (input != null) {
-            node.getParameter("Label").setStringValue(input.getLabel());
-            node.getParameter("ValueKind").setStringValue(input.getValueKind().name());
-            node.getParameter("Default").setStringValue(input.getDefaultValue());
-            node.getParameter("Required").setStringValue(Boolean.toString(input.isRequired()));
-        }
-        node.recalculateDimensions();
-        return node;
+        return NodeRoutineMetadata.createRoutineInput(routineId, input, x, y);
     }
 
     public static Node createRoutineCall(String routineId, String name, int x, int y) {
-        Node node = new Node(NodeType.ROUTINE_CALL, x, y);
-        node.setRoutineIdentity(routineId, "");
-        node.getParameter("Name").setStringValue(name == null || name.isBlank() ? "Routine" : name.trim());
-        node.recalculateDimensions();
-        return node;
+        return NodeRoutineMetadata.createRoutineCall(routineId, name, x, y);
     }
 
     public static Node createRoutineCall(NodeGraphData.RoutineDefinitionData routine, int x, int y) {
-        Node node = createRoutineCall(routine == null ? "" : routine.getId(), routine == null ? "Routine" : routine.getName(), x, y);
-        node.syncRoutineCallDefinition(routine);
-        return node;
+        return NodeRoutineMetadata.createRoutineCall(routine, x, y);
     }
 
     public void setRoutineArguments(List<NodeGraphData.RoutineArgumentData> arguments) {
-        routineArguments.clear();
-        if (arguments != null) {
-            for (NodeGraphData.RoutineArgumentData argument : arguments) {
-                if (argument != null && argument.getInputId() != null && !argument.getInputId().isBlank()) {
-                    routineArguments.add(copyRoutineArgument(argument));
-                }
-            }
-        }
-        recalculateDimensions();
+        routineMetadata.setRoutineArguments(arguments);
     }
 
     public List<NodeGraphData.RoutineArgumentData> getRoutineArguments() {
-        return routineArguments.stream().map(Node::copyRoutineArgument).toList();
+        return routineMetadata.getRoutineArguments();
     }
 
-    /** Refreshes the public signature while preserving bindings for inputs that still exist. */
     public void syncRoutineCallDefinition(NodeGraphData.RoutineDefinitionData routine) {
-        if (type != NodeType.ROUTINE_CALL || routine == null || !getRoutineId().equals(routine.getId())) return;
-        Map<String, Node> boundArguments = new java.util.LinkedHashMap<>();
-        for (Map.Entry<Integer, Node> binding : new ArrayList<>(getAttachedParameters().entrySet())) {
-            String inputId = getRoutineInputIdForSlot(binding.getKey());
-            if (!inputId.isBlank() && binding.getValue() != null) boundArguments.put(inputId, binding.getValue());
-            attachments.detachParameter(binding.getKey());
-        }
-        NodeParameter name = getParameter("Name");
-        if (name != null) name.setStringValue(routine.getName() == null ? "Routine" : routine.getName());
-        ArrayList<NodeGraphData.RoutineInputData> inputs = new ArrayList<>(routine.getInputs());
-        inputs.sort(java.util.Comparator.comparingInt(input -> input.getOrder() == null ? Integer.MAX_VALUE : input.getOrder()));
-        routineArguments.clear();
-        for (NodeGraphData.RoutineInputData input : inputs) {
-            if (input == null || input.getId() == null || input.getId().isBlank()) continue;
-            NodeGraphData.RoutineArgumentData argument = new NodeGraphData.RoutineArgumentData();
-            argument.setInputId(input.getId());
-            argument.setLabel(input.getLabel());
-            argument.setValueKind(input.getValueKind());
-            argument.setRequired(input.getRequired());
-            argument.setDefaultValue(input.getDefaultValue());
-            argument.setOrphaned(false);
-            routineArguments.add(argument);
-        }
-        for (Map.Entry<String, Node> binding : boundArguments.entrySet()) {
-            int slot = getRoutineSlotForInputId(binding.getKey());
-            if (slot < 0) continue;
-            attachments.attachParameter(this, slot, binding.getValue());
-            binding.getValue().setSocketsHidden(true);
-            binding.getValue().setDragging(false);
-        }
-        recalculateDimensions();
-    }
-
-    private static NodeGraphData.RoutineArgumentData copyRoutineArgument(NodeGraphData.RoutineArgumentData source) {
-        NodeGraphData.RoutineArgumentData copy = new NodeGraphData.RoutineArgumentData();
-        copy.setInputId(source.getInputId());
-        copy.setLabel(source.getLabel());
-        copy.setValueKind(source.getValueKind());
-        copy.setRequired(source.getRequired());
-        copy.setDefaultValue(source.getDefaultValue());
-        copy.setOrphaned(source.getOrphaned());
-        return copy;
+        routineMetadata.syncRoutineCallDefinition(routine);
     }
 
     public String getRoutineInputIdForSlot(int slotIndex) {
-        return slotIndex >= 0 && slotIndex < routineArguments.size() ? routineArguments.get(slotIndex).getInputId() : "";
+        return routineMetadata.getRoutineInputIdForSlot(slotIndex);
     }
 
     public int getRoutineSlotForInputId(String inputId) {
-        if (inputId == null || inputId.isBlank()) return -1;
-        for (int i = 0; i < routineArguments.size(); i++) if (inputId.equals(routineArguments.get(i).getInputId())) return i;
-        return -1;
+        return routineMetadata.getRoutineSlotForInputId(inputId);
     }
 
     public boolean isRoutineArgumentOrphaned(int slotIndex) {
-        return slotIndex >= 0 && slotIndex < routineArguments.size()
-            && Boolean.TRUE.equals(routineArguments.get(slotIndex).getOrphaned());
+        return routineMetadata.isRoutineArgumentOrphaned(slotIndex);
     }
 
     public String getRoutineArgumentDefaultValue(int slotIndex) {
-        if (slotIndex < 0 || slotIndex >= routineArguments.size()) return "";
-        String value = routineArguments.get(slotIndex).getDefaultValue();
-        return value == null ? "" : value;
+        return routineMetadata.getRoutineArgumentDefaultValue(slotIndex);
     }
 
     public String getRoutineArgumentValueKind(int slotIndex) {
-        return slotIndex >= 0 && slotIndex < routineArguments.size()
-            ? RoutineValueKind.fromSerialized(routineArguments.get(slotIndex).getValueKind()).name() : RoutineValueKind.ANY.name();
+        return routineMetadata.getRoutineArgumentValueKind(slotIndex);
     }
 
     public EnumSet<NodeValueTrait> getAcceptedTraitsForParameterSlot(int slotIndex) {
-        if (type == NodeType.ROUTINE_CALL && slotIndex >= 0 && slotIndex < routineArguments.size()) {
-            return EnumSet.of(NodeValueTrait.ANY);
-        }
-        return NodeTraitRegistry.getAcceptedTraits(type, slotIndex);
+        return routineMetadata.getAcceptedTraitsForParameterSlot(slotIndex);
     }
-
     public boolean isSensorNode() {
         return NodeCatalog.isBooleanSensor(type);
     }
@@ -865,7 +770,7 @@ public class Node {
     }
 
     public boolean canAcceptParameter() {
-        if (type == NodeType.ROUTINE_CALL) return !routineArguments.isEmpty();
+        if (type == NodeType.ROUTINE_CALL) return routineMetadata.hasRoutineArguments();
         if (!NodeCompatibility.canHostSlot(type, NodeSlotType.PARAMETER)
                 || NodeParameterRepair.usesVillagerTradeNumberField(type)
                 || !NodeTraitRegistry.canHostParameter(type)) {
@@ -889,7 +794,7 @@ public class Node {
 
     public boolean usesMinimalNodePresentation() {
         return NodeCatalog.usesMinimalNodePresentation(type)
-            || type == NodeType.ROUTINE_CALL && routineArguments.isEmpty()
+            || type == NodeType.ROUTINE_CALL && !routineMetadata.hasRoutineArguments()
             || type == NodeType.ROUTINE_ENTRY;
     }
 
@@ -938,7 +843,7 @@ public class Node {
             return false;
         }
         if (type == NodeType.ROUTINE_CALL) {
-            NodeGraphData.RoutineArgumentData argument = routineArguments.get(slotIndex);
+            NodeGraphData.RoutineArgumentData argument = routineMetadata.getRoutineArgument(slotIndex);
             return !Boolean.TRUE.equals(argument.getOrphaned())
                 && Boolean.TRUE.equals(argument.getRequired())
                 && (argument.getDefaultValue() == null || argument.getDefaultValue().isBlank());
@@ -1311,7 +1216,7 @@ public class Node {
         if (isExpandableBooleanOperator()) {
             return Math.max(2, dynamicBooleanOperatorSlotCount);
         }
-        if (type == NodeType.ROUTINE_CALL) return routineArguments.size();
+        if (type == NodeType.ROUTINE_CALL) return routineMetadata.getRoutineArgumentCount();
         return NodeTraitRegistry.getParameterSlotCount(type);
     }
 
@@ -1336,8 +1241,8 @@ public class Node {
         if (isComparisonOperator() && !isExpandableBooleanOperator()) {
             return "";
         }
-        if (type == NodeType.ROUTINE_CALL && slotIndex >= 0 && slotIndex < routineArguments.size()) {
-            NodeGraphData.RoutineArgumentData argument = routineArguments.get(slotIndex);
+        if (type == NodeType.ROUTINE_CALL && slotIndex >= 0 && slotIndex < routineMetadata.getRoutineArgumentCount()) {
+            NodeGraphData.RoutineArgumentData argument = routineMetadata.getRoutineArgument(slotIndex);
             String label = argument.getLabel() == null || argument.getLabel().isBlank() ? "Input" : argument.getLabel();
             return Boolean.TRUE.equals(argument.getOrphaned()) ? "Removed: " + label : label;
         }
@@ -2269,43 +2174,31 @@ public class Node {
     }
 
     public String getTemplateName() {
-        if (!usesTemplateBacking()) {
-            return "";
-        }
-        return (templateName == null || templateName.isEmpty()) ? "Template" : templateName;
+        return editorMetadata.getTemplateName();
     }
 
     public void setTemplateName(String templateName) {
-        if (!usesTemplateBacking()) {
-            return;
-        }
-        this.templateName = (templateName == null || templateName.isBlank()) ? "Template" : templateName.trim();
+        editorMetadata.setTemplateName(templateName);
     }
 
     public int getTemplateVersion() {
-        return usesTemplateBacking() ? templateVersion : 0;
+        return editorMetadata.getTemplateVersion();
     }
 
     public void setTemplateVersion(int templateVersion) {
-        if (!usesTemplateBacking()) {
-            return;
-        }
-        this.templateVersion = Math.max(0, templateVersion);
+        editorMetadata.setTemplateVersion(templateVersion);
     }
 
     public NodeGraphData getTemplateGraphData() {
-        return usesTemplateBacking() ? templateGraphData : null;
+        return editorMetadata.getTemplateGraphData();
     }
 
     public void setTemplateGraphData(NodeGraphData templateGraphData) {
-        if (!usesTemplateBacking()) {
-            return;
-        }
-        this.templateGraphData = templateGraphData;
+        editorMetadata.setTemplateGraphData(templateGraphData);
     }
 
     public RuntimeValueScope getRuntimeValueScope() {
-        return RuntimeValueScope.orGlobal(runtimeValueScope);
+        return editorMetadata.getRuntimeValueScope();
     }
 
     /** Creates a user-facing editor node. Named runtime values default to global scope. */
@@ -2314,17 +2207,15 @@ public class Node {
     }
 
     public void setRuntimeValueScope(RuntimeValueScope runtimeValueScope) {
-        this.runtimeValueScope = RuntimeValueScope.orGlobal(runtimeValueScope);
+        editorMetadata.setRuntimeValueScope(runtimeValueScope);
     }
 
     public void toggleRuntimeValueScope() {
-        runtimeValueScope = getRuntimeValueScope() == RuntimeValueScope.GLOBAL
-            ? RuntimeValueScope.CHAIN
-            : RuntimeValueScope.GLOBAL;
+        editorMetadata.toggleRuntimeValueScope();
     }
 
     public boolean supportsRuntimeValueScope() {
-        return RuntimeValueScope.appliesTo(type);
+        return editorMetadata.supportsRuntimeValueScope();
     }
 
     public int getMessageFieldCount() {

@@ -10,10 +10,10 @@ is incomplete. The alternate controller can be inspected with:
 ./gradlew -p common projects
 ```
 
-The initial proof targets are Minecraft 1.21.11 and 26.1. They share the
-canonical `PathmindSettingsPopupController` under `common/src/stonecutter/java`.
-Older source families retain their existing overrides until their differences
-are represented explicitly and verified.
+The initial proof targets are Minecraft 1.21.11 and 26.1. Their byte-identical
+settings and marketplace UI classes now live under
+`common/src/stonecutter/java`. Older source families retain their existing
+overrides until their differences are represented explicitly and verified.
 
 Stonecutter conditionals should be limited to small API or syntax differences.
 Behaviorally distinct implementations belong behind compatibility interfaces,

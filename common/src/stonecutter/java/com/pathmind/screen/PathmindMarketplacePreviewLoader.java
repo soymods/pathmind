@@ -1,5 +1,7 @@
 package com.pathmind.screen;
 
+// Canonical UI shared by the default and 26.x Stonecutter targets.
+
 import com.pathmind.data.NodeGraphData;
 import com.pathmind.data.NodeGraphPersistence;
 import com.pathmind.marketplace.MarketplacePreset;

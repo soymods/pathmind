@@ -1,5 +1,7 @@
 package com.pathmind.screen;
 
+// Canonical UI shared by the default and 26.x Stonecutter targets.
+
 import static com.pathmind.screen.PathmindVisualEditorScreen.*;
 
 import com.pathmind.ui.control.PathmindPopupLayout;

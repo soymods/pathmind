@@ -36,7 +36,6 @@ import static com.pathmind.ui.graph.InlineVariableRenderer.isSingleKnownInlineVa
 
 import com.pathmind.data.NodeGraphData;
 import com.pathmind.data.NodeGraphPersistence;
-import com.pathmind.data.PresetManager;
 import com.pathmind.data.SettingsManager;
 import com.pathmind.execution.ExecutionManager;
 import com.pathmind.nodes.AttributeDetectionConfig;
@@ -96,7 +95,6 @@ import com.pathmind.util.EntityStateOptions;
 import com.pathmind.util.FabricEventTracker;
 import com.pathmind.util.InputCompatibilityBridge;
 import com.pathmind.validation.GraphValidationResult;
-import com.pathmind.validation.GraphValidator;
 import com.pathmind.ui.graph.InlineVariableRenderer.InlineVariableRender;
 
 /**
@@ -132,7 +130,7 @@ public class NodeGraph {
         @Override public List<Node> cachedRootNodes() { return cachedRootNodes; }
         @Override public Map<Node, SelectionBounds> cachedHierarchyBounds() { return cachedHierarchyBounds; }
         @Override public Map<Node, Integer> cachedHierarchyNodeCounts() { return cachedHierarchyNodeCounts; }
-        @Override public String activePreset() { return activePreset; }
+        @Override public String activePreset() { return workspace.getActivePreset(); }
     });
     private final NodeFocusController nodeFocus = new NodeFocusController(new NodeFocusController.Host() {
         @Override public List<Node> nodes() { return nodes; }
@@ -278,6 +276,42 @@ public class NodeGraph {
                 return NodeGraph.this.liveRoutineParameterValue(node, parameterName);
             }
         });
+    private final GraphWorkspaceController workspace =
+        new GraphWorkspaceController(new GraphWorkspaceController.Host() {
+            @Override public List<Node> nodes() { return nodes; }
+            @Override public List<NodeConnection> connections() { return connections; }
+            @Override public List<NodeGraphData.RoutineDefinitionData> routineRegistry() {
+                return routineWorkspace.routineRegistry();
+            }
+            @Override public List<NodeGraphData.RoutineDefinitionData> validationRoutines() {
+                return routineWorkspace.validationRoutines();
+            }
+            @Override public String activeRoutineWorkspaceId() {
+                return routineWorkspace.getActiveRoutineWorkspaceId();
+            }
+            @Override public void cancelDeferredStickySave() {
+                stickyNoteController.cancelDeferredSave();
+            }
+            @Override public void commitPendingStickyEdit() {
+                stickyNoteController.commitPendingEdit();
+            }
+            @Override public boolean applyLoadedData(NodeGraphData data) {
+                return graphLoader.applyLoadedData(data);
+            }
+            @Override public NodeGraphData buildGraphDataSnapshot() {
+                return buildGraphData(
+                    new ArrayList<>(nodes), new ArrayList<>(connections), null);
+            }
+            @Override public void invalidateRenderCaches() {
+                NodeGraph.this.invalidateRenderCaches();
+            }
+            @Override public void cacheSessionViewportState() {
+                NodeGraph.this.cacheSessionViewportState();
+            }
+            @Override public void restoreSessionViewportState() {
+                NodeGraph.this.restoreSessionViewportState();
+            }
+        });
     private final ConnectionController connectionController = new ConnectionController(new ConnectionController.Host() {
         @Override public List<Node> getNodes() { return nodes; }
         @Override public List<NodeConnection> getConnections() { return connections; }
@@ -399,9 +433,6 @@ public class NodeGraph {
     private final Map<TrimKey, String> trimmedTextCache = new HashMap<>();
     private final Map<String, Set<String>> runtimeVariableNamesFrameCache = new HashMap<>();
     private Set<String> cachedBaseRuntimeVariableNames = null;
-
-    private String activePreset;
-    private java.util.function.BooleanSupplier workspaceSaveHandler;
 
     private static final int PARAMETER_INPUT_HEIGHT = 16;
     private static final int PARAMETER_INPUT_GAP = 4;
@@ -586,12 +617,12 @@ public class NodeGraph {
 
         @Override
         public boolean isWorkspaceDirty() {
-            return workspaceDirty;
+            return workspace.isWorkspaceDirty();
         }
 
         @Override
         public void setWorkspaceDirty(boolean dirty) {
-            workspaceDirty = dirty;
+            workspace.setWorkspaceDirty(dirty);
         }
 
         @Override
@@ -1340,10 +1371,7 @@ public class NodeGraph {
     );
     private static final int PARAMETER_DROPDOWN_MAX_ROWS = 8;
     private static final int SCHEMATIC_DROPDOWN_ROW_HEIGHT = 16;
-    private boolean workspaceDirty = false;
     private int nextStartNodeNumber = 1;
-    private boolean validationDirty = true;
-    private GraphValidationResult cachedValidationResult = GraphValidationResult.empty();
     private ClipboardSnapshot clipboardNodeSnapshot = null;
     private final Deque<NodeGraphData> undoStack = new ArrayDeque<>();
     private final Deque<NodeGraphData> redoStack = new ArrayDeque<>();
@@ -1451,8 +1479,6 @@ public class NodeGraph {
         this.cachedRootNodes = new ArrayList<>();
         this.cachedHierarchyBounds = new HashMap<>();
         this.cachedHierarchyNodeCounts = new HashMap<>();
-        this.activePreset = PresetManager.getActivePreset();
-
         // Add preset nodes similar to Blender's shader editor
         // Will be initialized with proper centering when screen dimensions are available
     }
@@ -2934,6 +2960,7 @@ public class NodeGraph {
         NodeParameter presetParam = node.getParameter("Preset");
         String presetName = presetParam != null ? presetParam.getStringValue() : "";
         if (presetName == null || presetName.isBlank()) {
+            String activePreset = workspace.getActivePreset();
             return activePreset == null ? "" : activePreset.trim();
         }
         return presetName.trim();
@@ -4227,7 +4254,8 @@ public class NodeGraph {
             return manager.requestStopForStart(startNode);
         }
 
-        boolean started = manager.executeBranch(startNode, nodes, connections, activePreset);
+        boolean started = manager.executeBranch(
+            startNode, nodes, connections, workspace.getActivePreset());
         if (started) {
             lastStartButtonTriggeredExecution = true;
         }
@@ -4295,141 +4323,50 @@ public class NodeGraph {
      * Save the current node graph to disk
      */
     public boolean save() {
-        stickyNoteController.cancelDeferredSave();
-        stickyNoteController.commitPendingEdit();
-        boolean saved = workspaceSaveHandler != null
-            ? workspaceSaveHandler.getAsBoolean()
-            : NodeGraphPersistence.saveNodeGraphForPreset(
-                activePreset, nodes, connections, routineWorkspace.routineRegistry());
-        if (saved) {
-            workspaceDirty = false;
-            invalidateTemplatePreviewCachesForPreset(activePreset);
-        }
-        return saved;
+        return workspace.save();
     }
 
     public void setWorkspaceSaveHandler(java.util.function.BooleanSupplier workspaceSaveHandler) {
-        this.workspaceSaveHandler = workspaceSaveHandler;
+        workspace.setWorkspaceSaveHandler(workspaceSaveHandler);
     }
 
     /**
      * Load a node graph from disk, replacing the current one
      */
     public boolean load() {
-        NodeGraphData data = NodeGraphPersistence.loadNodeGraphForPreset(activePreset);
-        if (data != null) {
-            boolean applied = applyLoadedData(data);
-            if (applied) {
-                workspaceDirty = false;
-                invalidateAllTemplatePreviewCaches();
-            }
-            return applied;
-        }
-        return false;
+        return workspace.load();
     }
 
     public boolean importFromPath(Path savePath) {
-        NodeGraphData data = NodeGraphPersistence.loadNodeGraphFromPath(savePath);
-        if (data != null) {
-            boolean applied = applyLoadedData(data);
-            if (applied) {
-                markWorkspaceDirty();
-            }
-            return applied;
-        }
-        return false;
+        return workspace.importFromPath(savePath);
     }
 
     public boolean exportToPath(Path savePath) {
-        boolean saved = NodeGraphPersistence.saveNodeGraphToPath(nodes, connections, savePath);
-        if (saved) {
-            workspaceDirty = false;
-        }
-        return saved;
+        return workspace.exportToPath(savePath);
     }
 
     public void markWorkspaceDirty() {
-        workspaceDirty = true;
-        invalidateValidation();
-        invalidateRenderCaches();
-        save();
+        workspace.markWorkspaceDirty();
     }
 
     public void markWorkspaceClean() {
-        workspaceDirty = false;
-        invalidateValidation();
+        workspace.markWorkspaceClean();
     }
 
     public boolean isWorkspaceDirty() {
-        return workspaceDirty;
+        return workspace.isWorkspaceDirty();
     }
 
     public void notifyNodeParametersChanged(Node node) {
-        if (node == null) {
-            return;
-        }
-        if (node.getType() == NodeType.TEMPLATE) {
-            NodeParameter presetParam = node.getParameter("Preset");
-            String presetName = presetParam != null ? presetParam.getStringValue() : "";
-            String normalizedPreset = presetName == null ? "" : presetName.trim();
-            if (normalizedPreset.isEmpty()) {
-                node.setTemplateGraphData(null);
-            } else {
-                NodeGraphData loaded = NodeGraphPersistence.loadNodeGraphForPreset(normalizedPreset);
-                NodeGraphData.CustomNodeDefinition definition = loaded != null
-                    ? NodeGraphPersistence.resolveCustomNodeDefinition(normalizedPreset, loaded)
-                    : null;
-                node.setTemplateGraphData(loaded);
-                node.setTemplateName(definition != null ? definition.getName() : normalizedPreset);
-                node.setTemplateVersion(definition != null && definition.getVersion() != null ? definition.getVersion() : 0);
-            }
-        }
-        markWorkspaceDirty();
+        workspace.notifyNodeParametersChanged(node);
     }
 
     public GraphValidationResult getValidationResult(boolean baritoneAvailable, boolean uiUtilsAvailable) {
-        if (validationDirty) {
-            cachedValidationResult = GraphValidator.validate(nodes, connections, activePreset, baritoneAvailable,
-                uiUtilsAvailable, routineWorkspace.validationRoutines(),
-                routineWorkspace.getActiveRoutineWorkspaceId());
-            validationDirty = false;
-        }
-        return cachedValidationResult;
+        return workspace.getValidationResult(baritoneAvailable, uiUtilsAvailable);
     }
 
     private void invalidateValidation() {
-        validationDirty = true;
-    }
-
-    private void invalidateTemplatePreviewCachesForPreset(String presetName) {
-        if (nodes == null || nodes.isEmpty()) {
-            return;
-        }
-        String normalizedPreset = presetName == null ? "" : presetName.trim();
-        for (Node candidate : nodes) {
-            if (candidate == null || candidate.getType() != NodeType.TEMPLATE) {
-                continue;
-            }
-            NodeParameter presetParam = candidate.getParameter("Preset");
-            String selected = presetParam != null ? presetParam.getStringValue() : null;
-            String normalizedSelected = selected == null ? "" : selected.trim();
-            boolean usesActivePreset = normalizedSelected.isEmpty();
-            boolean matchesPreset = !normalizedPreset.isEmpty() && normalizedSelected.equalsIgnoreCase(normalizedPreset);
-            if (usesActivePreset || matchesPreset) {
-                candidate.setTemplateGraphData(null);
-            }
-        }
-    }
-
-    private void invalidateAllTemplatePreviewCaches() {
-        if (nodes == null || nodes.isEmpty()) {
-            return;
-        }
-        for (Node candidate : nodes) {
-            if (candidate != null && candidate.getType() == NodeType.TEMPLATE) {
-                candidate.setTemplateGraphData(null);
-            }
-        }
+        workspace.invalidateValidation();
     }
 
     public void clearWorkspace() {
@@ -4444,47 +4381,23 @@ public class NodeGraph {
      * Check if there's a saved node graph available
      */
     public boolean hasSavedGraph() {
-        return NodeGraphPersistence.hasSavedNodeGraph(activePreset);
+        return workspace.hasSavedGraph();
     }
 
     public NodeGraphData exportGraphDataSnapshot() {
-        NodeGraphData snapshot = buildGraphData(new ArrayList<>(nodes), new ArrayList<>(connections), null);
-        snapshot.setRoutines(new ArrayList<>(routineWorkspace.routineRegistry()));
-        return snapshot;
+        return workspace.exportGraphDataSnapshot();
     }
 
     public boolean applyGraphDataSnapshot(NodeGraphData data, boolean markDirty) {
-        if (data == null) {
-            return false;
-        }
-        boolean applied = applyLoadedData(data);
-        if (applied) {
-            if (markDirty) {
-                workspaceDirty = true;
-            } else {
-                workspaceDirty = false;
-            }
-            invalidateValidation();
-        }
-        return applied;
+        return workspace.applyGraphDataSnapshot(data, markDirty);
     }
 
     public void setActivePreset(String presetName) {
-        String previousPreset = this.activePreset;
-        if (Objects.equals(previousPreset, presetName)) {
-            restoreSessionViewportState();
-            return;
-        }
-        cacheSessionViewportState();
-        this.activePreset = presetName;
-        invalidateTemplatePreviewCachesForPreset(previousPreset);
-        invalidateTemplatePreviewCachesForPreset(presetName);
-        invalidateValidation();
-        restoreSessionViewportState();
+        workspace.setActivePreset(presetName);
     }
 
     public String getActivePreset() {
-        return activePreset;
+        return workspace.getActivePreset();
     }
 
     public void setActiveRoutineWorkspaceId(String routineId) {

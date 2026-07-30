@@ -9,7 +9,6 @@ import com.pathmind.compat.CharacterEventModifiers;
 import com.pathmind.data.NodeGraphData;
 import com.pathmind.data.NodeGraphPersistence;
 import com.pathmind.data.PresetManager;
-import com.pathmind.data.SettingsManager;
 import com.pathmind.data.SettingsManager.Settings;
 import com.pathmind.execution.ExecutionManager;
 import com.pathmind.marketplace.MarketplaceAuthManager;
@@ -67,7 +66,6 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
 import org.lwjgl.glfw.GLFW;
 
-import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -130,12 +128,12 @@ public class PathmindVisualEditorScreen extends Screen {
         new PathmindPresetDropdownController(new PresetDropdownHost());
     private final AnimatedValue titleUnderlineAnimation = AnimatedValue.forHover();
     private final AnimatedValue routineWorkspaceAnimation = new AnimatedValue(0f, AnimationHelper::easeOutCubic);
-    private List<String> availablePresets = new ArrayList<>();
+    private final PathmindPresetWorkspaceController presetWorkspaceController =
+        new PathmindPresetWorkspaceController(new PresetWorkspaceHost());
     private final PathmindPresetTabController presetTabController =
         new PathmindPresetTabController(new PresetTabHost());
     private final PathmindPresetContextMenuController presetContextMenuController =
         new PathmindPresetContextMenuController(new PresetContextMenuHost());
-    private String activePresetName = "";
     final PopupAnimationHandler createPresetPopupAnimation = new PopupAnimationHandler();
     EditBox createPresetField;
     String createPresetStatus = "";
@@ -453,6 +451,158 @@ public class PathmindVisualEditorScreen extends Screen {
         }
     }
 
+    private final class PresetWorkspaceHost implements PathmindPresetWorkspaceController.Host {
+        @Override
+        public NodeGraph nodeGraph() {
+            return nodeGraph;
+        }
+
+        @Override
+        public Settings settings() {
+            return settingsPopupController.settings();
+        }
+
+        @Override
+        public int screenWidth() {
+            return width;
+        }
+
+        @Override
+        public int screenHeight() {
+            return height;
+        }
+
+        @Override
+        public int sidebarWidth() {
+            return sidebar.getWidth();
+        }
+
+        @Override
+        public int titleBarHeight() {
+            return TITLE_BAR_HEIGHT;
+        }
+
+        @Override
+        public void stopInlinePresetRename(boolean commit) {
+            presetTabController.stopInlinePresetRename(commit);
+        }
+
+        @Override
+        public void refreshPresetTabs() {
+            presetTabController.refreshAvailablePresets();
+        }
+
+        @Override
+        public void movePresetTabToEnd(String presetName) {
+            presetTabController.movePresetTabToEnd(presetName);
+        }
+
+        @Override
+        public void queueAnimatedPresetDeletion(String presetName) {
+            presetTabController.queueAnimatedPresetDeletion(presetName);
+        }
+
+        @Override
+        public void persistActiveWorkspaceToTabs() {
+            workspaceLifecycleController.persistActiveWorkspaceToTabs();
+        }
+
+        @Override
+        public void syncAllTemplateTabsIntoParents() {
+            workspaceLifecycleController.syncAllTemplateTabsIntoParents();
+        }
+
+        @Override
+        public void restoreRootWorkspaceIfNeeded() {
+            workspaceLifecycleController.restoreRootWorkspaceIfNeeded();
+        }
+
+        @Override
+        public boolean saveRootPresetWorkspace() {
+            return workspaceLifecycleController.saveRootPresetWorkspace();
+        }
+
+        @Override
+        public void dismissParameterOverlay() {
+            PathmindVisualEditorScreen.this.dismissParameterOverlay();
+        }
+
+        @Override
+        public void clearWorkspaceDrag() {
+            workspaceDragController.clearSidebarDrag();
+        }
+
+        @Override
+        public boolean isImportExportPopupVisible() {
+            return importExportPopupAnimation.isVisible();
+        }
+
+        @Override
+        public void closeImportExportPopup() {
+            workspaceDialogController.closeImportExportPopup();
+        }
+
+        @Override
+        public boolean isCreatePresetPopupVisible() {
+            return createPresetPopupAnimation.isVisible();
+        }
+
+        @Override
+        public void closeCreatePresetPopup() {
+            PathmindVisualEditorScreen.this.closeCreatePresetPopup();
+        }
+
+        @Override
+        public boolean isRenamePresetPopupVisible() {
+            return renamePresetPopupAnimation.isVisible();
+        }
+
+        @Override
+        public void closeRenamePresetPopup() {
+            PathmindVisualEditorScreen.this.closeRenamePresetPopup();
+        }
+
+        @Override
+        public void hideClearPopup() {
+            clearPopupAnimation.hide();
+        }
+
+        @Override
+        public void closeSettingsPopup() {
+            PathmindVisualEditorScreen.this.closeSettingsPopup();
+        }
+
+        @Override
+        public void closePresetDropdown() {
+            presetDropdownController.close();
+        }
+
+        @Override
+        public void clearImportExportStatus() {
+            workspaceDialogController.clearImportExportStatus();
+        }
+
+        @Override
+        public void resetWorkspaceTabsFromCurrentGraph() {
+            workspaceLifecycleController.resetFromCurrentGraph();
+        }
+
+        @Override
+        public void refreshMissingBaritonePopup() {
+            workspaceDialogController.refreshMissingBaritonePopup();
+        }
+
+        @Override
+        public void refreshMissingUiUtilsPopup() {
+            workspaceDialogController.refreshMissingUiUtilsPopup();
+        }
+
+        @Override
+        public void updateImportExportPathFromPreset() {
+            workspaceDialogController.updateImportExportPathFromPreset();
+        }
+    }
+
     private final class PresetTabHost implements PathmindPresetTabController.Host {
         @Override
         public Font font() {
@@ -481,12 +631,12 @@ public class PathmindVisualEditorScreen extends Screen {
 
         @Override
         public List<String> availablePresets() {
-            return availablePresets;
+            return presetWorkspaceController.availablePresets();
         }
 
         @Override
         public String activePresetName() {
-            return activePresetName;
+            return presetWorkspaceController.activePresetName();
         }
 
         @Override
@@ -573,12 +723,12 @@ public class PathmindVisualEditorScreen extends Screen {
 
         @Override
         public List<String> availablePresets() {
-            return availablePresets;
+            return presetWorkspaceController.availablePresets();
         }
 
         @Override
         public String activePresetName() {
-            return activePresetName;
+            return presetWorkspaceController.activePresetName();
         }
 
         @Override
@@ -630,32 +780,32 @@ public class PathmindVisualEditorScreen extends Screen {
 
         @Override
         public String presetTabAt(int mouseX, int mouseY) {
-            return getPresetTabAt(mouseX, mouseY);
+            return presetTabController.getPresetTabAt(mouseX, mouseY);
         }
 
         @Override
         public String presetGroupAt(int mouseX, int mouseY) {
-            return getPresetGroupAt(mouseX, mouseY);
+            return presetTabController.getPresetGroupAt(mouseX, mouseY);
         }
 
         @Override
         public String presetGroupKey(String presetName) {
-            return getPresetGroupKey(presetName);
+            return presetTabController.getPresetGroupKey(presetName);
         }
 
         @Override
         public int presetGroupColor(String presetName) {
-            return getPresetGroupColor(presetName);
+            return presetTabController.getPresetGroupColor(presetName);
         }
 
         @Override
         public String presetGroupColorLabel(String key) {
-            return getPresetGroupColorLabel(key);
+            return presetTabController.getPresetGroupColorLabel(key);
         }
 
         @Override
         public String nextPresetGroupColorKey() {
-            return getNextPresetGroupColorKey();
+            return presetTabController.getNextPresetGroupColorKey();
         }
 
         @Override
@@ -686,17 +836,17 @@ public class PathmindVisualEditorScreen extends Screen {
 
         @Override
         public void createPresetGroup() {
-            PathmindVisualEditorScreen.this.createPresetGroup();
+            presetTabController.createPresetGroup();
         }
 
         @Override
         public void deletePresetGroup(String groupKey) {
-            PathmindVisualEditorScreen.this.deletePresetGroup(groupKey);
+            presetTabController.deletePresetGroup(groupKey);
         }
 
         @Override
         public void recolorPresetGroup(String oldKey, String newKey) {
-            PathmindVisualEditorScreen.this.recolorPresetGroup(oldKey, newKey);
+            presetTabController.recolorPresetGroup(oldKey, newKey);
         }
 
         @Override
@@ -711,7 +861,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
         @Override
         public void setPresetGroupColor(String presetName, String colorKey) {
-            PathmindVisualEditorScreen.this.setPresetGroupColor(presetName, colorKey);
+            presetTabController.setPresetGroupColor(presetName, colorKey);
         }
     }
 
@@ -820,7 +970,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
         @Override
         public int presetTabRightLimit() {
-            return getPresetTabRightLimit();
+            return presetTabController.getPresetTabRightLimit();
         }
 
         @Override
@@ -902,7 +1052,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
         @Override
         public String activePresetName() {
-            return activePresetName;
+            return presetWorkspaceController.activePresetName();
         }
 
         @Override
@@ -1052,7 +1202,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
         @Override
         public String activePresetName() {
-            return activePresetName;
+            return presetWorkspaceController.activePresetName();
         }
 
         @Override
@@ -1271,7 +1421,7 @@ public class PathmindVisualEditorScreen extends Screen {
         this.nodeGraph.setWorkspaceSaveHandler(this::saveRootPresetWorkspace);
         this.sidebar = new Sidebar(baritoneAvailable, uiUtilsAvailable);
         refreshAvailablePresets();
-        this.nodeGraph.setActivePreset(activePresetName);
+        this.nodeGraph.setActivePreset(presetWorkspaceController.activePresetName());
         updateImportExportPathFromPreset();
 
         this.firstRunTutorialController.initialize(Boolean.TRUE.equals(settingsPopupController.settings().firstRunTutorialCompleted));
@@ -1286,7 +1436,7 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         refreshAvailablePresets();
-        nodeGraph.setActivePreset(activePresetName);
+        nodeGraph.setActivePreset(presetWorkspaceController.activePresetName());
 
         if (createPresetField == null) {
             createPresetField = PathmindTextField.createInactive(this.font, 0, 0, 200, 20, Component.translatable("pathmind.field.presetName"), 64);
@@ -1399,7 +1549,7 @@ public class PathmindVisualEditorScreen extends Screen {
             UITheme.PANEL_INNER_BORDER
         );
         drawTitle(context, mouseX, mouseY, titleUnderlineAnimation.getValue());
-        renderWorkspaceTabs(context, mouseX, mouseY);
+        presetTabController.render(context, mouseX, mouseY);
 
         // Tick all popup animations early so the scrim uses current values
         clearPopupAnimation.tick();
@@ -1540,7 +1690,7 @@ public class PathmindVisualEditorScreen extends Screen {
         DrawContextBridge.startNewRootLayer(context);
         renderDraggedWorkspaceLayer(context, mouseX, mouseY, delta);
         workspaceViewportController.renderDragPreview(context, mouseX, mouseY);
-        renderDraggedPresetDropdownTab(context, mouseX, mouseY);
+        presetTabController.renderDraggedPresetDropdownTab(context, mouseX, mouseY);
         DrawContextBridge.startNewRootLayer(context);
         NodeErrorNotificationOverlay.getInstance().render(context, this.font, this.width, this.height);
         if (settingsPopupController.settings() != null && Boolean.TRUE.equals(settingsPopupController.settings().showProfilerOverlay)) {
@@ -1577,7 +1727,7 @@ public class PathmindVisualEditorScreen extends Screen {
             clickedNode,
             nodeGraph.getNodes(),
             nodeGraph.getConnections(),
-            activePresetName
+            presetWorkspaceController.activePresetName()
         );
         if (!started) {
             return false;
@@ -1702,7 +1852,7 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
-        if (isInlinePresetRenameActive()) {
+        if (presetTabController.isInlinePresetRenameActive()) {
             //? if MC_1_21_8 {
             /*if (inlinePresetRenameField != null && inlinePresetRenameField.mouseClicked(mouseX, mouseY, button)) {
                 *///?} else {
@@ -1710,7 +1860,7 @@ public class PathmindVisualEditorScreen extends Screen {
                 //?}
                 return true;
             }
-            stopInlinePresetRename(true);
+            presetTabController.stopInlinePresetRename(true);
         }
 
         if (presetDeletePopupAnimation.isVisible()) {
@@ -1745,7 +1895,7 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
-        if (button == 1 && isPointInPresetTabBarContextZone((int) mouseX, (int) mouseY)) {
+        if (button == 1 && presetTabController.isPointInPresetTabBarContextZone((int) mouseX, (int) mouseY)) {
             presetContextMenuController.open((int) mouseX, (int) mouseY);
             return true;
         }
@@ -1763,7 +1913,7 @@ public class PathmindVisualEditorScreen extends Screen {
                 presetDropdownController.toggle();
                 return true;
             }
-            if (handleWorkspaceTabClick((int) mouseX, (int) mouseY)) {
+            if (presetTabController.handleClick((int) mouseX, (int) mouseY)) {
                 return true;
             }
         }
@@ -1800,7 +1950,7 @@ public class PathmindVisualEditorScreen extends Screen {
             }
             if (isMarketplaceButtonClicked((int) mouseX, (int) mouseY, button)) {
                 saveRootPresetWorkspace();
-                PresetManager.setActivePreset(activePresetName);
+                PresetManager.setActivePreset(presetWorkspaceController.activePresetName());
                 if (this.minecraft != null) {
                     this.minecraft.setScreen(new PathmindMarketplaceScreen(this));
                 }
@@ -1808,7 +1958,7 @@ public class PathmindVisualEditorScreen extends Screen {
             }
             if (isPublishButtonClicked((int) mouseX, (int) mouseY, button)) {
                 saveRootPresetWorkspace();
-                PresetManager.setActivePreset(activePresetName);
+                PresetManager.setActivePreset(presetWorkspaceController.activePresetName());
                 openPublishPresetPopup();
                 return true;
             }
@@ -1971,7 +2121,7 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
-        if (isInlinePresetRenameActive()) {
+        if (presetTabController.isInlinePresetRenameActive()) {
             return true;
         }
 
@@ -1988,21 +2138,21 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         if (button == 0 && presetTabController.hasPendingPresetTabInteraction()) {
-            updatePendingPresetTabInteraction((int) mouseX, (int) mouseY);
+            presetTabController.updatePendingPresetTabInteraction((int) mouseX, (int) mouseY);
             if (presetTabController.isDraggingPresetTab()) {
                 return true;
             }
         }
         if (button == 0 && presetTabController.hasPendingPresetDropdownDrag()) {
-            updatePendingPresetDropdownDrag((int) mouseX, (int) mouseY);
+            presetTabController.updatePendingPresetDropdownDrag((int) mouseX, (int) mouseY);
             return true;
         }
         if (button == 0 && presetTabController.isDraggingPresetDropdown()) {
-            updatePresetDropdownDrag((int) mouseX, (int) mouseY);
+            presetTabController.updatePresetDropdownDrag((int) mouseX, (int) mouseY);
             return true;
         }
         if (presetTabController.isDraggingPresetTab()) {
-            updatePresetTabDrag((int) mouseX);
+            presetTabController.updatePresetTabDrag((int) mouseX);
             return true;
         }
 
@@ -2069,12 +2219,12 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         if (presetTabController.isDraggingPresetTab()) {
-            endPresetTabDrag();
+            presetTabController.endPresetTabDrag();
             return true;
         }
 
         if (button == 0 && presetTabController.isDraggingPresetDropdown()) {
-            finishPresetDropdownDrag((int) mouseX, (int) mouseY);
+            presetTabController.finishPresetDropdownDrag((int) mouseX, (int) mouseY);
             return true;
         }
 
@@ -2082,7 +2232,7 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
-        if (isInlinePresetRenameActive()) {
+        if (presetTabController.isInlinePresetRenameActive()) {
             if (inlinePresetRenameField != null) {
                 //? if MC_1_21_8 {
                 /*inlinePresetRenameField.mouseReleased(mouseX, mouseY, button);*/
@@ -2193,14 +2343,14 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
-        if (isInlinePresetRenameActive()) {
+        if (presetTabController.isInlinePresetRenameActive()) {
             if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
-                stopInlinePresetRename(false);
+                presetTabController.stopInlinePresetRename(false);
                 return true;
             }
 
             if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
-                stopInlinePresetRename(true);
+                presetTabController.stopInlinePresetRename(true);
                 return true;
             }
 
@@ -2310,8 +2460,8 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         if ((keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER)
-            && canStartInlinePresetRename(activePresetName)) {
-            startInlinePresetRename(activePresetName);
+            && presetTabController.canStartInlinePresetRename(presetWorkspaceController.activePresetName())) {
+            presetTabController.startInlinePresetRename(presetWorkspaceController.activePresetName());
             return true;
         }
 
@@ -2390,7 +2540,7 @@ public class PathmindVisualEditorScreen extends Screen {
             return true;
         }
 
-        if (isInlinePresetRenameActive()) {
+        if (presetTabController.isInlinePresetRenameActive()) {
             //? if MC_1_21_8 {
             /*if (inlinePresetRenameField != null && inlinePresetRenameField.charTyped(chr, modifiers)) {
                 *///?} else {
@@ -2563,156 +2713,12 @@ public class PathmindVisualEditorScreen extends Screen {
         workspaceLifecycleController.resetFromCurrentGraph();
     }
 
-    private void renderWorkspaceTabs(GuiGraphics context, int mouseX, int mouseY) {
-        presetTabController.render(context, mouseX, mouseY);
-    }
-
-    private boolean handleWorkspaceTabClick(int mouseX, int mouseY) {
-        return presetTabController.handleClick(mouseX, mouseY);
-    }
-
-    private int getPresetTabRightLimit() {
-        return presetTabController.getPresetTabRightLimit();
-    }
-
-    private void clearPendingPresetTabInteraction() {
-        presetTabController.clearPendingPresetTabInteraction();
-    }
-
-    private void updatePendingPresetTabInteraction(int mouseX, int mouseY) {
-        presetTabController.updatePendingPresetTabInteraction(mouseX, mouseY);
-    }
-
-    private void updatePresetTabDrag(int mouseX) {
-        presetTabController.updatePresetTabDrag(mouseX);
-    }
-
-    private void endPresetTabDrag() {
-        presetTabController.endPresetTabDrag();
-    }
-
-    private boolean isPointInPresetTabBarContextZone(int mouseX, int mouseY) {
-        return presetTabController.isPointInPresetTabBarContextZone(mouseX, mouseY);
-    }
-
-    private String getPresetTabAt(int mouseX, int mouseY) {
-        return presetTabController.getPresetTabAt(mouseX, mouseY);
-    }
-
-    private String getPresetGroupAt(int mouseX, int mouseY) {
-        return presetTabController.getPresetGroupAt(mouseX, mouseY);
-    }
-
-    private String getPresetGroupColorLabel(String key) {
-        return presetTabController.getPresetGroupColorLabel(key);
-    }
-
-    private String getNextPresetGroupColorKey() {
-        return presetTabController.getNextPresetGroupColorKey();
-    }
-
-    private void createPresetGroup() {
-        presetTabController.createPresetGroup();
-    }
-
-    private void deletePresetGroup(String groupKey) {
-        presetTabController.deletePresetGroup(groupKey);
-    }
-
-    private void recolorPresetGroup(String oldKey, String newKey) {
-        presetTabController.recolorPresetGroup(oldKey, newKey);
-    }
-
-    private void setPresetGroupColor(String presetName, String colorKey) {
-        presetTabController.setPresetGroupColor(presetName, colorKey);
-    }
-
-    private boolean isPresetGroupTab(String tabName) {
-        return presetTabController.isPresetGroupTab(tabName);
-    }
-
-    private String getPresetGroupKeyFromTab(String tabName) {
-        return presetTabController.getPresetGroupKeyFromTab(tabName);
-    }
-
-    private String getPresetGroupKey(String presetName) {
-        return presetTabController.getPresetGroupKey(presetName);
-    }
-
-    private int getPresetGroupColor(String presetName) {
-        return presetTabController.getPresetGroupColor(presetName);
-    }
-
-    private void clearPresetDropdownDragState() {
-        presetTabController.clearPresetDropdownDragState();
-    }
-
-    private void updatePendingPresetDropdownDrag(int mouseX, int mouseY) {
-        presetTabController.updatePendingPresetDropdownDrag(mouseX, mouseY);
-    }
-
-    private void updatePresetDropdownDrag(int mouseX, int mouseY) {
-        presetTabController.updatePresetDropdownDrag(mouseX, mouseY);
-    }
-
-    private void finishPresetDropdownDrag(int mouseX, int mouseY) {
-        presetTabController.finishPresetDropdownDrag(mouseX, mouseY);
-    }
-
-    private void renderDraggedPresetDropdownTab(GuiGraphics context, int mouseX, int mouseY) {
-        presetTabController.renderDraggedPresetDropdownTab(context, mouseX, mouseY);
-    }
-
-    private boolean isInlinePresetRenameActive() {
-        return presetTabController.isInlinePresetRenameActive();
-    }
-
-    private boolean canStartInlinePresetRename(String presetName) {
-        return presetTabController.canStartInlinePresetRename(presetName);
-    }
-
-    private void startInlinePresetRename(String presetName) {
-        presetTabController.startInlinePresetRename(presetName);
-    }
-
     private boolean renamePresetInternal(String currentName, String desiredName) {
-        if (currentName == null || currentName.trim().isEmpty()) {
-            return false;
-        }
-        if (desiredName == null || desiredName.trim().isEmpty()) {
-            return false;
-        }
-
-        boolean renamingActive = currentName.equalsIgnoreCase(activePresetName);
-        if (renamingActive) {
-            saveRootPresetWorkspace();
-        }
-
-        Optional<String> renamedPreset = PresetManager.renamePreset(currentName, desiredName);
-        if (renamedPreset.isEmpty()) {
-            return false;
-        }
-        String renamedKey = renamedPreset.get();
-        if (settingsPopupController.settings() != null && settingsPopupController.settings().presetGroupColors != null && settingsPopupController.settings().presetGroupColors.containsKey(currentName)) {
-            String groupKey = settingsPopupController.settings().presetGroupColors.remove(currentName);
-            settingsPopupController.settings().presetGroupColors.put(renamedKey, groupKey);
-            SettingsManager.save(settingsPopupController.settings());
-        }
-        refreshAvailablePresets();
-        nodeGraph.setActivePreset(activePresetName);
-        presetDropdownController.close();
-        if (renamingActive) {
-            updateImportExportPathFromPreset();
-        }
-        return true;
+        return presetWorkspaceController.renamePreset(currentName, desiredName);
     }
 
     void stopInlinePresetRename(boolean commit) {
         presetTabController.stopInlinePresetRename(commit);
-    }
-
-    private int[] computePresetTabWidths(int availableWidth, int createTabWidth) {
-        return presetTabController.computePresetTabWidths(availableWidth, createTabWidth);
     }
 
     private void openTemplateWorkspaceTab(Node templateNode) {
@@ -3018,27 +3024,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void applyImportedPreset(String presetName, NodeGraphData importedData) {
-        if (presetName == null || presetName.isBlank()) {
-            return;
-        }
-        PresetManager.setActivePreset(presetName);
-        refreshAvailablePresets();
-        movePresetTabToEnd(presetName);
-        nodeGraph.setActivePreset(activePresetName);
-        dismissParameterOverlay();
-        workspaceDragController.clearSidebarDrag();
-        clearPopupAnimation.hide();
-        closeSettingsPopup();
-        presetDropdownController.close();
-
-        if (!nodeGraph.applyGraphDataSnapshot(importedData, false)) {
-            nodeGraph.initializeWithScreenDimensions(this.width, this.height, sidebar.getWidth(), TITLE_BAR_HEIGHT);
-        }
-        resetWorkspaceTabsFromCurrentGraph();
-        refreshMissingBaritonePopup();
-        refreshMissingUiUtilsPopup();
-        nodeGraph.restoreSessionViewportState();
-        updateImportExportPathFromPreset();
+        presetWorkspaceController.applyImportedPreset(presetName, importedData);
     }
 
     private void runOnClientThread(Runnable task) {
@@ -3192,14 +3178,11 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private boolean isPresetDeleteDisabled(String presetName) {
-        if (presetName == null) {
-            return true;
-        }
-        return presetName.equalsIgnoreCase(PresetManager.getDefaultPresetName());
+        return presetWorkspaceController.isPresetDeleteDisabled(presetName);
     }
 
     private boolean isPresetRenameDisabled(String presetName) {
-        return isPresetDeleteDisabled(presetName);
+        return presetWorkspaceController.isPresetRenameDisabled(presetName);
     }
 
     private void openCreatePresetPopup() {
@@ -3207,7 +3190,7 @@ public class PathmindVisualEditorScreen extends Screen {
         presetDropdownController.close();
         clearCreatePresetStatus();
         closeInfoPopup();
-        stopInlinePresetRename(false);
+        presetTabController.stopInlinePresetRename(false);
         closeRenamePresetPopup();
         closePublishPresetPopup();
         resetBoundedPopupScroll(createPresetPopupAnimation);
@@ -3286,7 +3269,7 @@ public class PathmindVisualEditorScreen extends Screen {
         presetDropdownController.close();
         clearRenamePresetStatus();
         closeInfoPopup();
-        stopInlinePresetRename(false);
+        presetTabController.stopInlinePresetRename(false);
         closeCreatePresetPopup();
         pendingPresetRenameName = presetName;
         resetBoundedPopupScroll(renamePresetPopupAnimation);
@@ -3427,66 +3410,11 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void attemptDeletePreset(String presetName) {
-        queueAnimatedPresetDeletion(presetName);
-    }
-
-    private void queueAnimatedPresetDeletion(String presetName) {
-        if (presetName == null || presetName.isEmpty()) {
-            return;
-        }
-        if (isPresetDeleteDisabled(presetName)) {
-            return;
-        }
-        presetTabController.queueAnimatedPresetDeletion(presetName);
+        presetWorkspaceController.queuePresetDeletion(presetName);
     }
 
     private void attemptDeletePresetImmediate(String presetName) {
-        if (presetName == null || presetName.isEmpty()) {
-            return;
-        }
-        if (isPresetDeleteDisabled(presetName)) {
-            return;
-        }
-        boolean deletingActive = presetName.equals(activePresetName);
-        String defaultPreset = PresetManager.getDefaultPresetName();
-        String fallbackPreset = availablePresets.stream()
-                .filter(name -> !name.equalsIgnoreCase(presetName))
-                .findFirst()
-                .orElse(defaultPreset);
-
-        if (!PresetManager.deletePreset(presetName)) {
-            return;
-        }
-        if (settingsPopupController.settings() != null && settingsPopupController.settings().presetGroupColors != null) {
-            settingsPopupController.settings().presetGroupColors.remove(presetName);
-            SettingsManager.save(settingsPopupController.settings());
-        }
-
-        presetDropdownController.close();
-        closeCreatePresetPopup();
-        closeRenamePresetPopup();
-
-        if (deletingActive) {
-            PresetManager.setActivePreset(fallbackPreset);
-        }
-
-        refreshAvailablePresets();
-        nodeGraph.setActivePreset(activePresetName);
-
-        if (deletingActive) {
-            dismissParameterOverlay();
-            workspaceDragController.clearSidebarDrag();
-            clearPopupAnimation.hide();
-            clearImportExportStatus();
-
-            if (!nodeGraph.load()) {
-                nodeGraph.initializeWithScreenDimensions(this.width, this.height, sidebar.getWidth(), TITLE_BAR_HEIGHT);
-            }
-            refreshMissingBaritonePopup();
-        refreshMissingUiUtilsPopup();
-            nodeGraph.restoreSessionViewportState();
-            updateImportExportPathFromPreset();
-        }
+        presetWorkspaceController.deletePresetImmediately(presetName);
     }
 
     private void setCreatePresetStatus(String message, int color) {
@@ -3520,18 +3448,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     void refreshAvailablePresets() {
-        stopInlinePresetRename(false);
-        availablePresets = new ArrayList<>(PresetManager.getAvailablePresets());
-        activePresetName = PresetManager.getActivePreset();
-        syncPresetTabOrderWithAvailable();
-    }
-
-    private void movePresetTabToEnd(String presetName) {
-        presetTabController.movePresetTabToEnd(presetName);
-    }
-
-    private void syncPresetTabOrderWithAvailable() {
-        presetTabController.refreshAvailablePresets();
+        presetWorkspaceController.refreshAvailablePresets();
     }
 
     private void updateImportExportPathFromPreset() {
@@ -3539,40 +3456,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private void switchPreset(String presetName) {
-        stopInlinePresetRename(false);
-        nodeGraph.stopEventNameEditing(true);
-        nodeGraph.stopParameterEditing(true);
-        persistActiveWorkspaceToTabs();
-        syncAllTemplateTabsIntoParents();
-        restoreRootWorkspaceIfNeeded();
-        saveRootPresetWorkspace();
-        PresetManager.setActivePreset(presetName);
-        refreshAvailablePresets();
-        nodeGraph.setActivePreset(activePresetName);
-        dismissParameterOverlay();
-        workspaceDragController.clearSidebarDrag();
-        if (importExportPopupAnimation.isVisible()) {
-            closeImportExportPopup();
-        }
-        if (createPresetPopupAnimation.isVisible()) {
-            closeCreatePresetPopup();
-        }
-        if (renamePresetPopupAnimation.isVisible()) {
-            closeRenamePresetPopup();
-        }
-        clearPopupAnimation.hide();
-        closeSettingsPopup();
-        presetDropdownController.close();
-        clearImportExportStatus();
-
-        if (!nodeGraph.load()) {
-            nodeGraph.initializeWithScreenDimensions(this.width, this.height, sidebar.getWidth(), TITLE_BAR_HEIGHT);
-        }
-        resetWorkspaceTabsFromCurrentGraph();
-        refreshMissingBaritonePopup();
-        refreshMissingUiUtilsPopup();
-        nodeGraph.restoreSessionViewportState();
-        updateImportExportPathFromPreset();
+        presetWorkspaceController.switchPreset(presetName);
     }
 
     private void renderWorkspaceButtons(GuiGraphics context, int mouseX, int mouseY) {
@@ -3651,11 +3535,11 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     private boolean isCurrentPresetPublishedAndSynced() {
-        if (activePresetName == null || activePresetName.isBlank()) {
+        if (presetWorkspaceController.activePresetName() == null || presetWorkspaceController.activePresetName().isBlank()) {
             return false;
         }
-        return PresetManager.getMarketplaceLinkedPresetId(activePresetName).isPresent()
-            && !PresetManager.hasMarketplaceLinkedPresetChanges(activePresetName);
+        return PresetManager.getMarketplaceLinkedPresetId(presetWorkspaceController.activePresetName()).isPresent()
+            && !PresetManager.hasMarketplaceLinkedPresetChanges(presetWorkspaceController.activePresetName());
     }
 
     private boolean renderHomeButton(GuiGraphics context, int mouseX, int mouseY, int buttonY) {
@@ -3792,7 +3676,7 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     String activePresetName() {
-        return activePresetName;
+        return presetWorkspaceController.activePresetName();
     }
 
     void closePresetDropdown() {
@@ -3828,7 +3712,7 @@ public class PathmindVisualEditorScreen extends Screen {
         saveRootPresetWorkspace();
         if (activeRoutine != null) {
             ExecutionManager.getInstance().executeRoutine(
-                activeRoutine, getActiveRoutineRegistry(), activePresetName);
+                activeRoutine, getActiveRoutineRegistry(), presetWorkspaceController.activePresetName());
         } else {
             ExecutionManager.getInstance().executeGraph(nodeGraph.getNodes(), nodeGraph.getConnections());
         }

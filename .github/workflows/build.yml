@@ -8,7 +8,7 @@ on:
     - cron: '17 8 * * *'
 
 permissions:
-  contents: write
+  contents: read
   actions: read
 
 jobs:
@@ -292,6 +292,9 @@ jobs:
     needs:
       - build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
 
     steps:
       - name: Check out repository

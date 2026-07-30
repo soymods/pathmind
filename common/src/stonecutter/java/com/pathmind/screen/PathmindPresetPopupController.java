@@ -631,7 +631,7 @@ final class PathmindPresetPopupController {
         }
 
         if (screen.isPointInRect(mouseXi, mouseYi, checkboxX - 2, checkboxY - 2, checkboxHitboxSize, checkboxHitboxSize)) {
-            screen.setSkipPresetDeleteConfirm(!screen.skipPresetDeleteConfirm);
+            screen.setSkipPresetDeleteConfirm(!screen.isSkipPresetDeleteConfirm());
             return true;
         }
 
@@ -904,7 +904,7 @@ final class PathmindPresetPopupController {
             screen.getPopupAnimatedColor(screen.presetDeletePopupAnimation, UITheme.RENAME_INPUT_BG));
         DrawContextBridge.drawBorder(context, checkboxX, checkboxY, PRESET_DELETE_SKIP_CHECKBOX_SIZE, PRESET_DELETE_SKIP_CHECKBOX_SIZE,
             screen.getPopupAnimatedColor(screen.presetDeletePopupAnimation, checkboxHovered ? UITheme.BORDER_HIGHLIGHT : UITheme.BORDER_DEFAULT));
-        if (screen.skipPresetDeleteConfirm) {
+        if (screen.isSkipPresetDeleteConfirm()) {
             int checkColor = screen.getPopupAnimatedColor(screen.presetDeletePopupAnimation, screen.getAccentColor());
             context.fill(checkboxX + 2, checkboxY + 5, checkboxX + 3, checkboxY + 7, checkColor);
             context.fill(checkboxX + 3, checkboxY + 6, checkboxX + 4, checkboxY + 8, checkColor);

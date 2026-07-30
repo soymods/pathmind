@@ -103,41 +103,6 @@ public class PathmindVisualEditorScreen extends Screen {
     private static final int MISSING_BARITONE_POPUP_HEIGHT = 175;
     private static final int MISSING_UI_UTILS_POPUP_WIDTH = 360;
     private static final int MISSING_UI_UTILS_POPUP_HEIGHT = 175;
-    static final int SETTINGS_POPUP_WIDTH = 360;
-    static final int SETTINGS_POPUP_HEIGHT = 408;
-    static final int SETTINGS_OPTION_WIDTH = 90;
-    static final int SETTINGS_OPTION_HEIGHT = 16;
-    static final int SETTINGS_OPTION_GAP = 6;
-    static final int SETTINGS_TOGGLE_WIDTH = 60;
-    static final int SETTINGS_TOGGLE_HEIGHT = 16;
-    static final int SETTINGS_SLIDER_WIDTH = 160;
-    static final int SETTINGS_SLIDER_HEIGHT = 6;
-    static final int SETTINGS_SLIDER_HANDLE_WIDTH = 8;
-    static final int SETTINGS_SLIDER_HANDLE_HEIGHT = 12;
-    static final int SETTINGS_NODE_LIST_ROW_HEIGHT = 20;
-    static final int SETTINGS_NODE_LIST_GAP = 6;
-    static final int SETTINGS_BACK_BUTTON_WIDTH = 52;
-    static final int SETTINGS_BACK_BUTTON_HEIGHT = 18;
-    static final int SETTINGS_SECTION_BUTTON_WIDTH = 56;
-    static final int SETTINGS_SECTION_BUTTON_HEIGHT = 20;
-    static final int SETTINGS_NODE_TYPE_BUTTON_HEIGHT = 28;
-    static final int SETTINGS_NODE_TYPE_BUTTON_GAP = 6;
-    static final int SETTINGS_NODE_TYPE_SECTION_GAP = 10;
-    static final int SETTINGS_NODE_TYPE_SELECTOR_MAX_HEIGHT = 102;
-    static final int SETTINGS_NODE_TYPE_SEARCH_HEIGHT = 22;
-    static final int SETTINGS_NODE_TYPE_SEARCH_PADDING = 8;
-    static final int SETTINGS_NODE_TYPE_SEARCH_LIST_GAP = 8;
-    static final int SETTINGS_NODE_TYPE_EMPTY_HEIGHT = 24;
-    static final long SETTINGS_SCROLL_GESTURE_TIMEOUT_MS = 180L;
-    static final int CREATE_LIST_RADIUS_MIN = 1;
-    static final int CREATE_LIST_RADIUS_MAX = 512;
-    static final NodeType[] SETTINGS_NODE_TYPES = {
-        NodeType.GOTO,
-        NodeType.SENSOR_KEY_PRESSED,
-        NodeType.CREATE_LIST
-    };
-    static final int NODE_DELAY_MIN_MS = 1;
-    static final int NODE_DELAY_MAX_MS = 500;
     static final int TEXT_FIELD_VERTICAL_PADDING = 3;
     private static final int NODE_SEARCH_FIELD_WIDTH = 180;
     private static final Component TITLE_TEXT = Component.literal("Pathmind");
@@ -201,8 +166,8 @@ public class PathmindVisualEditorScreen extends Screen {
     String pendingPresetDeletionName = "";
     private final PopupAnimationHandler missingBaritonePopupAnimation = new PopupAnimationHandler();
     private final PopupAnimationHandler missingUiUtilsPopupAnimation = new PopupAnimationHandler();
-    final PopupAnimationHandler settingsPopupAnimation = new PopupAnimationHandler();
-    private final PathmindSettingsPopupController settingsPopupController = new PathmindSettingsPopupController(this);
+    private final PathmindSettingsPopupController settingsPopupController =
+        new PathmindSettingsPopupController(new SettingsPopupHost());
     private final PathmindPresetPopupController presetPopupController = new PathmindPresetPopupController(this);
     private final PathmindModalOverlayController modalOverlayController = new PathmindModalOverlayController(
         new ModalOverlayHost(),
@@ -215,7 +180,7 @@ public class PathmindVisualEditorScreen extends Screen {
         infoPopupAnimation,
         missingBaritonePopupAnimation,
         missingUiUtilsPopupAnimation,
-        settingsPopupAnimation
+        settingsPopupController.animation()
     );
     private final PathmindFirstRunTutorialController firstRunTutorialController =
         new PathmindFirstRunTutorialController(new FirstRunTutorialHost());
@@ -223,35 +188,81 @@ public class PathmindVisualEditorScreen extends Screen {
         new PathmindWorkspaceLifecycleController(new WorkspaceLifecycleHost());
     private final PathmindValidationExecutionController validationExecutionController =
         new PathmindValidationExecutionController(new ValidationExecutionHost());
-    Settings currentSettings;
-    boolean showGrid = true;
-    boolean renderConnectionsOnTop = false;
-    boolean showWorkspaceTooltips = true;
-    boolean showChatErrors = true;
-    boolean showHudOverlays = true;
-    boolean skipPresetDeleteConfirm = false;
-    int nodeDelayMs = 150;
-    boolean nodeDelayDragging = false;
-    boolean createListRadiusDragging = false;
-    EditBox nodeDelayField;
-    EditBox createListRadiusField;
-    EditBox settingsNodeSearchField;
-    boolean settingsNodeListView = true;
-    NodeType settingsNodeTargetType = null;
-    Node settingsNodeTarget = null;
-    int settingsNodeListScrollOffset = 0;
-    int settingsNodeSelectorScrollOffset = 0;
-    int settingsPopupScrollOffset = 0;
-    private long settingsLastScrollEventMs = 0L;
-    private int settingsLastScrollConsumer = 0;
-    boolean settingsNodeSelectorScrollDragging = false;
-    int settingsNodeSelectorScrollDragOffset = 0;
-    boolean settingsPopupScrollDragging = false;
-    int settingsPopupScrollDragOffset = 0;
-    AccentOption accentOption = AccentOption.SKY;
     private Boolean uiUtilsOverlayPrevEnabled = null;
     private final PathmindWorkspaceViewportController workspaceViewportController =
         new PathmindWorkspaceViewportController(new WorkspaceViewportHost());
+
+    private final class SettingsPopupHost implements PathmindSettingsPopupController.Host {
+        @Override
+        public Minecraft client() {
+            return minecraft;
+        }
+
+        @Override
+        public Font font() {
+            return font;
+        }
+
+        @Override
+        public int screenWidth() {
+            return width;
+        }
+
+        @Override
+        public int screenHeight() {
+            return height;
+        }
+
+        @Override
+        public int boundedPopupWidth(int requestedWidth) {
+            return getBoundedPopupWidth(requestedWidth);
+        }
+
+        @Override
+        public NodeGraph nodeGraph() {
+            return nodeGraph;
+        }
+
+        @Override
+        public void addWidget(EditBox field) {
+            PathmindVisualEditorScreen.this.addWidget(field);
+        }
+
+        @Override
+        public void setOverlayCutout(int x, int y, int width, int height) {
+            PathmindVisualEditorScreen.this.setOverlayCutout(x, y, width, height);
+        }
+
+        @Override
+        public void drawPopupTextWithEllipsis(GuiGraphics context, String text, int x, int y, int maxWidth, int color) {
+            PathmindVisualEditorScreen.this.drawPopupTextWithEllipsis(context, text, x, y, maxWidth, color);
+        }
+
+        @Override
+        public float hoverProgress(Object key, boolean hovered) {
+            return getHoverProgress(key, hovered);
+        }
+
+        @Override
+        public boolean isPointInRect(int pointX, int pointY, int x, int y, int width, int height) {
+            return PathmindVisualEditorScreen.this.isPointInRect(pointX, pointY, x, y, width, height);
+        }
+
+        @Override
+        public void refreshAvailablePresets() {
+            PathmindVisualEditorScreen.this.refreshAvailablePresets();
+        }
+
+        @Override
+        public void replayFirstRunTutorial() {
+            PathmindVisualEditorScreen.this.replayFirstRunTutorial();
+        }
+
+        @Override
+        public void reopenForLanguageChange() {
+            PathmindVisualEditorScreen.this.reopenForLanguageChange();
+        }
+    }
 
     private final class NodeSearchHost implements PathmindNodeSearchController.Host {
         @Override
@@ -393,7 +404,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
         @Override
         public boolean showWorkspaceTooltips() {
-            return showWorkspaceTooltips;
+            return settingsPopupController.showWorkspaceTooltips();
         }
 
         @Override
@@ -480,7 +491,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
         @Override
         public Settings settings() {
-            return currentSettings;
+            return settingsPopupController.settings();
         }
 
         @Override
@@ -779,7 +790,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
         @Override
         public void hideSettingsPopupInstantly() {
-            settingsPopupAnimation.hideInstant();
+            settingsPopupController.animation().hideInstant();
         }
 
         @Override
@@ -1115,7 +1126,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
         @Override
         public boolean showGrid() {
-            return showGrid;
+            return settingsPopupController.showGrid();
         }
 
         @Override
@@ -1242,20 +1253,6 @@ public class PathmindVisualEditorScreen extends Screen {
         }
     }
 
-    enum AccentOption {
-        SKY("Sky", UITheme.ACCENT_SKY),
-        MINT("Mint", UITheme.ACCENT_MINT),
-        AMBER("Amber", UITheme.ACCENT_AMBER);
-
-        final String label;
-        final int color;
-
-        AccentOption(String label, int color) {
-            this.label = label;
-            this.color = color;
-        }
-    }
-
     public PathmindVisualEditorScreen() {
         super(Component.translatable("screen.pathmind.visual_editor.title"));
         this.baritoneAvailable = BaritoneDependencyChecker.isBaritoneApiPresent();
@@ -1277,40 +1274,7 @@ public class PathmindVisualEditorScreen extends Screen {
         this.nodeGraph.setActivePreset(activePresetName);
         updateImportExportPathFromPreset();
 
-        // Load settings
-        this.currentSettings = SettingsManager.load();
-
-        // Apply loaded settings
-        this.accentOption = getAccentOptionFromString(currentSettings.accentColor);
-        this.showGrid = currentSettings.showGrid == null || currentSettings.showGrid;
-        this.renderConnectionsOnTop = currentSettings.renderConnectionsOnTop != null && currentSettings.renderConnectionsOnTop;
-        this.showWorkspaceTooltips = currentSettings.showTooltips == null || currentSettings.showTooltips;
-        this.showChatErrors = currentSettings.showChatErrors == null || currentSettings.showChatErrors;
-        this.showHudOverlays = currentSettings.showHudOverlays == null || currentSettings.showHudOverlays;
-        this.skipPresetDeleteConfirm = currentSettings.skipPresetDeleteConfirm != null && currentSettings.skipPresetDeleteConfirm;
-        this.firstRunTutorialController.initialize(Boolean.TRUE.equals(currentSettings.firstRunTutorialCompleted));
-        this.nodeDelayMs = Mth.clamp(
-            currentSettings.nodeDelayMs != null ? currentSettings.nodeDelayMs : 150,
-            NODE_DELAY_MIN_MS,
-            NODE_DELAY_MAX_MS
-        );
-        currentSettings.nodeDelayMs = this.nodeDelayMs;
-    }
-
-    private AccentOption getAccentOptionFromString(String color) {
-        switch (color.toLowerCase()) {
-            case "mint": return AccentOption.MINT;
-            case "amber": return AccentOption.AMBER;
-            default: return AccentOption.SKY;
-        }
-    }
-
-    private String getAccentOptionString(AccentOption option) {
-        switch (option) {
-            case MINT: return "mint";
-            case AMBER: return "amber";
-            default: return "sky";
-        }
+        this.firstRunTutorialController.initialize(Boolean.TRUE.equals(settingsPopupController.settings().firstRunTutorialCompleted));
     }
 
     @Override
@@ -1354,44 +1318,8 @@ public class PathmindVisualEditorScreen extends Screen {
             inlinePresetRenameField = PathmindTextField.createInactive(this.font, 0, 0, 200, 20, Component.translatable("pathmind.field.newPresetName"), 64);
             this.addWidget(inlinePresetRenameField);
         }
-        if (nodeDelayField == null) {
-            nodeDelayField = PathmindTextField.createInactive(this.font, 0, 0, 120, 20, Component.translatable("pathmind.field.delay"), 6);
-            nodeDelayField.setTextColor(UITheme.TEXT_HEADER);
-            nodeDelayField.setTextColorUneditable(UITheme.TEXT_HEADER);
-            ((PathmindTextField) nodeDelayField).setPathmindFilter(value -> value == null || value.isEmpty() || value.chars().allMatch(Character::isDigit));
-            nodeDelayField.setResponder(value -> {
-                Integer parsed = parseDelayFieldValue(value);
-                if (parsed != null && parsed != nodeDelayMs) {
-                    nodeDelayMs = parsed;
-                    currentSettings.nodeDelayMs = nodeDelayMs;
-                    SettingsManager.save(currentSettings);
-                }
-            });
-            this.addWidget(nodeDelayField);
-        }
-        if (createListRadiusField == null) {
-            createListRadiusField = PathmindTextField.createInactive(this.font, 0, 0, 120, 20, Component.translatable("pathmind.field.radius"), 6);
-            createListRadiusField.setTextColor(UITheme.TEXT_HEADER);
-            createListRadiusField.setTextColorUneditable(UITheme.TEXT_HEADER);
-            ((PathmindTextField) createListRadiusField).setPathmindFilter(value -> value == null || value.isEmpty() || value.chars().allMatch(Character::isDigit));
-            createListRadiusField.setResponder(value -> {
-                Node targetNode = getEffectiveSettingsTargetNode();
-                Integer parsed = parseCreateListRadiusFieldValue(value);
-                if (parsed != null && (targetNode == null || targetNode.getType() == NodeType.CREATE_LIST)
-                    && parsed != getCreateListSettingsRadius(targetNode)) {
-                    setCreateListSettingsRadius(targetNode, parsed);
-                }
-            });
-            this.addWidget(createListRadiusField);
-        }
+        settingsPopupController.initializeFields();
         nodeSearchController.initialize();
-        if (settingsNodeSearchField == null) {
-            settingsNodeSearchField = PathmindTextField.createInactive(this.font, 0, 0, NODE_SEARCH_FIELD_WIDTH, SETTINGS_NODE_TYPE_SEARCH_HEIGHT, Component.translatable("pathmind.search.nodeSettings"), 64);
-            settingsNodeSearchField.setSuggestion(tr("pathmind.search.nodeSettings"));
-            settingsNodeSearchField.setHeight(Math.max(10, SETTINGS_NODE_TYPE_SEARCH_HEIGHT - TEXT_FIELD_VERTICAL_PADDING * 2));
-            settingsNodeSearchField.setResponder(value -> settingsNodeSelectorScrollOffset = 0);
-            this.addWidget(settingsNodeSearchField);
-        }
 
         updateImportExportPathFromPreset();
 
@@ -1445,7 +1373,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
         renderWorkspaceButtons(context, mouseX, mouseY);
         boolean sidebarInteractionsEnabled = !isPopupObscuringWorkspace();
-        boolean allowSidebarTooltips = showWorkspaceTooltips && !nodeGraph.isAnyNodeBeingDragged();
+        boolean allowSidebarTooltips = settingsPopupController.showWorkspaceTooltips() && !nodeGraph.isAnyNodeBeingDragged();
         refreshRoutineSidebarContext();
         workspaceDragController.updateSidebarRoutineDragState();
         sidebar.render(
@@ -1483,7 +1411,7 @@ public class PathmindVisualEditorScreen extends Screen {
         infoPopupAnimation.tick();
         missingBaritonePopupAnimation.tick();
         missingUiUtilsPopupAnimation.tick();
-        settingsPopupAnimation.tick();
+        settingsPopupController.animation().tick();
         validationExecutionController.tick();
 
         boolean controlsDisabled = isPopupObscuringWorkspace();
@@ -1564,7 +1492,7 @@ public class PathmindVisualEditorScreen extends Screen {
         if (missingUiUtilsPopupAnimation.isVisible()) {
             renderMissingUiUtilsPopup(context, mouseX, mouseY);
         }
-        if (settingsPopupAnimation.isVisible()) {
+        if (settingsPopupController.animation().isVisible()) {
             settingsPopupController.renderSettingsPopup(context, mouseX, mouseY);
         }
 
@@ -1579,8 +1507,8 @@ public class PathmindVisualEditorScreen extends Screen {
         //?}
 
         // Render language dropdown options on top of scrim overlay
-        if (settingsPopupAnimation.isVisible()) {
-            RenderStateBridge.setShaderColor(1f, 1f, 1f, settingsPopupAnimation.getPopupAlpha());
+        if (settingsPopupController.animation().isVisible()) {
+            RenderStateBridge.setShaderColor(1f, 1f, 1f, settingsPopupController.animation().getPopupAlpha());
             settingsPopupController.renderLanguageDropdownOptions(context, mouseX, mouseY);
             //? if MC_1_21_8 {
             /*RenderStateBridge.setShaderColor(1f, 1f, 1f, 1f);*/
@@ -1615,7 +1543,7 @@ public class PathmindVisualEditorScreen extends Screen {
         renderDraggedPresetDropdownTab(context, mouseX, mouseY);
         DrawContextBridge.startNewRootLayer(context);
         NodeErrorNotificationOverlay.getInstance().render(context, this.font, this.width, this.height);
-        if (currentSettings != null && Boolean.TRUE.equals(currentSettings.showProfilerOverlay)) {
+        if (settingsPopupController.settings() != null && Boolean.TRUE.equals(settingsPopupController.settings().showProfilerOverlay)) {
             DrawContextBridge.startNewRootLayer(context);
             nodeGraph.renderProfilerOverlay(context, this.font);
         }
@@ -1749,11 +1677,11 @@ public class PathmindVisualEditorScreen extends Screen {
         if (missingUiUtilsPopupAnimation.isVisible()) {
             return handleMissingUiUtilsPopupClick(mouseX, mouseY, button);
         }
-        if (settingsPopupAnimation.isVisible()) {
+        if (settingsPopupController.animation().isVisible()) {
             //? if MC_1_21_8 {
-            /*if (handleSettingsPopupClick(mouseX, mouseY, button)) {
+            /*if (settingsPopupController.mouseClicked(mouseX, mouseY, button)) {
                 *///?} else {
-            if (handleSettingsPopupClick(click, inBounds)) {
+            if (settingsPopupController.mouseClicked(click, inBounds)) {
                 //?}
                 return true;
             }
@@ -2031,34 +1959,8 @@ public class PathmindVisualEditorScreen extends Screen {
         if (missingUiUtilsPopupAnimation.isVisible()) {
             return true;
         }
-        if (settingsPopupAnimation.isVisible()) {
-            if (settingsNodeSelectorScrollDragging) {
-                int popupX = getSettingsPopupX();
-                int popupY = getSettingsPopupY();
-                int popupWidth = getSettingsPopupWidth();
-                int contentPopupY = popupY - settingsPopupScrollOffset;
-                int contentX = popupX + 20;
-                int selectorWidth = popupWidth - 40;
-                int nodeSettingsBodyY = getSettingsNodeSectionBodyY(contentPopupY);
-                int maxSelectorScroll = getSettingsNodeTypeSelectorMaxScroll(selectorWidth);
-                ScrollbarHelper.Metrics selectorScrollMetrics = getSettingsNodeTypeSelectorScrollMetrics(contentX, nodeSettingsBodyY, selectorWidth, maxSelectorScroll);
-                settingsNodeSelectorScrollOffset = ScrollbarHelper.scrollFromThumb(selectorScrollMetrics, (int) mouseY - settingsNodeSelectorScrollDragOffset);
-            }
-            if (settingsPopupScrollDragging) {
-                int popupX = getSettingsPopupX();
-                int popupY = getSettingsPopupY();
-                int popupWidth = getSettingsPopupWidth();
-                int popupHeight = getSettingsPopupHeight();
-                int maxScroll = getSettingsPopupMaxScroll(popupX, popupY, popupWidth, popupHeight);
-                ScrollbarHelper.Metrics scrollMetrics = getSettingsPopupScrollMetrics(popupX, popupY, popupWidth, popupHeight, maxScroll);
-                settingsPopupScrollOffset = ScrollbarHelper.scrollFromThumb(scrollMetrics, (int) mouseY - settingsPopupScrollDragOffset);
-            }
-            if (nodeDelayDragging) {
-                updateNodeDelayFromMouse((int) mouseX, getSettingsPopupX(), getSettingsPopupWidth());
-            }
-            if (createListRadiusDragging) {
-                updateCreateListRadiusFromMouse(getEffectiveSettingsTargetNode(), (int) mouseX, getSettingsPopupX(), getSettingsPopupWidth());
-            }
+        if (settingsPopupController.animation().isVisible()) {
+            settingsPopupController.mouseDragged(mouseX, mouseY);
             return true;
         }
         if (createPresetPopupAnimation.isVisible()) {
@@ -2134,18 +2036,12 @@ public class PathmindVisualEditorScreen extends Screen {
         if (missingUiUtilsPopupAnimation.isVisible()) {
             return true;
         }
-        if (settingsPopupAnimation.isVisible()) {
-            settingsNodeSelectorScrollDragging = false;
-            settingsPopupScrollDragging = false;
-            nodeDelayDragging = false;
-            createListRadiusDragging = false;
-            if (nodeDelayField != null) {
-                //? if MC_1_21_8 {
-                /*nodeDelayField.mouseReleased(mouseX, mouseY, button);*/
-                //?} else {
-                nodeDelayField.mouseReleased(click);
-                //?}
-            }
+        if (settingsPopupController.animation().isVisible()) {
+            //? if MC_1_21_8 {
+            /*settingsPopupController.mouseReleased(mouseX, mouseY, button);*/
+            //?} else {
+            settingsPopupController.mouseReleased(click);
+            //?}
             return true;
         }
         if (infoPopupAnimation.isVisible()) {
@@ -2274,41 +2170,12 @@ public class PathmindVisualEditorScreen extends Screen {
             }
             return true;
         }
-        if (settingsPopupAnimation.isVisible() && nodeDelayField != null && nodeDelayField.isFocused()) {
+        if (settingsPopupController.animation().isVisible()) {
             //? if MC_1_21_8 {
-            /*if (nodeDelayField.keyPressed(keyCode, scanCode, modifiers)) {
-                *///?} else {
-            if (nodeDelayField.keyPressed(input)) {
-                //?}
-                return true;
-            }
-        }
-        if (settingsPopupAnimation.isVisible() && settingsNodeSearchField != null && settingsNodeSearchField.isFocused()) {
-            //? if MC_1_21_8 {
-            /*if (settingsNodeSearchField.keyPressed(keyCode, scanCode, modifiers)) {
-                *///?} else {
-            if (settingsNodeSearchField.keyPressed(input)) {
-                //?}
-                return true;
-            }
-            if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
-                return true;
-            }
-        }
-        if (settingsPopupAnimation.isVisible() && createListRadiusField != null && createListRadiusField.isFocused()) {
-            //? if MC_1_21_8 {
-            /*if (createListRadiusField.keyPressed(keyCode, scanCode, modifiers)) {
-                *///?} else {
-            if (createListRadiusField.keyPressed(input)) {
-                //?}
-                return true;
-            }
-        }
-        if (settingsPopupAnimation.isVisible()) {
-            if (keyCode == GLFW.GLFW_KEY_ESCAPE || keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
-                closeSettingsPopup();
-            }
-            return true;
+            /*return settingsPopupController.keyPressed(keyCode, scanCode, modifiers);*/
+            //?} else {
+            return settingsPopupController.keyPressed(input);
+            //?}
         }
         if (infoPopupAnimation.isVisible()) {
             if (keyCode == GLFW.GLFW_KEY_ESCAPE || keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
@@ -2501,29 +2368,12 @@ public class PathmindVisualEditorScreen extends Screen {
             }
             return true;
         }
-        if (settingsPopupAnimation.isVisible()) {
+        if (settingsPopupController.animation().isVisible()) {
             //? if MC_1_21_8 {
-            /*if (settingsNodeSearchField != null && settingsNodeSearchField.isFocused() && settingsNodeSearchField.charTyped(chr, modifiers)) {
-                *///?} else {
-            if (settingsNodeSearchField != null && settingsNodeSearchField.isFocused() && settingsNodeSearchField.charTyped(input)) {
-                //?}
-                return true;
-            }
-            //? if MC_1_21_8 {
-            /*if (nodeDelayField != null && nodeDelayField.isFocused() && nodeDelayField.charTyped(chr, modifiers)) {
-                *///?} else {
-            if (nodeDelayField != null && nodeDelayField.isFocused() && nodeDelayField.charTyped(input)) {
-                //?}
-                return true;
-            }
-            //? if MC_1_21_8 {
-            /*if (createListRadiusField != null && createListRadiusField.isFocused() && createListRadiusField.charTyped(chr, modifiers)) {
-                *///?} else {
-            if (createListRadiusField != null && createListRadiusField.isFocused() && createListRadiusField.charTyped(input)) {
-                //?}
-                return true;
-            }
-            return true;
+            /*return settingsPopupController.charTyped(chr, modifiers);*/
+            //?} else {
+            return settingsPopupController.charTyped(input);
+            //?}
         }
         if (validationExecutionController.isPanelOpen()) {
             return true;
@@ -2619,45 +2469,8 @@ public class PathmindVisualEditorScreen extends Screen {
         if (nodeGraph.isScreenCoordinateCaptureActive()) {
             return true;
         }
-        if (settingsPopupAnimation.isVisible()) {
-            int popupX = getSettingsPopupX();
-            int popupY = getSettingsPopupY();
-            int popupWidth = getSettingsPopupWidth();
-            int popupHeight = getSettingsPopupHeight();
-            int contentPopupY = popupY - settingsPopupScrollOffset;
-            int[] bodyBounds = getSettingsPopupBodyBounds(popupX, popupY, popupWidth, popupHeight);
-            int[] selectorBounds = getSettingsNodeTypeSelectorBounds(popupX + 20, getSettingsNodeSectionBodyY(contentPopupY), popupWidth - 40);
-            long now = System.currentTimeMillis();
-            boolean continueOuterScroll = now - settingsLastScrollEventMs <= SETTINGS_SCROLL_GESTURE_TIMEOUT_MS
-                && settingsLastScrollConsumer == 2;
-            if (isPointInRect((int) mouseX, (int) mouseY, selectorBounds[0], selectorBounds[1], selectorBounds[2], selectorBounds[3]) && verticalAmount != 0.0) {
-                int maxSelectorScroll = getSettingsNodeTypeSelectorMaxScroll(selectorBounds[2]);
-                if (maxSelectorScroll > 0 && !continueOuterScroll) {
-                    int nextSelectorScroll = ScrollbarHelper.applyWheel(settingsNodeSelectorScrollOffset, verticalAmount, 16, maxSelectorScroll);
-                    if (nextSelectorScroll != settingsNodeSelectorScrollOffset) {
-                        settingsNodeSelectorScrollOffset = nextSelectorScroll;
-                        settingsLastScrollEventMs = now;
-                        settingsLastScrollConsumer = 1;
-                        return true;
-                    }
-                }
-                if (!continueOuterScroll) {
-                    return true;
-                }
-            }
-            if (isPointInRect((int) mouseX, (int) mouseY, bodyBounds[0], bodyBounds[1], bodyBounds[2], bodyBounds[3]) && verticalAmount != 0.0) {
-                int maxScroll = getSettingsPopupMaxScroll(popupX, popupY, popupWidth, popupHeight);
-                if (maxScroll > 0) {
-                    int nextPopupScroll = ScrollbarHelper.applyWheel(settingsPopupScrollOffset, verticalAmount, 16, maxScroll);
-                    if (nextPopupScroll != settingsPopupScrollOffset) {
-                        settingsPopupScrollOffset = nextPopupScroll;
-                        settingsLastScrollEventMs = now;
-                        settingsLastScrollConsumer = 2;
-                    }
-                }
-                return true;
-            }
-            return true;
+        if (settingsPopupController.animation().isVisible()) {
+            return settingsPopupController.mouseScrolled(mouseX, mouseY, verticalAmount);
         }
         if (infoPopupAnimation.isVisible()) {
             return handleBoundedPopupScroll(mouseX, mouseY, verticalAmount, infoPopupAnimation, INFO_POPUP_WIDTH, INFO_POPUP_HEIGHT);
@@ -2880,10 +2693,10 @@ public class PathmindVisualEditorScreen extends Screen {
             return false;
         }
         String renamedKey = renamedPreset.get();
-        if (currentSettings != null && currentSettings.presetGroupColors != null && currentSettings.presetGroupColors.containsKey(currentName)) {
-            String groupKey = currentSettings.presetGroupColors.remove(currentName);
-            currentSettings.presetGroupColors.put(renamedKey, groupKey);
-            SettingsManager.save(currentSettings);
+        if (settingsPopupController.settings() != null && settingsPopupController.settings().presetGroupColors != null && settingsPopupController.settings().presetGroupColors.containsKey(currentName)) {
+            String groupKey = settingsPopupController.settings().presetGroupColors.remove(currentName);
+            settingsPopupController.settings().presetGroupColors.put(renamedKey, groupKey);
+            SettingsManager.save(settingsPopupController.settings());
         }
         refreshAvailablePresets();
         nodeGraph.setActivePreset(activePresetName);
@@ -3581,7 +3394,7 @@ public class PathmindVisualEditorScreen extends Screen {
         if (presetName == null || presetName.isEmpty()) {
             return;
         }
-        if (skipPresetDeleteConfirm) {
+        if (settingsPopupController.skipPresetDeleteConfirm()) {
             attemptDeletePreset(presetName);
             return;
         }
@@ -3606,11 +3419,11 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     void setSkipPresetDeleteConfirm(boolean skip) {
-        this.skipPresetDeleteConfirm = skip;
-        if (currentSettings != null) {
-            currentSettings.skipPresetDeleteConfirm = skip;
-            SettingsManager.save(currentSettings);
-        }
+        settingsPopupController.setSkipPresetDeleteConfirm(skip);
+    }
+
+    boolean isSkipPresetDeleteConfirm() {
+        return settingsPopupController.skipPresetDeleteConfirm();
     }
 
     private void attemptDeletePreset(String presetName) {
@@ -3644,9 +3457,9 @@ public class PathmindVisualEditorScreen extends Screen {
         if (!PresetManager.deletePreset(presetName)) {
             return;
         }
-        if (currentSettings != null && currentSettings.presetGroupColors != null) {
-            currentSettings.presetGroupColors.remove(presetName);
-            SettingsManager.save(currentSettings);
+        if (settingsPopupController.settings() != null && settingsPopupController.settings().presetGroupColors != null) {
+            settingsPopupController.settings().presetGroupColors.remove(presetName);
+            SettingsManager.save(settingsPopupController.settings());
         }
 
         presetDropdownController.close();
@@ -3771,7 +3584,7 @@ public class PathmindVisualEditorScreen extends Screen {
         boolean marketplaceHovered = renderMarketplaceButton(context, mouseX, mouseY, buttonY);
         boolean publishHovered = renderPublishButton(context, mouseX, mouseY, buttonY);
 
-        if (showWorkspaceTooltips && !isPopupObscuringWorkspace()) {
+        if (settingsPopupController.showWorkspaceTooltips() && !isPopupObscuringWorkspace()) {
             if (publishHovered) {
                 TooltipRenderer.render(context, this.font, Component.translatable("pathmind.marketplace.publishPreset").getString(), mouseX, mouseY, this.width, this.height);
             } else if (marketplaceHovered) {
@@ -3790,7 +3603,7 @@ public class PathmindVisualEditorScreen extends Screen {
         boolean clearHovered = renderClearButton(context, mouseX, mouseY, buttonY);
         boolean homeHovered = renderHomeButton(context, mouseX, mouseY, buttonY);
 
-        if (showWorkspaceTooltips && !isPopupObscuringWorkspace()) {
+        if (settingsPopupController.showWorkspaceTooltips() && !isPopupObscuringWorkspace()) {
             if (homeHovered) {
                 TooltipRenderer.render(context, this.font, Component.translatable("pathmind.tooltip.resetView").getString(), mouseX, mouseY, this.width, this.height);
             } else if (clearHovered) {
@@ -3867,9 +3680,9 @@ public class PathmindVisualEditorScreen extends Screen {
 
     private void renderSettingsButton(GuiGraphics context, int mouseX, int mouseY, boolean disabled) {
         boolean hovered = renderWorkspaceIconButton(context, getSettingsButtonX(), getSettingsButtonY(), mouseX, mouseY,
-            settingsPopupAnimation.isVisible(), disabled, "settings-button", PathmindWorkspaceChrome::drawSettingsIcon);
+            settingsPopupController.animation().isVisible(), disabled, "settings-button", PathmindWorkspaceChrome::drawSettingsIcon);
 
-        if (hovered && showWorkspaceTooltips && !isPopupObscuringWorkspace()) {
+        if (hovered && settingsPopupController.showWorkspaceTooltips() && !isPopupObscuringWorkspace()) {
             TooltipRenderer.render(context, this.font, Component.translatable("pathmind.settings.title").getString(), mouseX, mouseY, this.width, this.height);
         }
     }
@@ -3966,22 +3779,6 @@ public class PathmindVisualEditorScreen extends Screen {
         return PathmindWorkspaceChrome.contains(mouseX, mouseY, buttonX, buttonY, BOTTOM_BUTTON_SIZE, BOTTOM_BUTTON_SIZE);
     }
 
-    int getSettingsPopupX() {
-        return (this.width - getSettingsPopupWidth()) / 2;
-    }
-
-    int getSettingsPopupWidth() {
-        return getBoundedPopupWidth(SETTINGS_POPUP_WIDTH);
-    }
-
-    int getSettingsPopupHeight() {
-        return Math.min(SETTINGS_POPUP_HEIGHT, Math.max(140, this.height - 24));
-    }
-
-    int getSettingsPopupY() {
-        return (this.height - getSettingsPopupHeight()) / 2;
-    }
-
     int screenWidth() {
         return this.width;
     }
@@ -4006,136 +3803,8 @@ public class PathmindVisualEditorScreen extends Screen {
         return this.font;
     }
 
-    int[] getSettingsPopupBodyBounds(int popupX, int popupY, int popupWidth, int popupHeight) {
-        return settingsPopupController.getSettingsPopupBodyBounds(popupX, popupY, popupWidth, popupHeight);
-    }
-
-    int getSettingsPopupMaxScroll(int popupX, int popupY, int popupWidth, int popupHeight) {
-        return settingsPopupController.getSettingsPopupMaxScroll(popupX, popupY, popupWidth, popupHeight);
-    }
-
-    ScrollbarHelper.Metrics getSettingsPopupScrollMetrics(int popupX, int popupY, int popupWidth, int popupHeight, int maxScroll) {
-        return settingsPopupController.getSettingsPopupScrollMetrics(popupX, popupY, popupWidth, popupHeight, maxScroll);
-    }
-
-    int getSettingsNodeSectionBodyY(int popupY) {
-        return settingsPopupController.getSettingsNodeSectionBodyY(popupY);
-    }
-
-    int getSettingsNodeSectionContentY(int bodyY, int contentWidth) {
-        return settingsPopupController.getSettingsNodeSectionContentY(bodyY, contentWidth);
-    }
-
-    int[] getSettingsNodeTypeSelectorBounds(int contentX, int bodyY, int contentWidth) {
-        return settingsPopupController.getSettingsNodeTypeSelectorBounds(contentX, bodyY, contentWidth);
-    }
-
-    int[] getSettingsNodeTypeSearchFieldBounds(int contentX, int bodyY, int contentWidth) {
-        return settingsPopupController.getSettingsNodeTypeSearchFieldBounds(contentX, bodyY, contentWidth);
-    }
-
-    int getSettingsNodeTypeSelectorMaxScroll(int contentWidth) {
-        return settingsPopupController.getSettingsNodeTypeSelectorMaxScroll(contentWidth);
-    }
-
-    ScrollbarHelper.Metrics getSettingsNodeTypeSelectorScrollMetrics(int contentX, int bodyY, int contentWidth, int maxScroll) {
-        return settingsPopupController.getSettingsNodeTypeSelectorScrollMetrics(contentX, bodyY, contentWidth, maxScroll);
-    }
-
-    int[] getSettingsNodeTypeButtonBounds(int contentX, int bodyY, int contentWidth, int maxScroll, int index) {
-        return settingsPopupController.getSettingsNodeTypeButtonBounds(contentX, bodyY, contentWidth, maxScroll, index);
-    }
-
-    List<NodeType> getFilteredSettingsNodeTypes() {
-        return settingsPopupController.getFilteredSettingsNodeTypes();
-    }
-
-    int[] getNodeDelayFieldBounds(int popupX, int scaledWidth, int centerY, String valueText) {
-        return settingsPopupController.getNodeDelayFieldBounds(popupX, scaledWidth, centerY, valueText);
-    }
-
-    int[] getCreateListRadiusFieldBounds(int popupX, int scaledWidth, int centerY, String valueText) {
-        return settingsPopupController.getCreateListRadiusFieldBounds(popupX, scaledWidth, centerY, valueText);
-    }
-
-    Integer parseDelayFieldValue(String value) {
-        return settingsPopupController.parseDelayFieldValue(value);
-    }
-
-    Integer parseCreateListRadiusFieldValue(String value) {
-        return settingsPopupController.parseCreateListRadiusFieldValue(value);
-    }
-
-    void updateNodeDelayFromMouse(int mouseX, int popupX, int popupWidth) {
-        settingsPopupController.updateNodeDelayFromMouse(mouseX, popupX, popupWidth);
-    }
-
-    void updateCreateListRadiusFromMouse(Node node, int mouseX, int popupX, int popupWidth) {
-        settingsPopupController.updateCreateListRadiusFromMouse(node, mouseX, popupX, popupWidth);
-    }
-
-    boolean supportsNodeSettings(Node node) {
-        return settingsPopupController.supportsNodeSettings(node);
-    }
-
-    Node findFirstNodeWithSettingsType(NodeType type) {
-        return settingsPopupController.findFirstNodeWithSettingsType(type);
-    }
-
-    NodeType getEffectiveSettingsTargetType() {
-        return settingsPopupController.getEffectiveSettingsTargetType();
-    }
-
-    Node getEffectiveSettingsTargetNode() {
-        return settingsPopupController.getEffectiveSettingsTargetNode();
-    }
-
-    boolean isCreateListCustomRadiusEnabled(Node node) {
-        return settingsPopupController.isCreateListCustomRadiusEnabled(node);
-    }
-
-    int getCreateListSettingsRadius(Node node) {
-        return settingsPopupController.getCreateListSettingsRadius(node);
-    }
-
-    void setCreateListCustomRadiusEnabled(Node node, boolean enabled) {
-        settingsPopupController.setCreateListCustomRadiusEnabled(node, enabled);
-    }
-
-    void setCreateListSettingsRadius(Node node, int radius) {
-        settingsPopupController.setCreateListSettingsRadius(node, radius);
-    }
-
-    int[] getSettingsClearCacheButtonBounds(int popupX, int popupY, int popupWidth, int popupHeight, int contentX, int nodeSettingsContentY) {
-        return settingsPopupController.getSettingsClearCacheButtonBounds(popupX, popupY, popupWidth, popupHeight, contentX, nodeSettingsContentY);
-    }
-
-    int[] getSettingsCacheRecipesButtonBounds(int popupX, int popupY, int popupWidth, int popupHeight, int contentX, int nodeSettingsContentY) {
-        return settingsPopupController.getSettingsCacheRecipesButtonBounds(popupX, popupY, popupWidth, popupHeight, contentX, nodeSettingsContentY);
-    }
-
-    void cacheSettingsRecipes() {
-        settingsPopupController.cacheSettingsRecipes();
-    }
-
-    void clearSettingsCache() {
-        settingsPopupController.clearSettingsCache();
-    }
-
-    int[] getSettingsRestoreExamplesButtonBounds(int popupX, int popupY, int popupWidth, int popupHeight, int contentX, int nodeSettingsContentY) {
-        return settingsPopupController.getSettingsRestoreExamplesButtonBounds(popupX, popupY, popupWidth, popupHeight, contentX, nodeSettingsContentY);
-    }
-
-    void restoreExamplePresets() {
-        settingsPopupController.restoreExamplePresets();
-    }
-
-    int[] getSettingsReplayTutorialButtonBounds(int popupX, int popupY, int popupWidth, int popupHeight, int contentX, int nodeSettingsContentY) {
-        return settingsPopupController.getSettingsReplayTutorialButtonBounds(popupX, popupY, popupWidth, popupHeight, contentX, nodeSettingsContentY);
-    }
-
     int getAccentColor() {
-        return accentOption != null ? accentOption.color : UITheme.ACCENT_DEFAULT;
+        return settingsPopupController.accentColor();
     }
 
     private void openSettingsPopup() {
@@ -4144,394 +3813,11 @@ public class PathmindVisualEditorScreen extends Screen {
         clearPopupAnimation.hide();
         importExportPopupAnimation.hide();
         presetDropdownController.close();
-        settingsPopupController.resetLanguageDropdown();
-        Node selectedNode = nodeGraph != null ? nodeGraph.getSelectedNode() : null;
-        if (supportsNodeSettings(selectedNode)) {
-            settingsNodeTargetType = selectedNode.getType();
-            settingsNodeTarget = selectedNode;
-        } else {
-            settingsNodeListView = false;
-            settingsNodeTargetType = SETTINGS_NODE_TYPES[0];
-            settingsNodeTarget = findFirstNodeWithSettingsType(settingsNodeTargetType);
-        }
-        settingsNodeListScrollOffset = 0;
-        settingsNodeSelectorScrollOffset = 0;
-        settingsPopupScrollOffset = 0;
-        settingsLastScrollEventMs = 0L;
-        settingsLastScrollConsumer = 0;
-        settingsNodeSelectorScrollDragging = false;
-        settingsNodeSelectorScrollDragOffset = 0;
-        if (settingsNodeSearchField != null) {
-            settingsNodeSearchField.setValue("");
-            settingsNodeSearchField.setFocused(false);
-            settingsNodeSearchField.setVisible(true);
-            settingsNodeSearchField.setEditable(true);
-            settingsNodeSearchField.setSuggestion(tr("pathmind.search.nodeSettings"));
-        }
-        settingsPopupAnimation.show();
+        settingsPopupController.open();
     }
 
     void closeSettingsPopup() {
-        settingsPopupController.closeLanguageDropdown();
-        nodeDelayDragging = false;
-        createListRadiusDragging = false;
-        settingsNodeSelectorScrollDragging = false;
-        settingsNodeSelectorScrollDragOffset = 0;
-        settingsPopupScrollDragging = false;
-        settingsPopupScrollDragOffset = 0;
-        if (createListRadiusField != null) {
-            PathmindTextField.deactivate(createListRadiusField);
-        }
-        settingsNodeListView = false;
-        settingsNodeTargetType = null;
-        settingsNodeTarget = null;
-        settingsNodeListScrollOffset = 0;
-        settingsNodeSelectorScrollOffset = 0;
-        settingsPopupScrollOffset = 0;
-        settingsLastScrollEventMs = 0L;
-        settingsLastScrollConsumer = 0;
-        if (settingsNodeSearchField != null) {
-            settingsNodeSearchField.setValue("");
-            PathmindTextField.deactivate(settingsNodeSearchField);
-            settingsNodeSearchField.setSuggestion(tr("pathmind.search.nodeSettings"));
-        }
-        settingsPopupAnimation.hide();
-    }
-
-    //? if MC_1_21_8 {
-    /*private boolean handleSettingsPopupClick(double mouseX, double mouseY, int button) {
-        *///?} else {
-    private boolean handleSettingsPopupClick(MouseButtonEvent click, boolean inBounds) {
-        double mouseX = click.x();
-        double mouseY = click.y();
-        int button = click.button();
-        //?}
-        if (button != 0) {
-            return true;
-        }
-
-        int popupX = getSettingsPopupX();
-        int popupY = getSettingsPopupY();
-        int popupWidth = getSettingsPopupWidth();
-        int popupHeight = getSettingsPopupHeight();
-        int mouseXi = (int) mouseX;
-        int mouseYi = (int) mouseY;
-        int contentPopupY = popupY - settingsPopupScrollOffset;
-        int[] bodyBounds = getSettingsPopupBodyBounds(popupX, popupY, popupWidth, popupHeight);
-        boolean bodyHovered = isPointInRect(mouseXi, mouseYi, bodyBounds[0], bodyBounds[1], bodyBounds[2], bodyBounds[3]);
-
-        if (!isPointInRect(mouseXi, mouseYi, popupX, popupY, popupWidth, popupHeight)) {
-            closeSettingsPopup();
-            return true;
-        }
-
-        int maxScroll = getSettingsPopupMaxScroll(popupX, popupY, popupWidth, popupHeight);
-        ScrollbarHelper.Metrics scrollMetrics = getSettingsPopupScrollMetrics(popupX, popupY, popupWidth, popupHeight, maxScroll);
-        if (maxScroll > 0
-            && isPointInRect(mouseXi, mouseYi, scrollMetrics.trackLeft() - 3, scrollMetrics.trackTop(), scrollMetrics.trackWidth() + 6, scrollMetrics.viewportHeight())) {
-            settingsPopupScrollDragging = true;
-            settingsPopupScrollDragOffset = mouseYi - scrollMetrics.thumbTop();
-            return true;
-        }
-
-        int contentX = popupX + 20;
-
-        // Language dropdown click
-        int languageLabelY = contentPopupY + 44;
-        int languageButtonY = languageLabelY + 12;
-        int languageButtonWidth = popupWidth - 40;
-
-        if (bodyHovered && mouseXi >= contentX && mouseXi <= contentX + languageButtonWidth && mouseYi >= languageButtonY && mouseYi <= languageButtonY + 20) {
-            settingsPopupController.toggleLanguageDropdown();
-            return true;
-        }
-
-        // Language dropdown options click
-        if (settingsPopupController.isLanguageDropdownOpen()) {
-            int dropdownY = languageButtonY + 22;
-            for (int i = 0; i < settingsPopupController.supportedLanguageCount(); i++) {
-                if (bodyHovered && mouseXi >= contentX && mouseXi <= contentX + languageButtonWidth &&
-                    mouseYi >= dropdownY + (i * 20) && mouseYi <= dropdownY + (i * 20) + 20) {
-                    settingsPopupController.selectLanguage(i);
-                    return true;
-                }
-            }
-        }
-
-        // Adjust accentOptionsY to match renderSettingsPopup
-        int accentLabelY = languageButtonY + 50;
-        int accentOptionsY = accentLabelY + 12;
-        int optionIndex = 0;
-        for (AccentOption option : AccentOption.values()) {
-            int optionX = contentX + optionIndex * (SETTINGS_OPTION_WIDTH + SETTINGS_OPTION_GAP);
-            if (bodyHovered && isPointInRect(mouseXi, mouseYi, optionX, accentOptionsY, SETTINGS_OPTION_WIDTH, SETTINGS_OPTION_HEIGHT)) {
-                accentOption = option;
-                currentSettings.accentColor = getAccentOptionString(accentOption);
-                SettingsManager.save(currentSettings);
-                return true;
-            }
-            optionIndex++;
-        }
-
-        int sectionDividerY = accentOptionsY + SETTINGS_OPTION_HEIGHT + 10;
-        int settingDividerY = sectionDividerY + 22;
-        int gridRowCenterY = (sectionDividerY + settingDividerY) / 2;
-        int gridToggleX = popupX + popupWidth - SETTINGS_TOGGLE_WIDTH - 20;
-        int gridToggleY = gridRowCenterY - SETTINGS_TOGGLE_HEIGHT / 2;
-        if (bodyHovered && isPointInRect(mouseXi, mouseYi, gridToggleX, gridToggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT)) {
-            showGrid = !showGrid;
-            currentSettings.showGrid = showGrid;
-            SettingsManager.save(currentSettings);
-            return true;
-        }
-
-        int lowDetailDividerY = settingDividerY + 22;
-        int lowDetailRowCenterY = (settingDividerY + lowDetailDividerY) / 2;
-        int lowDetailToggleX = gridToggleX;
-        int lowDetailToggleY = lowDetailRowCenterY - SETTINGS_TOGGLE_HEIGHT / 2;
-        if (bodyHovered && isPointInRect(mouseXi, mouseYi, lowDetailToggleX, lowDetailToggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT)) {
-            currentSettings.lowDetailMode = !Boolean.TRUE.equals(currentSettings.lowDetailMode);
-            SettingsManager.save(currentSettings);
-            return true;
-        }
-
-        int footerDividerY = lowDetailDividerY + 22;
-        int tooltipRowCenterY = (lowDetailDividerY + footerDividerY) / 2;
-        int tooltipToggleX = gridToggleX;
-        int tooltipToggleY = tooltipRowCenterY - SETTINGS_TOGGLE_HEIGHT / 2;
-        if (bodyHovered && isPointInRect(mouseXi, mouseYi, tooltipToggleX, tooltipToggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT)) {
-            renderConnectionsOnTop = !renderConnectionsOnTop;
-            currentSettings.renderConnectionsOnTop = renderConnectionsOnTop;
-            SettingsManager.save(currentSettings);
-            return true;
-        }
-
-        int chatDividerY = footerDividerY + 22;
-        int chatRowCenterY = (footerDividerY + chatDividerY) / 2;
-        int chatToggleX = gridToggleX;
-        int chatToggleY = chatRowCenterY - SETTINGS_TOGGLE_HEIGHT / 2;
-        if (bodyHovered && isPointInRect(mouseXi, mouseYi, chatToggleX, chatToggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT)) {
-            showWorkspaceTooltips = !showWorkspaceTooltips;
-            currentSettings.showTooltips = showWorkspaceTooltips;
-            SettingsManager.save(currentSettings);
-            return true;
-        }
-
-        int overlayDividerY = chatDividerY + 22;
-        int overlayRowCenterY = (chatDividerY + overlayDividerY) / 2;
-        int overlayToggleX = gridToggleX;
-        int overlayToggleY = overlayRowCenterY - SETTINGS_TOGGLE_HEIGHT / 2;
-        if (bodyHovered && isPointInRect(mouseXi, mouseYi, overlayToggleX, overlayToggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT)) {
-            showChatErrors = !showChatErrors;
-            currentSettings.showChatErrors = showChatErrors;
-            SettingsManager.save(currentSettings);
-            return true;
-        }
-
-        int hudDividerY = overlayDividerY + 22;
-        int hudRowCenterY = (overlayDividerY + hudDividerY) / 2;
-        int hudToggleX = gridToggleX;
-        int hudToggleY = hudRowCenterY - SETTINGS_TOGGLE_HEIGHT / 2;
-        if (bodyHovered && isPointInRect(mouseXi, mouseYi, hudToggleX, hudToggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT)) {
-            showHudOverlays = !showHudOverlays;
-            currentSettings.showHudOverlays = showHudOverlays;
-            SettingsManager.save(currentSettings);
-            return true;
-        }
-
-        int profilerDividerY = hudDividerY + 22;
-        int profilerRowCenterY = (hudDividerY + profilerDividerY) / 2;
-        int profilerToggleX = gridToggleX;
-        int profilerToggleY = profilerRowCenterY - SETTINGS_TOGGLE_HEIGHT / 2;
-        if (bodyHovered && isPointInRect(mouseXi, mouseYi, profilerToggleX, profilerToggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT)) {
-            currentSettings.showProfilerOverlay = !Boolean.TRUE.equals(currentSettings.showProfilerOverlay);
-            SettingsManager.save(currentSettings);
-            return true;
-        }
-
-        int delayDividerY = profilerDividerY + 26;
-        int delayRowCenterY = (profilerDividerY + delayDividerY) / 2;
-        int sliderX = popupX + popupWidth - SETTINGS_SLIDER_WIDTH - 20;
-        int sliderY = delayRowCenterY - SETTINGS_SLIDER_HEIGHT / 2;
-        String delayText = nodeDelayField != null ? nodeDelayField.getValue() : Integer.toString(nodeDelayMs);
-        int[] valueBox = getNodeDelayFieldBounds(popupX, popupWidth, delayRowCenterY, delayText);
-        int valueBoxX = valueBox[0];
-        int valueBoxY = valueBox[1];
-        int valueBoxWidth = valueBox[2];
-        int valueBoxHeight = valueBox[3];
-        if (nodeDelayField != null) {
-            if (bodyHovered && isPointInRect(mouseXi, mouseYi, valueBoxX, valueBoxY, valueBoxWidth, valueBoxHeight)) {
-                nodeDelayField.setEditable(true);
-                nodeDelayField.setFocused(true);
-                //? if MC_1_21_8 {
-                /*nodeDelayField.mouseClicked(mouseX, mouseY, button);*/
-                //?} else {
-                nodeDelayField.mouseClicked(click, inBounds);
-                //?}
-                return true;
-            } else if (nodeDelayField.isFocused()) {
-                nodeDelayField.setFocused(false);
-            }
-        }
-        if (bodyHovered && isPointInRect(mouseXi, mouseYi, sliderX, sliderY - 4, SETTINGS_SLIDER_WIDTH, SETTINGS_SLIDER_HEIGHT + 8)) {
-            nodeDelayDragging = true;
-            updateNodeDelayFromMouse(mouseXi, popupX, popupWidth);
-            return true;
-        }
-
-        int nodeSettingsBodyY = getSettingsNodeSectionBodyY(contentPopupY);
-        int selectorWidth = popupWidth - 40;
-        int nodeSettingsContentY = getSettingsNodeSectionContentY(nodeSettingsBodyY, selectorWidth);
-        int[] selectorViewportBounds = getSettingsNodeTypeSelectorBounds(contentX, nodeSettingsBodyY, selectorWidth);
-        int[] selectorSearchBounds = getSettingsNodeTypeSearchFieldBounds(contentX, nodeSettingsBodyY, selectorWidth);
-        int maxSelectorScroll = getSettingsNodeTypeSelectorMaxScroll(selectorWidth);
-        ScrollbarHelper.Metrics selectorScrollMetrics = getSettingsNodeTypeSelectorScrollMetrics(contentX, nodeSettingsBodyY, selectorWidth, maxSelectorScroll);
-        if (maxSelectorScroll > 0
-            && isPointInRect(mouseXi, mouseYi, selectorScrollMetrics.trackLeft() - 3, selectorScrollMetrics.trackTop(),
-            selectorScrollMetrics.trackWidth() + 6, selectorScrollMetrics.viewportHeight())) {
-            settingsNodeSelectorScrollDragging = true;
-            settingsNodeSelectorScrollDragOffset = mouseYi - selectorScrollMetrics.thumbTop();
-            return true;
-        }
-        if (settingsNodeSearchField != null) {
-            if (bodyHovered && isPointInRect(mouseXi, mouseYi, selectorSearchBounds[0], selectorSearchBounds[1], selectorSearchBounds[2], selectorSearchBounds[3])) {
-                settingsNodeSearchField.setEditable(true);
-                settingsNodeSearchField.setFocused(true);
-                //? if MC_1_21_8 {
-                /*settingsNodeSearchField.mouseClicked(mouseX, mouseY, button);*/
-                //?} else {
-                settingsNodeSearchField.mouseClicked(click, inBounds);
-                //?}
-                return true;
-            } else if (settingsNodeSearchField.isFocused()) {
-                settingsNodeSearchField.setFocused(false);
-            }
-        }
-        List<NodeType> filteredTypes = getFilteredSettingsNodeTypes();
-        for (int i = 0; i < filteredTypes.size(); i++) {
-            int[] selectorBounds = getSettingsNodeTypeButtonBounds(contentX, nodeSettingsBodyY, selectorWidth, maxSelectorScroll, i);
-            if (bodyHovered
-                && isPointInRect(mouseXi, mouseYi, selectorViewportBounds[0], selectorViewportBounds[1], selectorViewportBounds[2], selectorViewportBounds[3])
-                && isPointInRect(mouseXi, mouseYi, selectorBounds[0], selectorBounds[1], selectorBounds[2], selectorBounds[3])) {
-                NodeType targetType = filteredTypes.get(i);
-                settingsNodeTargetType = targetType;
-                settingsNodeTarget = findFirstNodeWithSettingsType(targetType);
-                if (nodeGraph != null && settingsNodeTarget != null) {
-                    nodeGraph.selectNode(settingsNodeTarget);
-                }
-                return true;
-            }
-        }
-        int[] clearCacheButtonBounds = getSettingsClearCacheButtonBounds(
-            popupX, popupY, popupWidth, popupHeight, contentX, nodeSettingsContentY);
-        int[] cacheRecipesButtonBounds = getSettingsCacheRecipesButtonBounds(
-            popupX, popupY, popupWidth, popupHeight, contentX, nodeSettingsContentY);
-        if (isPointInRect(mouseXi, mouseYi, cacheRecipesButtonBounds[0], cacheRecipesButtonBounds[1],
-            cacheRecipesButtonBounds[2], cacheRecipesButtonBounds[3])) {
-            cacheSettingsRecipes();
-            return true;
-        }
-        if (isPointInRect(mouseXi, mouseYi, clearCacheButtonBounds[0], clearCacheButtonBounds[1],
-            clearCacheButtonBounds[2], clearCacheButtonBounds[3])) {
-            clearSettingsCache();
-            return true;
-        }
-        int[] restoreExamplesButtonBounds = getSettingsRestoreExamplesButtonBounds(
-            popupX, popupY, popupWidth, popupHeight, contentX, nodeSettingsContentY);
-        if (isPointInRect(mouseXi, mouseYi, restoreExamplesButtonBounds[0], restoreExamplesButtonBounds[1],
-            restoreExamplesButtonBounds[2], restoreExamplesButtonBounds[3])) {
-            restoreExamplePresets();
-            return true;
-        }
-        int[] replayTutorialButtonBounds = getSettingsReplayTutorialButtonBounds(
-            popupX, popupY, popupWidth, popupHeight, contentX, nodeSettingsContentY);
-        if (isPointInRect(mouseXi, mouseYi, replayTutorialButtonBounds[0], replayTutorialButtonBounds[1],
-            replayTutorialButtonBounds[2], replayTutorialButtonBounds[3])) {
-            replayFirstRunTutorial();
-            return true;
-        }
-
-        NodeType selectedType = getEffectiveSettingsTargetType();
-        if (bodyHovered && selectedType == NodeType.GOTO) {
-            int gotoBreakDividerY = nodeSettingsContentY + 28;
-            int gotoBreakRowCenterY = (nodeSettingsContentY + 10 + gotoBreakDividerY) / 2;
-            int gotoToggleX = gridToggleX;
-            int gotoBreakToggleY = gotoBreakRowCenterY - SETTINGS_TOGGLE_HEIGHT / 2;
-            if (isPointInRect(mouseXi, mouseYi, gotoToggleX, gotoBreakToggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT)) {
-                currentSettings.gotoAllowBreakWhileExecuting = !Boolean.TRUE.equals(currentSettings.gotoAllowBreakWhileExecuting);
-                SettingsManager.save(currentSettings);
-                return true;
-            }
-
-            int gotoPlaceDividerY = gotoBreakDividerY + 22;
-            int gotoPlaceRowCenterY = (gotoBreakDividerY + gotoPlaceDividerY) / 2;
-            int gotoPlaceToggleY = gotoPlaceRowCenterY - SETTINGS_TOGGLE_HEIGHT / 2;
-            if (isPointInRect(mouseXi, mouseYi, gotoToggleX, gotoPlaceToggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT)) {
-                currentSettings.gotoAllowPlaceWhileExecuting = !Boolean.TRUE.equals(currentSettings.gotoAllowPlaceWhileExecuting);
-                SettingsManager.save(currentSettings);
-                return true;
-            }
-        } else if (bodyHovered && selectedType == NodeType.SENSOR_KEY_PRESSED) {
-            int keyPressedDividerY = nodeSettingsContentY + 28;
-            int keyPressedRowCenterY = (nodeSettingsContentY + 10 + keyPressedDividerY) / 2;
-            int keyPressedToggleX = gridToggleX;
-            int keyPressedToggleY = keyPressedRowCenterY - SETTINGS_TOGGLE_HEIGHT / 2;
-            if (isPointInRect(mouseXi, mouseYi, keyPressedToggleX, keyPressedToggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT)) {
-                currentSettings.keyPressedActivatesInGuis = !(currentSettings.keyPressedActivatesInGuis == null
-                    || currentSettings.keyPressedActivatesInGuis);
-                SettingsManager.save(currentSettings);
-                return true;
-            }
-        } else if (bodyHovered && selectedType == NodeType.CREATE_LIST) {
-            Node targetNode = getEffectiveSettingsTargetNode();
-            int createListToggleDividerY = nodeSettingsContentY + 28;
-            int createListToggleRowCenterY = (nodeSettingsContentY + 10 + createListToggleDividerY) / 2;
-            int createListToggleX = gridToggleX;
-            int createListToggleY = createListToggleRowCenterY - SETTINGS_TOGGLE_HEIGHT / 2;
-            if (isPointInRect(mouseXi, mouseYi, createListToggleX, createListToggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT)) {
-                setCreateListCustomRadiusEnabled(targetNode, !isCreateListCustomRadiusEnabled(targetNode));
-                return true;
-            }
-
-            if (isCreateListCustomRadiusEnabled(targetNode)) {
-                int createListRadiusDividerY = createListToggleDividerY + 26;
-                int createListRadiusRowCenterY = (createListToggleDividerY + createListRadiusDividerY) / 2;
-                int createListSliderX = popupX + popupWidth - SETTINGS_SLIDER_WIDTH - 20;
-                int createListSliderY = createListRadiusRowCenterY - SETTINGS_SLIDER_HEIGHT / 2;
-                String radiusText = createListRadiusField != null ? createListRadiusField.getValue() : Integer.toString(getCreateListSettingsRadius(targetNode));
-                int[] radiusValueBox = getCreateListRadiusFieldBounds(popupX, popupWidth, createListRadiusRowCenterY, radiusText);
-                if (createListRadiusField != null) {
-                    if (bodyHovered && isPointInRect(mouseXi, mouseYi, radiusValueBox[0], radiusValueBox[1], radiusValueBox[2], radiusValueBox[3])) {
-                        createListRadiusField.setEditable(true);
-                        createListRadiusField.setFocused(true);
-                        //? if MC_1_21_8 {
-                        /*createListRadiusField.mouseClicked(mouseX, mouseY, button);*/
-                        //?} else {
-                        createListRadiusField.mouseClicked(click, inBounds);
-                        //?}
-                        return true;
-                    } else if (createListRadiusField.isFocused()) {
-                        createListRadiusField.setFocused(false);
-                    }
-                }
-                if (isPointInRect(mouseXi, mouseYi, createListSliderX, createListSliderY - 4, SETTINGS_SLIDER_WIDTH, SETTINGS_SLIDER_HEIGHT + 8)) {
-                    createListRadiusDragging = true;
-                    updateCreateListRadiusFromMouse(targetNode, mouseXi, popupX, popupWidth);
-                    return true;
-                }
-            }
-        }
-
-        int buttonWidth = 90;
-        int buttonHeight = 20;
-        int buttonX = popupX + popupWidth - buttonWidth - 20;
-        int buttonY = popupY + popupHeight - buttonHeight - 16;
-        if (isPointInRect(mouseXi, mouseYi, buttonX, buttonY, buttonWidth, buttonHeight)) {
-            closeSettingsPopup();
-            return true;
-        }
-
-        return true;
+        settingsPopupController.close();
     }
 
     private void startExecutingAllGraphs() {

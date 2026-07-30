@@ -274,7 +274,7 @@ Use this checklist for most node changes.
 
 3. Add or update translations.
 
-   Node display names and descriptions live in language files under `common/src/main/resources/assets/pathmind/lang` and `src/main/resources/assets/pathmind/lang`. Add every key to every language file. If text appears in UI, use `Text.translatable(...)`, not hardcoded English.
+   Node display names and descriptions live in `common/src/main/resources/assets/pathmind/lang`. Add every new key to `en_us.json`; other locales fall back to English and can be translated independently. If text appears in UI, use the version-appropriate translatable component API, not hardcoded English.
 
 4. Implement behavior.
 
@@ -288,16 +288,9 @@ Use this checklist for most node changes.
 
    Ordinary position, type, mode, parameters, connections, and attachments are already persisted. Only touch `NodeGraphPersistence` and `NodeGraphData` when the node needs additional state.
 
-7. Mirror compat copies.
+7. Keep compatibility branches narrow.
 
-   If you touch a file under `common/src/compat/...`, update the matching `src/compat/...` and `fabric/src/compat/...` copies unless there is a documented version-specific reason not to. The current expectation is that these major editor files stay mirrored:
-
-   - `PathmindVisualEditorScreen`
-   - `PathmindMarketplaceScreen`
-   - `PathmindSettingsPopupController`
-   - `PathmindPresetPopupController`
-   - `PathmindMarketplacePopupController`
-   - `PathmindMarketplaceGraphPreviewRenderer`
+   Shared editor sources live under `common/src/stonecutter/java`. Use Stonecutter conditionals only around the signatures or statements that differ between supported Minecraft families. Put genuinely family-specific adapters under the matching `common/src/compat/<family>` source set; do not create mirrored copies of an otherwise shared UI class.
 
 8. Verify the change.
 
@@ -305,15 +298,14 @@ Use this checklist for most node changes.
 
 ## UI And Localization Guidance
 
-All user-facing text should be translatable. Use `Text.translatable("pathmind.some.key")` in UI code and add matching entries to every language file. Avoid `Text.literal(...)` for English words. Literals are fine for symbols, brand names, generated user content, file paths, numbers, and runtime data that should not be translated.
+All user-facing text should be translatable. Use the version-appropriate translatable component API in UI code and add its key to the English language file. Avoid literal components for English words. Literals are fine for symbols, brand names, generated user content, file paths, numbers, and runtime data that should not be translated.
 
 When adding UI text:
 
 1. Add the key to `common/src/main/resources/assets/pathmind/lang/en_us.json`.
-2. Add the same key to every other language file in `common/src/main/resources/assets/pathmind/lang`.
-3. Mirror language files to `src/main/resources/assets/pathmind/lang`.
-4. Use the key from UI code with `Text.translatable(...)`.
-5. For tooltips, pass translated strings through `TooltipRenderer` or an existing helper.
+2. Optionally translate the key in the other locale files; missing entries fall back to English.
+3. Use the key from UI code with the version-appropriate translatable component API.
+4. For tooltips, pass translated strings through `TooltipRenderer` or an existing helper.
 
 Common UI helper ownership:
 

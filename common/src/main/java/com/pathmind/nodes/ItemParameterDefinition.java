@@ -2,6 +2,7 @@ package com.pathmind.nodes;
 
 import static com.pathmind.util.PathmindI18n.tr;
 
+import com.pathmind.util.EntityCompatibilityBridge;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -54,16 +55,24 @@ final class ItemParameterDefinition {
             }
             hasValidCandidate = true;
             Item item = BuiltInRegistries.ITEM.getOptional(identifier).orElse(null);
-            Optional<BlockPos> match = owner.findNearestDroppedItem(client, item, range);
+            Optional<ItemEntity> match = owner.findNearestDroppedItemEntity(client, item, range);
             if (match.isEmpty()) {
                 continue;
             }
+            ItemEntity itemEntity = match.get();
             if (data != null) {
-                data.targetBlockPos = match.get();
+                data.targetBlockPos = itemEntity.blockPosition();
                 data.targetItem = item;
                 data.targetItemId = candidateId;
             }
-            return Optional.of(Vec3.atCenterOf(match.get()));
+            Vec3 itemPos = EntityCompatibilityBridge.getPos(itemEntity);
+            if (itemPos == null) {
+                itemPos = new Vec3(itemEntity.getX(), itemEntity.getY(), itemEntity.getZ());
+            }
+            if (data != null) {
+                data.targetVector = itemPos;
+            }
+            return Optional.of(itemPos);
         }
         if (!hasValidCandidate) {
             owner.sendParameterSearchFailure(NodeBehaviorDefinitionSupport.unknownItemMessage(owner, itemIds.get(0)), future);

@@ -11,6 +11,7 @@ import net.minecraft.world.phys.Vec3;
  * Bridges Entity world/position accessors across 1.21.x.
  */
 public final class EntityCompatibilityBridge {
+    private static final Method POSITION = resolveMethod("position");
     private static final Method GET_POS = resolveMethod("getPos");
     private static final Method GET_ENTITY_POS = resolveMethod("getEntityPos");
     private static final Method GET_SYNCED_POS = resolveMethod("getSyncedPos");
@@ -26,7 +27,11 @@ public final class EntityCompatibilityBridge {
         if (entity == null) {
             return null;
         }
-        Vec3 result = invokeVec(entity, GET_POS);
+        Vec3 result = invokeVec(entity, POSITION);
+        if (result != null) {
+            return result;
+        }
+        result = invokeVec(entity, GET_POS);
         if (result != null) {
             return result;
         }
@@ -48,7 +53,7 @@ public final class EntityCompatibilityBridge {
                 return null;
             }
         }
-        return null;
+        return new Vec3(entity.getX(), entity.getY(), entity.getZ());
     }
 
     public static Level getWorld(Entity entity) {

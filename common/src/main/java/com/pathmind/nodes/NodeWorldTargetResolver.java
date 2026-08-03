@@ -497,6 +497,10 @@ final class NodeWorldTargetResolver {
     }
 
     Optional<BlockPos> findNearestDroppedItem(net.minecraft.client.Minecraft client, Item item, double range) {
+        return findNearestDroppedItemEntity(client, item, range).map(ItemEntity::blockPosition);
+    }
+
+    Optional<ItemEntity> findNearestDroppedItemEntity(net.minecraft.client.Minecraft client, Item item, double range) {
         if (client == null || client.player == null || client.level == null || item == null) {
             return Optional.empty();
         }
@@ -507,8 +511,7 @@ final class NodeWorldTargetResolver {
         if (entities.isEmpty()) {
             return Optional.empty();
         }
-        ItemEntity nearest = Collections.min(entities, Comparator.comparingDouble(entity -> entity.distanceToSqr(client.player)));
-        return Optional.of(nearest.blockPosition());
+        return Optional.of(Collections.min(entities, Comparator.comparingDouble(entity -> entity.distanceToSqr(client.player))));
     }
 
     Optional<Entity> findNearestEntity(net.minecraft.client.Minecraft client, EntityType<?> entityType, double range) {

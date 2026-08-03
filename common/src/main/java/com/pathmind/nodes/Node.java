@@ -3150,6 +3150,10 @@ public class Node {
         return worldTargetResolver.findNearestDroppedItem(client, item, range);
     }
 
+    Optional<ItemEntity> findNearestDroppedItemEntity(net.minecraft.client.Minecraft client, Item item, double range) {
+        return worldTargetResolver.findNearestDroppedItemEntity(client, item, range);
+    }
+
     Optional<Entity> findNearestEntity(net.minecraft.client.Minecraft client, EntityType<?> entityType, double range) {
         return worldTargetResolver.findNearestEntity(client, entityType, range);
     }

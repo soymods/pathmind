@@ -40,14 +40,15 @@ final class PlayerParameterDefinition {
             return Optional.empty();
         }
         String resolvedName = GameProfileCompatibilityBridge.getName(player.get().getGameProfile());
+        Vec3 playerPos = EntityCompatibilityBridge.getPos(player.get());
+        if (playerPos == null) {
+            playerPos = Vec3.atCenterOf(player.get().blockPosition());
+        }
         if (data != null) {
             data.targetPlayerName = resolvedName != null ? resolvedName : playerName;
             data.targetEntity = player.get();
             data.targetBlockPos = player.get().blockPosition();
-        }
-        Vec3 playerPos = EntityCompatibilityBridge.getPos(player.get());
-        if (playerPos == null) {
-            playerPos = Vec3.atCenterOf(player.get().blockPosition());
+            data.targetVector = playerPos;
         }
         return Optional.of(playerPos);
     }

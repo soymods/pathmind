@@ -512,9 +512,13 @@ final class NodeRuntimeParameterResolver {
                 data.targetBlockPos = entity.blockPosition();
             }
             Vec3 pos = EntityCompatibilityBridge.getPos(entity);
-            return pos != null
-                ? Optional.of(pos)
-                : Optional.of(Vec3.atCenterOf(entity.blockPosition()));
+            if (pos == null) {
+                pos = Vec3.atCenterOf(entity.blockPosition());
+            }
+            if (data != null) {
+                data.targetVector = pos;
+            }
+            return Optional.of(pos);
         }
         if (parameterNode != null
             && parameterNode.getType() == NodeType.SENSOR_TARGETED_BLOCK) {

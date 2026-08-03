@@ -235,16 +235,17 @@ final class EntityParameterDefinition {
     }
 
     private static Optional<Vec3> resolvedEntityPosition(Entity entity, String entityId, RuntimeParameterData data) {
+        Vec3 entityPos = EntityCompatibilityBridge.getPos(entity);
+        if (entityPos == null) {
+            entityPos = Vec3.atCenterOf(entity.blockPosition());
+        }
         if (data != null) {
             data.targetEntity = entity;
             data.targetEntityId = entityId;
             data.targetBlockPos = entity.blockPosition();
+            data.targetVector = entityPos;
         }
-        Vec3 entityPos = EntityCompatibilityBridge.getPos(entity);
-        if (entityPos != null) {
-            return Optional.of(entityPos);
-        }
-        return Optional.of(Vec3.atCenterOf(entity.blockPosition()));
+        return Optional.of(entityPos);
     }
 
     private EntityParameterDefinition() {

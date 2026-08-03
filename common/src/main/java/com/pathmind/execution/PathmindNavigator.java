@@ -2,57 +2,34 @@ package com.pathmind.execution;
 
 import com.pathmind.ui.overlay.NodeErrorNotificationOverlay;
 import com.pathmind.ui.theme.UITheme;
-import com.pathmind.util.HotbarSlotSynchronizer;
 import com.pathmind.util.LoaderMetadata;
-import com.pathmind.util.PlayerInventoryBridge;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.Deque;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.OptionalDouble;
-import java.util.PriorityQueue;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
-import java.util.stream.Collectors;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket;
-import net.minecraft.tags.BlockTags;
 import net.minecraft.util.Mth;
-import net.minecraft.world.InteractionHand;
-import net.minecraft.world.InteractionResult;
-import net.minecraft.world.inventory.AbstractContainerMenu;
-import net.minecraft.world.inventory.ClickType;
-import net.minecraft.world.inventory.Slot;
-import net.minecraft.world.item.BlockItem;
-import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.block.state.properties.BlockStateProperties;
-import net.minecraft.world.level.material.FluidState;
-import net.minecraft.world.level.material.Fluids;
-import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
-import net.minecraft.world.phys.shapes.VoxelShape;
 
 /**
  * Bounded Pathmind-owned movement backend used when Baritone is unavailable.
@@ -60,48 +37,27 @@ import net.minecraft.world.phys.shapes.VoxelShape;
  */
 public final class PathmindNavigator {
     private static final PathmindNavigator INSTANCE = new PathmindNavigator();
-    private static final double WAYPOINT_REACHED_DISTANCE_SQ = 0.64D;
-    private static final double WAYPOINT_NEAR_DISTANCE_SQ = 0.90D;
+    static final double WAYPOINT_REACHED_DISTANCE_SQ = 0.64D;
+    static final double WAYPOINT_NEAR_DISTANCE_SQ = 0.90D;
     private static final double WAYPOINT_SAFE_EDGE_INSET = 0.24D;
-    private static final float TURN_IN_PLACE_YAW_DEGREES = 52.0F;
-    private static final float SPRINT_ALIGNMENT_DEGREES = 12.0F;
     private static final float MAX_YAW_STEP = 14.0F;
     private static final float NEOFORGE_MAX_YAW_STEP = 8.0F;
-    private static final float MAX_PITCH_STEP = 8.0F;
-    private static final double DEFAULT_BLOCK_INTERACTION_REACH = 4.5D;
-    private static final double BREAK_AIM_EPSILON = 0.001D;
     private static final int BLOCK_INTERACTION_APPROACH_RADIUS = 4;
     private static final int BLOCK_INTERACTION_APPROACH_UP = 2;
     private static final int BLOCK_INTERACTION_APPROACH_DOWN = 4;
-    private static final float JUMP_YAW_ALIGNMENT_DEGREES = 18.0F;
-    private static final long STUCK_TIMEOUT_MS = 1500L;
     private static final long REPLAN_COOLDOWN_MS = 450L;
-    private static final long JUMP_RETRY_COOLDOWN_MS = 250L;
-    private static final long JUMP_COMMIT_WINDOW_MS = 1250L;
     private static final long JUMP_RECOVERY_GRACE_MS = 700L;
     private static final long BREAK_COMMIT_WINDOW_MS = 1800L;
     private static final long DROP_COMMIT_WINDOW_MS = 1500L;
-    private static final long TRAPPED_RECOVERY_COMMIT_MS = 10000L;
-    private static final long NO_MOVEMENT_REPLAN_MS = 900L;
-    private static final long STANDSTILL_REDIRECT_MS = 1600L;
-    private static final long WALL_PUSH_REDIRECT_MS = 700L;
-    private static final long DISTANCE_STALL_REDIRECT_MS = 2500L;
+    static final long TRAPPED_RECOVERY_COMMIT_MS = 10000L;
     private static final double DISTANCE_STALL_THRESHOLD = 2.0D;
-    private static final long ROUTE_COMMIT_MS = 8000L;
+    static final long ROUTE_COMMIT_MS = 8000L;
     private static final long ROUTE_STABILIZATION_MS = 1800L;
     private static final long LOCAL_RECOVERY_COOLDOWN_MS = 550L;
     private static final int MAX_LOCAL_RECOVERY_ATTEMPTS = 2;
-    private static final long PATH_DECISION_VISIBILITY_MS = 1400L;
+    static final long PATH_DECISION_VISIBILITY_MS = 1400L;
     private static final long WAYPOINT_ACQUIRE_SETTLE_MS = 300L;
-    private static final double PROGRESS_EPSILON_SQ = 0.01D;
     private static final double MOVEMENT_EPSILON_SQ = 0.0025D;
-    private static final double COUNTERMOVEMENT_DISTANCE = 0.9D;
-    private static final double COUNTERMOVEMENT_SPEED = 0.16D;
-    private static final double COUNTERMOVEMENT_LATERAL_SPEED = 0.08D;
-    private static final double COUNTERMOVEMENT_PREDICTION_TICKS = 4.0D;
-    private static final double AIR_COUNTERMOVEMENT_DISTANCE = 1.2D;
-    private static final float COUNTERMOVEMENT_MAX_YAW_ERROR_DEGREES = 18.0F;
-    private static final double COUNTERMOVEMENT_MIN_DISTANCE = 0.22D;
     static final int MAX_DROP_DOWN = 3;
     private static final int MAX_PATH_BREAK_LOOKAHEAD = 8;
     static final int MAX_GOAL_PATH_ATTEMPTS = 8;
@@ -121,39 +77,19 @@ public final class PathmindNavigator {
     private String commandLabel;
     private State state = State.IDLE;
     private long startedAtMs;
-    private long lastProgressAtMs;
-    private long lastPlanAtMs;
-    private double bestDistanceSq = Double.MAX_VALUE;
     private GoalMode goalMode = GoalMode.EXACT;
     private WaterMode waterMode = WaterMode.NORMAL;
     private boolean allowBlockBreaking = true;
     private boolean allowBlockPlacing = true;
     private boolean eventLoggingEnabled = !LoaderMetadata.isNeoForge();
-    private BlockPos resolvedGoalPos;
-    private BlockPos committedPathGoalPos;
     private BlockPos committedPathStartPos;
-    private List<BlockPos> currentPath = List.of();
-    private List<PlannedPrimitive> currentPlan = List.of();
-    private List<List<BlockPos>> candidatePaths = List.of();
-    private long candidatePathsVisibleUntilMs;
-    private long lastWaypointAdvanceAtMs;
-    private int pathIndex;
-    private int furthestVisitedPathIndex;
-    private BlockPos activeWaypoint;
-    private long routeCommitUntilMs;
-    private long lastLocalRecoveryAtMs;
-    private int localRecoveryAttempts;
-    private int bestRouteProgressScore = Integer.MIN_VALUE;
     private int consecutivePlanningBudgetExhaustions;
     private final NavigatorExecutionState executionState = new NavigatorExecutionState();
-    private Vec3 lastMovementSamplePos = Vec3.ZERO;
-    private long lastMovementAtMs;
+    private final NavigatorNavigationState navigationState = new NavigatorNavigationState();
     private double lastDistanceCheckpoint = Double.POSITIVE_INFINITY;
-    private long lastDistanceCheckpointAtMs;
     private volatile Snapshot renderSnapshot;
     private final PathmindPathPlanner pathPlanner = new PathmindPathPlanner(new PlannerHost());
-    private String lastReplanReason = "none";
-    private String lastStuckReason = "none";
+    private final NavigatorPrimitiveExecutor primitiveExecutor = new NavigatorPrimitiveExecutor(new PrimitiveHost(), executionState, navigationState, pathPlanner);
     private String previousControllerMode = "none";
     private String previousPrimitiveLabel = "none";
     private String previousMiningAscentPhase = MiningAscentPhase.CLEARANCE.name();
@@ -162,7 +98,6 @@ public final class PathmindNavigator {
     private String previousReplanReason = "none";
     private String previousStuckReason = "none";
     private String lastReplanDecision = "none";
-    private String lastAdvanceDecision = "none";
     private String lastReplaceDecision = "none";
     private final Deque<String> debugEvents = new LinkedList<>();
     private long lastDebugHeartbeatAtMs;
@@ -292,7 +227,7 @@ public final class PathmindNavigator {
 
         @Override
         public boolean requiresBreakingForWaypoint(Level world, BlockPos waypoint) {
-            return PathmindNavigator.this.requiresBreakingForWaypoint(world, waypoint);
+            return primitiveExecutor.requiresBreakingForWaypoint(world, waypoint);
         }
 
         @Override
@@ -308,7 +243,7 @@ public final class PathmindNavigator {
                     return executionState.committedEscape.direction();
                 }
             }
-            return chooseEscapeDirection(world, current, goal, now);
+            return primitiveExecutor.chooseEscapeDirection(world, current, goal, now);
         }
 
         @Override
@@ -318,25 +253,65 @@ public final class PathmindNavigator {
 
         @Override
         public boolean isJumpPrimitive(PlannedPrimitive primitive) {
-            return PathmindNavigator.this.isJumpPrimitive(primitive);
+            return primitiveExecutor.isJumpPrimitive(primitive);
         }
 
         @Override
         public PathmindPathPlanner.SteeringLookahead steeringLookahead(BlockPos activeWaypoint) {
             synchronized (PathmindNavigator.this) {
-                if (currentPath.isEmpty() || pathIndex < 0 || pathIndex + 1 >= currentPath.size()) {
+                if (navigationState.currentPath.isEmpty() || navigationState.pathIndex < 0 || navigationState.pathIndex + 1 >= navigationState.currentPath.size()) {
                     return null;
                 }
-                BlockPos activePathWaypoint = currentPath.get(pathIndex);
+                BlockPos activePathWaypoint = navigationState.currentPath.get(navigationState.pathIndex);
                 if (activePathWaypoint == null || !activePathWaypoint.equals(activeWaypoint)) {
                     return null;
                 }
                 return new PathmindPathPlanner.SteeringLookahead(
-                    currentPath.get(pathIndex + 1),
-                    getPlannedPrimitiveAtIndexLocked(pathIndex + 1)
+                    navigationState.currentPath.get(navigationState.pathIndex + 1),
+                    getPlannedPrimitiveAtIndexLocked(navigationState.pathIndex + 1)
                 );
             }
         }
+    }
+
+    private final class PrimitiveHost implements NavigatorPrimitiveExecutor.Host {
+        @Override
+        public Object lock() {
+            return PathmindNavigator.this;
+        }
+
+        @Override public boolean allowBlockBreaking() { return allowBlockBreaking; }
+        @Override public boolean allowBlockPlacing() { return allowBlockPlacing; }
+        @Override public BlockPos targetPos() { return targetPos; }
+        @Override public GoalMode goalMode() { return goalMode; }
+        @Override public void goalMode(GoalMode goalMode) { PathmindNavigator.this.goalMode = goalMode; }
+        @Override public void appendDebugEventLocked(String event) { PathmindNavigator.this.appendDebugEventLocked(event); }
+        @Override public String formatDebugPos(BlockPos pos) { return PathmindNavigator.this.formatDebugPos(pos); }
+        @Override public boolean isWaypointActionable(Level world, BlockPos waypoint) { return PathmindNavigator.this.isWaypointActionable(world, waypoint); }
+        @Override public boolean shouldTrackResolvedPlanningGoal(BlockPos target, BlockPos resolvedGoal, GoalMode goalMode) { return PathmindNavigator.this.shouldTrackResolvedPlanningGoal(target, resolvedGoal, goalMode); }
+        @Override public boolean isPlayerNearPath(BlockPos playerFootPos) { return PathmindNavigator.this.isPlayerNearPath(playerFootPos); }
+        @Override public boolean hasCommittedEscapeWorkLocked(long now) { return PathmindNavigator.this.hasCommittedEscapeWorkLocked(now); }
+        @Override public boolean isActiveEscapeBreakTargetLocked() { return PathmindNavigator.this.isActiveEscapeBreakTargetLocked(); }
+        @Override public boolean isJumpExecutionLocked(long now, PlannedPrimitive primitive) { return PathmindNavigator.this.isJumpExecutionLocked(now, primitive); }
+        @Override public void noteControllerProgress(long now, double distanceSq) { PathmindNavigator.this.noteControllerProgress(now, distanceSq); }
+        @Override public double distanceToControllerTargetSq(Level world, LocalPlayer player, BlockPos fallbackTarget) { return PathmindNavigator.this.distanceToControllerTargetSq(world, player, fallbackTarget); }
+        @Override public void noteControllerActivity(long now) { PathmindNavigator.this.noteControllerActivity(now); }
+        @Override public boolean isRouteStabilizingLocked(BlockPos playerFootPos, long now) { return PathmindNavigator.this.isRouteStabilizingLocked(playerFootPos, now); }
+        @Override public void updateFollowSegment(FollowSegmentType type, BlockPos target, double distanceSq, long now) { PathmindNavigator.this.updateFollowSegment(type, target, distanceSq, now); }
+        @Override public long followSegmentIdleMs(long now) { return PathmindNavigator.this.followSegmentIdleMs(now); }
+        @Override public boolean shouldRedirectController(long now, double distanceSq) { return PathmindNavigator.this.shouldRedirectController(now, distanceSq); }
+        @Override public boolean shouldUsePillarStep(Level world, BlockPos playerFootPos, BlockPos waypoint, PlannedPrimitive primitive, long now) { return PathmindNavigator.this.shouldUsePillarStep(world, playerFootPos, waypoint, primitive, now); }
+        @Override public void clearStaleEscapeRecoveryIfNeeded(Level world, BlockPos playerFootPos, BlockPos waypoint, PlannedPrimitive primitive, long now) { PathmindNavigator.this.clearStaleEscapeRecoveryIfNeeded(world, playerFootPos, waypoint, primitive, now); }
+        @Override public void recoverFromStuck(Minecraft client, ClientLevel world, BlockPos playerFootPos, BlockPos waypoint, BlockPos target, Vec3 currentPos, long now, String replanReason, String stuckReason) { PathmindNavigator.this.recoverFromStuck(client, world, playerFootPos, waypoint, target, currentPos, now, replanReason, stuckReason); }
+        @Override public void rewindCurrentPathIndex(BlockPos playerFootPos, BlockPos preferredWaypoint) { PathmindNavigator.this.rewindCurrentPathIndex(playerFootPos, preferredWaypoint); }
+        @Override public void redirectCurrentPath(BlockPos playerFootPos, BlockPos waypoint, Vec3 currentPos, long now, String replanReason, String stuckReason) { PathmindNavigator.this.redirectCurrentPath(playerFootPos, waypoint, currentPos, now, replanReason, stuckReason); }
+        @Override public void rememberFailedRedirectWindow(BlockPos playerFootPos, BlockPos waypoint, long now) { PathmindNavigator.this.rememberFailedRedirectWindow(playerFootPos, waypoint, now); }
+        @Override public List<BlockPos> buildPathBreakPlan(Level world, List<BlockPos> path, int startIndex) { return PathmindNavigator.this.buildPathBreakPlan(world, path, startIndex); }
+        @Override public PlannedPrimitive createPrimitiveSnapshot(Level world, BlockPos from, BlockPos to, SearchPrimitiveType searchType, PlannedPrimitiveType type, List<BlockPos> breakTargets, BlockPos placeTarget) { return PathmindNavigator.this.createPrimitiveSnapshot(world, from, to, searchType, type, breakTargets, placeTarget); }
+        @Override public PlannedPrimitive getPlannedPrimitiveAtIndexLocked(int index) { return PathmindNavigator.this.getPlannedPrimitiveAtIndexLocked(index); }
+        @Override public void rebuildCurrentPlanLocked(Level world) { PathmindNavigator.this.rebuildCurrentPlanLocked(world); }
+        @Override public PathComputation findPath(ClientLevel world, BlockPos start, BlockPos target) { return PathmindNavigator.this.findPath(world, start, target); }
+        @Override public BlockPos resolvePlayerFootPos(LocalPlayer player) { return PathmindNavigator.this.resolvePlayerFootPos(player); }
     }
 
     public static PathmindNavigator getInstance() {
@@ -380,23 +355,23 @@ public final class PathmindNavigator {
         this.activeFuture = future;
         this.state = State.PATHING;
         this.startedAtMs = System.currentTimeMillis();
-        this.lastProgressAtMs = this.startedAtMs;
-        this.lastPlanAtMs = 0L;
+        navigationState.lastProgressAtMs = this.startedAtMs;
+        navigationState.lastPlanAtMs = 0L;
         executionState.lastJumpAtMs = 0L;
         executionState.lastMiningJumpGateLogAtMs = 0L;
         executionState.lastMiningResumeLogAtMs = 0L;
-        this.bestDistanceSq = Double.MAX_VALUE;
+        navigationState.bestDistanceSq = Double.MAX_VALUE;
         this.goalMode = GoalMode.EXACT;
-        this.resolvedGoalPos = targetPos.immutable();
-        this.committedPathGoalPos = this.resolvedGoalPos;
-        this.currentPath = List.of();
-        this.currentPlan = List.of();
-        this.candidatePaths = List.of();
-        this.candidatePathsVisibleUntilMs = 0L;
-        this.lastWaypointAdvanceAtMs = this.startedAtMs;
-        this.pathIndex = 0;
-        this.furthestVisitedPathIndex = 0;
-        this.activeWaypoint = null;
+        navigationState.resolvedGoalPos = targetPos.immutable();
+        navigationState.committedPathGoalPos = navigationState.resolvedGoalPos;
+        navigationState.currentPath = List.of();
+        navigationState.currentPlan = List.of();
+        navigationState.candidatePaths = List.of();
+        navigationState.candidatePathsVisibleUntilMs = 0L;
+        navigationState.lastWaypointAdvanceAtMs = this.startedAtMs;
+        navigationState.pathIndex = 0;
+        navigationState.furthestVisitedPathIndex = 0;
+        navigationState.activeWaypoint = null;
         executionState.committedJumpWaypoint = null;
         executionState.committedJumpUntilMs = 0L;
         executionState.lastJumpAttemptWaypoint = null;
@@ -416,10 +391,10 @@ public final class PathmindNavigator {
         executionState.controllerBestDistanceSq = Double.POSITIVE_INFINITY;
         executionState.lastPlaceTarget = null;
         executionState.lastPlaceResult = "none";
-        this.routeCommitUntilMs = this.startedAtMs + ROUTE_COMMIT_MS;
-        this.lastLocalRecoveryAtMs = 0L;
-        this.localRecoveryAttempts = 0;
-        this.bestRouteProgressScore = Integer.MIN_VALUE;
+        navigationState.routeCommitUntilMs = this.startedAtMs + ROUTE_COMMIT_MS;
+        navigationState.lastLocalRecoveryAtMs = 0L;
+        navigationState.localRecoveryAttempts = 0;
+        navigationState.bestRouteProgressScore = Integer.MIN_VALUE;
         this.consecutivePlanningBudgetExhaustions = 0;
         executionState.activeFollowSegment = FollowSegmentType.GROUND;
         executionState.activeFollowSegmentTarget = null;
@@ -429,20 +404,20 @@ public final class PathmindNavigator {
         executionState.activeFollowSegmentBestDistanceSq = Double.POSITIVE_INFINITY;
         LocalPlayer player = Minecraft.getInstance() != null ? Minecraft.getInstance().player : null;
         Vec3 startingPosition = player != null ? player.position() : Vec3.atCenterOf(this.targetPos);
-        this.lastMovementSamplePos = startingPosition;
-        this.lastMovementAtMs = this.startedAtMs;
+        navigationState.lastMovementSamplePos = startingPosition;
+        navigationState.lastMovementAtMs = this.startedAtMs;
         this.lastDistanceCheckpoint = startingPosition.distanceTo(Vec3.atCenterOf(this.targetPos));
-        this.lastDistanceCheckpointAtMs = this.startedAtMs;
+        navigationState.lastDistanceCheckpointAtMs = this.startedAtMs;
         this.pathPlanner.clearFailureMemory();
-        this.lastReplanReason = "start goto";
-        this.lastStuckReason = "none";
+        navigationState.lastReplanReason = "start goto";
+        navigationState.lastStuckReason = "none";
         this.previousControllerMode = executionState.controllerMode.name();
         this.previousPrimitiveLabel = "none";
         this.previousMiningAscentPhase = executionState.activeMiningAscentPhase.name();
         this.previousPillarPhase = executionState.activePillarPhase.name();
         this.previousActiveWaypoint = null;
-        this.previousReplanReason = this.lastReplanReason;
-        this.previousStuckReason = this.lastStuckReason;
+        this.previousReplanReason = navigationState.lastReplanReason;
+        this.previousStuckReason = navigationState.lastStuckReason;
         this.debugEvents.clear();
         appendDebugEventLocked("goto start target=" + formatDebugPos(this.targetPos));
         return true;
@@ -459,7 +434,7 @@ public final class PathmindNavigator {
             playerPos = client.player.blockPosition();
         }
 
-        double reachSq = blockInteractionReachSquared(client.player);
+        double reachSq = primitiveExecutor.blockInteractionReachSquared(client.player);
         List<ScoredPos> visibleCandidates = collectBlockInteractionStandTargets(
             client.level,
             client.player,
@@ -530,7 +505,7 @@ public final class PathmindNavigator {
             playerPos = client.player.blockPosition();
         }
 
-        double reachSq = blockInteractionReachSquared(client.player);
+        double reachSq = primitiveExecutor.blockInteractionReachSquared(client.player);
         List<ScoredPos> visibleCandidates = collectBlockInteractionStandTargets(
             client.level,
             client.player,
@@ -630,10 +605,10 @@ public final class PathmindNavigator {
                         if (!seen.add(candidate) || !pathPlanner.isStandable(world, candidate) || pathPlanner.isHardDanger(world, candidate)) {
                             continue;
                         }
-                        if (!isBlockShapeWithinReachFromFoot(world, player, candidate, targetBlockPos, reachSq)) {
+                        if (!primitiveExecutor.isBlockShapeWithinReachFromFoot(world, player, candidate, targetBlockPos, reachSq)) {
                             continue;
                         }
-                        if (requireLineOfSight && !canInteractWithBlockFromFoot(world, player, candidate, targetBlockPos, reachSq)) {
+                        if (requireLineOfSight && !primitiveExecutor.canInteractWithBlockFromFoot(world, player, candidate, targetBlockPos, reachSq)) {
                             continue;
                         }
                         scored.add(new ScoredPos(
@@ -719,16 +694,16 @@ public final class PathmindNavigator {
             Vec3 playerPos = new Vec3(client.player.getX(), client.player.getY(), client.player.getZ());
             distance = playerPos.distanceTo(target);
         }
-        int snapshotStart = currentPath.isEmpty()
+        int snapshotStart = navigationState.currentPath.isEmpty()
             ? 0
-            : Math.max(0, Math.min(furthestVisitedPathIndex, currentPath.size() - 1));
-        List<BlockPos> pathCopy = currentPath.isEmpty()
+            : Math.max(0, Math.min(navigationState.furthestVisitedPathIndex, navigationState.currentPath.size() - 1));
+        List<BlockPos> pathCopy = navigationState.currentPath.isEmpty()
             ? List.of()
-            : copyPathWindow(currentPath, snapshotStart, MAX_SNAPSHOT_PATH_POINTS);
-        boolean showCandidatePaths = state == State.PREVIEW || System.currentTimeMillis() <= candidatePathsVisibleUntilMs;
-        List<List<BlockPos>> candidateCopies = !showCandidatePaths || candidatePaths.isEmpty()
+            : copyPathWindow(navigationState.currentPath, snapshotStart, MAX_SNAPSHOT_PATH_POINTS);
+        boolean showCandidatePaths = state == State.PREVIEW || System.currentTimeMillis() <= navigationState.candidatePathsVisibleUntilMs;
+        List<List<BlockPos>> candidateCopies = !showCandidatePaths || navigationState.candidatePaths.isEmpty()
             ? List.of()
-            : candidatePaths.stream()
+            : navigationState.candidatePaths.stream()
                 .map(path -> copyPathWindow(path, 0, MAX_SNAPSHOT_CANDIDATE_POINTS))
                 .toList();
         List<BlockPos> breakTargets = List.of();
@@ -742,8 +717,8 @@ public final class PathmindNavigator {
                 breakTargets = executionState.plannedBreakTargets.stream()
                     .filter(pos -> pos != null && pathPlanner.isBreakableForNavigator(client.level, pos))
                     .toList();
-            } else if (activeWaypoint != null) {
-                List<BlockPos> requiredBreakTargets = pathPlanner.getRequiredBreakTargets(client.level, activeWaypoint);
+            } else if (navigationState.activeWaypoint != null) {
+                List<BlockPos> requiredBreakTargets = pathPlanner.getRequiredBreakTargets(client.level, navigationState.activeWaypoint);
                 if (requiredBreakTargets != null && !requiredBreakTargets.isEmpty()) {
                     breakTargets = List.copyOf(requiredBreakTargets);
                 } else if (executionState.activeBreakTarget != null) {
@@ -756,14 +731,14 @@ public final class PathmindNavigator {
                 placeTargets = List.of(executionState.activePlannedPrimitive.placeTarget().immutable());
             }
         }
-        BlockPos resolvedGoal = resolvedGoalPos != null ? resolvedGoalPos : (pathCopy.isEmpty() ? targetPos : pathCopy.get(pathCopy.size() - 1));
+        BlockPos resolvedGoal = navigationState.resolvedGoalPos != null ? navigationState.resolvedGoalPos : (pathCopy.isEmpty() ? targetPos : pathCopy.get(pathCopy.size() - 1));
         return new Snapshot(
             isActive(),
             state,
             targetPos,
             resolvedGoal,
-            activeWaypoint,
-            Math.max(0, pathIndex - snapshotStart),
+            navigationState.activeWaypoint,
+            Math.max(0, navigationState.pathIndex - snapshotStart),
             0,
             breakTargets,
             placeTargets,
@@ -805,20 +780,20 @@ public final class PathmindNavigator {
             allowBlockPlacing,
             eventLoggingEnabled,
             targetPos,
-            resolvedGoalPos,
-            activeWaypoint,
+            navigationState.resolvedGoalPos,
+            navigationState.activeWaypoint,
             previousActiveWaypoint,
             executionState.controllerTarget,
             executionState.lastPlaceTarget,
-            pathIndex,
-            currentPath.size(),
+            navigationState.pathIndex,
+            navigationState.currentPath.size(),
             executionState.lastPlaceResult,
-            lastReplanReason,
+            navigationState.lastReplanReason,
             previousReplanReason,
             lastReplanDecision,
-            lastAdvanceDecision,
+            navigationState.lastAdvanceDecision,
             lastReplaceDecision,
-            lastStuckReason,
+            navigationState.lastStuckReason,
             previousStuckReason,
             List.copyOf(debugEvents)
         );
@@ -831,8 +806,8 @@ public final class PathmindNavigator {
             String primitive = formatPlannedPrimitive(executionState.activePlannedPrimitive);
             String miningPhase = executionState.activeMiningAscentPhase != null ? executionState.activeMiningAscentPhase.name() : "none";
             String pillarPhase = executionState.activePillarPhase != null ? executionState.activePillarPhase.name() : "none";
-            String replan = lastReplanReason == null ? "none" : lastReplanReason;
-            String stuck = lastStuckReason == null ? "none" : lastStuckReason;
+            String replan = navigationState.lastReplanReason == null ? "none" : navigationState.lastReplanReason;
+            String stuck = navigationState.lastStuckReason == null ? "none" : navigationState.lastStuckReason;
             Minecraft client = Minecraft.getInstance();
             String playerState = "player=none";
             if (client != null && client.player != null) {
@@ -864,9 +839,9 @@ public final class PathmindNavigator {
                 previousPillarPhase = pillarPhase;
                 changed = true;
             }
-            if (!java.util.Objects.equals(activeWaypoint, previousActiveWaypoint)) {
-                appendDebugEventLocked("waypoint " + formatDebugPos(previousActiveWaypoint) + " -> " + formatDebugPos(activeWaypoint));
-                previousActiveWaypoint = activeWaypoint != null ? activeWaypoint.immutable() : null;
+            if (!java.util.Objects.equals(navigationState.activeWaypoint, previousActiveWaypoint)) {
+                appendDebugEventLocked("waypoint " + formatDebugPos(previousActiveWaypoint) + " -> " + formatDebugPos(navigationState.activeWaypoint));
+                previousActiveWaypoint = navigationState.activeWaypoint != null ? navigationState.activeWaypoint.immutable() : null;
                 appendDebugEventLocked("primitive=" + formatPlannedPrimitive(executionState.activePlannedPrimitive));
                 changed = true;
             }
@@ -887,14 +862,14 @@ public final class PathmindNavigator {
             if (!changed && eventLoggingEnabled && now - lastDebugHeartbeatAtMs >= DEBUG_HEARTBEAT_INTERVAL_MS) {
                 appendDebugEventLocked(
                     "heartbeat controller=" + controller
-                        + " waypoint=" + formatDebugPos(activeWaypoint)
+                        + " waypoint=" + formatDebugPos(navigationState.activeWaypoint)
                         + " primitive=" + primitive
                         + " miningPhase=" + miningPhase
                         + " pillarPhase=" + pillarPhase
                         + " target=" + formatDebugPos(targetPos)
                         + " replan=" + replan
                         + " replanDecision=" + lastReplanDecision
-                        + " advanceDecision=" + lastAdvanceDecision
+                        + " advanceDecision=" + navigationState.lastAdvanceDecision
                         + " replaceDecision=" + lastReplaceDecision
                         + " stuck=" + stuck
                         + " placeResult=" + (executionState.lastPlaceResult == null ? "none" : executionState.lastPlaceResult)
@@ -915,7 +890,7 @@ public final class PathmindNavigator {
 
     private void setAdvanceDecision(String decision) {
         synchronized (this) {
-            lastAdvanceDecision = decision == null || decision.isBlank() ? "none" : decision;
+            navigationState.lastAdvanceDecision = decision == null || decision.isBlank() ? "none" : decision;
         }
     }
 
@@ -998,19 +973,19 @@ public final class PathmindNavigator {
         this.commandLabel = commandLabel == null || commandLabel.isBlank() ? "Path Preview" : commandLabel.trim();
         this.state = State.PREVIEW;
         this.startedAtMs = System.currentTimeMillis();
-        this.lastProgressAtMs = this.startedAtMs;
-        this.lastPlanAtMs = this.startedAtMs;
+        navigationState.lastProgressAtMs = this.startedAtMs;
+        navigationState.lastPlanAtMs = this.startedAtMs;
         executionState.lastJumpAtMs = 0L;
         this.goalMode = GoalMode.EXACT;
-        this.resolvedGoalPos = this.targetPos;
-        this.committedPathGoalPos = this.resolvedGoalPos;
-        this.currentPath = List.of();
-        this.currentPlan = List.of();
-        this.candidatePaths = List.of();
-        this.candidatePathsVisibleUntilMs = 0L;
-        this.pathIndex = 0;
-        this.furthestVisitedPathIndex = 0;
-        this.activeWaypoint = null;
+        navigationState.resolvedGoalPos = this.targetPos;
+        navigationState.committedPathGoalPos = navigationState.resolvedGoalPos;
+        navigationState.currentPath = List.of();
+        navigationState.currentPlan = List.of();
+        navigationState.candidatePaths = List.of();
+        navigationState.candidatePathsVisibleUntilMs = 0L;
+        navigationState.pathIndex = 0;
+        navigationState.furthestVisitedPathIndex = 0;
+        navigationState.activeWaypoint = null;
         executionState.committedJumpWaypoint = null;
         executionState.committedJumpUntilMs = 0L;
         executionState.lastInteractAtMs = 0L;
@@ -1028,10 +1003,10 @@ public final class PathmindNavigator {
         executionState.controllerBestDistanceSq = Double.POSITIVE_INFINITY;
         executionState.lastPlaceTarget = null;
         executionState.lastPlaceResult = "none";
-        this.routeCommitUntilMs = this.startedAtMs + ROUTE_COMMIT_MS;
-        this.lastLocalRecoveryAtMs = 0L;
-        this.localRecoveryAttempts = 0;
-        this.bestRouteProgressScore = Integer.MIN_VALUE;
+        navigationState.routeCommitUntilMs = this.startedAtMs + ROUTE_COMMIT_MS;
+        navigationState.lastLocalRecoveryAtMs = 0L;
+        navigationState.localRecoveryAttempts = 0;
+        navigationState.bestRouteProgressScore = Integer.MIN_VALUE;
         this.consecutivePlanningBudgetExhaustions = 0;
         executionState.activeFollowSegment = FollowSegmentType.GROUND;
         executionState.activeFollowSegmentTarget = null;
@@ -1039,12 +1014,12 @@ public final class PathmindNavigator {
         executionState.activeFollowSegmentEnteredAtMs = this.startedAtMs;
         executionState.activeFollowSegmentProgressAtMs = this.startedAtMs;
         executionState.activeFollowSegmentBestDistanceSq = Double.POSITIVE_INFINITY;
-        this.lastMovementSamplePos = Vec3.atCenterOf(this.targetPos);
-        this.lastMovementAtMs = this.startedAtMs;
+        navigationState.lastMovementSamplePos = Vec3.atCenterOf(this.targetPos);
+        navigationState.lastMovementAtMs = this.startedAtMs;
         this.lastDistanceCheckpoint = Double.POSITIVE_INFINITY;
-        this.lastDistanceCheckpointAtMs = this.startedAtMs;
-        this.lastReplanReason = "preview";
-        this.lastStuckReason = "none";
+        navigationState.lastDistanceCheckpointAtMs = this.startedAtMs;
+        navigationState.lastReplanReason = "preview";
+        navigationState.lastStuckReason = "none";
         this.previousPrimitiveLabel = "none";
         this.previousMiningAscentPhase = executionState.activeMiningAscentPhase.name();
         this.previousPillarPhase = executionState.activePillarPhase.name();
@@ -1061,20 +1036,20 @@ public final class PathmindNavigator {
             return new PreviewResult(false, failureMessage);
         }
 
-        this.currentPath = computation.path();
-        this.candidatePaths = computation.candidatePaths();
-        this.candidatePathsVisibleUntilMs = Long.MAX_VALUE;
+        navigationState.currentPath = computation.path();
+        navigationState.candidatePaths = computation.candidatePaths();
+        navigationState.candidatePathsVisibleUntilMs = Long.MAX_VALUE;
         this.goalMode = computation.goalMode();
-        this.resolvedGoalPos = computation.resolvedGoalPos();
-        this.committedPathGoalPos = this.resolvedGoalPos != null ? this.resolvedGoalPos.immutable() : this.targetPos;
+        navigationState.resolvedGoalPos = computation.resolvedGoalPos();
+        navigationState.committedPathGoalPos = navigationState.resolvedGoalPos != null ? navigationState.resolvedGoalPos.immutable() : this.targetPos;
         this.committedPathStartPos = start != null ? start.immutable() : null;
-        this.pathIndex = chooseInitialPathIndex(this.currentPath, start, this.targetPos);
-        this.lastWaypointAdvanceAtMs = System.currentTimeMillis();
-        this.furthestVisitedPathIndex = Math.max(-1, this.pathIndex - 1);
-        this.activeWaypoint = this.currentPath.get(this.pathIndex);
-        executionState.plannedBreakTargets = buildPathBreakPlan(client.level, this.currentPath, this.pathIndex);
-        this.currentPlan = computation.plannedPrimitives();
-        executionState.activePlannedPrimitive = this.pathIndex < this.currentPlan.size() ? this.currentPlan.get(this.pathIndex) : null;
+        navigationState.pathIndex = chooseInitialPathIndex(navigationState.currentPath, start, this.targetPos);
+        navigationState.lastWaypointAdvanceAtMs = System.currentTimeMillis();
+        navigationState.furthestVisitedPathIndex = Math.max(-1, navigationState.pathIndex - 1);
+        navigationState.activeWaypoint = navigationState.currentPath.get(navigationState.pathIndex);
+        executionState.plannedBreakTargets = buildPathBreakPlan(client.level, navigationState.currentPath, navigationState.pathIndex);
+        navigationState.currentPlan = computation.plannedPrimitives();
+        executionState.activePlannedPrimitive = navigationState.pathIndex < navigationState.currentPlan.size() ? navigationState.currentPlan.get(navigationState.pathIndex) : null;
         this.renderSnapshot = buildRenderSnapshot(client);
         return new PreviewResult(true, "Pathmind Nav: previewing path to " + this.targetPos.getX() + " " + this.targetPos.getY() + " " + this.targetPos.getZ());
     }
@@ -1111,14 +1086,14 @@ public final class PathmindNavigator {
         long now = System.currentTimeMillis();
 
         synchronized (this) {
-            if (currentPos.distanceToSqr(lastMovementSamplePos) > MOVEMENT_EPSILON_SQ) {
-                lastMovementSamplePos = currentPos;
-                lastMovementAtMs = now;
+            if (currentPos.distanceToSqr(navigationState.lastMovementSamplePos) > MOVEMENT_EPSILON_SQ) {
+                navigationState.lastMovementSamplePos = currentPos;
+                navigationState.lastMovementAtMs = now;
             }
             double currentDistance = Math.sqrt(distanceSq);
             if (!Double.isFinite(lastDistanceCheckpoint) || Math.abs(currentDistance - lastDistanceCheckpoint) > DISTANCE_STALL_THRESHOLD) {
                 lastDistanceCheckpoint = currentDistance;
-                lastDistanceCheckpointAtMs = now;
+                navigationState.lastDistanceCheckpointAtMs = now;
             }
         }
 
@@ -1153,33 +1128,33 @@ public final class PathmindNavigator {
                 repairCurrentPath(world, playerFootPos, target, now, "planner deferred", "keep committed route");
             } else {
             synchronized (this) {
-                currentPath = newPath;
-                candidatePaths = computation.candidatePaths();
-                candidatePathsVisibleUntilMs = now + PATH_DECISION_VISIBILITY_MS;
+                navigationState.currentPath = newPath;
+                navigationState.candidatePaths = computation.candidatePaths();
+                navigationState.candidatePathsVisibleUntilMs = now + PATH_DECISION_VISIBILITY_MS;
                 goalMode = shouldTrackResolvedPlanningGoal(target, computation.resolvedGoalPos(), computation.goalMode())
                     ? computation.goalMode()
                     : GoalMode.EXACT;
-                resolvedGoalPos = goalMode == GoalMode.NEAREST_STANDABLE ? computation.resolvedGoalPos() : target.immutable();
-                committedPathGoalPos = computation.resolvedGoalPos() != null ? computation.resolvedGoalPos().immutable() : resolvedGoalPos;
+                navigationState.resolvedGoalPos = goalMode == GoalMode.NEAREST_STANDABLE ? computation.resolvedGoalPos() : target.immutable();
+                navigationState.committedPathGoalPos = computation.resolvedGoalPos() != null ? computation.resolvedGoalPos().immutable() : navigationState.resolvedGoalPos;
                 committedPathStartPos = playerFootPos != null ? playerFootPos.immutable() : null;
-                pathIndex = chooseInitialPathIndex(currentPath, playerFootPos, target);
-                lastWaypointAdvanceAtMs = now;
-                furthestVisitedPathIndex = Math.max(-1, pathIndex - 1);
-                activeWaypoint = currentPath.get(pathIndex);
-                executionState.plannedBreakTargets = buildPathBreakPlan(world, currentPath, pathIndex);
-                currentPlan = computation.plannedPrimitives();
-                executionState.activePlannedPrimitive = getPlannedPrimitiveAtIndexLocked(pathIndex);
-                appendDebugEventLocked("plan=" + formatPlannedPrimitiveSequence(currentPlan, 8));
-                appendDebugEventLocked("pathDetailed=" + formatIndexedPath(currentPath, 24));
-                appendDebugEventLocked("planDetailed=" + formatIndexedPrimitiveSequence(currentPlan, 24));
-                lastPlanAtMs = now;
-                bestDistanceSq = distanceSq;
-                lastProgressAtMs = now;
-                routeCommitUntilMs = now + ROUTE_COMMIT_MS;
-                lastLocalRecoveryAtMs = 0L;
-                localRecoveryAttempts = 0;
-                bestRouteProgressScore = routeProgressScoreLocked();
-                lastReplanReason = "planner replan";
+                navigationState.pathIndex = chooseInitialPathIndex(navigationState.currentPath, playerFootPos, target);
+                navigationState.lastWaypointAdvanceAtMs = now;
+                navigationState.furthestVisitedPathIndex = Math.max(-1, navigationState.pathIndex - 1);
+                navigationState.activeWaypoint = navigationState.currentPath.get(navigationState.pathIndex);
+                executionState.plannedBreakTargets = buildPathBreakPlan(world, navigationState.currentPath, navigationState.pathIndex);
+                navigationState.currentPlan = computation.plannedPrimitives();
+                executionState.activePlannedPrimitive = getPlannedPrimitiveAtIndexLocked(navigationState.pathIndex);
+                appendDebugEventLocked("plan=" + formatPlannedPrimitiveSequence(navigationState.currentPlan, 8));
+                appendDebugEventLocked("pathDetailed=" + formatIndexedPath(navigationState.currentPath, 24));
+                appendDebugEventLocked("planDetailed=" + formatIndexedPrimitiveSequence(navigationState.currentPlan, 24));
+                navigationState.lastPlanAtMs = now;
+                navigationState.bestDistanceSq = distanceSq;
+                navigationState.lastProgressAtMs = now;
+                navigationState.routeCommitUntilMs = now + ROUTE_COMMIT_MS;
+                navigationState.lastLocalRecoveryAtMs = 0L;
+                navigationState.localRecoveryAttempts = 0;
+                navigationState.bestRouteProgressScore = routeProgressScoreLocked();
+                navigationState.lastReplanReason = "planner replan";
             }
             }
         }
@@ -1188,8 +1163,8 @@ public final class PathmindNavigator {
         if (waypoint == null) {
             releaseMovementKeys(client);
             synchronized (this) {
-                if (!currentPath.isEmpty() && now - lastWaypointAdvanceAtMs <= WAYPOINT_ACQUIRE_SETTLE_MS) {
-                    lastAdvanceDecision = "hold:settle_for_next_waypoint";
+                if (!navigationState.currentPath.isEmpty() && now - navigationState.lastWaypointAdvanceAtMs <= WAYPOINT_ACQUIRE_SETTLE_MS) {
+                    navigationState.lastAdvanceDecision = "hold:settle_for_next_waypoint";
                     return;
                 }
             }
@@ -1199,8 +1174,8 @@ public final class PathmindNavigator {
                 return;
             }
             synchronized (this) {
-                if (now - lastPlanAtMs < REPLAN_COOLDOWN_MS) {
-                    lastAdvanceDecision = "hold:recovery_replan_cooldown";
+                if (now - navigationState.lastPlanAtMs < REPLAN_COOLDOWN_MS) {
+                    navigationState.lastAdvanceDecision = "hold:recovery_replan_cooldown";
                     return;
                 }
             }
@@ -1218,32 +1193,32 @@ public final class PathmindNavigator {
                     repairCurrentPath(world, playerFootPos, target, now, "recovery deferred", "keep committed route");
                 } else {
                     synchronized (this) {
-                        currentPath = recovery.path();
-                        candidatePaths = recovery.candidatePaths();
-                        candidatePathsVisibleUntilMs = now + PATH_DECISION_VISIBILITY_MS;
+                        navigationState.currentPath = recovery.path();
+                        navigationState.candidatePaths = recovery.candidatePaths();
+                        navigationState.candidatePathsVisibleUntilMs = now + PATH_DECISION_VISIBILITY_MS;
                         goalMode = shouldTrackResolvedPlanningGoal(target, recovery.resolvedGoalPos(), recovery.goalMode())
                             ? recovery.goalMode()
                             : GoalMode.EXACT;
-                        resolvedGoalPos = goalMode == GoalMode.NEAREST_STANDABLE ? recovery.resolvedGoalPos() : target.immutable();
-                        committedPathGoalPos = recovery.resolvedGoalPos() != null ? recovery.resolvedGoalPos().immutable() : resolvedGoalPos;
+                        navigationState.resolvedGoalPos = goalMode == GoalMode.NEAREST_STANDABLE ? recovery.resolvedGoalPos() : target.immutable();
+                        navigationState.committedPathGoalPos = recovery.resolvedGoalPos() != null ? recovery.resolvedGoalPos().immutable() : navigationState.resolvedGoalPos;
                         committedPathStartPos = playerFootPos != null ? playerFootPos.immutable() : null;
-                        pathIndex = chooseInitialPathIndex(currentPath, playerFootPos, target);
-                        lastWaypointAdvanceAtMs = now;
-                        furthestVisitedPathIndex = Math.max(-1, pathIndex - 1);
-                        activeWaypoint = currentPath.get(pathIndex);
-                        executionState.plannedBreakTargets = buildPathBreakPlan(world, currentPath, pathIndex);
-                        currentPlan = recovery.plannedPrimitives();
-                        executionState.activePlannedPrimitive = getPlannedPrimitiveAtIndexLocked(pathIndex);
-                        appendDebugEventLocked("plan=" + formatPlannedPrimitiveSequence(currentPlan, 8));
-                        appendDebugEventLocked("pathDetailed=" + formatIndexedPath(currentPath, 24));
-                        appendDebugEventLocked("planDetailed=" + formatIndexedPrimitiveSequence(currentPlan, 24));
-                        lastPlanAtMs = now;
-                        lastProgressAtMs = now;
-                        routeCommitUntilMs = now + ROUTE_COMMIT_MS;
-                        lastLocalRecoveryAtMs = 0L;
-                        localRecoveryAttempts = 0;
-                        bestRouteProgressScore = routeProgressScoreLocked();
-                        lastReplanReason = "waypoint recovery";
+                        navigationState.pathIndex = chooseInitialPathIndex(navigationState.currentPath, playerFootPos, target);
+                        navigationState.lastWaypointAdvanceAtMs = now;
+                        navigationState.furthestVisitedPathIndex = Math.max(-1, navigationState.pathIndex - 1);
+                        navigationState.activeWaypoint = navigationState.currentPath.get(navigationState.pathIndex);
+                        executionState.plannedBreakTargets = buildPathBreakPlan(world, navigationState.currentPath, navigationState.pathIndex);
+                        navigationState.currentPlan = recovery.plannedPrimitives();
+                        executionState.activePlannedPrimitive = getPlannedPrimitiveAtIndexLocked(navigationState.pathIndex);
+                        appendDebugEventLocked("plan=" + formatPlannedPrimitiveSequence(navigationState.currentPlan, 8));
+                        appendDebugEventLocked("pathDetailed=" + formatIndexedPath(navigationState.currentPath, 24));
+                        appendDebugEventLocked("planDetailed=" + formatIndexedPrimitiveSequence(navigationState.currentPlan, 24));
+                        navigationState.lastPlanAtMs = now;
+                        navigationState.lastProgressAtMs = now;
+                        navigationState.routeCommitUntilMs = now + ROUTE_COMMIT_MS;
+                        navigationState.lastLocalRecoveryAtMs = 0L;
+                        navigationState.localRecoveryAttempts = 0;
+                        navigationState.bestRouteProgressScore = routeProgressScoreLocked();
+                        navigationState.lastReplanReason = "waypoint recovery";
                     }
                 }
                 waypoint = chooseActiveWaypoint(world, player, playerFootPos);
@@ -1253,17 +1228,17 @@ public final class PathmindNavigator {
         if (waypoint == null) {
             releaseMovementKeys(client);
             synchronized (this) {
-                lastReplanReason = "waypoint exhausted";
-                lastStuckReason = "no active waypoint";
+                navigationState.lastReplanReason = "waypoint exhausted";
+                navigationState.lastStuckReason = "no active waypoint";
             }
             fail(FailureReason.NO_ROUTE, "No active waypoint remained after replanning.");
             return;
         }
 
-        if (shouldForceFinalApproach(world, playerFootPos, target)) {
+        if (primitiveExecutor.shouldForceFinalApproach(world, playerFootPos, target)) {
             waypoint = target.immutable();
             synchronized (this) {
-                activeWaypoint = waypoint;
+                navigationState.activeWaypoint = waypoint;
                 List<BlockPos> breakTargets = pathPlanner.getRequiredBreakTargets(world, playerFootPos, waypoint);
                 if (breakTargets == null) {
                     breakTargets = List.of();
@@ -1280,7 +1255,7 @@ public final class PathmindNavigator {
             }
         }
 
-        if (handleDirectFinalApproach(client, world, player, playerFootPos, target, now)) {
+        if (primitiveExecutor.handleDirectFinalApproach(client, world, player, playerFootPos, target, now)) {
             recordDebugTransitions(now);
             return;
         }
@@ -1301,15 +1276,15 @@ public final class PathmindNavigator {
         recordDebugTransitions(now);
         boolean handledController = false;
         switch (activeController) {
-            case RECOVER_JUMP -> handledController = handleJumpRecoveryMovement(client, world, player, playerFootPos, waypoint, now);
-            case RECOVER_BREAK -> handledController = handleBreakRecoveryMovement(client, world, player, playerFootPos, waypoint, now);
-            case RECOVER_PILLAR -> handledController = handlePillarRecoveryMovement(client, world, player, playerFootPos, waypoint, now);
-            case RECOVER_ESCAPE -> handledController = handleEscapeRecoveryMovement(client, world, player, playerFootPos, waypoint, now);
-            case ESCAPE_HOLE -> handledController = handleTrappedSpaceRecovery(client, world, player, playerFootPos, waypoint, now);
-            case BREAK_BLOCK -> handledController = handleCommittedMiningMovement(client, world, player, playerFootPos, waypoint, target, currentPos, now);
-            case PILLAR -> handledController = handlePillaring(client, world, player, playerFootPos, waypoint, now);
-            case COMMIT_JUMP -> handledController = handleCommittedJumpMovement(client, world, player, playerFootPos, now);
-            case DROP -> handledController = handleCommittedDropMovement(client, world, player, playerFootPos, waypoint, target, currentPos, now);
+            case RECOVER_JUMP -> handledController = primitiveExecutor.handleJumpRecoveryMovement(client, world, player, playerFootPos, waypoint, now);
+            case RECOVER_BREAK -> handledController = primitiveExecutor.handleBreakRecoveryMovement(client, world, player, playerFootPos, waypoint, now);
+            case RECOVER_PILLAR -> handledController = primitiveExecutor.handlePillarRecoveryMovement(client, world, player, playerFootPos, waypoint, now);
+            case RECOVER_ESCAPE -> handledController = primitiveExecutor.handleEscapeRecoveryMovement(client, world, player, playerFootPos, waypoint, now);
+            case ESCAPE_HOLE -> handledController = primitiveExecutor.handleTrappedSpaceRecovery(client, world, player, playerFootPos, waypoint, now);
+            case BREAK_BLOCK -> handledController = primitiveExecutor.handleCommittedMiningMovement(client, world, player, playerFootPos, waypoint, target, currentPos, now);
+            case PILLAR -> handledController = primitiveExecutor.handlePillaring(client, world, player, playerFootPos, waypoint, now);
+            case COMMIT_JUMP -> handledController = primitiveExecutor.handleCommittedJumpMovement(client, world, player, playerFootPos, now);
+            case DROP -> handledController = primitiveExecutor.handleCommittedDropMovement(client, world, player, playerFootPos, waypoint, target, currentPos, now);
             case FOLLOW_PATH -> {
             }
         }
@@ -1317,7 +1292,7 @@ public final class PathmindNavigator {
             return;
         }
         if ((activeController == ControllerMode.PILLAR || activeController == ControllerMode.ESCAPE_HOLE)
-            && isCommittedLocalEscapeChain(now)) {
+            && primitiveExecutor.isCommittedLocalEscapeChain(now)) {
             synchronized (this) {
                 if (activeController == ControllerMode.PILLAR) {
                     executionState.controllerMode = ControllerMode.ESCAPE_HOLE;
@@ -1343,16 +1318,16 @@ public final class PathmindNavigator {
             if (waypoint == null) {
                 releaseMovementKeys(client);
                 synchronized (this) {
-                    lastReplanReason = "waypoint exhausted";
-                    lastStuckReason = "no active waypoint";
+                    navigationState.lastReplanReason = "waypoint exhausted";
+                    navigationState.lastStuckReason = "no active waypoint";
                 }
                 fail(FailureReason.NO_ROUTE, "Recovery replanning did not produce a usable route.");
                 return;
             }
-            if (shouldForceFinalApproach(world, playerFootPos, target)) {
+            if (primitiveExecutor.shouldForceFinalApproach(world, playerFootPos, target)) {
                 waypoint = target.immutable();
                 synchronized (this) {
-                    activeWaypoint = waypoint;
+                    navigationState.activeWaypoint = waypoint;
                     List<BlockPos> breakTargets = pathPlanner.getRequiredBreakTargets(world, playerFootPos, waypoint);
                     if (breakTargets == null) {
                         breakTargets = List.of();
@@ -1376,7 +1351,7 @@ public final class PathmindNavigator {
             recoverFromStuck(client, world, playerFootPos, waypoint, target, currentPos, now, "controller redirect", activeController.name().toLowerCase());
             return;
         }
-        if (handleFollowPathSegment(client, world, player, playerFootPos, waypoint, plannedPrimitive, target, currentPos, distanceSq, now)) {
+        if (primitiveExecutor.handleFollowPathSegment(client, world, player, playerFootPos, waypoint, plannedPrimitive, target, currentPos, distanceSq, now)) {
             return;
         }
     }
@@ -1408,22 +1383,22 @@ public final class PathmindNavigator {
             "fail reason=" + message
                 + " player=" + formatDebugPos(playerFootPos)
                 + " target=" + formatDebugPos(targetPos)
-                + " resolved=" + formatDebugPos(resolvedGoalPos)
+                + " resolved=" + formatDebugPos(navigationState.resolvedGoalPos)
                 + " goal=" + goalMode.name()
         );
         activeFuture = null;
         targetPos = null;
         commandLabel = null;
-        currentPath = List.of();
-        currentPlan = List.of();
-        candidatePaths = List.of();
-        candidatePathsVisibleUntilMs = 0L;
-        pathIndex = 0;
-        furthestVisitedPathIndex = 0;
-        activeWaypoint = null;
+        navigationState.currentPath = List.of();
+        navigationState.currentPlan = List.of();
+        navigationState.candidatePaths = List.of();
+        navigationState.candidatePathsVisibleUntilMs = 0L;
+        navigationState.pathIndex = 0;
+        navigationState.furthestVisitedPathIndex = 0;
+        navigationState.activeWaypoint = null;
         executionState.plannedBreakTargets = List.of();
-        resolvedGoalPos = null;
-        committedPathGoalPos = null;
+        navigationState.resolvedGoalPos = null;
+        navigationState.committedPathGoalPos = null;
         committedPathStartPos = null;
         executionState.committedJumpWaypoint = null;
         executionState.committedJumpUntilMs = 0L;
@@ -1442,10 +1417,10 @@ public final class PathmindNavigator {
         executionState.controllerBestDistanceSq = Double.POSITIVE_INFINITY;
         executionState.lastPlaceTarget = null;
         executionState.lastPlaceResult = "none";
-        routeCommitUntilMs = 0L;
-        lastLocalRecoveryAtMs = 0L;
-        localRecoveryAttempts = 0;
-        bestRouteProgressScore = Integer.MIN_VALUE;
+        navigationState.routeCommitUntilMs = 0L;
+        navigationState.lastLocalRecoveryAtMs = 0L;
+        navigationState.localRecoveryAttempts = 0;
+        navigationState.bestRouteProgressScore = Integer.MIN_VALUE;
         consecutivePlanningBudgetExhaustions = 0;
         executionState.activeFollowSegment = FollowSegmentType.GROUND;
         executionState.activeFollowSegmentTarget = null;
@@ -1455,10 +1430,10 @@ public final class PathmindNavigator {
         executionState.activeFollowSegmentEnteredAtMs = 0L;
         executionState.activeFollowSegmentProgressAtMs = 0L;
         executionState.activeFollowSegmentBestDistanceSq = Double.POSITIVE_INFINITY;
-        lastMovementSamplePos = Vec3.ZERO;
-        lastMovementAtMs = 0L;
+        navigationState.lastMovementSamplePos = Vec3.ZERO;
+        navigationState.lastMovementAtMs = 0L;
         lastDistanceCheckpoint = Double.POSITIVE_INFINITY;
-        lastDistanceCheckpointAtMs = 0L;
+        navigationState.lastDistanceCheckpointAtMs = 0L;
         NodeErrorNotificationOverlay.getInstance().show(message, UITheme.STATE_ERROR);
         if (future != null && !future.isDone()) {
             future.completeExceptionally(new RuntimeException(message));
@@ -1478,22 +1453,22 @@ public final class PathmindNavigator {
             "complete state=" + terminalState.name()
                 + " player=" + formatDebugPos(playerFootPos)
                 + " target=" + formatDebugPos(targetPos)
-                + " resolved=" + formatDebugPos(resolvedGoalPos)
+                + " resolved=" + formatDebugPos(navigationState.resolvedGoalPos)
                 + " goal=" + goalMode.name()
         );
         activeFuture = null;
         targetPos = null;
         commandLabel = null;
-        currentPath = List.of();
-        currentPlan = List.of();
-        candidatePaths = List.of();
-        candidatePathsVisibleUntilMs = 0L;
-        pathIndex = 0;
-        furthestVisitedPathIndex = 0;
-        activeWaypoint = null;
+        navigationState.currentPath = List.of();
+        navigationState.currentPlan = List.of();
+        navigationState.candidatePaths = List.of();
+        navigationState.candidatePathsVisibleUntilMs = 0L;
+        navigationState.pathIndex = 0;
+        navigationState.furthestVisitedPathIndex = 0;
+        navigationState.activeWaypoint = null;
         executionState.plannedBreakTargets = List.of();
-        resolvedGoalPos = null;
-        committedPathGoalPos = null;
+        navigationState.resolvedGoalPos = null;
+        navigationState.committedPathGoalPos = null;
         committedPathStartPos = null;
         executionState.committedJumpWaypoint = null;
         executionState.committedJumpUntilMs = 0L;
@@ -1512,10 +1487,10 @@ public final class PathmindNavigator {
         executionState.controllerBestDistanceSq = Double.POSITIVE_INFINITY;
         executionState.lastPlaceTarget = null;
         executionState.lastPlaceResult = "none";
-        routeCommitUntilMs = 0L;
-        lastLocalRecoveryAtMs = 0L;
-        localRecoveryAttempts = 0;
-        bestRouteProgressScore = Integer.MIN_VALUE;
+        navigationState.routeCommitUntilMs = 0L;
+        navigationState.lastLocalRecoveryAtMs = 0L;
+        navigationState.localRecoveryAttempts = 0;
+        navigationState.bestRouteProgressScore = Integer.MIN_VALUE;
         consecutivePlanningBudgetExhaustions = 0;
         executionState.activeFollowSegment = FollowSegmentType.GROUND;
         executionState.activeFollowSegmentTarget = null;
@@ -1525,10 +1500,10 @@ public final class PathmindNavigator {
         executionState.activeFollowSegmentEnteredAtMs = 0L;
         executionState.activeFollowSegmentProgressAtMs = 0L;
         executionState.activeFollowSegmentBestDistanceSq = Double.POSITIVE_INFINITY;
-        lastMovementSamplePos = Vec3.ZERO;
-        lastMovementAtMs = 0L;
+        navigationState.lastMovementSamplePos = Vec3.ZERO;
+        navigationState.lastMovementAtMs = 0L;
         lastDistanceCheckpoint = Double.POSITIVE_INFINITY;
-        lastDistanceCheckpointAtMs = 0L;
+        navigationState.lastDistanceCheckpointAtMs = 0L;
         if (terminalState == State.ARRIVED) {
             String message = completedTarget == null
                 ? "Pathmind Nav: path complete."
@@ -1557,17 +1532,17 @@ public final class PathmindNavigator {
         activeFuture = null;
         targetPos = null;
         commandLabel = null;
-        bestDistanceSq = Double.MAX_VALUE;
-        currentPath = List.of();
-        currentPlan = List.of();
-        candidatePaths = List.of();
-        candidatePathsVisibleUntilMs = 0L;
-        pathIndex = 0;
-        furthestVisitedPathIndex = 0;
-        activeWaypoint = null;
+        navigationState.bestDistanceSq = Double.MAX_VALUE;
+        navigationState.currentPath = List.of();
+        navigationState.currentPlan = List.of();
+        navigationState.candidatePaths = List.of();
+        navigationState.candidatePathsVisibleUntilMs = 0L;
+        navigationState.pathIndex = 0;
+        navigationState.furthestVisitedPathIndex = 0;
+        navigationState.activeWaypoint = null;
         executionState.plannedBreakTargets = List.of();
-        resolvedGoalPos = null;
-        committedPathGoalPos = null;
+        navigationState.resolvedGoalPos = null;
+        navigationState.committedPathGoalPos = null;
         committedPathStartPos = null;
         executionState.committedJumpWaypoint = null;
         executionState.committedJumpUntilMs = 0L;
@@ -1586,10 +1561,10 @@ public final class PathmindNavigator {
         executionState.controllerBestDistanceSq = Double.POSITIVE_INFINITY;
         executionState.lastPlaceTarget = null;
         executionState.lastPlaceResult = "none";
-        routeCommitUntilMs = 0L;
-        lastLocalRecoveryAtMs = 0L;
-        localRecoveryAttempts = 0;
-        bestRouteProgressScore = Integer.MIN_VALUE;
+        navigationState.routeCommitUntilMs = 0L;
+        navigationState.lastLocalRecoveryAtMs = 0L;
+        navigationState.localRecoveryAttempts = 0;
+        navigationState.bestRouteProgressScore = Integer.MIN_VALUE;
         consecutivePlanningBudgetExhaustions = 0;
         executionState.activeFollowSegment = FollowSegmentType.GROUND;
         executionState.activeFollowSegmentTarget = null;
@@ -1599,14 +1574,14 @@ public final class PathmindNavigator {
         executionState.activeFollowSegmentEnteredAtMs = 0L;
         executionState.activeFollowSegmentProgressAtMs = 0L;
         executionState.activeFollowSegmentBestDistanceSq = Double.POSITIVE_INFINITY;
-        lastMovementSamplePos = Vec3.ZERO;
-        lastMovementAtMs = 0L;
+        navigationState.lastMovementSamplePos = Vec3.ZERO;
+        navigationState.lastMovementAtMs = 0L;
         lastDistanceCheckpoint = Double.POSITIVE_INFINITY;
-        lastDistanceCheckpointAtMs = 0L;
+        navigationState.lastDistanceCheckpointAtMs = 0L;
         long now = System.currentTimeMillis();
         startedAtMs = now;
-        lastProgressAtMs = now;
-        lastPlanAtMs = 0L;
+        navigationState.lastProgressAtMs = now;
+        navigationState.lastPlanAtMs = 0L;
         executionState.lastJumpAtMs = 0L;
         goalMode = GoalMode.EXACT;
         state = completeFuture ? State.STOPPED : State.IDLE;
@@ -1618,15 +1593,15 @@ public final class PathmindNavigator {
 
     private boolean shouldReplan(ClientLevel world, BlockPos start, BlockPos target, long now) {
         synchronized (this) {
-            if (currentPath.isEmpty() || activeWaypoint == null) {
-                if (lastPlanAtMs > 0L && now - lastPlanAtMs < REPLAN_COOLDOWN_MS) {
+            if (navigationState.currentPath.isEmpty() || navigationState.activeWaypoint == null) {
+                if (navigationState.lastPlanAtMs > 0L && now - navigationState.lastPlanAtMs < REPLAN_COOLDOWN_MS) {
                     lastReplanDecision = "keep:planning_retry_cooldown";
                     return false;
                 }
                 lastReplanDecision = "replan:no_active_path";
                 return true;
             }
-            if (isCommittedLocalEscapeChain(now)) {
+            if (primitiveExecutor.isCommittedLocalEscapeChain(now)) {
                 lastReplanDecision = "keep:escape_chain";
                 return false;
             }
@@ -1646,8 +1621,8 @@ public final class PathmindNavigator {
                 lastReplanDecision = "keep:jump_locked";
                 return false;
             }
-            boolean committedGoalValid = isPathGoalStillValid(currentPath, committedPathGoalLocked(target));
-            boolean routeReachesRequestedTarget = isPathGoalStillValid(currentPath, target);
+            boolean committedGoalValid = isPathGoalStillValid(navigationState.currentPath, committedPathGoalLocked(target));
+            boolean routeReachesRequestedTarget = isPathGoalStillValid(navigationState.currentPath, target);
             boolean nearCommittedRoute = isPlayerNearPath(start) || isPlayerNearCommittedPathStart(start);
             if (!routeReachesRequestedTarget
                 && nearCommittedRoute
@@ -1655,19 +1630,19 @@ public final class PathmindNavigator {
                 lastReplanDecision = "replan:refresh_partial_route";
                 return true;
             }
-            if (committedGoalValid && nearCommittedRoute && isWaypointActionable(world, activeWaypoint)) {
+            if (committedGoalValid && nearCommittedRoute && isWaypointActionable(world, navigationState.activeWaypoint)) {
                 lastReplanDecision = "keep:committed_route_valid";
                 return false;
             }
-            if (now < routeCommitUntilMs) {
+            if (now < navigationState.routeCommitUntilMs) {
                 lastReplanDecision = "keep:commit_window";
                 return false;
             }
-            if (now - lastProgressAtMs < 2000L) {
+            if (now - navigationState.lastProgressAtMs < 2000L) {
                 lastReplanDecision = "keep:recent_progress";
                 return false;
             }
-            if (!isWaypointActionable(world, activeWaypoint)) {
+            if (!isWaypointActionable(world, navigationState.activeWaypoint)) {
                 lastReplanDecision = "replan:waypoint_not_actionable";
                 return true;
             }
@@ -1682,9 +1657,9 @@ public final class PathmindNavigator {
 
     private synchronized boolean deferPlanningAfterBudgetExhaustion(long now, String detail) {
         consecutivePlanningBudgetExhaustions++;
-        lastPlanAtMs = now;
-        lastReplanReason = "planning budget retry " + consecutivePlanningBudgetExhaustions;
-        lastStuckReason = "planner time budget";
+        navigationState.lastPlanAtMs = now;
+        navigationState.lastReplanReason = "planning budget retry " + consecutivePlanningBudgetExhaustions;
+        navigationState.lastStuckReason = "planner time budget";
         appendDebugEventLocked(
             "planner deferred retry=" + consecutivePlanningBudgetExhaustions
                 + " detail=" + (detail == null || detail.isBlank() ? "none" : detail)
@@ -1693,27 +1668,27 @@ public final class PathmindNavigator {
     }
 
     private boolean shouldProactivelyRefreshRouteLocked(BlockPos target, long now) {
-        if (target == null || currentPath.isEmpty() || pathIndex < 0) {
+        if (target == null || navigationState.currentPath.isEmpty() || navigationState.pathIndex < 0) {
             return false;
         }
-        if (now - lastPlanAtMs < REPLAN_COOLDOWN_MS) {
+        if (now - navigationState.lastPlanAtMs < REPLAN_COOLDOWN_MS) {
             return false;
         }
-        if (pathIndex <= 0 && furthestVisitedPathIndex <= 0) {
+        if (navigationState.pathIndex <= 0 && navigationState.furthestVisitedPathIndex <= 0) {
             return false;
         }
-        int remaining = Math.max(0, currentPath.size() - pathIndex - 1);
+        int remaining = Math.max(0, navigationState.currentPath.size() - navigationState.pathIndex - 1);
         if (remaining > PROACTIVE_REPLAN_LOOKAHEAD_STEPS) {
             return false;
         }
-        BlockPos pathEnd = currentPath.get(currentPath.size() - 1);
+        BlockPos pathEnd = navigationState.currentPath.get(navigationState.currentPath.size() - 1);
         return pathEnd == null
             || pathPlanner.horizontalDistanceSq(pathEnd, target) > 4.0D
             || Math.abs(pathEnd.getY() - target.getY()) > MAX_DROP_DOWN;
     }
 
     private BlockPos committedPathGoalLocked(BlockPos fallbackTarget) {
-        return committedPathGoalPos != null ? committedPathGoalPos : fallbackTarget;
+        return navigationState.committedPathGoalPos != null ? navigationState.committedPathGoalPos : fallbackTarget;
     }
 
     private boolean isWaypointActionable(Level world, BlockPos waypoint) {
@@ -1768,13 +1743,13 @@ public final class PathmindNavigator {
     }
 
     private boolean isPlayerNearPath(BlockPos playerFootPos) {
-        if (playerFootPos == null || currentPath.isEmpty()) {
+        if (playerFootPos == null || navigationState.currentPath.isEmpty()) {
             return false;
         }
-        int start = Math.max(0, pathIndex - 2);
-        int end = Math.min(currentPath.size() - 1, pathIndex + 6);
+        int start = Math.max(0, navigationState.pathIndex - 2);
+        int end = Math.min(navigationState.currentPath.size() - 1, navigationState.pathIndex + 6);
         for (int i = start; i <= end; i++) {
-            BlockPos step = currentPath.get(i);
+            BlockPos step = navigationState.currentPath.get(i);
             if (pathPlanner.horizontalDistanceSq(playerFootPos, step) <= 4.0D && Math.abs(step.getY() - playerFootPos.getY()) <= 2) {
                 return true;
             }
@@ -1813,7 +1788,7 @@ public final class PathmindNavigator {
             if (executionState.committedJumpWaypoint != null && executionState.committedJumpUntilMs > now) {
                 return true;
             }
-            return isJumpPrimitive(plannedPrimitive) && now - executionState.lastJumpAtMs <= JUMP_RECOVERY_GRACE_MS;
+            return primitiveExecutor.isJumpPrimitive(plannedPrimitive) && now - executionState.lastJumpAtMs <= JUMP_RECOVERY_GRACE_MS;
         }
     }
 
@@ -1823,10 +1798,10 @@ public final class PathmindNavigator {
         }
         synchronized (this) {
             BlockPos committedGoal = committedPathGoalLocked(target);
-            return !currentPath.isEmpty()
-                && pathIndex >= 0
-                && pathIndex < currentPath.size()
-                && isPathGoalStillValid(currentPath, committedGoal)
+            return !navigationState.currentPath.isEmpty()
+                && navigationState.pathIndex >= 0
+                && navigationState.pathIndex < navigationState.currentPath.size()
+                && isPathGoalStillValid(navigationState.currentPath, committedGoal)
                 && (isPlayerNearPath(playerFootPos) || isPlayerNearCommittedPathStart(playerFootPos));
         }
     }
@@ -1845,18 +1820,18 @@ public final class PathmindNavigator {
         }
         synchronized (this) {
             BlockPos committedGoal = committedPathGoalLocked(target);
-            if (currentPath.isEmpty() || activeWaypoint == null) {
+            if (navigationState.currentPath.isEmpty() || navigationState.activeWaypoint == null) {
                 lastReplaceDecision = "replace:no_committed_path";
                 return false;
             }
             boolean nearCommittedRoute = isPlayerNearPath(playerFootPos) || isPlayerNearCommittedPathStart(playerFootPos);
-            if (!isPathGoalStillValid(currentPath, committedGoal) || !nearCommittedRoute) {
-                lastReplaceDecision = !isPathGoalStillValid(currentPath, committedGoal)
+            if (!isPathGoalStillValid(navigationState.currentPath, committedGoal) || !nearCommittedRoute) {
+                lastReplaceDecision = !isPathGoalStillValid(navigationState.currentPath, committedGoal)
                     ? "replace:committed_goal_invalid"
                     : "replace:not_near_committed_route";
                 return false;
             }
-            if (!isWaypointActionable(world, activeWaypoint)) {
+            if (!isWaypointActionable(world, navigationState.activeWaypoint)) {
                 lastReplaceDecision = "replace:active_waypoint_not_actionable";
                 return false;
             }
@@ -1868,17 +1843,17 @@ public final class PathmindNavigator {
                 lastReplaceDecision = "keep:candidate_not_viable";
                 return true;
             }
-            if (hasEquivalentOpeningPrefix(currentPath, pathIndex, candidatePath, playerFootPos, 4)) {
+            if (hasEquivalentOpeningPrefix(navigationState.currentPath, navigationState.pathIndex, candidatePath, playerFootPos, 4)) {
                 lastReplaceDecision = "keep:equivalent_opening_prefix";
                 return true;
             }
-            BlockPos currentEnd = currentPath.get(currentPath.size() - 1);
+            BlockPos currentEnd = navigationState.currentPath.get(navigationState.currentPath.size() - 1);
             BlockPos candidateEnd = candidatePath.get(candidatePath.size() - 1);
             double currentGoalDistance = goalDistanceScore(currentEnd, committedGoal);
             double candidateGoalDistance = goalDistanceScore(candidateEnd, committedGoal);
-            boolean extendingPartialRoute = !isPathGoalStillValid(currentPath, target)
+            boolean extendingPartialRoute = !isPathGoalStillValid(navigationState.currentPath, target)
                 && isMeaningfulPartialRouteExtension(currentEnd, candidateEnd, target, candidatePath.size());
-            if (hasEquivalentActiveOpening(activeWaypoint, candidatePath)
+            if (hasEquivalentActiveOpening(navigationState.activeWaypoint, candidatePath)
                 && candidateGoalDistance >= currentGoalDistance - 1.0D
                 && !extendingPartialRoute) {
                 lastReplaceDecision = "keep:equivalent_active_opening";
@@ -1900,19 +1875,19 @@ public final class PathmindNavigator {
                 lastReplaceDecision = "keep:route_stabilizing";
                 return true;
             }
-            if (now < routeCommitUntilMs) {
+            if (now < navigationState.routeCommitUntilMs) {
                 lastReplaceDecision = "keep:commit_window";
                 return true;
             }
-            if (hasCriticalPrimitiveAheadLocked(currentPlan, pathIndex, 6)
+            if (hasCriticalPrimitiveAheadLocked(navigationState.currentPlan, navigationState.pathIndex, 6)
                 && !hasCriticalPrimitive(candidatePlan, 0, 6)) {
                 lastReplaceDecision = "keep:critical_primitive_ahead";
                 return true;
             }
-            double currentPenalty = pathPlanner.pathStructurePenalty(currentPath, currentPlan) + pathPlanner.pathModificationPenalty(currentPlan);
+            double currentPenalty = pathPlanner.pathStructurePenalty(navigationState.currentPath, navigationState.currentPlan) + pathPlanner.pathModificationPenalty(navigationState.currentPlan);
             double candidatePenalty = pathPlanner.pathStructurePenalty(candidatePath, candidatePlan) + pathPlanner.pathModificationPenalty(candidatePlan);
             if (candidatePenalty >= currentPenalty - 8.0D
-                && candidatePath.size() >= currentPath.size() - 2) {
+                && candidatePath.size() >= navigationState.currentPath.size() - 2) {
                 lastReplaceDecision = "keep:candidate_not_materially_better";
                 return true;
             }
@@ -1920,7 +1895,7 @@ public final class PathmindNavigator {
                 lastReplaceDecision = "keep:candidate_penalty_worse";
                 return true;
             }
-            boolean keep = candidatePath.size() >= currentPath.size() + 4 && candidatePenalty >= currentPenalty;
+            boolean keep = candidatePath.size() >= navigationState.currentPath.size() + 4 && candidatePenalty >= currentPenalty;
             lastReplaceDecision = keep ? "keep:candidate_longer_without_better_penalty" : "replace:candidate_better";
             return keep;
         }
@@ -1994,7 +1969,7 @@ public final class PathmindNavigator {
         double currentGoalDistance = goalDistanceScore(currentEnd, committedGoal);
         double candidateGoalDistance = goalDistanceScore(candidateEnd, committedGoal);
         return candidateGoalDistance <= currentGoalDistance - 2.0D
-            || (candidateGoalDistance < currentGoalDistance && candidatePathSize >= currentPath.size() + 3);
+            || (candidateGoalDistance < currentGoalDistance && candidatePathSize >= navigationState.currentPath.size() + 3);
     }
 
     private double goalDistanceScore(BlockPos pos, BlockPos goal) {
@@ -2014,7 +1989,7 @@ public final class PathmindNavigator {
         double distanceSq
     ) {
         ControllerMode mode = selectControllerMode(world, player, playerFootPos, waypoint, plannedPrimitive, now);
-        BlockPos verticalEscapeTarget = selectVerticalEscapeTarget(world, playerFootPos, waypoint);
+        BlockPos verticalEscapeTarget = primitiveExecutor.selectVerticalEscapeTarget(world, playerFootPos, waypoint);
         synchronized (this) {
             BlockPos nextTarget = switch (mode) {
                 case RECOVER_JUMP, RECOVER_BREAK, RECOVER_PILLAR, RECOVER_ESCAPE -> executionState.controllerTarget != null ? executionState.controllerTarget : waypoint;
@@ -2067,7 +2042,7 @@ public final class PathmindNavigator {
             return null;
         }
         if (plannedPrimitive != null && plannedPrimitive.isMineAscent()) {
-            MiningAscentPhase phase = resolveMiningAscentPhase(world, playerFootPos, waypoint, plannedPrimitive);
+            MiningAscentPhase phase = primitiveExecutor.resolveMiningAscentPhase(world, playerFootPos, waypoint, plannedPrimitive);
             if (phase == MiningAscentPhase.ADVANCE) {
                 BlockPos advanceBlock = pathPlanner.resolveMinedAscentAdvanceBlock(playerFootPos, waypoint);
                 if (advanceBlock != null) {
@@ -2078,18 +2053,18 @@ public final class PathmindNavigator {
                 return waypoint.immutable();
             }
         }
-        PlacementTargetState placementTargetState = resolveCommittedPlacementTargetState(world, waypoint, plannedPrimitive);
+        PlacementTargetState placementTargetState = primitiveExecutor.resolveCommittedPlacementTargetState(world, waypoint, plannedPrimitive);
         if (placementTargetState.target() != null) {
             return placementTargetState.target().immutable();
         }
         synchronized (this) {
             if (executionState.activeBreakTarget != null
                 && pathPlanner.isBreakableForNavigator(world, executionState.activeBreakTarget)
-                && canBreakTargetNow(world, player, executionState.activeBreakTarget)) {
+                && primitiveExecutor.canBreakTargetNow(world, player, executionState.activeBreakTarget)) {
                 return executionState.activeBreakTarget.immutable();
             }
         }
-        BlockPos breakTarget = selectBreakTarget(world, player, playerFootPos, waypoint, plannedPrimitive);
+        BlockPos breakTarget = primitiveExecutor.selectBreakTarget(world, player, playerFootPos, waypoint, plannedPrimitive);
         return breakTarget != null ? breakTarget.immutable() : waypoint.immutable();
     }
 
@@ -2129,9 +2104,9 @@ public final class PathmindNavigator {
     private void noteRouteProgress(long now) {
         synchronized (this) {
             int routeProgress = routeProgressScoreLocked();
-            if (routeProgress > bestRouteProgressScore) {
-                bestRouteProgressScore = routeProgress;
-                lastProgressAtMs = now;
+            if (routeProgress > navigationState.bestRouteProgressScore) {
+                navigationState.bestRouteProgressScore = routeProgress;
+                navigationState.lastProgressAtMs = now;
                 executionState.controllerProgressAtMs = now;
             }
         }
@@ -2160,13 +2135,13 @@ public final class PathmindNavigator {
     }
 
     private boolean isRouteStabilizingLocked(BlockPos playerFootPos, long now) {
-        if (now - lastPlanAtMs > ROUTE_STABILIZATION_MS) {
+        if (now - navigationState.lastPlanAtMs > ROUTE_STABILIZATION_MS) {
             return false;
         }
-        if (currentPath.isEmpty() || activeWaypoint == null) {
+        if (navigationState.currentPath.isEmpty() || navigationState.activeWaypoint == null) {
             return false;
         }
-        if (pathIndex > Math.min(2, currentPath.size() - 1)) {
+        if (navigationState.pathIndex > Math.min(2, navigationState.currentPath.size() - 1)) {
             return false;
         }
         return playerFootPos == null || isPlayerNearCommittedPathStart(playerFootPos);
@@ -2196,7 +2171,7 @@ public final class PathmindNavigator {
     }
 
     private int routeProgressScoreLocked() {
-        int waypointProgress = Math.max(0, pathIndex) * 100;
+        int waypointProgress = Math.max(0, navigationState.pathIndex) * 100;
         int breakPenalty = executionState.plannedBreakTargets == null ? 0 : executionState.plannedBreakTargets.size() * 7;
         int escapePenalty = executionState.committedEscape.breakTargets().size() * 5
             + executionState.committedEscape.route().size() * 3;
@@ -2243,24 +2218,24 @@ public final class PathmindNavigator {
         if (world == null || player == null || playerFootPos == null || waypoint == null) {
             return ControllerMode.FOLLOW_PATH;
         }
-        if (shouldPreferFinalApproachController(world, playerFootPos)) {
+        if (primitiveExecutor.shouldPreferFinalApproachController(world, playerFootPos)) {
             if (executionState.committedJumpWaypoint != null && executionState.committedJumpUntilMs > now) {
                 return ControllerMode.COMMIT_JUMP;
             }
-            BlockPos breakTarget = selectBreakTarget(world, player, playerFootPos, waypoint, plannedPrimitive);
+            BlockPos breakTarget = primitiveExecutor.selectBreakTarget(world, player, playerFootPos, waypoint, plannedPrimitive);
             if (breakTarget != null) {
                 return ControllerMode.BREAK_BLOCK;
             }
             return ControllerMode.FOLLOW_PATH;
         }
-        boolean committedEscape = isCommittedEscapeState(now);
+        boolean committedEscape = primitiveExecutor.isCommittedEscapeState(now);
         if (isRecoveryState(world, playerFootPos, now)) {
             return executionState.controllerMode;
         }
-        if (isCommittedPillarState(world, playerFootPos, now) && (isPillarPrimitive(plannedPrimitive) || committedEscape)) {
+        if (isCommittedPillarState(world, playerFootPos, now) && (primitiveExecutor.isPillarPrimitive(plannedPrimitive) || committedEscape)) {
             return ControllerMode.PILLAR;
         }
-        if (isPillarPrimitive(plannedPrimitive)
+        if (primitiveExecutor.isPillarPrimitive(plannedPrimitive)
             || shouldUsePillarStep(world, playerFootPos, waypoint, plannedPrimitive, now)) {
             return ControllerMode.PILLAR;
         }
@@ -2270,22 +2245,22 @@ public final class PathmindNavigator {
         if (executionState.committedJumpWaypoint != null && executionState.committedJumpUntilMs > now) {
             return ControllerMode.COMMIT_JUMP;
         }
-        BlockPos breakTarget = selectBreakTarget(world, player, playerFootPos, waypoint, plannedPrimitive);
+        BlockPos breakTarget = primitiveExecutor.selectBreakTarget(world, player, playerFootPos, waypoint, plannedPrimitive);
         boolean miningAscentStep = plannedPrimitive != null && plannedPrimitive.isMineAscent();
         if (breakTarget != null
             || miningAscentStep
-            || (allowBlockPlacing && primitiveStillRequiresPlace(world, plannedPrimitive))) {
+            || (allowBlockPlacing && primitiveExecutor.primitiveStillRequiresPlace(world, plannedPrimitive))) {
             return ControllerMode.BREAK_BLOCK;
         }
         return ControllerMode.FOLLOW_PATH;
     }
 
     private boolean shouldUsePillarStep(Level world, BlockPos playerFootPos, BlockPos waypoint, PlannedPrimitive plannedPrimitive, long now) {
-        return world != null && playerFootPos != null && waypoint != null && now >= 0L && isPillarPrimitive(plannedPrimitive);
+        return world != null && playerFootPos != null && waypoint != null && now >= 0L && primitiveExecutor.isPillarPrimitive(plannedPrimitive);
     }
 
     private ControllerMode recoveryModeForPrimitive(PlannedPrimitive plannedPrimitive, Level world, BlockPos playerFootPos, BlockPos waypoint, long now) {
-        if (isCommittedEscapeState(now)) {
+        if (primitiveExecutor.isCommittedEscapeState(now)) {
             return ControllerMode.RECOVER_ESCAPE;
         }
         if (plannedPrimitive != null) {
@@ -2330,11 +2305,11 @@ public final class PathmindNavigator {
                 || now > executionState.controllerUntilMs) {
                 return false;
             }
-            if (currentPath.isEmpty() || activeWaypoint == null) {
+            if (navigationState.currentPath.isEmpty() || navigationState.activeWaypoint == null) {
                 return false;
             }
-            if (isTrappedInCrampedSpace(world, playerFootPos, activeWaypoint)
-                || selectVerticalEscapeTarget(world, playerFootPos, activeWaypoint) != null) {
+            if (primitiveExecutor.isTrappedInCrampedSpace(world, playerFootPos, navigationState.activeWaypoint)
+                || primitiveExecutor.selectVerticalEscapeTarget(world, playerFootPos, navigationState.activeWaypoint) != null) {
                 return false;
             }
             if (!isPlayerNearPath(playerFootPos)) {
@@ -2343,7 +2318,7 @@ public final class PathmindNavigator {
             if (!isWaypointActionable(world, executionState.controllerTarget)) {
                 return false;
             }
-            if (requiresBreakingForWaypoint(world, executionState.controllerTarget) || pathPlanner.needsPlacedSupport(world, executionState.controllerTarget)) {
+            if (primitiveExecutor.requiresBreakingForWaypoint(world, executionState.controllerTarget) || pathPlanner.needsPlacedSupport(world, executionState.controllerTarget)) {
                 return false;
             }
             return true;
@@ -2354,17 +2329,17 @@ public final class PathmindNavigator {
         if (world == null || playerFootPos == null || waypoint == null) {
             return false;
         }
-        if (shouldPreferFinalApproachController(world, playerFootPos)) {
+        if (primitiveExecutor.shouldPreferFinalApproachController(world, playerFootPos)) {
             return false;
         }
-        int physicalWalkNeighbors = countPhysicalWalkNeighbors(world, playerFootPos);
+        int physicalWalkNeighbors = primitiveExecutor.countPhysicalWalkNeighbors(world, playerFootPos);
         if (physicalWalkNeighbors > 1) {
             return false;
         }
-        if (isCommittedEscapeState(now)) {
-            return !canExitTrappedRecovery(world, playerFootPos, waypoint, now);
+        if (primitiveExecutor.isCommittedEscapeState(now)) {
+            return !primitiveExecutor.canExitTrappedRecovery(world, playerFootPos, waypoint, now);
         }
-        if (!isTrappedInCrampedSpace(world, playerFootPos, waypoint)) {
+        if (!primitiveExecutor.isTrappedInCrampedSpace(world, playerFootPos, waypoint)) {
             return false;
         }
         if (plannedPrimitive == null) {
@@ -2395,7 +2370,7 @@ public final class PathmindNavigator {
                 executionState.activeBreakTarget = null;
             }
         }
-        clearExcavationPlan(now, "escape cleared", "resume route");
+        primitiveExecutor.clearExcavationPlan(now, "escape cleared", "resume route");
     }
 
     private void repairCurrentPath(Level world, BlockPos playerFootPos, BlockPos target, long now, String replanReason, String stuckReason) {
@@ -2403,32 +2378,32 @@ public final class PathmindNavigator {
             executionState.activeBreakTarget = null;
             executionState.committedJumpWaypoint = null;
             executionState.committedJumpUntilMs = 0L;
-            if (pathIndex < 0) {
-                pathIndex = 0;
-                furthestVisitedPathIndex = 0;
+            if (navigationState.pathIndex < 0) {
+                navigationState.pathIndex = 0;
+                navigationState.furthestVisitedPathIndex = 0;
             }
-            if (!currentPath.isEmpty()) {
-                if (pathIndex >= currentPath.size()) {
-                    pathIndex = currentPath.size() - 1;
+            if (!navigationState.currentPath.isEmpty()) {
+                if (navigationState.pathIndex >= navigationState.currentPath.size()) {
+                    navigationState.pathIndex = navigationState.currentPath.size() - 1;
                 }
                 chooseRecoveryPathIndexLocked(world, playerFootPos, target);
-                activeWaypoint = currentPath.get(pathIndex);
-                executionState.plannedBreakTargets = buildPathBreakPlan(world, currentPath, pathIndex);
+                navigationState.activeWaypoint = navigationState.currentPath.get(navigationState.pathIndex);
+                executionState.plannedBreakTargets = buildPathBreakPlan(world, navigationState.currentPath, navigationState.pathIndex);
             } else {
-                activeWaypoint = null;
+                navigationState.activeWaypoint = null;
                 executionState.plannedBreakTargets = List.of();
             }
-            lastPlanAtMs = now;
-            lastProgressAtMs = now;
-            routeCommitUntilMs = Math.max(routeCommitUntilMs, now + 650L);
-            bestRouteProgressScore = routeProgressScoreLocked();
-            lastReplanReason = replanReason;
-            lastStuckReason = stuckReason;
+            navigationState.lastPlanAtMs = now;
+            navigationState.lastProgressAtMs = now;
+            navigationState.routeCommitUntilMs = Math.max(navigationState.routeCommitUntilMs, now + 650L);
+            navigationState.bestRouteProgressScore = routeProgressScoreLocked();
+            navigationState.lastReplanReason = replanReason;
+            navigationState.lastStuckReason = stuckReason;
             if (playerFootPos != null) {
-                lastMovementSamplePos = Vec3.atCenterOf(playerFootPos);
+                navigationState.lastMovementSamplePos = Vec3.atCenterOf(playerFootPos);
             }
-            lastMovementAtMs = now;
-            lastDistanceCheckpointAtMs = now;
+            navigationState.lastMovementAtMs = now;
+            navigationState.lastDistanceCheckpointAtMs = now;
         }
     }
 
@@ -2451,13 +2426,13 @@ public final class PathmindNavigator {
             && !"no progress".equals(stuckReason)) {
             return false;
         }
-        if (isInteractablePrimitive(plannedPrimitive)
+        if (primitiveExecutor.isInteractablePrimitive(plannedPrimitive)
             && (pathPlanner.requiresInteractableTraversal(world, playerFootPos, waypoint)
             || pathPlanner.hasPathOpenableAhead(world, playerFootPos, waypoint))) {
             return false;
         }
         synchronized (this) {
-            return now - lastProgressAtMs >= 900L;
+            return now - navigationState.lastProgressAtMs >= 900L;
         }
     }
 
@@ -2485,8 +2460,8 @@ public final class PathmindNavigator {
             && playerFootPos != null
             && waypoint != null
             && shouldEnterEscapeRecovery(world, playerFootPos, waypoint, activePrimitive, now)) {
-            clearExcavationPlan(now, replanReason, stuckReason);
-            ensureExcavationPlan(world, playerFootPos, waypoint, now);
+            primitiveExecutor.clearExcavationPlan(now, replanReason, stuckReason);
+            primitiveExecutor.ensureExcavationPlan(world, playerFootPos, waypoint, now);
             synchronized (this) {
                 executionState.controllerMode = ControllerMode.RECOVER_ESCAPE;
                 executionState.controllerTarget = executionState.committedEscapeTarget != null ? executionState.committedEscapeTarget : waypoint.immutable();
@@ -2516,12 +2491,12 @@ public final class PathmindNavigator {
             repairCurrentPath(world, playerFootPos, target, now, "local recovery", stuckReason);
             synchronized (this) {
                 executionState.controllerMode = recoveryModeForPrimitive(activePrimitive, world, playerFootPos, waypoint, now);
-                executionState.controllerTarget = activeWaypoint != null ? activeWaypoint.immutable() : (waypoint != null ? waypoint.immutable() : null);
+                executionState.controllerTarget = navigationState.activeWaypoint != null ? navigationState.activeWaypoint.immutable() : (waypoint != null ? waypoint.immutable() : null);
                 executionState.controllerEnteredAtMs = now;
                 executionState.controllerUntilMs = now + 1800L;
-                lastLocalRecoveryAtMs = now;
-                localRecoveryAttempts++;
-                lastReplanReason = replanReason;
+                navigationState.lastLocalRecoveryAtMs = now;
+                navigationState.localRecoveryAttempts++;
+                navigationState.lastReplanReason = replanReason;
                 executionState.controllerProgressAtMs = now;
                 executionState.controllerBestDistanceSq = Double.POSITIVE_INFINITY;
             }
@@ -2535,23 +2510,23 @@ public final class PathmindNavigator {
                 && pathPlanner.isViablePlannedPath(world, recovery.path(), recovery.plannedPrimitives())
                 && !shouldKeepCommittedPath(world, playerFootPos, target, recovery.path(), recovery.plannedPrimitives(), now)) {
                 synchronized (this) {
-                    currentPath = recovery.path();
-                    candidatePaths = recovery.candidatePaths();
-                    candidatePathsVisibleUntilMs = now + PATH_DECISION_VISIBILITY_MS;
+                    navigationState.currentPath = recovery.path();
+                    navigationState.candidatePaths = recovery.candidatePaths();
+                    navigationState.candidatePathsVisibleUntilMs = now + PATH_DECISION_VISIBILITY_MS;
                     goalMode = shouldTrackResolvedPlanningGoal(target, recovery.resolvedGoalPos(), recovery.goalMode())
                         ? recovery.goalMode()
                         : GoalMode.EXACT;
-                    resolvedGoalPos = goalMode == GoalMode.NEAREST_STANDABLE ? recovery.resolvedGoalPos() : target.immutable();
-                    committedPathGoalPos = recovery.resolvedGoalPos() != null ? recovery.resolvedGoalPos().immutable() : resolvedGoalPos;
+                    navigationState.resolvedGoalPos = goalMode == GoalMode.NEAREST_STANDABLE ? recovery.resolvedGoalPos() : target.immutable();
+                    navigationState.committedPathGoalPos = recovery.resolvedGoalPos() != null ? recovery.resolvedGoalPos().immutable() : navigationState.resolvedGoalPos;
                     committedPathStartPos = playerFootPos != null ? playerFootPos.immutable() : null;
-                    pathIndex = chooseInitialPathIndex(currentPath, playerFootPos, target);
-                    lastWaypointAdvanceAtMs = now;
-                    furthestVisitedPathIndex = Math.max(-1, pathIndex - 1);
-                    activeWaypoint = currentPath.get(pathIndex);
-                    executionState.plannedBreakTargets = buildPathBreakPlan(world, currentPath, pathIndex);
-                    currentPlan = recovery.plannedPrimitives();
-                    executionState.activePlannedPrimitive = getPlannedPrimitiveAtIndexLocked(pathIndex);
-                    appendDebugEventLocked("plan=" + formatPlannedPrimitiveSequence(currentPlan, 8));
+                    navigationState.pathIndex = chooseInitialPathIndex(navigationState.currentPath, playerFootPos, target);
+                    navigationState.lastWaypointAdvanceAtMs = now;
+                    navigationState.furthestVisitedPathIndex = Math.max(-1, navigationState.pathIndex - 1);
+                    navigationState.activeWaypoint = navigationState.currentPath.get(navigationState.pathIndex);
+                    executionState.plannedBreakTargets = buildPathBreakPlan(world, navigationState.currentPath, navigationState.pathIndex);
+                    navigationState.currentPlan = recovery.plannedPrimitives();
+                    executionState.activePlannedPrimitive = getPlannedPrimitiveAtIndexLocked(navigationState.pathIndex);
+                    appendDebugEventLocked("plan=" + formatPlannedPrimitiveSequence(navigationState.currentPlan, 8));
                     executionState.activeBreakTarget = null;
                     executionState.committedJumpWaypoint = null;
                     executionState.committedJumpUntilMs = 0L;
@@ -2559,17 +2534,17 @@ public final class PathmindNavigator {
                     executionState.committedEscapeUntilMs = 0L;
                     executionState.committedEscape = EscapePlan.empty();
                     executionState.committedEscapePrimitiveIndex = 0;
-                    lastPlanAtMs = now;
-                    lastProgressAtMs = now;
-                    routeCommitUntilMs = now + ROUTE_COMMIT_MS;
-                    lastLocalRecoveryAtMs = 0L;
-                    localRecoveryAttempts = 0;
-                    bestRouteProgressScore = routeProgressScoreLocked();
-                    lastReplanReason = replanReason;
-                    lastStuckReason = stuckReason;
-                    lastMovementAtMs = now;
-                    lastMovementSamplePos = currentPos != null ? currentPos : Vec3.atCenterOf(playerFootPos);
-                    lastDistanceCheckpointAtMs = now;
+                    navigationState.lastPlanAtMs = now;
+                    navigationState.lastProgressAtMs = now;
+                    navigationState.routeCommitUntilMs = now + ROUTE_COMMIT_MS;
+                    navigationState.lastLocalRecoveryAtMs = 0L;
+                    navigationState.localRecoveryAttempts = 0;
+                    navigationState.bestRouteProgressScore = routeProgressScoreLocked();
+                    navigationState.lastReplanReason = replanReason;
+                    navigationState.lastStuckReason = stuckReason;
+                    navigationState.lastMovementAtMs = now;
+                    navigationState.lastMovementSamplePos = currentPos != null ? currentPos : Vec3.atCenterOf(playerFootPos);
+                    navigationState.lastDistanceCheckpointAtMs = now;
                     executionState.controllerProgressAtMs = now;
                     executionState.controllerBestDistanceSq = Double.POSITIVE_INFINITY;
                 }
@@ -2579,7 +2554,7 @@ public final class PathmindNavigator {
                 repairCurrentPath(world, playerFootPos, target, now, "recovery deferred", stuckReason);
                 synchronized (this) {
                     executionState.controllerMode = recoveryModeForPrimitive(activePrimitive, world, playerFootPos, waypoint, now);
-                    executionState.controllerTarget = activeWaypoint != null ? activeWaypoint.immutable() : (waypoint != null ? waypoint.immutable() : null);
+                    executionState.controllerTarget = navigationState.activeWaypoint != null ? navigationState.activeWaypoint.immutable() : (waypoint != null ? waypoint.immutable() : null);
                     executionState.controllerEnteredAtMs = now;
                     executionState.controllerUntilMs = now + 1800L;
                     executionState.controllerProgressAtMs = now;
@@ -2594,7 +2569,7 @@ public final class PathmindNavigator {
 
     private boolean shouldAttemptLocalRecovery(BlockPos playerFootPos, BlockPos target, long now) {
         synchronized (this) {
-            if (currentPath.isEmpty() || activeWaypoint == null) {
+            if (navigationState.currentPath.isEmpty() || navigationState.activeWaypoint == null) {
                 return false;
             }
             if (isJumpExecutionLocked(now, executionState.activePlannedPrimitive)) {
@@ -2606,10 +2581,10 @@ public final class PathmindNavigator {
                 || executionState.controllerMode == ControllerMode.RECOVER_ESCAPE) {
                 return false;
             }
-            if (localRecoveryAttempts >= MAX_LOCAL_RECOVERY_ATTEMPTS) {
+            if (navigationState.localRecoveryAttempts >= MAX_LOCAL_RECOVERY_ATTEMPTS) {
                 return false;
             }
-            if (now - lastLocalRecoveryAtMs < LOCAL_RECOVERY_COOLDOWN_MS) {
+            if (now - navigationState.lastLocalRecoveryAtMs < LOCAL_RECOVERY_COOLDOWN_MS) {
                 return false;
             }
             if (isExcavatingState(now)) {
@@ -2618,16 +2593,16 @@ public final class PathmindNavigator {
             if (activeWaypointRequiresCommittedAction()) {
                 return false;
             }
-            if (localRecoveryAttempts > 0 && routeProgressScoreLocked() <= bestRouteProgressScore) {
+            if (navigationState.localRecoveryAttempts > 0 && routeProgressScoreLocked() <= navigationState.bestRouteProgressScore) {
                 return false;
             }
-            return isPlayerNearPath(playerFootPos) && isPathGoalStillValid(currentPath, target);
+            return isPlayerNearPath(playerFootPos) && isPathGoalStillValid(navigationState.currentPath, target);
         }
     }
 
     private boolean activeWaypointRequiresCommittedAction() {
         Minecraft client = Minecraft.getInstance();
-        if (client == null || client.level == null || activeWaypoint == null) {
+        if (client == null || client.level == null || navigationState.activeWaypoint == null) {
             return false;
         }
         Level world = client.level;
@@ -2638,13 +2613,13 @@ public final class PathmindNavigator {
         if (plannedPrimitive != null) {
             return plannedPrimitive.requiresCommittedAction();
         }
-        if (requiresBreakingForWaypoint(world, activeWaypoint) || pathPlanner.needsPlacedSupport(world, activeWaypoint)) {
+        if (primitiveExecutor.requiresBreakingForWaypoint(world, navigationState.activeWaypoint) || pathPlanner.needsPlacedSupport(world, navigationState.activeWaypoint)) {
             return true;
         }
-        BlockPos previous = pathIndex > 0 && pathIndex - 1 < currentPath.size() ? currentPath.get(pathIndex - 1) : null;
-        if (previous != null && !requiresBreakingForWaypoint(world, activeWaypoint) && !pathPlanner.requiresInteractableTraversal(world, previous, activeWaypoint)) {
-            int dy = activeWaypoint.getY() - previous.getY();
-            if (dy > 0 || pathPlanner.shouldStepJump(world, previous, activeWaypoint)) {
+        BlockPos previous = navigationState.pathIndex > 0 && navigationState.pathIndex - 1 < navigationState.currentPath.size() ? navigationState.currentPath.get(navigationState.pathIndex - 1) : null;
+        if (previous != null && !primitiveExecutor.requiresBreakingForWaypoint(world, navigationState.activeWaypoint) && !pathPlanner.requiresInteractableTraversal(world, previous, navigationState.activeWaypoint)) {
+            int dy = navigationState.activeWaypoint.getY() - previous.getY();
+            if (dy > 0 || pathPlanner.shouldStepJump(world, previous, navigationState.activeWaypoint)) {
                 return true;
             }
         }
@@ -2653,24 +2628,24 @@ public final class PathmindNavigator {
 
     private void rewindCurrentPathIndex(BlockPos playerFootPos, BlockPos preferredWaypoint) {
         synchronized (this) {
-            if (currentPath.isEmpty()) {
-                pathIndex = 0;
-                furthestVisitedPathIndex = 0;
-                activeWaypoint = null;
+            if (navigationState.currentPath.isEmpty()) {
+                navigationState.pathIndex = 0;
+                navigationState.furthestVisitedPathIndex = 0;
+                navigationState.activeWaypoint = null;
                 return;
             }
-            int bestIndex = Math.max(furthestVisitedPathIndex, Math.min(pathIndex, currentPath.size() - 1));
+            int bestIndex = Math.max(navigationState.furthestVisitedPathIndex, Math.min(navigationState.pathIndex, navigationState.currentPath.size() - 1));
             if (preferredWaypoint != null) {
-                int preferredIndex = currentPath.indexOf(preferredWaypoint);
-                if (preferredIndex >= furthestVisitedPathIndex) {
+                int preferredIndex = navigationState.currentPath.indexOf(preferredWaypoint);
+                if (preferredIndex >= navigationState.furthestVisitedPathIndex) {
                     bestIndex = preferredIndex;
                 }
             }
             if (playerFootPos != null) {
                 int forwardIndex = -1;
                 double bestForwardScore = Double.POSITIVE_INFINITY;
-                for (int i = bestIndex; i < Math.min(currentPath.size(), bestIndex + 3); i++) {
-                    BlockPos step = currentPath.get(i);
+                for (int i = bestIndex; i < Math.min(navigationState.currentPath.size(), bestIndex + 3); i++) {
+                    BlockPos step = navigationState.currentPath.get(i);
                     if (step == null) {
                         continue;
                     }
@@ -2686,8 +2661,8 @@ public final class PathmindNavigator {
                 if (forwardIndex >= 0) {
                     bestIndex = forwardIndex;
                 } else {
-                    for (int i = bestIndex; i >= furthestVisitedPathIndex; i--) {
-                        BlockPos step = currentPath.get(i);
+                    for (int i = bestIndex; i >= navigationState.furthestVisitedPathIndex; i--) {
+                        BlockPos step = navigationState.currentPath.get(i);
                         if (step == null) {
                             continue;
                         }
@@ -2699,26 +2674,26 @@ public final class PathmindNavigator {
                     }
                 }
             }
-            pathIndex = Math.max(furthestVisitedPathIndex, Math.min(bestIndex, currentPath.size() - 1));
-            activeWaypoint = currentPath.get(pathIndex);
+            navigationState.pathIndex = Math.max(navigationState.furthestVisitedPathIndex, Math.min(bestIndex, navigationState.currentPath.size() - 1));
+            navigationState.activeWaypoint = navigationState.currentPath.get(navigationState.pathIndex);
         }
     }
 
     private void chooseRecoveryPathIndexLocked(Level world, BlockPos playerFootPos, BlockPos target) {
-        if (currentPath.isEmpty()) {
-            pathIndex = 0;
-            furthestVisitedPathIndex = 0;
+        if (navigationState.currentPath.isEmpty()) {
+            navigationState.pathIndex = 0;
+            navigationState.furthestVisitedPathIndex = 0;
             return;
         }
-        int boundedIndex = Math.max(furthestVisitedPathIndex, Math.min(pathIndex, currentPath.size() - 1));
+        int boundedIndex = Math.max(navigationState.furthestVisitedPathIndex, Math.min(navigationState.pathIndex, navigationState.currentPath.size() - 1));
         if (world == null || playerFootPos == null || target == null) {
-            pathIndex = boundedIndex;
+            navigationState.pathIndex = boundedIndex;
             return;
         }
 
         double playerGoalDistance = pathPlanner.horizontalDistanceSq(playerFootPos, target);
-        for (int i = boundedIndex; i < currentPath.size() && i <= boundedIndex + 2; i++) {
-            BlockPos step = currentPath.get(i);
+        for (int i = boundedIndex; i < navigationState.currentPath.size() && i <= boundedIndex + 2; i++) {
+            BlockPos step = navigationState.currentPath.get(i);
             if (step == null) {
                 continue;
             }
@@ -2729,13 +2704,13 @@ public final class PathmindNavigator {
                 continue;
             }
             if (pathPlanner.horizontalDistanceSq(step, target) <= playerGoalDistance + 1.0D) {
-                pathIndex = i;
+                navigationState.pathIndex = i;
                 return;
             }
         }
 
-        for (int i = boundedIndex; i >= furthestVisitedPathIndex && i >= boundedIndex - 2; i--) {
-            BlockPos step = currentPath.get(i);
+        for (int i = boundedIndex; i >= navigationState.furthestVisitedPathIndex && i >= boundedIndex - 2; i--) {
+            BlockPos step = navigationState.currentPath.get(i);
             if (step == null) {
                 continue;
             }
@@ -2745,60 +2720,60 @@ public final class PathmindNavigator {
             if (!isWaypointActionable(world, step)) {
                 continue;
             }
-            pathIndex = i;
+            navigationState.pathIndex = i;
             return;
         }
 
-        pathIndex = boundedIndex;
+        navigationState.pathIndex = boundedIndex;
     }
 
     private void redirectCurrentPath(BlockPos playerFootPos, BlockPos waypoint, Vec3 currentPos, long now, String replanReason, String stuckReason) {
         rememberFailedRedirectWindow(playerFootPos, waypoint, now);
         synchronized (this) {
-            currentPath = List.of();
-            currentPlan = List.of();
-            candidatePaths = List.of();
-            candidatePathsVisibleUntilMs = 0L;
-            activeWaypoint = null;
+            navigationState.currentPath = List.of();
+            navigationState.currentPlan = List.of();
+            navigationState.candidatePaths = List.of();
+            navigationState.candidatePathsVisibleUntilMs = 0L;
+            navigationState.activeWaypoint = null;
             committedPathStartPos = null;
-            committedPathGoalPos = null;
+            navigationState.committedPathGoalPos = null;
             committedPathStartPos = null;
-            pathIndex = 0;
-            furthestVisitedPathIndex = 0;
+            navigationState.pathIndex = 0;
+            navigationState.furthestVisitedPathIndex = 0;
             executionState.plannedBreakTargets = List.of();
             executionState.activeBreakTarget = null;
             executionState.committedJumpWaypoint = null;
             executionState.committedJumpUntilMs = 0L;
-            lastPlanAtMs = 0L;
-            routeCommitUntilMs = 0L;
-            lastLocalRecoveryAtMs = 0L;
-            localRecoveryAttempts = 0;
-            bestRouteProgressScore = Integer.MIN_VALUE;
-            lastReplanReason = replanReason;
-            lastStuckReason = stuckReason;
-            lastMovementAtMs = now;
-            lastMovementSamplePos = currentPos != null ? currentPos : Vec3.ZERO;
-            lastDistanceCheckpointAtMs = now;
+            navigationState.lastPlanAtMs = 0L;
+            navigationState.routeCommitUntilMs = 0L;
+            navigationState.lastLocalRecoveryAtMs = 0L;
+            navigationState.localRecoveryAttempts = 0;
+            navigationState.bestRouteProgressScore = Integer.MIN_VALUE;
+            navigationState.lastReplanReason = replanReason;
+            navigationState.lastStuckReason = stuckReason;
+            navigationState.lastMovementAtMs = now;
+            navigationState.lastMovementSamplePos = currentPos != null ? currentPos : Vec3.ZERO;
+            navigationState.lastDistanceCheckpointAtMs = now;
         }
     }
 
     private void rememberFailedRedirectWindow(BlockPos playerFootPos, BlockPos waypoint, long now) {
         pathPlanner.rememberFailedMove(playerFootPos, waypoint, now);
         synchronized (this) {
-            if (currentPath.isEmpty()) {
+            if (navigationState.currentPath.isEmpty()) {
                 return;
             }
-            int startIndex = pathIndex;
+            int startIndex = navigationState.pathIndex;
             if (waypoint != null) {
-                int waypointIndex = currentPath.indexOf(waypoint);
+                int waypointIndex = navigationState.currentPath.indexOf(waypoint);
                 if (waypointIndex >= 0) {
                     startIndex = waypointIndex;
                 }
             }
-            startIndex = Math.max(0, Math.min(startIndex, currentPath.size() - 1));
+            startIndex = Math.max(0, Math.min(startIndex, navigationState.currentPath.size() - 1));
             BlockPos previous = playerFootPos;
-            for (int i = startIndex; i < Math.min(currentPath.size(), startIndex + 7); i++) {
-                BlockPos step = currentPath.get(i);
+            for (int i = startIndex; i < Math.min(navigationState.currentPath.size(), startIndex + 7); i++) {
+                BlockPos step = navigationState.currentPath.get(i);
                 pathPlanner.rememberFailedMove(previous, step, now);
                 previous = step;
             }
@@ -2810,23 +2785,23 @@ public final class PathmindNavigator {
             return null;
         }
         synchronized (this) {
-            if (executionState.committedJumpWaypoint != null && executionState.committedJumpUntilMs > System.currentTimeMillis() && activeWaypoint != null) {
+            if (executionState.committedJumpWaypoint != null && executionState.committedJumpUntilMs > System.currentTimeMillis() && navigationState.activeWaypoint != null) {
                 if (executionState.plannedBreakTargets.isEmpty()) {
-                    executionState.plannedBreakTargets = buildPathBreakPlan(world, currentPath, Math.max(0, pathIndex));
+                    executionState.plannedBreakTargets = buildPathBreakPlan(world, navigationState.currentPath, Math.max(0, navigationState.pathIndex));
                 }
-                return activeWaypoint;
+                return navigationState.activeWaypoint;
             }
             if (executionState.controllerMode == ControllerMode.PILLAR
                 && executionState.controllerTarget != null
-                && (isPillarPrimitive(executionState.activePlannedPrimitive) || !executionState.committedEscape.isEmpty())) {
-                activeWaypoint = executionState.controllerTarget.immutable();
+                && (primitiveExecutor.isPillarPrimitive(executionState.activePlannedPrimitive) || !executionState.committedEscape.isEmpty())) {
+                navigationState.activeWaypoint = executionState.controllerTarget.immutable();
                 if (executionState.plannedBreakTargets.isEmpty()) {
-                    executionState.plannedBreakTargets = buildPathBreakPlan(world, currentPath, Math.max(0, pathIndex));
+                    executionState.plannedBreakTargets = buildPathBreakPlan(world, navigationState.currentPath, Math.max(0, navigationState.pathIndex));
                 }
-                if (!isPillarPrimitive(executionState.activePlannedPrimitive)) {
-                    executionState.activePlannedPrimitive = createPrimitiveSnapshot(world, playerFootPos, activeWaypoint, SearchPrimitiveType.PILLAR, PlannedPrimitiveType.PILLAR, List.of(), activeWaypoint.below());
+                if (!primitiveExecutor.isPillarPrimitive(executionState.activePlannedPrimitive)) {
+                    executionState.activePlannedPrimitive = createPrimitiveSnapshot(world, playerFootPos, navigationState.activeWaypoint, SearchPrimitiveType.PILLAR, PlannedPrimitiveType.PILLAR, List.of(), navigationState.activeWaypoint.below());
                 }
-                return activeWaypoint;
+                return navigationState.activeWaypoint;
             }
         }
         BlockPos current = advanceWaypointIfNeeded(player, playerFootPos);
@@ -2834,34 +2809,34 @@ public final class PathmindNavigator {
             return null;
         }
         synchronized (this) {
-            activeWaypoint = currentPath.get(pathIndex);
+            navigationState.activeWaypoint = navigationState.currentPath.get(navigationState.pathIndex);
             if (executionState.plannedBreakTargets.isEmpty()) {
-                executionState.plannedBreakTargets = buildPathBreakPlan(world, currentPath, pathIndex);
+                executionState.plannedBreakTargets = buildPathBreakPlan(world, navigationState.currentPath, navigationState.pathIndex);
             }
-            executionState.activePlannedPrimitive = getPlannedPrimitiveAtIndexLocked(pathIndex);
+            executionState.activePlannedPrimitive = getPlannedPrimitiveAtIndexLocked(navigationState.pathIndex);
             chooseForwardResyncIndexLocked(world, playerFootPos);
-            activeWaypoint = currentPath.get(pathIndex);
-            executionState.plannedBreakTargets = buildPathBreakPlan(world, currentPath, pathIndex);
-            executionState.activePlannedPrimitive = getPlannedPrimitiveAtIndexLocked(pathIndex);
-            BlockPos committedGoal = committedPathGoalPos != null ? committedPathGoalPos : targetPos;
+            navigationState.activeWaypoint = navigationState.currentPath.get(navigationState.pathIndex);
+            executionState.plannedBreakTargets = buildPathBreakPlan(world, navigationState.currentPath, navigationState.pathIndex);
+            executionState.activePlannedPrimitive = getPlannedPrimitiveAtIndexLocked(navigationState.pathIndex);
+            BlockPos committedGoal = navigationState.committedPathGoalPos != null ? navigationState.committedPathGoalPos : targetPos;
             if (world != null
                 && playerFootPos != null
-                && activeWaypoint != null
+                && navigationState.activeWaypoint != null
                 && committedGoal != null
-                && activeWaypoint.getY() > playerFootPos.getY()
+                && navigationState.activeWaypoint.getY() > playerFootPos.getY()
                 && executionState.activePlannedPrimitive != null
                 && executionState.activePlannedPrimitive.allowsForwardResync()) {
-                int previousIndex = pathIndex;
+                int previousIndex = navigationState.pathIndex;
                 chooseRecoveryPathIndexLocked(world, playerFootPos, committedGoal);
-                if (pathIndex != previousIndex && pathIndex >= 0 && pathIndex < currentPath.size()) {
-                    activeWaypoint = currentPath.get(pathIndex);
-                    executionState.plannedBreakTargets = buildPathBreakPlan(world, currentPath, pathIndex);
-                    executionState.activePlannedPrimitive = getPlannedPrimitiveAtIndexLocked(pathIndex);
-                    lastAdvanceDecision = "resync:lower_actionable_step pathIndex=" + pathIndex + " waypoint=" + formatDebugPos(activeWaypoint);
+                if (navigationState.pathIndex != previousIndex && navigationState.pathIndex >= 0 && navigationState.pathIndex < navigationState.currentPath.size()) {
+                    navigationState.activeWaypoint = navigationState.currentPath.get(navigationState.pathIndex);
+                    executionState.plannedBreakTargets = buildPathBreakPlan(world, navigationState.currentPath, navigationState.pathIndex);
+                    executionState.activePlannedPrimitive = getPlannedPrimitiveAtIndexLocked(navigationState.pathIndex);
+                    navigationState.lastAdvanceDecision = "resync:lower_actionable_step navigationState.pathIndex=" + navigationState.pathIndex + " waypoint=" + formatDebugPos(navigationState.activeWaypoint);
                 }
             }
-            executionState.activePlannedPrimitive = normalizeActivePrimitiveLocked(world, playerFootPos, activeWaypoint, executionState.activePlannedPrimitive);
-            return activeWaypoint;
+            executionState.activePlannedPrimitive = normalizeActivePrimitiveLocked(world, playerFootPos, navigationState.activeWaypoint, executionState.activePlannedPrimitive);
+            return navigationState.activeWaypoint;
         }
     }
 
@@ -2905,69 +2880,69 @@ public final class PathmindNavigator {
             long now = System.currentTimeMillis();
             int reachedIndex = findReachedPathIndexLocked(playerFootPos, playerPos);
             if (reachedIndex >= 0) {
-                if (reachedIndex > pathIndex) {
-                    lastProgressAtMs = now;
-                    routeCommitUntilMs = Math.max(routeCommitUntilMs, now + ROUTE_COMMIT_MS / 2L);
+                if (reachedIndex > navigationState.pathIndex) {
+                    navigationState.lastProgressAtMs = now;
+                    navigationState.routeCommitUntilMs = Math.max(navigationState.routeCommitUntilMs, now + ROUTE_COMMIT_MS / 2L);
                 }
-                pathIndex = Math.max(pathIndex, reachedIndex);
-                lastWaypointAdvanceAtMs = now;
-                furthestVisitedPathIndex = Math.max(furthestVisitedPathIndex, reachedIndex);
-                lastAdvanceDecision = "advance:reached_index=" + reachedIndex;
+                navigationState.pathIndex = Math.max(navigationState.pathIndex, reachedIndex);
+                navigationState.lastWaypointAdvanceAtMs = now;
+                navigationState.furthestVisitedPathIndex = Math.max(navigationState.furthestVisitedPathIndex, reachedIndex);
+                navigationState.lastAdvanceDecision = "advance:reached_index=" + reachedIndex;
             }
-            while (!currentPath.isEmpty() && pathIndex < currentPath.size()) {
-                BlockPos waypoint = currentPath.get(pathIndex);
+            while (!navigationState.currentPath.isEmpty() && navigationState.pathIndex < navigationState.currentPath.size()) {
+                BlockPos waypoint = navigationState.currentPath.get(navigationState.pathIndex);
                 if (waypoint == null) {
-                    pathIndex++;
-                    lastWaypointAdvanceAtMs = now;
-                    furthestVisitedPathIndex = Math.max(furthestVisitedPathIndex, pathIndex);
-                    lastProgressAtMs = now;
-                    routeCommitUntilMs = Math.max(routeCommitUntilMs, now + ROUTE_COMMIT_MS / 2L);
-                    lastAdvanceDecision = "advance:null_waypoint";
+                    navigationState.pathIndex++;
+                    navigationState.lastWaypointAdvanceAtMs = now;
+                    navigationState.furthestVisitedPathIndex = Math.max(navigationState.furthestVisitedPathIndex, navigationState.pathIndex);
+                    navigationState.lastProgressAtMs = now;
+                    navigationState.routeCommitUntilMs = Math.max(navigationState.routeCommitUntilMs, now + ROUTE_COMMIT_MS / 2L);
+                    navigationState.lastAdvanceDecision = "advance:null_waypoint";
                     continue;
                 }
-                if (waypoint.getY() > playerFootPos.getY() && pathIndex + 1 < currentPath.size()) {
-                    BlockPos next = currentPath.get(pathIndex + 1);
+                if (waypoint.getY() > playerFootPos.getY() && navigationState.pathIndex + 1 < navigationState.currentPath.size()) {
+                    BlockPos next = navigationState.currentPath.get(navigationState.pathIndex + 1);
                     if (next != null
                         && playerFootPos.getY() >= next.getY()
                         && pathPlanner.horizontalDistanceSq(playerFootPos, next) <= WAYPOINT_REACHED_DISTANCE_SQ
                         && Math.abs(next.getY() - playerFootPos.getY()) <= 1) {
-                        pathIndex++;
-                        lastWaypointAdvanceAtMs = now;
-                        furthestVisitedPathIndex = Math.max(furthestVisitedPathIndex, pathIndex);
-                        lastProgressAtMs = now;
-                        routeCommitUntilMs = Math.max(routeCommitUntilMs, now + ROUTE_COMMIT_MS / 2L);
-                        lastAdvanceDecision = "advance:skip_overshot_upward";
+                        navigationState.pathIndex++;
+                        navigationState.lastWaypointAdvanceAtMs = now;
+                        navigationState.furthestVisitedPathIndex = Math.max(navigationState.furthestVisitedPathIndex, navigationState.pathIndex);
+                        navigationState.lastProgressAtMs = now;
+                        navigationState.routeCommitUntilMs = Math.max(navigationState.routeCommitUntilMs, now + ROUTE_COMMIT_MS / 2L);
+                        navigationState.lastAdvanceDecision = "advance:skip_overshot_upward";
                         continue;
                     }
                 }
                 Vec3 waypointCenter = new Vec3(waypoint.getX() + 0.5D, playerPos.y, waypoint.getZ() + 0.5D);
                 if (!shouldAdvancePastWaypoint(playerPos, playerFootPos, waypoint, waypointCenter)) {
-                    activeWaypoint = waypoint;
-                    lastAdvanceDecision = "hold:pathIndex=" + pathIndex + " waypoint=" + formatDebugPos(waypoint);
+                    navigationState.activeWaypoint = waypoint;
+                    navigationState.lastAdvanceDecision = "hold:navigationState.pathIndex=" + navigationState.pathIndex + " waypoint=" + formatDebugPos(waypoint);
                     return waypoint;
                 }
-                pathIndex++;
-                lastWaypointAdvanceAtMs = now;
-                furthestVisitedPathIndex = Math.max(furthestVisitedPathIndex, pathIndex);
-                lastProgressAtMs = now;
-                routeCommitUntilMs = Math.max(routeCommitUntilMs, now + ROUTE_COMMIT_MS / 2L);
-                lastAdvanceDecision = "advance:past_waypoint";
+                navigationState.pathIndex++;
+                navigationState.lastWaypointAdvanceAtMs = now;
+                navigationState.furthestVisitedPathIndex = Math.max(navigationState.furthestVisitedPathIndex, navigationState.pathIndex);
+                navigationState.lastProgressAtMs = now;
+                navigationState.routeCommitUntilMs = Math.max(navigationState.routeCommitUntilMs, now + ROUTE_COMMIT_MS / 2L);
+                navigationState.lastAdvanceDecision = "advance:past_waypoint";
             }
-            activeWaypoint = null;
-            lastAdvanceDecision = "hold:no_active_waypoint";
+            navigationState.activeWaypoint = null;
+            navigationState.lastAdvanceDecision = "hold:no_active_waypoint";
             return null;
         }
     }
 
     private int findReachedPathIndexLocked(BlockPos playerFootPos, Vec3 playerPos) {
-        if (playerFootPos == null || playerPos == null || currentPath.isEmpty()) {
+        if (playerFootPos == null || playerPos == null || navigationState.currentPath.isEmpty()) {
             return -1;
         }
-        int start = Math.max(0, pathIndex);
-        int end = Math.min(currentPath.size() - 1, start + 6);
+        int start = Math.max(0, navigationState.pathIndex);
+        int end = Math.min(navigationState.currentPath.size() - 1, start + 6);
         int best = -1;
         for (int i = start; i <= end; i++) {
-            BlockPos step = currentPath.get(i);
+            BlockPos step = navigationState.currentPath.get(i);
             if (step == null) {
                 continue;
             }
@@ -2981,20 +2956,20 @@ public final class PathmindNavigator {
     }
 
     private void chooseForwardResyncIndexLocked(Level world, BlockPos playerFootPos) {
-        if (world == null || playerFootPos == null || currentPath.isEmpty()) {
+        if (world == null || playerFootPos == null || navigationState.currentPath.isEmpty()) {
             return;
         }
-        int boundedIndex = Math.max(furthestVisitedPathIndex, Math.min(pathIndex, currentPath.size() - 1));
-        BlockPos currentStep = currentPath.get(boundedIndex);
+        int boundedIndex = Math.max(navigationState.furthestVisitedPathIndex, Math.min(navigationState.pathIndex, navigationState.currentPath.size() - 1));
+        BlockPos currentStep = navigationState.currentPath.get(boundedIndex);
         if (currentStep == null) {
             return;
         }
         double currentDistance = pathPlanner.horizontalDistanceSq(playerFootPos, currentStep);
         int bestIndex = boundedIndex;
         double bestScore = currentDistance;
-        int end = Math.min(currentPath.size() - 1, boundedIndex + 4);
+        int end = Math.min(navigationState.currentPath.size() - 1, boundedIndex + 4);
         for (int i = boundedIndex + 1; i <= end; i++) {
-            BlockPos step = currentPath.get(i);
+            BlockPos step = navigationState.currentPath.get(i);
             if (step == null) {
                 continue;
             }
@@ -3014,15 +2989,15 @@ public final class PathmindNavigator {
             && (currentDistance > 4.0D
             || currentStep.getY() > playerFootPos.getY()
             || !isWaypointActionable(world, currentStep))) {
-            int previousIndex = pathIndex;
-            pathIndex = bestIndex;
-            lastWaypointAdvanceAtMs = System.currentTimeMillis();
-            furthestVisitedPathIndex = Math.max(furthestVisitedPathIndex, bestIndex - 1);
-            lastAdvanceDecision = "resync:forward_index=" + bestIndex + " waypoint=" + formatDebugPos(currentPath.get(bestIndex));
+            int previousIndex = navigationState.pathIndex;
+            navigationState.pathIndex = bestIndex;
+            navigationState.lastWaypointAdvanceAtMs = System.currentTimeMillis();
+            navigationState.furthestVisitedPathIndex = Math.max(navigationState.furthestVisitedPathIndex, bestIndex - 1);
+            navigationState.lastAdvanceDecision = "resync:forward_index=" + bestIndex + " waypoint=" + formatDebugPos(navigationState.currentPath.get(bestIndex));
             appendDebugEventLocked(
-                "pathIndex " + previousIndex + " -> " + pathIndex
-                    + " reason=forward_resync oldWaypoint=" + formatDebugPos(previousIndex >= 0 && previousIndex < currentPath.size() ? currentPath.get(previousIndex) : null)
-                    + " newWaypoint=" + formatDebugPos(currentPath.get(pathIndex))
+                "navigationState.pathIndex " + previousIndex + " -> " + navigationState.pathIndex
+                    + " reason=forward_resync oldWaypoint=" + formatDebugPos(previousIndex >= 0 && previousIndex < navigationState.currentPath.size() ? navigationState.currentPath.get(previousIndex) : null)
+                    + " newWaypoint=" + formatDebugPos(navigationState.currentPath.get(navigationState.pathIndex))
                     + " player=" + formatDebugPos(playerFootPos)
                     + " currentDistanceSq=" + String.format(java.util.Locale.ROOT, "%.2f", currentDistance)
                     + " bestScore=" + String.format(java.util.Locale.ROOT, "%.2f", bestScore)
@@ -3049,8 +3024,8 @@ public final class PathmindNavigator {
         synchronized (this) {
             if (distanceSq <= WAYPOINT_NEAR_DISTANCE_SQ
                 && Math.abs(waypoint.getY() - playerFootPos.getY()) <= 1
-                && pathIndex + 1 < currentPath.size()) {
-                BlockPos next = currentPath.get(pathIndex + 1);
+                && navigationState.pathIndex + 1 < navigationState.currentPath.size()) {
+                BlockPos next = navigationState.currentPath.get(navigationState.pathIndex + 1);
                 if (next != null
                     && pathPlanner.horizontalDistanceSq(playerFootPos, next) + 0.20D < pathPlanner.horizontalDistanceSq(playerFootPos, waypoint)
                     && hasStableFootingOnWaypoint(playerPos, next)
@@ -3058,11 +3033,11 @@ public final class PathmindNavigator {
                     return true;
                 }
             }
-            if (pathIndex > 0
-                && pathIndex + 1 < currentPath.size()
+            if (navigationState.pathIndex > 0
+                && navigationState.pathIndex + 1 < navigationState.currentPath.size()
                 && Math.abs(waypoint.getY() - playerFootPos.getY()) <= 1) {
-                BlockPos previous = currentPath.get(pathIndex - 1);
-                PlannedPrimitive primitive = getPlannedPrimitiveAtIndexLocked(pathIndex);
+                BlockPos previous = navigationState.currentPath.get(navigationState.pathIndex - 1);
+                PlannedPrimitive primitive = getPlannedPrimitiveAtIndexLocked(navigationState.pathIndex);
                 if (previous != null
                     && primitive != null
                     && primitive.isSimpleMovementStep()
@@ -3111,13 +3086,13 @@ public final class PathmindNavigator {
     }
 
     private boolean isPlayerNearCommittedPathStart(BlockPos playerFootPos) {
-        if (playerFootPos == null || currentPath.isEmpty()) {
+        if (playerFootPos == null || navigationState.currentPath.isEmpty()) {
             return false;
         }
-        int start = Math.max(0, Math.min(pathIndex, currentPath.size() - 1) - 1);
-        int end = Math.min(currentPath.size() - 1, Math.max(pathIndex, 0) + 3);
+        int start = Math.max(0, Math.min(navigationState.pathIndex, navigationState.currentPath.size() - 1) - 1);
+        int end = Math.min(navigationState.currentPath.size() - 1, Math.max(navigationState.pathIndex, 0) + 3);
         for (int i = start; i <= end; i++) {
-            BlockPos step = currentPath.get(i);
+            BlockPos step = navigationState.currentPath.get(i);
             if (step == null) {
                 continue;
             }
@@ -3346,21 +3321,21 @@ public final class PathmindNavigator {
     }
 
     private PlannedPrimitive getPlannedPrimitiveAtIndexLocked(int index) {
-        if (index < 0 || index >= currentPlan.size()) {
+        if (index < 0 || index >= navigationState.currentPlan.size()) {
             return null;
         }
-        return currentPlan.get(index);
+        return navigationState.currentPlan.get(index);
     }
 
     private void rebuildCurrentPlanLocked(Level world) {
-        currentPlan = buildPlannedPrimitives(world, currentPath, committedPathStartPos);
-        executionState.activePlannedPrimitive = getPlannedPrimitiveAtIndexLocked(pathIndex);
-        if (!currentPlan.isEmpty()) {
-            appendDebugEventLocked("plan=" + formatPlannedPrimitiveSequence(currentPlan, 8));
-            appendDebugEventLocked("planDetailed=" + formatIndexedPrimitiveSequence(currentPlan, 24));
+        navigationState.currentPlan = buildPlannedPrimitives(world, navigationState.currentPath, committedPathStartPos);
+        executionState.activePlannedPrimitive = getPlannedPrimitiveAtIndexLocked(navigationState.pathIndex);
+        if (!navigationState.currentPlan.isEmpty()) {
+            appendDebugEventLocked("plan=" + formatPlannedPrimitiveSequence(navigationState.currentPlan, 8));
+            appendDebugEventLocked("planDetailed=" + formatIndexedPrimitiveSequence(navigationState.currentPlan, 24));
         }
-        if (!currentPath.isEmpty()) {
-            appendDebugEventLocked("pathDetailed=" + formatIndexedPath(currentPath, 24));
+        if (!navigationState.currentPath.isEmpty()) {
+            appendDebugEventLocked("pathDetailed=" + formatIndexedPath(navigationState.currentPath, 24));
         }
     }
 
@@ -3431,3624 +3406,15 @@ public final class PathmindNavigator {
         return primitive.searchType().name() + "->" + primitive.type().name();
     }
 
-    private boolean primitiveRequiresBreak(PlannedPrimitive primitive) {
-        return primitive != null && primitive.requiresBreak();
-    }
-
-    private boolean primitiveRequiresPlace(PlannedPrimitive primitive) {
-        return primitive != null && primitive.requiresPlace();
-    }
-
-    private boolean primitiveStillRequiresBreak(Level world, PlannedPrimitive primitive) {
-        if (primitive == null || primitive.breakTargets() == null || primitive.breakTargets().isEmpty()) {
-            return false;
-        }
-        return world == null || firstPendingBreakTarget(world, primitive.breakTargets()) != null;
-    }
-
-    private boolean primitiveStillRequiresPlace(Level world, PlannedPrimitive primitive) {
-        if (primitive == null || primitive.placeTarget() == null) {
-            return false;
-        }
-        return world == null || !pathPlanner.hasCollision(world, primitive.placeTarget());
-    }
-
-    private void clearStalePlaceStateIfNeeded(Level world, PlannedPrimitive primitive) {
-        if (primitiveStillRequiresPlace(world, primitive)) {
-            return;
-        }
-        synchronized (this) {
-            if ("placed".equals(executionState.lastPlaceResult)
-                || "accepted no block".equals(executionState.lastPlaceResult)
-                || "ready".equals(executionState.lastPlaceResult)
-                || "centering".equals(executionState.lastPlaceResult)
-                || "waiting apex".equals(executionState.lastPlaceResult)) {
-                executionState.lastPlaceTarget = null;
-                executionState.lastPlaceResult = "none";
-            }
-        }
-    }
-
-    private boolean isPillarPrimitive(PlannedPrimitive primitive) {
-        return primitive != null && primitive.isPillar();
-    }
-
-    private boolean isClimbPrimitive(PlannedPrimitive primitive) {
-        return primitive != null && primitive.isClimb();
-    }
-
-    private boolean isDescendPrimitive(PlannedPrimitive primitive) {
-        return primitive != null && primitive.isDescend();
-    }
-
-    private boolean isJumpPrimitive(PlannedPrimitive primitive) {
-        return primitive != null && primitive.isJump();
-    }
-
-    private boolean isInteractablePrimitive(PlannedPrimitive primitive) {
-        return primitive != null && primitive.isInteractable();
-    }
-
-    private boolean isSwimPrimitive(PlannedPrimitive primitive) {
-        return primitive != null && primitive.isSwim();
-    }
-
-    private boolean isWaypointPrimitiveAligned(BlockPos waypoint, PlannedPrimitive primitive) {
-        if (waypoint == null || primitive == null || primitive.target() == null) {
-            return true;
-        }
-        BlockPos target = primitive.target();
-        int dx = Math.abs(target.getX() - waypoint.getX());
-        int dy = Math.abs(target.getY() - waypoint.getY());
-        int dz = Math.abs(target.getZ() - waypoint.getZ());
-        return dx <= 1 && dz <= 1 && dy <= 1;
-    }
-
-    private boolean isActiveEscapePillarPrimitiveLocked() {
-        if (executionState.committedEscape.isEmpty()
-            || executionState.committedEscapePrimitiveIndex < 0
-            || executionState.committedEscapePrimitiveIndex >= executionState.committedEscape.primitives().size()) {
-            return false;
-        }
-        EscapePrimitive primitive = executionState.committedEscape.primitives().get(executionState.committedEscapePrimitiveIndex);
-        return primitive != null && primitive.type() == EscapePrimitiveType.PILLAR;
-    }
-
     private PathComputation findPath(ClientLevel world, BlockPos start, BlockPos target) {
         return pathPlanner.findPath(world, start, target);
-    }
-
-    private void tryUseInteractables(
-        Minecraft client,
-        ClientLevel world,
-        LocalPlayer player,
-        BlockPos playerFootPos,
-        BlockPos waypoint,
-        long now
-    ) {
-        if (client == null || world == null || player == null || playerFootPos == null || waypoint == null) {
-            return;
-        }
-        if (now - executionState.lastInteractAtMs < 250L || client.gameMode == null) {
-            return;
-        }
-
-        int stepX = Integer.compare(waypoint.getX(), playerFootPos.getX());
-        int stepZ = Integer.compare(waypoint.getZ(), playerFootPos.getZ());
-        List<BlockPos> candidates = new ArrayList<>(6);
-        candidates.add(playerFootPos);
-        candidates.add(playerFootPos.above());
-        if (stepX != 0 || stepZ != 0) {
-            BlockPos front = new BlockPos(playerFootPos.getX() + stepX, playerFootPos.getY(), playerFootPos.getZ() + stepZ);
-            candidates.add(front);
-            candidates.add(front.above());
-        }
-        candidates.add(waypoint);
-        candidates.add(waypoint.above());
-
-        for (BlockPos candidate : candidates) {
-            if (!pathPlanner.isBlockingInteractableForTraversal(world, candidate, playerFootPos, waypoint)) {
-                continue;
-            }
-            client.gameMode.useItemOn(
-                player,
-                InteractionHand.MAIN_HAND,
-                new BlockHitResult(Vec3.atCenterOf(candidate), Direction.UP, candidate, false)
-            );
-            player.swing(InteractionHand.MAIN_HAND);
-            synchronized (this) {
-                executionState.lastInteractAtMs = now;
-            }
-            return;
-        }
-    }
-
-    private boolean handleWaypointBlockInteraction(
-        Minecraft client,
-        ClientLevel world,
-        LocalPlayer player,
-        BlockPos playerFootPos,
-        BlockPos waypoint,
-        long now
-    ) {
-        if (client == null || world == null || player == null || playerFootPos == null || waypoint == null) {
-            return false;
-        }
-        PlannedPrimitive plannedPrimitive;
-        synchronized (this) {
-            plannedPrimitive = executionState.activePlannedPrimitive;
-        }
-        clearStalePlaceStateIfNeeded(world, plannedPrimitive);
-        clearStaleEscapeRecoveryIfNeeded(world, playerFootPos, waypoint, plannedPrimitive, now);
-        synchronized (this) {
-            plannedPrimitive = executionState.activePlannedPrimitive;
-        }
-        if (!isWaypointPrimitiveAligned(waypoint, plannedPrimitive)) {
-            synchronized (this) {
-                executionState.activeBreakTarget = null;
-            }
-            return false;
-        }
-        if (shouldSuppressMiningNearGoal(world, player, playerFootPos, waypoint)) {
-            synchronized (this) {
-                executionState.activeBreakTarget = null;
-            }
-            return false;
-        }
-
-        synchronized (this) {
-            if (executionState.activeBreakTarget != null && pathPlanner.canOccupy(world, executionState.activeBreakTarget)) {
-                executionState.activeBreakTarget = null;
-                lastProgressAtMs = now;
-                lastReplanReason = "obstruction cleared";
-            }
-        }
-
-        if (handleCommittedMiningInteraction(client, world, player, playerFootPos, waypoint, plannedPrimitive, now)) {
-            return true;
-        }
-
-        BlockPos placeTarget;
-        synchronized (this) {
-            placeTarget = null;
-        }
-        if (primitiveStillRequiresPlace(world, plannedPrimitive)) {
-            placeTarget = plannedPrimitive.placeTarget();
-        }
-        boolean committedWaterPlace = placeTarget != null
-            && isCommittedWaterPlaceState(world, player, playerFootPos, waypoint, placeTarget);
-        if (allowBlockPlacing
-            && placeTarget != null
-            && (committedWaterPlace
-                || primitiveStillRequiresPlace(world, plannedPrimitive))) {
-            boolean placed = tryPlaceSupportBlock(client, world, player, placeTarget, now, committedWaterPlace);
-            if (placed) {
-                noteControllerActivity(now);
-            }
-            return placed;
-        }
-
-        synchronized (this) {
-            executionState.activeBreakTarget = null;
-        }
-        return false;
-    }
-
-    private boolean handleCommittedMiningMovement(
-        Minecraft client,
-        ClientLevel world,
-        LocalPlayer player,
-        BlockPos playerFootPos,
-        BlockPos waypoint,
-        BlockPos target,
-        Vec3 currentPos,
-        long now
-    ) {
-        if (client == null || world == null || player == null || playerFootPos == null || waypoint == null) {
-            return false;
-        }
-        PlannedPrimitive plannedPrimitive;
-        BlockPos miningTarget;
-        long miningUntilMs;
-        synchronized (this) {
-            plannedPrimitive = executionState.activePlannedPrimitive;
-            miningTarget = executionState.controllerTarget != null ? executionState.controllerTarget : executionState.activeBreakTarget;
-            miningUntilMs = executionState.controllerUntilMs;
-        }
-
-        boolean requiresCommittedMining = plannedPrimitive != null
-            && (plannedPrimitive.requiresBreak() || plannedPrimitive.isMineAscent());
-        boolean requiresCommittedPlacement = plannedPrimitive != null && plannedPrimitive.requiresPlace();
-        MiningProgress miningProgress = resolveCommittedMiningProgress(world, playerFootPos, waypoint, plannedPrimitive);
-        if (miningProgress.completed()) {
-            synchronized (this) {
-                if (commitPathIndexLocked(world, miningProgress.resumeIndex(), false, now, "advance:mining_complete")) {
-                    lastReplanReason = miningProgress.minedAscent()
-                        ? "mined ascent cleared"
-                        : "break route step cleared";
-                    lastStuckReason = miningProgress.minedAscent()
-                        ? "advance into mined ascent"
-                        : "advance after mining";
-                    executionState.controllerUntilMs = Math.max(executionState.controllerUntilMs, now + 350L);
-                }
-                executionState.activeBreakTarget = null;
-            }
-            return false;
-        }
-        PlacementProgress placementProgress = resolveCommittedPlacementProgress(world, playerFootPos, waypoint, plannedPrimitive);
-        if (placementProgress.completed()) {
-            synchronized (this) {
-                if (commitPathIndexLocked(world, placementProgress.resumeIndex(), false, now, "advance:placement_complete")) {
-                    lastReplanReason = "support ready";
-                    lastStuckReason = "advance after placement";
-                    executionState.controllerUntilMs = Math.max(executionState.controllerUntilMs, now + 250L);
-                }
-            }
-            return false;
-        }
-        if (handleWaypointBlockInteraction(client, world, player, playerFootPos, waypoint, now)) {
-            boolean stalledMinedAscent = plannedPrimitive != null
-                && plannedPrimitive.isMineAscent()
-                && shouldRedirectController(now, distanceToControllerTargetSq(world, player, waypoint));
-            if (stalledMinedAscent) {
-                releaseMovementKeys(client);
-                pathPlanner.rememberFailedJump(playerFootPos, waypoint, now);
-                recoverFromStuck(
-                    client,
-                    world,
-                    playerFootPos,
-                    waypoint,
-                    target,
-                    currentPos,
-                    now,
-                    "mined ascent redirect",
-                    "mined ascent stalled"
-                );
-                return true;
-            }
-            synchronized (this) {
-                if (requiresCommittedMining || requiresCommittedPlacement) {
-                    lastReplanReason = "committed mine";
-                    lastStuckReason = requiresCommittedMining ? "mining route step" : "placement route step";
-                }
-            }
-            return true;
-        }
-        if (!requiresCommittedMining && !requiresCommittedPlacement) {
-            return false;
-        }
-
-        BlockPos fallbackTarget = miningTarget != null ? miningTarget : waypoint;
-        if (fallbackTarget == null) {
-            return false;
-        }
-        boolean timedOut = now > miningUntilMs;
-        boolean targetGone = requiresCommittedPlacement
-            ? isPlacementTargetSatisfied(world, plannedPrimitive, fallbackTarget)
-            : plannedPrimitive != null && plannedPrimitive.isMineAscent()
-            ? isMiningAscentPhaseSatisfied(world, playerFootPos, waypoint, plannedPrimitive, fallbackTarget)
-            : pathPlanner.canOccupy(world, fallbackTarget);
-        if (!timedOut && !targetGone) {
-            noteControllerActivity(now);
-            return false;
-        }
-
-        if (requiresCommittedPlacement && !requiresCommittedMining) {
-            pathPlanner.rememberFailedPlace(playerFootPos, fallbackTarget, now);
-        } else {
-            pathPlanner.rememberFailedBreak(playerFootPos, fallbackTarget, now);
-        }
-        recoverFromStuck(
-            client,
-            world,
-            playerFootPos,
-            waypoint,
-            target,
-            currentPos,
-            now,
-            timedOut ? (requiresCommittedPlacement && !requiresCommittedMining ? "place redirect" : "mine redirect")
-                : (requiresCommittedPlacement && !requiresCommittedMining ? "place target invalidated" : "mine target invalidated"),
-            timedOut ? (requiresCommittedPlacement && !requiresCommittedMining ? "place timeout" : "mine timeout")
-                : (requiresCommittedPlacement && !requiresCommittedMining ? "place target invalid" : "mine target invalid")
-        );
-        return true;
-    }
-
-    private boolean handleCommittedMiningInteraction(
-        Minecraft client,
-        ClientLevel world,
-        LocalPlayer player,
-        BlockPos playerFootPos,
-        BlockPos waypoint,
-        PlannedPrimitive plannedPrimitive,
-        long now
-    ) {
-        if (client == null || world == null || player == null || playerFootPos == null || waypoint == null) {
-            return false;
-        }
-        if (allowBlockBreaking) {
-            MiningTargetState targetState = resolveCommittedMiningTargetState(world, playerFootPos, waypoint, plannedPrimitive);
-            BlockPos breakTarget = targetState.target();
-            if (breakTarget != null
-                && shouldBreakForWaypoint(playerFootPos, waypoint, breakTarget)
-                && continueBreakingRequiredTarget(client, player, breakTarget, targetState.requiredTargets(), now)) {
-                synchronized (this) {
-                    lastReplanReason = targetState.currentlyActive()
-                        ? "continue committed mine"
-                        : "advance mining target";
-                    lastStuckReason = "mining target " + formatDebugPos(breakTarget);
-                }
-                return true;
-            }
-        }
-
-        MiningAscentPhase miningPhase = resolveMiningAscentPhase(world, playerFootPos, waypoint, plannedPrimitive);
-        if (plannedPrimitive != null
-            && plannedPrimitive.isMineAscent()
-            && miningPhase == MiningAscentPhase.JUMP
-            && waypoint.getY() > playerFootPos.getY()
-            && player.onGround()
-            && pathPlanner.canAttemptMiningAdvanceJump(world, playerFootPos, waypoint)) {
-            Vec3 currentVelocity = player.getDeltaMovement();
-            double dx = waypoint.getX() + 0.5D - player.getX();
-            double dz = waypoint.getZ() + 0.5D - player.getZ();
-            double horizontalDistance = Math.sqrt(dx * dx + dz * dz);
-            if (horizontalDistance > 0.0001D) {
-                player.setDeltaMovement(
-                    currentVelocity.x + (dx / horizontalDistance) * 0.14D,
-                    currentVelocity.y,
-                    currentVelocity.z + (dz / horizontalDistance) * 0.14D
-                );
-            }
-            if (client.options != null) {
-                if (client.options.keyUp != null) {
-                    client.options.keyUp.setDown(true);
-                }
-                if (client.options.keyJump != null) {
-                    client.options.keyJump.setDown(true);
-                }
-            }
-            player.jumpFromGround();
-            synchronized (this) {
-                executionState.activeBreakTarget = null;
-                executionState.activeMiningAscentPhase = MiningAscentPhase.JUMP;
-                executionState.lastJumpAtMs = now;
-                executionState.committedJumpWaypoint = waypoint.immutable();
-                executionState.committedJumpUntilMs = now + JUMP_COMMIT_WINDOW_MS;
-                lastReplanReason = "mined ascent jump";
-                lastStuckReason = "airborne";
-            }
-            noteControllerActivity(now);
-            return true;
-        }
-
-        if (plannedPrimitive != null
-            && plannedPrimitive.isMineAscent()
-            && miningPhase == MiningAscentPhase.ADVANCE
-            && pathPlanner.horizontalDistanceSq(playerFootPos, waypoint) > WAYPOINT_REACHED_DISTANCE_SQ
-            && Math.abs(waypoint.getY() - playerFootPos.getY()) <= 1) {
-            BlockPos advanceBlock = pathPlanner.resolveMinedAscentAdvanceBlock(playerFootPos, waypoint);
-            if (advanceBlock == null) {
-                return false;
-            }
-            boolean jumpOpportunity = waypoint.getY() > playerFootPos.getY()
-                && pathPlanner.canAttemptMiningAdvanceJump(world, playerFootPos, waypoint);
-            if (waypoint.getY() > playerFootPos.getY() && !jumpOpportunity) {
-                releaseMovementKeys(client);
-                synchronized (this) {
-                    executionState.activeBreakTarget = null;
-                    executionState.activeMiningAscentPhase = MiningAscentPhase.ADVANCE;
-                    lastReplanReason = "mined ascent jump blocked";
-                    lastStuckReason = "waiting for clear jump arc";
-                }
-                return true;
-            }
-            BlockPos moveTarget = jumpOpportunity
-                ? pathPlanner.resolveJumpUpApproachTarget(world, playerFootPos, waypoint)
-                : advanceBlock;
-            if (moveTarget == null) {
-                moveTarget = advanceBlock;
-            }
-            Vec3 currentPos = new Vec3(player.getX(), player.getY(), player.getZ());
-            Vec3 advanceAim = Vec3.upFromBottomCenterOf(moveTarget, player.getY() - moveTarget.getY());
-            double dx = advanceAim.x - currentPos.x;
-            double dz = advanceAim.z - currentPos.z;
-            double horizontalDistance = Math.sqrt(dx * dx + dz * dz);
-            float jumpYawError = 180.0F;
-            if (horizontalDistance > 0.0001D) {
-                float targetYaw = (float) (Mth.wrapDegrees(Math.toDegrees(Math.atan2(dz, dx)) - 90.0D));
-                float nextYaw = stepAngle(player.getYRot(), targetYaw, movementYawStep());
-                jumpYawError = Math.abs(Mth.wrapDegrees(targetYaw - nextYaw));
-                player.setYRot(nextYaw);
-                player.setYHeadRot(nextYaw);
-                player.setYBodyRot(nextYaw);
-                Vec3 velocity = player.getDeltaMovement();
-                player.setDeltaMovement(
-                    velocity.x * 0.20D + (dx / horizontalDistance) * 0.15D,
-                    velocity.y,
-                    velocity.z * 0.20D + (dz / horizontalDistance) * 0.15D
-                );
-            }
-            if (client.options != null) {
-            if (client.options.keyUp != null) {
-                client.options.keyUp.setDown(true);
-            }
-            if (client.options.keyJump != null) {
-                boolean canHop = player.onGround()
-                    && jumpOpportunity
-                    && horizontalDistance <= 1.6D
-                    && jumpYawError <= JUMP_YAW_ALIGNMENT_DEGREES;
-                client.options.keyJump.setDown(canHop);
-                if (jumpOpportunity && !canHop) {
-                    synchronized (this) {
-                        if (now - executionState.lastMiningJumpGateLogAtMs >= 250L) {
-                            appendDebugEventLocked(
-                                "miningAdvanceJumpGate player=" + formatDebugPos(playerFootPos)
-                                    + " waypoint=" + formatDebugPos(waypoint)
-                                    + " moveTarget=" + formatDebugPos(moveTarget)
-                                    + " advanceBlock=" + formatDebugPos(advanceBlock)
-                                    + " onGround=" + player.onGround()
-                                    + " horizontalDistance=" + (((double) Math.round(horizontalDistance * 100.0D)) / 100.0D)
-                                    + " jumpYawError=" + (((double) Math.round(jumpYawError * 100.0D)) / 100.0D)
-                                    + " maxJumpYawError=" + JUMP_YAW_ALIGNMENT_DEGREES
-                                    + " canAttempt=" + pathPlanner.canAttemptMiningAdvanceJump(world, playerFootPos, waypoint)
-                            );
-                            executionState.lastMiningJumpGateLogAtMs = now;
-                        }
-                    }
-                }
-                if (canHop) {
-                    player.jumpFromGround();
-                    synchronized (this) {
-                        executionState.activeBreakTarget = null;
-                        executionState.activeMiningAscentPhase = MiningAscentPhase.JUMP;
-                            executionState.lastJumpAtMs = now;
-                            executionState.committedJumpWaypoint = moveTarget.immutable();
-                            executionState.committedJumpUntilMs = now + JUMP_COMMIT_WINDOW_MS;
-                            lastReplanReason = "mined ascent advance jump";
-                            lastStuckReason = "jumping onto mined step";
-                        }
-                        noteControllerActivity(now);
-                        return true;
-                    }
-                }
-            }
-            synchronized (this) {
-                executionState.activeBreakTarget = null;
-                executionState.activeMiningAscentPhase = MiningAscentPhase.ADVANCE;
-                lastReplanReason = jumpOpportunity ? "stage mined ascent jump" : "mined ascent advance";
-                lastStuckReason = jumpOpportunity ? "staging mined step jump" : "advancing into mined step";
-            }
-            noteControllerProgress(now, horizontalDistance * horizontalDistance);
-            return true;
-        }
-        return false;
-    }
-
-    private PlacementTargetState resolveCommittedPlacementTargetState(
-        Level world,
-        BlockPos waypoint,
-        PlannedPrimitive plannedPrimitive
-    ) {
-        if (world == null || plannedPrimitive == null || plannedPrimitive.placeTarget() == null) {
-            return PlacementTargetState.incomplete(null);
-        }
-        if (!primitiveStillRequiresPlace(world, plannedPrimitive)) {
-            return PlacementTargetState.complete(plannedPrimitive.placeTarget());
-        }
-        return PlacementTargetState.incomplete(plannedPrimitive.placeTarget());
-    }
-
-    private PlacementProgress resolveCommittedPlacementProgress(
-        Level world,
-        BlockPos playerFootPos,
-        BlockPos waypoint,
-        PlannedPrimitive plannedPrimitive
-    ) {
-        if (world == null || playerFootPos == null || waypoint == null || plannedPrimitive == null || plannedPrimitive.placeTarget() == null) {
-            return PlacementProgress.incomplete();
-        }
-        PlacementTargetState targetState = resolveCommittedPlacementTargetState(world, waypoint, plannedPrimitive);
-        if (!targetState.completed()) {
-            return PlacementProgress.incomplete();
-        }
-        int resumeIndex = resolveCommittedPlacementResumeIndexLocked(playerFootPos, waypoint);
-        if (resumeIndex < 0) {
-            return PlacementProgress.incomplete();
-        }
-        return new PlacementProgress(true, resumeIndex);
-    }
-
-    private int resolveCommittedPlacementResumeIndexLocked(BlockPos playerFootPos, BlockPos waypoint) {
-        if (currentPath.isEmpty()) {
-            return -1;
-        }
-        int boundedIndex = Math.max(0, Math.min(pathIndex, currentPath.size() - 1));
-        int currentIndex = waypoint != null ? currentPath.indexOf(waypoint) : -1;
-        if (currentIndex >= 0) {
-            boundedIndex = currentIndex;
-        }
-        int nextIndex = Math.min(currentPath.size() - 1, boundedIndex + 1);
-        return currentPath.get(nextIndex) != null ? nextIndex : boundedIndex;
-    }
-
-    private boolean isPlacementTargetSatisfied(Level world, PlannedPrimitive plannedPrimitive, BlockPos controllerTarget) {
-        if (plannedPrimitive != null && plannedPrimitive.placeTarget() != null) {
-            return !primitiveStillRequiresPlace(world, plannedPrimitive);
-        }
-        return controllerTarget != null && pathPlanner.hasCollision(world, controllerTarget);
-    }
-
-    private MiningProgress resolveCommittedMiningProgress(
-        Level world,
-        BlockPos playerFootPos,
-        BlockPos waypoint,
-        PlannedPrimitive plannedPrimitive
-    ) {
-        if (world == null || playerFootPos == null || waypoint == null || plannedPrimitive == null) {
-            return MiningProgress.incomplete();
-        }
-        MiningTargetState targetState = resolveCommittedMiningTargetState(world, playerFootPos, waypoint, plannedPrimitive);
-        if (!targetState.completed()) {
-            return MiningProgress.incomplete();
-        }
-
-        int resumeIndex = resolveCommittedMiningResumeIndexLocked(playerFootPos, waypoint, plannedPrimitive);
-        if (resumeIndex < 0) {
-            return MiningProgress.incomplete();
-        }
-        if (plannedPrimitive.isMineAscent()) {
-            int currentIndex = currentPath.isEmpty() ? -1 : Math.max(0, Math.min(pathIndex, currentPath.size() - 1));
-            if (waypoint != null) {
-                int waypointIndex = currentPath.indexOf(waypoint);
-                if (waypointIndex >= 0) {
-                    currentIndex = waypointIndex;
-                }
-            }
-            if (resumeIndex <= currentIndex) {
-                return MiningProgress.incomplete();
-            }
-        }
-        return new MiningProgress(true, resumeIndex, plannedPrimitive.isMineAscent());
-    }
-
-    private MiningTargetState resolveCommittedMiningTargetState(
-        Level world,
-        BlockPos playerFootPos,
-        BlockPos waypoint,
-        PlannedPrimitive plannedPrimitive
-    ) {
-        if (world == null || waypoint == null) {
-            return MiningTargetState.incomplete(List.of());
-        }
-        List<BlockPos> requiredTargets = primitiveRequiresBreak(plannedPrimitive)
-            ? plannedPrimitive.breakTargets()
-            : pathPlanner.getRequiredBreakTargets(world, waypoint);
-        if (requiredTargets == null || requiredTargets.isEmpty()) {
-            return MiningTargetState.complete(List.of());
-        }
-
-        BlockPos liveTarget;
-        synchronized (this) {
-            liveTarget = executionState.activeBreakTarget;
-        }
-        if (liveTarget != null
-            && (!requiredTargets.contains(liveTarget) || !pathPlanner.isBreakableForNavigator(world, liveTarget))) {
-            synchronized (this) {
-                if (liveTarget.equals(executionState.activeBreakTarget)) {
-                    executionState.activeBreakTarget = null;
-                }
-            }
-            liveTarget = null;
-        }
-
-        BlockPos pendingTarget = firstPendingBreakTarget(world, requiredTargets);
-        if (pendingTarget == null) {
-            return MiningTargetState.complete(requiredTargets);
-        }
-        if (liveTarget != null && isPlannedBreakTargetReachable(playerFootPos, liveTarget)) {
-            return new MiningTargetState(requiredTargets, liveTarget, true, false);
-        }
-        if (isPlannedBreakTargetReachable(playerFootPos, pendingTarget)) {
-            return new MiningTargetState(requiredTargets, pendingTarget, false, false);
-        }
-        for (BlockPos candidate : requiredTargets) {
-            if (candidate == null || !pathPlanner.isBreakableForNavigator(world, candidate)) {
-                continue;
-            }
-            if (!isPlannedBreakTargetReachable(playerFootPos, candidate)) {
-                continue;
-            }
-            return new MiningTargetState(requiredTargets, candidate, false, false);
-        }
-        return MiningTargetState.incomplete(requiredTargets);
-    }
-
-    private MiningAscentPhase resolveMiningAscentPhase(
-        Level world,
-        BlockPos playerFootPos,
-        BlockPos waypoint,
-        PlannedPrimitive plannedPrimitive
-    ) {
-        if (plannedPrimitive == null || !plannedPrimitive.isMineAscent()) {
-            return MiningAscentPhase.CLEARANCE;
-        }
-        if (world == null || playerFootPos == null || waypoint == null) {
-            return MiningAscentPhase.CLEARANCE;
-        }
-        if (primitiveStillRequiresBreak(world, plannedPrimitive)) {
-            synchronized (this) {
-                executionState.activeMiningAscentPhase = MiningAscentPhase.CLEARANCE;
-            }
-            return MiningAscentPhase.CLEARANCE;
-        }
-        BlockPos advanceBlock = pathPlanner.resolveMinedAscentAdvanceBlock(playerFootPos, waypoint);
-        if (advanceBlock != null
-            && pathPlanner.horizontalDistanceSq(playerFootPos, advanceBlock) > WAYPOINT_REACHED_DISTANCE_SQ
-            && Math.abs(playerFootPos.getY() - advanceBlock.getY()) <= 1) {
-            synchronized (this) {
-                executionState.activeMiningAscentPhase = MiningAscentPhase.ADVANCE;
-            }
-            return MiningAscentPhase.ADVANCE;
-        }
-        synchronized (this) {
-            executionState.activeMiningAscentPhase = MiningAscentPhase.JUMP;
-        }
-        return MiningAscentPhase.JUMP;
-    }
-
-    private boolean isMiningAscentPhaseSatisfied(
-        Level world,
-        BlockPos playerFootPos,
-        BlockPos waypoint,
-        PlannedPrimitive plannedPrimitive,
-        BlockPos controllerTarget
-    ) {
-        if (plannedPrimitive == null || !plannedPrimitive.isMineAscent()) {
-            return controllerTarget != null && pathPlanner.canOccupy(world, controllerTarget);
-        }
-        MiningAscentPhase phase = resolveMiningAscentPhase(world, playerFootPos, waypoint, plannedPrimitive);
-        return switch (phase) {
-            case CLEARANCE -> primitiveStillRequiresBreak(world, plannedPrimitive);
-            case ADVANCE -> controllerTarget != null
-                && playerFootPos != null
-                && pathPlanner.horizontalDistanceSq(playerFootPos, controllerTarget) <= WAYPOINT_REACHED_DISTANCE_SQ
-                && Math.abs(playerFootPos.getY() - controllerTarget.getY()) <= 1;
-            case JUMP -> false;
-        };
-    }
-
-    private int resolveCommittedMiningResumeIndexLocked(
-        BlockPos playerFootPos,
-        BlockPos waypoint,
-        PlannedPrimitive plannedPrimitive
-    ) {
-        if (currentPath.isEmpty()) {
-            return -1;
-        }
-        int boundedIndex = Math.max(0, Math.min(pathIndex, currentPath.size() - 1));
-        int currentIndex = waypoint != null ? currentPath.indexOf(waypoint) : -1;
-        if (currentIndex >= 0) {
-            boundedIndex = currentIndex;
-        }
-        if (plannedPrimitive.isMineAscent()) {
-            double stairDistanceSq = pathPlanner.horizontalDistanceSq(playerFootPos, waypoint);
-            boolean reachedByHeight = playerFootPos.getY() >= waypoint.getY() - 1;
-            boolean reachedCurrentStep = reachedByHeight && stairDistanceSq <= WAYPOINT_REACHED_DISTANCE_SQ;
-            if (reachedCurrentStep) {
-                int nextIndex = Math.min(currentPath.size() - 1, boundedIndex + 1);
-                appendDebugEventLocked(
-                    "miningResume currentIndex=" + boundedIndex
-                        + " nextIndex=" + nextIndex
-                        + " player=" + formatDebugPos(playerFootPos)
-                        + " waypoint=" + formatDebugPos(waypoint)
-                        + " nextWaypoint=" + formatDebugPos(currentPath.get(nextIndex))
-                        + " reachedByHeight=" + reachedByHeight
-                        + " stairDistanceSq=" + (((double) Math.round(stairDistanceSq * 100.0D)) / 100.0D)
-                        + " reachedCurrentStep=true"
-                );
-                return currentPath.get(nextIndex) != null ? nextIndex : boundedIndex;
-            }
-            long now = System.currentTimeMillis();
-            if (now - executionState.lastMiningResumeLogAtMs >= 250L) {
-                appendDebugEventLocked(
-                    "miningResume currentIndex=" + boundedIndex
-                        + " nextIndex=hold"
-                        + " player=" + formatDebugPos(playerFootPos)
-                        + " waypoint=" + formatDebugPos(waypoint)
-                        + " reachedByHeight=" + reachedByHeight
-                        + " stairDistanceSq=" + (((double) Math.round(stairDistanceSq * 100.0D)) / 100.0D)
-                        + " reachedCurrentStep=false"
-                );
-                executionState.lastMiningResumeLogAtMs = now;
-            }
-            return boundedIndex;
-        }
-        int nextIndex = Math.min(currentPath.size() - 1, boundedIndex + 1);
-        return currentPath.get(nextIndex) != null ? nextIndex : boundedIndex;
-    }
-
-    private boolean handleJumpRecoveryMovement(
-        Minecraft client,
-        ClientLevel world,
-        LocalPlayer player,
-        BlockPos playerFootPos,
-        BlockPos waypoint,
-        long now
-    ) {
-        PlannedPrimitive plannedPrimitive;
-        BlockPos recoveryTarget;
-        synchronized (this) {
-            plannedPrimitive = executionState.activePlannedPrimitive;
-            recoveryTarget = executionState.controllerTarget != null ? executionState.controllerTarget : waypoint;
-        }
-        if (world == null || player == null || playerFootPos == null || recoveryTarget == null) {
-            return false;
-        }
-        if (!isJumpPrimitive(plannedPrimitive) || recoveryTarget.getY() <= playerFootPos.getY()) {
-            return handleRecoveryMovement(client, world, player, playerFootPos, waypoint, now, ControllerMode.RECOVER_JUMP, "recovery jump", "recovery move");
-        }
-        if (player.onGround() && pathPlanner.canAttemptJump(world, playerFootPos, recoveryTarget)) {
-            return handleRecoveryMovement(client, world, player, playerFootPos, waypoint, now, ControllerMode.RECOVER_JUMP, "recovery jump", "recovery move");
-        }
-        releaseMovementKeys(client);
-        invalidateJumpRecovery(playerFootPos, recoveryTarget, now, "jump primitive invalidated", "blocked jump recovery");
-        return true;
-    }
-
-    private void invalidateJumpRecovery(BlockPos playerFootPos, BlockPos recoveryTarget, long now, String replanReason, String stuckReason) {
-        rememberFailedRedirectWindow(playerFootPos, recoveryTarget, now);
-        synchronized (this) {
-            executionState.controllerMode = ControllerMode.FOLLOW_PATH;
-            executionState.controllerTarget = null;
-            executionState.controllerUntilMs = 0L;
-            executionState.committedJumpWaypoint = null;
-            executionState.committedJumpUntilMs = 0L;
-            executionState.activeBreakTarget = null;
-            currentPath = List.of();
-            currentPlan = List.of();
-            candidatePaths = List.of();
-            candidatePathsVisibleUntilMs = 0L;
-            activeWaypoint = null;
-            committedPathGoalPos = null;
-            pathIndex = 0;
-            furthestVisitedPathIndex = 0;
-            executionState.plannedBreakTargets = List.of();
-            lastPlanAtMs = 0L;
-            routeCommitUntilMs = 0L;
-            lastLocalRecoveryAtMs = 0L;
-            localRecoveryAttempts = 0;
-            bestRouteProgressScore = Integer.MIN_VALUE;
-            lastReplanReason = replanReason;
-            lastStuckReason = stuckReason;
-            lastMovementAtMs = now;
-            lastMovementSamplePos = playerFootPos != null ? Vec3.atCenterOf(playerFootPos) : Vec3.ZERO;
-            lastDistanceCheckpointAtMs = now;
-        }
-    }
-
-    private boolean handleBreakRecoveryMovement(
-        Minecraft client,
-        ClientLevel world,
-        LocalPlayer player,
-        BlockPos playerFootPos,
-        BlockPos waypoint,
-        long now
-    ) {
-        if (handleWaypointBlockInteraction(client, world, player, playerFootPos, waypoint, now)) {
-            synchronized (this) {
-                lastReplanReason = "recover break";
-                lastStuckReason = "recovering break step";
-            }
-            return true;
-        }
-        return handleRecoveryMovement(client, world, player, playerFootPos, waypoint, now, ControllerMode.RECOVER_BREAK, "recover break jump", "recover break move");
-    }
-
-    private boolean handlePillarRecoveryMovement(
-        Minecraft client,
-        ClientLevel world,
-        LocalPlayer player,
-        BlockPos playerFootPos,
-        BlockPos waypoint,
-        long now
-    ) {
-        boolean allowPillarRecovery;
-        synchronized (this) {
-            allowPillarRecovery = isPillarPrimitive(executionState.activePlannedPrimitive) || !executionState.committedEscape.isEmpty();
-        }
-        if (allowPillarRecovery && handlePillaring(client, world, player, playerFootPos, waypoint, now)) {
-            synchronized (this) {
-                lastReplanReason = "recover pillar";
-                lastStuckReason = "recovering pillar step";
-            }
-            return true;
-        }
-        return handleRecoveryMovement(client, world, player, playerFootPos, waypoint, now, ControllerMode.RECOVER_PILLAR, "recover pillar jump", "recover pillar move");
-    }
-
-    private boolean handleEscapeRecoveryMovement(
-        Minecraft client,
-        ClientLevel world,
-        LocalPlayer player,
-        BlockPos playerFootPos,
-        BlockPos waypoint,
-        long now
-    ) {
-        return handleTrappedSpaceRecovery(client, world, player, playerFootPos, waypoint, now);
-    }
-
-    private boolean handleRecoveryMovement(
-        Minecraft client,
-        ClientLevel world,
-        LocalPlayer player,
-        BlockPos playerFootPos,
-        BlockPos waypoint,
-        long now,
-        ControllerMode recoveryMode,
-        String jumpReplanReason,
-        String moveReplanReason
-    ) {
-        if (client == null || world == null || player == null || playerFootPos == null || client.options == null) {
-            return false;
-        }
-
-        BlockPos recoveryTarget;
-        synchronized (this) {
-            recoveryTarget = executionState.controllerTarget != null ? executionState.controllerTarget : waypoint;
-        }
-        if (recoveryTarget == null) {
-            return false;
-        }
-        if (pathPlanner.horizontalDistanceSq(playerFootPos, recoveryTarget) <= 0.64D && Math.abs(playerFootPos.getY() - recoveryTarget.getY()) <= 1) {
-            synchronized (this) {
-                if (executionState.controllerMode == recoveryMode) {
-                    executionState.controllerMode = ControllerMode.FOLLOW_PATH;
-                    executionState.controllerTarget = null;
-                    executionState.controllerUntilMs = 0L;
-                }
-            }
-            return false;
-        }
-        if (!isWaypointActionable(world, recoveryTarget) || !isPlayerNearPath(playerFootPos)) {
-            synchronized (this) {
-                if (executionState.controllerMode == recoveryMode) {
-                    executionState.controllerMode = ControllerMode.FOLLOW_PATH;
-                    executionState.controllerTarget = null;
-                    executionState.controllerUntilMs = 0L;
-                }
-            }
-            return false;
-        }
-
-        boolean jumpOpportunity = pathPlanner.hasJumpUpOpportunity(world, playerFootPos, recoveryTarget);
-        BlockPos jumpTarget = jumpOpportunity ? pathPlanner.resolveJumpUpApproachTarget(world, playerFootPos, recoveryTarget) : recoveryTarget;
-        Vec3 targetCenter = new Vec3(jumpTarget.getX() + 0.5D, player.getY(), jumpTarget.getZ() + 0.5D);
-        Vec3 currentPos = new Vec3(player.getX(), player.getY(), player.getZ());
-        double dx = targetCenter.x - currentPos.x;
-        double dz = targetCenter.z - currentPos.z;
-        double horizontalDistance = Math.sqrt(dx * dx + dz * dz);
-        float targetYaw = (float) (Mth.wrapDegrees(Math.toDegrees(Math.atan2(dz, dx)) - 90.0D));
-        float nextYaw = stepAngle(player.getYRot(), targetYaw, movementYawStep());
-        float jumpYawError = Math.abs(Mth.wrapDegrees(targetYaw - nextYaw));
-        player.setYRot(nextYaw);
-        player.setYHeadRot(player.getYRot());
-        player.setYBodyRot(player.getYRot());
-
-        boolean blocked = pathPlanner.isBlockedTowardWaypoint(world, playerFootPos, recoveryTarget) && !jumpOpportunity;
-        releaseMovementKeys(client);
-        if (client.options.keyUp != null) {
-            client.options.keyUp.setDown((!blocked || jumpOpportunity) && horizontalDistance > 0.2D);
-        }
-        if (client.options.keySprint != null) {
-            client.options.keySprint.setDown(false);
-        }
-        if (client.options.keyJump != null) {
-            boolean canHop = player.onGround()
-                && jumpOpportunity
-                && horizontalDistance <= 1.6D
-                && jumpYawError <= JUMP_YAW_ALIGNMENT_DEGREES
-                && pathPlanner.canAttemptJump(world, playerFootPos, recoveryTarget);
-            client.options.keyJump.setDown(false);
-            if (canHop) {
-                player.jumpFromGround();
-                synchronized (this) {
-                    executionState.lastJumpAtMs = now;
-                    executionState.committedJumpWaypoint = jumpTarget.immutable();
-                    executionState.committedJumpUntilMs = now + JUMP_COMMIT_WINDOW_MS;
-                    executionState.controllerMode = ControllerMode.COMMIT_JUMP;
-                    executionState.controllerTarget = jumpTarget.immutable();
-                    executionState.controllerUntilMs = executionState.committedJumpUntilMs;
-                    lastReplanReason = jumpReplanReason;
-                    lastStuckReason = "recovering to path";
-                }
-                noteControllerActivity(now);
-                return true;
-            }
-        }
-
-        synchronized (this) {
-            lastReplanReason = moveReplanReason;
-            lastStuckReason = blocked ? "recover blocked" : "recovering to path";
-        }
-        if (blocked) {
-            long blockedRecoveryMs;
-            synchronized (this) {
-                blockedRecoveryMs = now - executionState.controllerEnteredAtMs;
-            }
-            if (blockedRecoveryMs > 900L) {
-                return false;
-            }
-        }
-        if (!blocked) {
-            noteControllerActivity(now);
-        }
-        return true;
-    }
-
-    private boolean handleDirectFinalApproach(
-        Minecraft client,
-        ClientLevel world,
-        LocalPlayer player,
-        BlockPos playerFootPos,
-        BlockPos target,
-        long now
-    ) {
-        if (client == null
-            || client.options == null
-            || world == null
-            || player == null
-            || playerFootPos == null
-            || target == null
-            || playerFootPos.getY() != target.getY()
-            || pathPlanner.horizontalDistanceSq(playerFootPos, target) > 2.0D
-            || !pathPlanner.isStandable(world, target)) {
-            return false;
-        }
-        List<BlockPos> pendingBreaks = pathPlanner.getRequiredBreakTargets(world, playerFootPos, target);
-        if (pendingBreaks == null
-            || !pendingBreaks.isEmpty()
-            || pathPlanner.needsPlacedSupport(world, target)
-            || pathPlanner.requiresInteractableTraversal(world, playerFootPos, target)
-            || pathPlanner.hasPathOpenableAhead(world, playerFootPos, target)
-            || pathPlanner.isBlockedTowardWaypoint(world, playerFootPos, target)) {
-            return false;
-        }
-
-        double targetX = target.getX() + 0.5D;
-        double targetZ = target.getZ() + 0.5D;
-        double dx = targetX - player.getX();
-        double dz = targetZ - player.getZ();
-        double horizontalDistance = Math.sqrt(dx * dx + dz * dz);
-        if (horizontalDistance <= 0.0001D) {
-            return false;
-        }
-
-        double directDistanceSq = horizontalDistance * horizontalDistance;
-        synchronized (this) {
-            boolean enteringDirectApproach = !target.equals(executionState.controllerTarget)
-                || !"direct final approach".equals(lastReplanReason);
-            if (enteringDirectApproach) {
-                executionState.controllerTarget = target.immutable();
-                executionState.controllerProgressAtMs = now;
-                executionState.controllerBestDistanceSq = directDistanceSq;
-            } else if (directDistanceSq + 0.01D < executionState.controllerBestDistanceSq) {
-                executionState.controllerProgressAtMs = now;
-                executionState.controllerBestDistanceSq = directDistanceSq;
-            } else if (now - executionState.controllerProgressAtMs > 1800L) {
-                lastStuckReason = "direct final approach stalled";
-                return false;
-            }
-        }
-
-        float targetYaw = (float) Mth.wrapDegrees(Math.toDegrees(Math.atan2(dz, dx)) - 90.0D);
-        float nextYaw = stepAngle(player.getYRot(), targetYaw, movementYawStep());
-        player.setYRot(nextYaw);
-        player.setYHeadRot(nextYaw);
-        player.setYBodyRot(nextYaw);
-
-        Vec3 velocity = player.getDeltaMovement();
-        double correctionScale = horizontalDistance <= 0.35D ? 0.08D : 0.14D;
-        double correctionLimit = horizontalDistance <= 0.35D ? 0.035D : 0.075D;
-        player.setDeltaMovement(
-            velocity.x * 0.35D + Mth.clamp(dx * correctionScale, -correctionLimit, correctionLimit),
-            velocity.y,
-            velocity.z * 0.35D + Mth.clamp(dz * correctionScale, -correctionLimit, correctionLimit)
-        );
-
-        if (client.options.keyUp != null) {
-            client.options.keyUp.setDown(horizontalDistance > 0.22D);
-        }
-        if (client.options.keyDown != null) {
-            client.options.keyDown.setDown(false);
-        }
-        if (client.options.keyLeft != null) {
-            client.options.keyLeft.setDown(false);
-        }
-        if (client.options.keyRight != null) {
-            client.options.keyRight.setDown(false);
-        }
-        if (client.options.keySprint != null) {
-            client.options.keySprint.setDown(false);
-        }
-        if (client.options.keyJump != null) {
-            client.options.keyJump.setDown(false);
-        }
-        if (client.options.keyShift != null) {
-            client.options.keyShift.setDown(false);
-        }
-
-        synchronized (this) {
-            activeWaypoint = target.immutable();
-            executionState.controllerMode = ControllerMode.FOLLOW_PATH;
-            executionState.controllerTarget = target.immutable();
-            lastReplanReason = "direct final approach";
-            lastStuckReason = "centering on goal";
-        }
-        return true;
-    }
-
-    private boolean handleFollowPathSegment(
-        Minecraft client,
-        ClientLevel world,
-        LocalPlayer player,
-        BlockPos playerFootPos,
-        BlockPos waypoint,
-        PlannedPrimitive plannedPrimitive,
-        BlockPos target,
-        Vec3 currentPos,
-        double distanceSq,
-        long now
-    ) {
-        if (client == null || world == null || player == null || playerFootPos == null || waypoint == null) {
-            return false;
-        }
-        if (isCommittedEscapeState(now) && !isTrappedInCrampedSpace(world, playerFootPos, waypoint)) {
-            clearExcavationPlan(now, "escape cleared", "resume route");
-        }
-        clearStalePlaceStateIfNeeded(world, plannedPrimitive);
-        if (!isWaypointPrimitiveAligned(waypoint, plannedPrimitive)) {
-            releaseMovementKeys(client);
-            recoverFromStuck(client, world, playerFootPos, waypoint, target, currentPos, now, "primitive waypoint mismatch", "desynced step");
-            return true;
-        }
-        boolean plannedClimb = isClimbPrimitive(plannedPrimitive);
-        boolean plannedDrop = isDescendPrimitive(plannedPrimitive);
-        boolean sameColumnDescent = playerFootPos.getX() == waypoint.getX() && playerFootPos.getZ() == waypoint.getZ();
-        BlockPos climbAnchor = pathPlanner.resolveClimbAnchor(world, playerFootPos, waypoint);
-        boolean climbNode = plannedClimb || (plannedPrimitive == null && climbAnchor != null);
-        boolean verticalDropStep = (plannedDrop && sameColumnDescent)
-            || (plannedPrimitive == null && playerFootPos.getX() == waypoint.getX()
-            && playerFootPos.getZ() == waypoint.getZ()
-            && waypoint.getY() < playerFootPos.getY()
-            && pathPlanner.canSafelyDropTo(world, playerFootPos, waypoint));
-        FollowSegmentType segmentType = climbNode ? FollowSegmentType.CLIMB : (verticalDropStep ? FollowSegmentType.DROP : FollowSegmentType.GROUND);
-        BlockPos segmentTarget = climbNode ? (climbAnchor != null ? climbAnchor : waypoint) : waypoint;
-
-        Vec3 waypointCenter = pathPlanner.resolveWaypointAimPoint(
-            world,
-            playerFootPos,
-            waypoint,
-            climbNode ? climbAnchor : null,
-            plannedPrimitive,
-            player.getY()
-        );
-        waypointCenter = pathPlanner.resolveSmoothedSteeringAimPoint(
-            world,
-            playerFootPos,
-            waypoint,
-            plannedPrimitive,
-            currentPos,
-            waypointCenter
-        );
-        double waypointDx = waypointCenter.x - currentPos.x;
-        double waypointDz = waypointCenter.z - currentPos.z;
-        double waypointHorizontalDistance = Math.sqrt(waypointDx * waypointDx + waypointDz * waypointDz);
-        double waypointHorizontalDistanceSq = waypointDx * waypointDx + waypointDz * waypointDz;
-        double waypointVerticalDelta = (waypoint.getY() + 0.1D) - currentPos.y;
-        updateFollowSegment(segmentType, segmentTarget, waypointHorizontalDistanceSq, now);
-
-        float targetYaw = (float) (Mth.wrapDegrees(Math.toDegrees(Math.atan2(waypointDz, waypointDx)) - 90.0D));
-        float desiredPitch = (float) -Math.toDegrees(Math.atan2(waypointVerticalDelta, Math.max(0.0001D, waypointHorizontalDistance)));
-        float nextYaw = stepAngle(player.getYRot(), targetYaw, movementYawStep());
-        float jumpYawError = Math.abs(Mth.wrapDegrees(targetYaw - nextYaw));
-        float nextPitch = stepAngle(player.getXRot(), Mth.clamp(desiredPitch, -35.0F, 35.0F), MAX_PITCH_STEP);
-        player.setYRot(nextYaw);
-        player.setYHeadRot(nextYaw);
-        player.setYBodyRot(nextYaw);
-        player.setXRot(nextPitch);
-
-        Vec3 desiredDirection = waypointHorizontalDistance <= 0.0001D
-            ? Vec3.ZERO
-            : new Vec3(waypointDx / waypointHorizontalDistance, 0.0D, waypointDz / waypointHorizontalDistance);
-        Vec3 horizontalVelocity = new Vec3(player.getDeltaMovement().x, 0.0D, player.getDeltaMovement().z);
-        double forwardVelocity = desiredDirection.equals(Vec3.ZERO) ? 0.0D : horizontalVelocity.dot(desiredDirection);
-        Vec3 rightDirection = new Vec3(desiredDirection.z, 0.0D, -desiredDirection.x);
-        double lateralVelocity = desiredDirection.equals(Vec3.ZERO) ? 0.0D : horizontalVelocity.dot(rightDirection);
-        double projectedForwardTravel = Math.max(0.0D, forwardVelocity) * COUNTERMOVEMENT_PREDICTION_TICKS;
-        boolean overshootRisk = waypointHorizontalDistance <= COUNTERMOVEMENT_DISTANCE
-            && projectedForwardTravel > waypointHorizontalDistance + 0.1D
-            && forwardVelocity > COUNTERMOVEMENT_SPEED;
-        boolean airborneDriftRisk = !player.onGround()
-            && waypointHorizontalDistance <= AIR_COUNTERMOVEMENT_DISTANCE
-            && (projectedForwardTravel > waypointHorizontalDistance + 0.05D
-            || Math.abs(lateralVelocity) > COUNTERMOVEMENT_LATERAL_SPEED);
-        boolean pillarStep = shouldUsePillarStep(world, playerFootPos, waypoint, plannedPrimitive, now);
-        boolean interactableStep = isInteractablePrimitive(plannedPrimitive)
-            || (plannedPrimitive == null
-                && (pathPlanner.requiresInteractableTraversal(world, playerFootPos, waypoint)
-                || pathPlanner.hasPathOpenableAhead(world, playerFootPos, waypoint)
-                || pathPlanner.isPathOpenable(pathPlanner.cachedBlockState(world, playerFootPos.below()))));
-        BlockPos rawPendingBreakTarget = selectBreakTarget(world, playerFootPos, waypoint, plannedPrimitive);
-        BlockPos pendingBreakTarget = rawPendingBreakTarget != null && canBreakTargetNow(world, player, rawPendingBreakTarget)
-            ? rawPendingBreakTarget
-            : null;
-        BlockPos liveBreakTarget;
-        boolean nearFinalGoal;
-        synchronized (this) {
-            liveBreakTarget = executionState.activeBreakTarget;
-            nearFinalGoal = targetPos != null
-                && pathPlanner.horizontalDistanceSq(playerFootPos, targetPos) <= 4.0D
-                && Math.abs(playerFootPos.getY() - targetPos.getY()) <= 1;
-        }
-        boolean liveBreaking = liveBreakTarget != null
-            && pathPlanner.isBreakableForNavigator(world, liveBreakTarget)
-            && canBreakTargetNow(world, player, liveBreakTarget);
-        boolean hasBlockedBreakTarget = rawPendingBreakTarget != null && pendingBreakTarget == null;
-        boolean breakRequiredStep = liveBreaking
-            || pendingBreakTarget != null
-            || (plannedPrimitive == null && requiresBreakingForWaypoint(world, waypoint));
-        boolean miningAdvanceStep = primitiveRequiresBreak(plannedPrimitive)
-            && !liveBreaking
-            && pendingBreakTarget == null
-            && !hasBlockedBreakTarget;
-        boolean miningAdvanceJumpStep = miningAdvanceStep
-            && plannedPrimitive != null
-            && plannedPrimitive.isMineAscent()
-            && waypoint.getY() > playerFootPos.getY();
-        boolean placeRequiredStep = primitiveRequiresPlace(plannedPrimitive)
-            || (plannedPrimitive == null && pathPlanner.needsPlacedSupport(world, waypoint) && shouldPlaceForWaypoint(world, playerFootPos, waypoint));
-        boolean ascentCommitStep = plannedPrimitive != null
-            && plannedPrimitive.shouldCommitAscent(waypoint, playerFootPos)
-            && !breakRequiredStep
-            && !placeRequiredStep
-            && !pillarStep
-            && !verticalDropStep;
-        boolean jumpUpOpportunity = pathPlanner.hasJumpUpOpportunity(world, playerFootPos, waypoint);
-        boolean blockedTowardWaypoint = pathPlanner.isBlockedTowardWaypoint(world, playerFootPos, waypoint)
-            && !miningAdvanceStep
-            && !jumpUpOpportunity;
-        boolean simpleMovementStep = plannedPrimitive != null && plannedPrimitive.isSimpleMovementStep();
-        boolean counterMovementEligible = segmentType == FollowSegmentType.GROUND
-            && simpleMovementStep
-            && jumpYawError <= COUNTERMOVEMENT_MAX_YAW_ERROR_DEGREES
-            && waypointHorizontalDistance >= COUNTERMOVEMENT_MIN_DISTANCE;
-        boolean applyCountermovement = counterMovementEligible
-            && !nearFinalGoal
-            && !pillarStep
-            && !climbNode
-            && executionState.committedJumpWaypoint == null
-            && (overshootRisk || airborneDriftRisk);
-        boolean turnInPlace = NavigatorGeometry.shouldTurnInPlace(
-            segmentType == FollowSegmentType.GROUND,
-            nearFinalGoal,
-            pillarStep || breakRequiredStep || placeRequiredStep,
-            waypointHorizontalDistance,
-            jumpYawError,
-            TURN_IN_PLACE_YAW_DEGREES
-        );
-        if (turnInPlace) {
-            applyCountermovement = false;
-            Vec3 velocity = player.getDeltaMovement();
-            if (player.onGround()) {
-                player.setDeltaMovement(velocity.x * 0.55D, velocity.y, velocity.z * 0.55D);
-            }
-            noteControllerActivity(now);
-        }
-        boolean jumpExecutionLocked = isJumpExecutionLocked(now, plannedPrimitive);
-        boolean routeStabilizing;
-        boolean routeCommitActive;
-        synchronized (this) {
-            routeStabilizing = isRouteStabilizingLocked(playerFootPos, now);
-            routeCommitActive = now < routeCommitUntilMs;
-        }
-
-        tryUseInteractables(client, world, player, playerFootPos, waypoint, now);
-        boolean climbUp = climbNode && waypoint.getY() > playerFootPos.getY();
-        boolean climbDown = climbNode && waypoint.getY() < playerFootPos.getY();
-
-        if (climbNode) {
-            double correctionX = Mth.clamp(waypointDx * 0.18D, -0.08D, 0.08D);
-            double correctionZ = Mth.clamp(waypointDz * 0.18D, -0.08D, 0.08D);
-            Vec3 velocity = player.getDeltaMovement();
-            player.setDeltaMovement(velocity.x * 0.35D + correctionX, velocity.y, velocity.z * 0.35D + correctionZ);
-        } else if (verticalDropStep) {
-            double correctionX = Mth.clamp(waypointDx * 0.22D, -0.10D, 0.10D);
-            double correctionZ = Mth.clamp(waypointDz * 0.22D, -0.10D, 0.10D);
-            Vec3 velocity = player.getDeltaMovement();
-            player.setDeltaMovement(velocity.x * 0.15D + correctionX, velocity.y, velocity.z * 0.15D + correctionZ);
-        } else if (miningAdvanceStep || ascentCommitStep) {
-            double correctionScale = ascentCommitStep ? 0.22D : 0.16D;
-            double correctionLimit = ascentCommitStep ? 0.11D : 0.07D;
-            double velocityBlend = ascentCommitStep ? 0.30D : 0.45D;
-            double correctionX = Mth.clamp(waypointDx * correctionScale, -correctionLimit, correctionLimit);
-            double correctionZ = Mth.clamp(waypointDz * correctionScale, -correctionLimit, correctionLimit);
-            Vec3 velocity = player.getDeltaMovement();
-            player.setDeltaMovement(velocity.x * velocityBlend + correctionX, velocity.y, velocity.z * velocityBlend + correctionZ);
-            noteControllerActivity(now);
-        }
-
-        if (client.options != null) {
-            if (client.options.keyUp != null) {
-                client.options.keyUp.setDown(((miningAdvanceStep || ascentCommitStep) && waypointHorizontalDistance > 0.01D)
-                    || (!verticalDropStep
-                    && !pillarStep
-                    && !blockedTowardWaypoint
-                    && !breakRequiredStep
-                    && !turnInPlace
-                    && (climbNode || !applyCountermovement)));
-            }
-            if (client.options.keySprint != null) {
-                client.options.keySprint.setDown(segmentType == FollowSegmentType.GROUND
-                    && !pillarStep
-                    && !blockedTowardWaypoint
-                    && !breakRequiredStep
-                    && !placeRequiredStep
-                    && !interactableStep
-                    && !nearFinalGoal
-                    && !applyCountermovement
-                    && jumpYawError <= SPRINT_ALIGNMENT_DEGREES
-                    && player.onGround()
-                    && waypointHorizontalDistance > 1.75D);
-            }
-            if (client.options.keyDown != null) {
-                client.options.keyDown.setDown(segmentType == FollowSegmentType.GROUND && applyCountermovement && forwardVelocity > COUNTERMOVEMENT_SPEED);
-            }
-            if (client.options.keyLeft != null) {
-                client.options.keyLeft.setDown(segmentType == FollowSegmentType.GROUND && applyCountermovement && lateralVelocity < -COUNTERMOVEMENT_LATERAL_SPEED);
-            }
-            if (client.options.keyRight != null) {
-                client.options.keyRight.setDown(segmentType == FollowSegmentType.GROUND && applyCountermovement && lateralVelocity > COUNTERMOVEMENT_LATERAL_SPEED);
-            }
-            if (client.options.keyJump != null) {
-                boolean swimUp = isSwimPrimitive(plannedPrimitive)
-                    || player.isUnderWater()
-                    || pathPlanner.isWaterNode(world, playerFootPos)
-                    || pathPlanner.isWaterNode(world, waypoint);
-                client.options.keyJump.setDown(!verticalDropStep
-                    && !pillarStep
-                    && ((swimUp && waypoint.getY() >= playerFootPos.getY())
-                    || climbUp
-                    || miningAdvanceJumpStep));
-            }
-            if (client.options.keyShift != null) {
-                client.options.keyShift.setDown(!verticalDropStep && climbDown);
-            }
-        }
-
-        synchronized (this) {
-            if (distanceSq + PROGRESS_EPSILON_SQ < bestDistanceSq) {
-                bestDistanceSq = distanceSq;
-                lastProgressAtMs = now;
-            }
-        }
-        noteControllerProgress(now, waypointHorizontalDistanceSq);
-
-        long millisSinceProgress;
-        long millisSinceMovement;
-        long millisSinceDistanceChange;
-        boolean busyExcavating;
-        synchronized (this) {
-            millisSinceProgress = now - lastProgressAtMs;
-            millisSinceMovement = now - lastMovementAtMs;
-            millisSinceDistanceChange = now - lastDistanceCheckpointAtMs;
-            boolean activeEscapeController = executionState.controllerMode == ControllerMode.ESCAPE_HOLE
-                || executionState.controllerMode == ControllerMode.RECOVER_ESCAPE
-                || executionState.controllerMode == ControllerMode.PILLAR
-                || executionState.controllerMode == ControllerMode.RECOVER_PILLAR;
-            busyExcavating = activeEscapeController
-                && (hasCommittedEscapeWorkLocked(now) || isActiveEscapeBreakTargetLocked());
-        }
-
-        long millisSinceJump;
-        boolean hasCommittedJump;
-        synchronized (this) {
-            millisSinceJump = now - executionState.lastJumpAtMs;
-            hasCommittedJump = executionState.committedJumpWaypoint != null;
-        }
-        boolean wantsJump = segmentType == FollowSegmentType.GROUND
-            && player.onGround()
-            && !hasCommittedJump
-            && (miningAdvanceJumpStep || millisSinceJump >= JUMP_RETRY_COOLDOWN_MS)
-            && !breakRequiredStep
-            && !placeRequiredStep
-            && jumpYawError <= JUMP_YAW_ALIGNMENT_DEGREES
-            && (isJumpPrimitive(plannedPrimitive)
-            || miningAdvanceJumpStep
-            || (plannedPrimitive == null && (!interactableStep && waypoint.getY() > playerFootPos.getY()))
-            || (plannedPrimitive == null && jumpUpOpportunity && !interactableStep));
-        if (wantsJump) {
-            int jumpAttemptsAtWaypoint;
-            synchronized (this) {
-                if (waypoint.equals(executionState.lastJumpAttemptWaypoint)) {
-                    jumpAttemptsAtWaypoint = executionState.repeatedJumpAttempts;
-                } else {
-                    executionState.lastJumpAttemptWaypoint = waypoint.immutable();
-                    executionState.repeatedJumpAttempts = 0;
-                    jumpAttemptsAtWaypoint = 0;
-                }
-            }
-            if (jumpAttemptsAtWaypoint >= 3) {
-                releaseMovementKeys(client);
-                pathPlanner.rememberFailedJump(playerFootPos, waypoint, now);
-                recoverFromStuck(client, world, playerFootPos, waypoint, target, currentPos, now, "jump retry limit", "repeated jump failure");
-                synchronized (this) {
-                    executionState.lastJumpAtMs = now;
-                    executionState.repeatedJumpAttempts = 0;
-                    executionState.lastJumpAttemptWaypoint = null;
-                }
-                return true;
-            }
-            boolean canJump = miningAdvanceJumpStep
-                ? pathPlanner.canAttemptMiningAdvanceJump(world, playerFootPos, waypoint)
-                : pathPlanner.canAttemptJump(world, playerFootPos, waypoint);
-            if (canJump) {
-                if (!desiredDirection.equals(Vec3.ZERO)) {
-                    Vec3 velocity = player.getDeltaMovement();
-                    player.setDeltaMovement(
-                        velocity.x + desiredDirection.x * 0.12D,
-                        velocity.y,
-                        velocity.z + desiredDirection.z * 0.12D
-                    );
-                }
-                if (client.options != null && client.options.keyUp != null) {
-                    client.options.keyUp.setDown(true);
-                }
-                player.jumpFromGround();
-                synchronized (this) {
-                    executionState.lastJumpAtMs = now;
-                    executionState.committedJumpWaypoint = waypoint.immutable();
-                    executionState.committedJumpUntilMs = now + JUMP_COMMIT_WINDOW_MS;
-                    executionState.lastJumpAttemptWaypoint = waypoint.immutable();
-                    executionState.repeatedJumpAttempts++;
-                }
-            } else {
-                releaseMovementKeys(client);
-                if (miningAdvanceJumpStep) {
-                    pathPlanner.rememberFailedBreak(playerFootPos, waypoint, now);
-                    pathPlanner.rememberFailedJump(playerFootPos, waypoint, now);
-                } else {
-                    pathPlanner.rememberFailedJump(playerFootPos, waypoint, now);
-                }
-                recoverFromStuck(client, world, playerFootPos, waypoint, target, currentPos, now, "blocked jump", "ceiling blocked");
-                synchronized (this) {
-                    executionState.lastJumpAtMs = now;
-                    executionState.lastJumpAttemptWaypoint = waypoint.immutable();
-                    executionState.repeatedJumpAttempts++;
-                }
-                return true;
-            }
-        }
-
-        long segmentIdleMs = followSegmentIdleMs(now);
-        if (segmentType == FollowSegmentType.GROUND) {
-            boolean wallPushStall = !busyExcavating
-                && !jumpExecutionLocked
-                && !routeStabilizing
-                && player.onGround()
-                && !breakRequiredStep
-                && !placeRequiredStep
-                && !interactableStep
-                && executionState.committedJumpWaypoint == null
-                && !miningAdvanceJumpStep
-                && (forwardVelocity > 0.02D || blockedTowardWaypoint)
-                && waypointHorizontalDistance > 0.6D
-                && blockedTowardWaypoint
-                && (segmentIdleMs > WALL_PUSH_REDIRECT_MS || millisSinceMovement > WALL_PUSH_REDIRECT_MS);
-            if (wallPushStall) {
-                if (simpleMovementStep && routeCommitActive) {
-                    noteControllerActivity(now);
-                    return false;
-                }
-                releaseMovementKeys(client);
-                if (simpleMovementStep) {
-                    redirectCurrentPath(playerFootPos, waypoint, currentPos, now, "segment wall redirect", "front blocked");
-                } else {
-                    rewindCurrentPathIndex(playerFootPos, waypoint);
-                    recoverFromStuck(client, world, playerFootPos, waypoint, target, currentPos, now, "segment wall redirect", "front blocked");
-                }
-                return true;
-            }
-        }
-
-        if (!jumpExecutionLocked && !routeStabilizing && !miningAdvanceJumpStep && millisSinceDistanceChange > DISTANCE_STALL_REDIRECT_MS) {
-            if (simpleMovementStep && routeCommitActive) {
-                noteControllerActivity(now);
-                return false;
-            }
-            releaseMovementKeys(client);
-            if (simpleMovementStep) {
-                redirectCurrentPath(playerFootPos, waypoint, currentPos, now, "distance stall redirect", "goal distance stalled");
-            } else {
-                recoverFromStuck(client, world, playerFootPos, waypoint, target, currentPos, now, "distance stall redirect", "goal distance stalled");
-            }
-            return true;
-        }
-
-        long segmentStallWindow = switch (segmentType) {
-            case GROUND -> STANDSTILL_REDIRECT_MS;
-            case CLIMB -> 1200L;
-            case DROP -> 1100L;
-        };
-        if (!busyExcavating
-            && !jumpExecutionLocked
-            && !routeStabilizing
-            && !miningAdvanceJumpStep
-            && (segmentIdleMs > segmentStallWindow || millisSinceMovement > segmentStallWindow + 250L)) {
-            if (simpleMovementStep && routeCommitActive && segmentType == FollowSegmentType.GROUND) {
-                noteControllerActivity(now);
-                return false;
-            }
-            releaseMovementKeys(client);
-            if (simpleMovementStep && segmentType == FollowSegmentType.GROUND) {
-                redirectCurrentPath(playerFootPos, waypoint, currentPos, now, "segment redirect", segmentType.name().toLowerCase());
-            } else {
-                recoverFromStuck(client, world, playerFootPos, waypoint, target, currentPos, now, "segment redirect", segmentType.name().toLowerCase());
-            }
-            return true;
-        }
-
-        if (((!busyExcavating && millisSinceProgress > STUCK_TIMEOUT_MS) || (busyExcavating && millisSinceProgress > STUCK_TIMEOUT_MS * 2L))
-            && !routeStabilizing
-            && !miningAdvanceJumpStep) {
-            if (simpleMovementStep && routeCommitActive && segmentType == FollowSegmentType.GROUND) {
-                noteControllerActivity(now);
-                return false;
-            }
-            releaseMovementKeys(client);
-            if (breakRequiredStep || miningAdvanceStep) {
-                pathPlanner.rememberFailedBreak(playerFootPos, waypoint, now);
-            } else {
-                pathPlanner.rememberFailedMove(playerFootPos, waypoint, now);
-            }
-            if (simpleMovementStep && segmentType == FollowSegmentType.GROUND) {
-                redirectCurrentPath(playerFootPos, waypoint, currentPos, now, "segment timeout", "no progress");
-            } else {
-                recoverFromStuck(client, world, playerFootPos, waypoint, target, currentPos, now, "segment timeout", "no progress");
-            }
-            return true;
-        }
-
-        return false;
-    }
-
-    private boolean acceptCommittedJumpLandingLocked(Level world, BlockPos playerFootPos, BlockPos jumpTarget) {
-        if (playerFootPos == null || jumpTarget == null) {
-            return false;
-        }
-        if (playerFootPos.equals(jumpTarget)) {
-            return true;
-        }
-        if (playerFootPos.getY() < jumpTarget.getY() - 1) {
-            return false;
-        }
-        if (pathPlanner.horizontalDistanceSq(playerFootPos, jumpTarget) <= WAYPOINT_REACHED_DISTANCE_SQ
-            && Math.abs(playerFootPos.getY() - jumpTarget.getY()) <= 1) {
-            return true;
-        }
-        if (currentPath.isEmpty()) {
-            return false;
-        }
-        int startIndex = Math.max(furthestVisitedPathIndex, Math.max(0, pathIndex - 1));
-        int endIndex = Math.min(currentPath.size() - 1, Math.max(pathIndex, startIndex) + 5);
-        for (int i = startIndex; i <= endIndex; i++) {
-            BlockPos step = currentPath.get(i);
-            if (step == null) {
-                continue;
-            }
-            double stepDistanceSq = pathPlanner.horizontalDistanceSq(playerFootPos, step);
-            int verticalDelta = Math.abs(playerFootPos.getY() - step.getY());
-            boolean exactEnough = stepDistanceSq <= WAYPOINT_REACHED_DISTANCE_SQ && verticalDelta <= 1;
-            boolean nearEnough = stepDistanceSq <= WAYPOINT_NEAR_DISTANCE_SQ && verticalDelta <= 1;
-            if (!exactEnough && !nearEnough) {
-                continue;
-            }
-            return commitPathIndexLocked(world, i, !exactEnough, System.currentTimeMillis(), "advance:jump_landing=" + i);
-        }
-        return false;
-    }
-
-    private boolean acceptCommittedDropLandingLocked(Level world, BlockPos playerFootPos, BlockPos dropTarget) {
-        if (playerFootPos == null || dropTarget == null) {
-            return false;
-        }
-        if (playerFootPos.equals(dropTarget)) {
-            return true;
-        }
-        if (playerFootPos.getY() > dropTarget.getY()) {
-            return false;
-        }
-        if (pathPlanner.horizontalDistanceSq(playerFootPos, dropTarget) <= WAYPOINT_REACHED_DISTANCE_SQ
-            && Math.abs(playerFootPos.getY() - dropTarget.getY()) <= 1) {
-            return true;
-        }
-        if (currentPath.isEmpty()) {
-            return false;
-        }
-        int startIndex = Math.max(furthestVisitedPathIndex, Math.max(0, pathIndex - 1));
-        int endIndex = Math.min(currentPath.size() - 1, Math.max(pathIndex, startIndex) + 4);
-        for (int i = startIndex; i <= endIndex; i++) {
-            BlockPos step = currentPath.get(i);
-            if (step == null || step.getY() > playerFootPos.getY()) {
-                continue;
-            }
-            double stepDistanceSq = pathPlanner.horizontalDistanceSq(playerFootPos, step);
-            int verticalDelta = Math.abs(playerFootPos.getY() - step.getY());
-            if (stepDistanceSq > WAYPOINT_NEAR_DISTANCE_SQ || verticalDelta > 1) {
-                continue;
-            }
-            return commitPathIndexLocked(world, i, true, System.currentTimeMillis(), "advance:drop_landing=" + i);
-        }
-        return false;
-    }
-
-    private boolean commitPathIndexLocked(Level world, int newIndex, boolean nearAdvance, long now, String advanceDecision) {
-        if (world == null || currentPath.isEmpty()) {
-            return false;
-        }
-        if (newIndex < 0 || newIndex >= currentPath.size()) {
-            return false;
-        }
-        BlockPos newWaypoint = currentPath.get(newIndex);
-        if (newWaypoint == null) {
-            return false;
-        }
-        int previousIndex = pathIndex;
-        BlockPos previousWaypoint = previousIndex >= 0 && previousIndex < currentPath.size() ? currentPath.get(previousIndex) : null;
-        pathIndex = newIndex;
-        furthestVisitedPathIndex = Math.max(furthestVisitedPathIndex, pathIndex - (nearAdvance ? 1 : 0));
-        activeWaypoint = newWaypoint;
-        executionState.activePlannedPrimitive = getPlannedPrimitiveAtIndexLocked(pathIndex);
-        executionState.plannedBreakTargets = buildPathBreakPlan(world, currentPath, pathIndex);
-        lastWaypointAdvanceAtMs = now;
-        lastProgressAtMs = now;
-        routeCommitUntilMs = Math.max(routeCommitUntilMs, now + ROUTE_COMMIT_MS / 2L);
-        lastAdvanceDecision = advanceDecision;
-        appendDebugEventLocked(
-            "pathIndex " + previousIndex + " -> " + pathIndex
-                + " reason=" + advanceDecision
-                + " oldWaypoint=" + formatDebugPos(previousWaypoint)
-                + " newWaypoint=" + formatDebugPos(newWaypoint)
-                + " nearAdvance=" + nearAdvance
-        );
-        return true;
-    }
-
-    private boolean handlePillaring(
-        Minecraft client,
-        ClientLevel world,
-        LocalPlayer player,
-        BlockPos playerFootPos,
-        BlockPos waypoint,
-        long now
-    ) {
-        if (client == null || world == null || player == null || playerFootPos == null || waypoint == null) {
-            return false;
-        }
-        PlannedPrimitive plannedPrimitive;
-        boolean escapePillar;
-        synchronized (this) {
-            plannedPrimitive = executionState.activePlannedPrimitive;
-            escapePillar = !executionState.committedEscape.isEmpty();
-        }
-        if (!isPillarPrimitive(plannedPrimitive) && !escapePillar) {
-            return false;
-        }
-        BlockPos pillarTarget;
-        synchronized (this) {
-            pillarTarget = executionState.controllerMode == ControllerMode.PILLAR && executionState.controllerTarget != null
-                ? executionState.controllerTarget.immutable()
-                : waypoint.immutable();
-            if (!executionState.committedEscape.isEmpty()) {
-                executionState.committedEscapeTarget = pillarTarget.immutable();
-                executionState.committedEscapeUntilMs = Math.max(executionState.committedEscapeUntilMs, now + TRAPPED_RECOVERY_COMMIT_MS);
-            }
-        }
-        BlockPos pillarBase = pillarTarget.below();
-        if (pillarBase.getX() != playerFootPos.getX()
-            || pillarBase.getZ() != playerFootPos.getZ()
-            || pillarBase.getY() < playerFootPos.getY() - 1
-            || pillarBase.getY() > playerFootPos.getY()) {
-            pathPlanner.rememberFailedPillar(playerFootPos, pillarTarget, now);
-            return false;
-        }
-        if (!pathPlanner.canContinuePillarTo(world, pillarBase, pillarTarget)) {
-            pathPlanner.rememberFailedPillar(playerFootPos, pillarTarget, now);
-            return false;
-        }
-        syncPathToPillarTarget(world, pillarTarget, now);
-        releaseMovementKeys(client);
-        Vec3 columnCenter = Vec3.atCenterOf(pillarBase);
-        Vec3 currentPos = new Vec3(player.getX(), player.getY(), player.getZ());
-        double dx = columnCenter.x - currentPos.x;
-        double dz = columnCenter.z - currentPos.z;
-        float targetYaw = (float) (Mth.wrapDegrees(Math.toDegrees(Math.atan2(dz, dx)) - 90.0D));
-        player.setYRot(stepAngle(player.getYRot(), targetYaw, movementYawStep()));
-        player.setYHeadRot(player.getYRot());
-        player.setYBodyRot(player.getYRot());
-        player.setXRot(stepAngle(player.getXRot(), 89.5F, MAX_PITCH_STEP));
-        Vec3 velocity = player.getDeltaMovement();
-        player.setDeltaMovement(
-            velocity.x * 0.25D + Mth.clamp(dx * 0.18D, -0.08D, 0.08D),
-            velocity.y,
-            velocity.z * 0.25D + Mth.clamp(dz * 0.18D, -0.08D, 0.08D)
-        );
-
-        PillarPhase pillarPhase = resolvePillarPhase(world, player, pillarBase, pillarTarget, dx, dz);
-        synchronized (this) {
-            executionState.activePillarPhase = pillarPhase;
-        }
-
-        if (client.options != null) {
-            if (client.options.keySprint != null) {
-                client.options.keySprint.setDown(false);
-            }
-            if (client.options.keyUp != null) {
-                client.options.keyUp.setDown(false);
-            }
-            if (client.options.keyDown != null) {
-                client.options.keyDown.setDown(false);
-            }
-            if (client.options.keyLeft != null) {
-                client.options.keyLeft.setDown(false);
-            }
-            if (client.options.keyRight != null) {
-                client.options.keyRight.setDown(false);
-            }
-            if (client.options.keyShift != null) {
-                client.options.keyShift.setDown(true);
-            }
-            if (client.options.keyJump != null) {
-                client.options.keyJump.setDown(pillarPhase == PillarPhase.ASCEND);
-            }
-        }
-
-        if (pillarPhase == PillarPhase.SUPPORT_READY) {
-            synchronized (this) {
-                executionState.controllerUntilMs = 0L;
-                lastReplanReason = "pillar support ready";
-                lastStuckReason = "advance on support";
-                executionState.lastPlaceTarget = pillarBase.immutable();
-                executionState.lastPlaceResult = "placed";
-            }
-            return false;
-        }
-        synchronized (this) {
-            executionState.lastPlaceTarget = pillarBase.immutable();
-            executionState.lastPlaceResult = switch (pillarPhase) {
-                case PLACE -> "ready";
-                case ASCEND -> "waiting apex";
-                case CENTER -> "centering";
-                case SUPPORT_READY -> "placed";
-            };
-        }
-        if (pillarPhase == PillarPhase.PLACE) {
-            if (client.options != null) {
-                if (client.options.keyJump != null) {
-                    client.options.keyJump.setDown(false);
-                }
-                if (client.options.keyShift != null) {
-                    client.options.keyShift.setDown(true);
-                }
-            }
-            boolean placed = tryPlacePillarBlock(client, world, player, pillarBase, now);
-            if (placed) {
-                synchronized (this) {
-                    lastReplanReason = "pillar place";
-                    lastStuckReason = "pillaring";
-                    executionState.lastJumpAtMs = now;
-                }
-                noteControllerActivity(now);
-                return true;
-            }
-            pathPlanner.rememberFailedPillar(playerFootPos, pillarTarget, now);
-        }
-        if (pillarPhase == PillarPhase.ASCEND && player.onGround()) {
-            synchronized (this) {
-                executionState.lastJumpAtMs = now;
-                executionState.committedJumpWaypoint = null;
-                executionState.committedJumpUntilMs = 0L;
-                lastReplanReason = "pillar jump";
-                lastStuckReason = "pillaring";
-            }
-        }
-        noteControllerActivity(now);
-        return true;
-    }
-
-    private PillarPhase resolvePillarPhase(
-        Level world,
-        LocalPlayer player,
-        BlockPos pillarBase,
-        BlockPos pillarTarget,
-        double dx,
-        double dz
-    ) {
-        if (world == null || player == null || pillarBase == null || pillarTarget == null) {
-            return PillarPhase.CENTER;
-        }
-        if (pathPlanner.hasCollision(world, pillarBase)) {
-            return PillarPhase.SUPPORT_READY;
-        }
-        boolean centered = Math.abs(dx) <= 0.22D && Math.abs(dz) <= 0.22D;
-        boolean airbornePlacementWindow = !player.onGround() && player.getDeltaMovement().y <= 0.45D;
-        if (centered && airbornePlacementWindow) {
-            return PillarPhase.PLACE;
-        }
-        if (player.getY() < pillarTarget.getY()) {
-            return PillarPhase.ASCEND;
-        }
-        return PillarPhase.CENTER;
-    }
-
-    private boolean tryPlacePillarBlock(
-        Minecraft client,
-        ClientLevel world,
-        LocalPlayer player,
-        BlockPos placePos,
-        long now
-    ) {
-        if (client == null || world == null || player == null || placePos == null || client.gameMode == null) {
-            synchronized (this) {
-                executionState.lastPlaceTarget = placePos != null ? placePos.immutable() : null;
-                executionState.lastPlaceResult = "client unavailable";
-            }
-            return false;
-        }
-        if (now - executionState.lastInteractAtMs < 250L) {
-            synchronized (this) {
-                executionState.lastPlaceTarget = placePos.immutable();
-                executionState.lastPlaceResult = "cooldown";
-            }
-            return false;
-        }
-        BlockPos supportPos = placePos.below();
-        if (!pathPlanner.hasCollision(world, supportPos)) {
-            synchronized (this) {
-                executionState.lastPlaceTarget = placePos.immutable();
-                executionState.lastPlaceResult = "no support face";
-            }
-            return false;
-        }
-        int hotbarSlot = ensurePlaceableHotbarSlot(client, player);
-        if (hotbarSlot < 0) {
-            synchronized (this) {
-                executionState.lastPlaceTarget = placePos.immutable();
-                executionState.lastPlaceResult = "no placeable block";
-            }
-            return false;
-        }
-
-        int previousSlot = PlayerInventoryBridge.getSelectedSlot(player.getInventory());
-        HotbarSlotSynchronizer.selectHotbarSlot(client, hotbarSlot);
-
-        if (client.options != null) {
-            if (client.options.keyJump != null) {
-                client.options.keyJump.setDown(false);
-            }
-        }
-        applySneakState(client, true);
-
-        BlockHitResult hit = raycastBlockFromOrientation(client, player.getYRot(), player.getXRot(), 4.5D);
-        if (hit == null || !supportPos.equals(hit.getBlockPos())) {
-            Vec3 hitPos = new Vec3(
-                supportPos.getX() + 0.5D,
-                supportPos.getY() + 0.999D,
-                supportPos.getZ() + 0.5D
-            );
-            hit = new BlockHitResult(hitPos, Direction.UP, supportPos, false);
-        }
-        InteractionResult result = client.gameMode.useItemOn(player, InteractionHand.MAIN_HAND, hit);
-        boolean accepted = result != null && result.consumesAction();
-        if (!accepted) {
-            InteractionResult fallback = client.gameMode.useItem(player, InteractionHand.MAIN_HAND);
-            accepted = fallback != null && fallback.consumesAction();
-        }
-        if (accepted) {
-            player.swing(InteractionHand.MAIN_HAND);
-        }
-
-        HotbarSlotSynchronizer.selectHotbarSlot(client, previousSlot);
-        applySneakState(client, true);
-
-        boolean placedNow = pathPlanner.hasCollision(world, placePos);
-        synchronized (this) {
-            executionState.lastPlaceTarget = placePos.immutable();
-            if (!accepted) {
-                executionState.lastPlaceResult = "rejected";
-            } else if (placedNow) {
-                executionState.lastPlaceResult = "placed";
-            } else {
-                executionState.lastPlaceResult = "accepted no block";
-            }
-        }
-        if (!accepted || !placedNow) {
-            return false;
-        }
-        synchronized (this) {
-            executionState.lastInteractAtMs = now;
-        }
-        return true;
-    }
-
-    private boolean handleCommittedJumpMovement(
-        Minecraft client,
-        ClientLevel world,
-        LocalPlayer player,
-        BlockPos playerFootPos,
-        long now
-    ) {
-        if (client == null || world == null || player == null || playerFootPos == null || client.options == null) {
-            return false;
-        }
-        BlockPos jumpTarget;
-        long jumpUntilMs;
-        synchronized (this) {
-            jumpTarget = executionState.committedJumpWaypoint;
-            jumpUntilMs = executionState.committedJumpUntilMs;
-        }
-        if (jumpTarget == null) {
-            return false;
-        }
-        if (player.onGround()) {
-            synchronized (this) {
-                if (acceptCommittedJumpLandingLocked(world, playerFootPos, jumpTarget)) {
-                    executionState.committedJumpWaypoint = null;
-                    executionState.committedJumpUntilMs = 0L;
-                    executionState.lastJumpAttemptWaypoint = null;
-                    executionState.repeatedJumpAttempts = 0;
-                    executionState.controllerMode = ControllerMode.FOLLOW_PATH;
-                    executionState.controllerTarget = null;
-                    executionState.controllerUntilMs = 0L;
-                    lastReplanReason = "jump landed";
-                    lastStuckReason = "jump complete";
-                    lastProgressAtMs = now;
-                    return false;
-                }
-            }
-            if (now > jumpUntilMs) {
-                pathPlanner.rememberFailedJump(playerFootPos, jumpTarget, now);
-                rewindCurrentPathIndex(playerFootPos, jumpTarget);
-                recoverFromStuck(client, world, playerFootPos, jumpTarget, targetPos, Vec3.atCenterOf(playerFootPos), now, "jump redirect", "missed jump");
-                return true;
-            }
-        }
-        Vec3 targetCenter = new Vec3(jumpTarget.getX() + 0.5D, player.getY(), jumpTarget.getZ() + 0.5D);
-        Vec3 currentPos = new Vec3(player.getX(), player.getY(), player.getZ());
-        double dx = targetCenter.x - currentPos.x;
-        double dz = targetCenter.z - currentPos.z;
-        double horizontalDistance = Math.sqrt(dx * dx + dz * dz);
-        float targetYaw = (float) (Mth.wrapDegrees(Math.toDegrees(Math.atan2(dz, dx)) - 90.0D));
-        player.setYRot(stepAngle(player.getYRot(), targetYaw, movementYawStep()));
-        player.setYHeadRot(player.getYRot());
-        player.setYBodyRot(player.getYRot());
-
-        if (!player.onGround() && horizontalDistance > 0.0001D) {
-            Vec3 velocity = player.getDeltaMovement();
-            player.setDeltaMovement(
-                velocity.x * 0.40D + (dx / horizontalDistance) * 0.11D,
-                velocity.y,
-                velocity.z * 0.40D + (dz / horizontalDistance) * 0.11D
-            );
-        }
-
-        releaseMovementKeys(client);
-        if (client.options.keyUp != null) {
-            client.options.keyUp.setDown(horizontalDistance > 0.05D);
-        }
-        if (client.options.keySprint != null) {
-            client.options.keySprint.setDown(false);
-        }
-        if (client.options.keyJump != null) {
-            client.options.keyJump.setDown(false);
-        }
-        synchronized (this) {
-            lastReplanReason = "committed jump";
-            lastStuckReason = player.onGround() ? "landing jump" : "airborne";
-            lastProgressAtMs = now;
-        }
-        noteControllerActivity(now);
-        return true;
-    }
-
-    private boolean handleCommittedDropMovement(
-        Minecraft client,
-        ClientLevel world,
-        LocalPlayer player,
-        BlockPos playerFootPos,
-        BlockPos waypoint,
-        BlockPos target,
-        Vec3 currentPos,
-        long now
-    ) {
-        if (client == null || world == null || player == null || playerFootPos == null || client.options == null) {
-            return false;
-        }
-        BlockPos dropTarget;
-        long dropUntilMs;
-        synchronized (this) {
-            dropTarget = executionState.controllerTarget != null ? executionState.controllerTarget : waypoint;
-            dropUntilMs = executionState.controllerUntilMs;
-        }
-        if (dropTarget == null) {
-            return false;
-        }
-        if (player.onGround()) {
-            synchronized (this) {
-                if (acceptCommittedDropLandingLocked(world, playerFootPos, dropTarget)) {
-                    executionState.controllerMode = ControllerMode.FOLLOW_PATH;
-                    executionState.controllerTarget = null;
-                    executionState.controllerUntilMs = 0L;
-                    lastReplanReason = "drop landed";
-                    lastStuckReason = "drop complete";
-                    lastProgressAtMs = now;
-                    return false;
-                }
-            }
-        }
-
-        Vec3 targetCenter = new Vec3(dropTarget.getX() + 0.5D, player.getY(), dropTarget.getZ() + 0.5D);
-        double dx = targetCenter.x - currentPos.x;
-        double dz = targetCenter.z - currentPos.z;
-        double horizontalDistance = Math.sqrt(dx * dx + dz * dz);
-        float targetYaw = (float) (Mth.wrapDegrees(Math.toDegrees(Math.atan2(dz, dx)) - 90.0D));
-        float nextYaw = stepAngle(player.getYRot(), targetYaw, movementYawStep());
-        player.setYRot(nextYaw);
-        player.setYHeadRot(nextYaw);
-        player.setYBodyRot(nextYaw);
-
-        boolean blocked = player.onGround()
-            && horizontalDistance > 0.2D
-            && pathPlanner.isBlockedTowardWaypoint(world, playerFootPos, dropTarget);
-        releaseMovementKeys(client);
-        if (client.options.keyUp != null) {
-            client.options.keyUp.setDown(horizontalDistance > 0.15D && !blocked);
-        }
-        if (client.options.keySprint != null) {
-            client.options.keySprint.setDown(false);
-        }
-        if (client.options.keyJump != null) {
-            client.options.keyJump.setDown(false);
-        }
-        if (client.options.keyShift != null) {
-            client.options.keyShift.setDown(false);
-        }
-
-        synchronized (this) {
-            lastReplanReason = "committed drop";
-            lastStuckReason = player.onGround() ? "stepping off ledge" : "airborne descent";
-            lastProgressAtMs = now;
-        }
-        noteControllerActivity(now);
-
-        if (player.onGround() && blocked) {
-            pathPlanner.rememberFailedDrop(playerFootPos, dropTarget, now);
-            recoverFromStuck(client, world, playerFootPos, dropTarget, target, currentPos, now, "drop blocked", "drop blocked");
-            return true;
-        }
-        if (player.onGround() && now > dropUntilMs) {
-            pathPlanner.rememberFailedDrop(playerFootPos, dropTarget, now);
-            recoverFromStuck(client, world, playerFootPos, dropTarget, target, currentPos, now, "drop redirect", "missed drop");
-            return true;
-        }
-        return true;
-    }
-
-    private boolean handleTrappedSpaceRecovery(
-        Minecraft client,
-        ClientLevel world,
-        LocalPlayer player,
-        BlockPos playerFootPos,
-        BlockPos waypoint,
-        long now
-    ) {
-        if (client == null
-            || world == null
-            || player == null
-            || playerFootPos == null
-            || waypoint == null
-            || (!allowBlockBreaking && !allowBlockPlacing)) {
-            return false;
-        }
-        if (shouldPreferFinalApproachController(world, playerFootPos)) {
-            synchronized (this) {
-                executionState.committedEscapeTarget = null;
-                executionState.committedEscapeUntilMs = 0L;
-                executionState.committedEscape = EscapePlan.empty();
-                executionState.committedEscapePrimitiveIndex = 0;
-            }
-            return false;
-        }
-        boolean trapped = isTrappedInCrampedSpace(world, playerFootPos, waypoint);
-        boolean committed = isCommittedEscapeState(now);
-        if (!trapped && committed && canExitTrappedRecovery(world, playerFootPos, waypoint, now)) {
-            synchronized (this) {
-                executionState.committedEscapeTarget = null;
-                executionState.committedEscapeUntilMs = 0L;
-                executionState.committedEscape = EscapePlan.empty();
-                executionState.committedEscapePrimitiveIndex = 0;
-            }
-            return false;
-        }
-        if (!trapped && !committed) {
-            synchronized (this) {
-                executionState.committedEscapeTarget = null;
-                executionState.committedEscapeUntilMs = 0L;
-                executionState.committedEscape = EscapePlan.empty();
-                executionState.committedEscapePrimitiveIndex = 0;
-            }
-            return false;
-        }
-
-        BlockPos verticalEscapeTarget = selectVerticalEscapeTarget(world, playerFootPos, waypoint);
-        if (verticalEscapeTarget != null) {
-            syncPathToPillarTarget(world, verticalEscapeTarget, now);
-            return handlePillaring(client, world, player, playerFootPos, verticalEscapeTarget, now);
-        }
-
-        ensureExcavationPlan(world, playerFootPos, waypoint, now);
-
-        BlockPos breakTarget = selectTrappedSpaceBreakTarget(world, playerFootPos, waypoint, now);
-        if (breakTarget == null) {
-            long millisSinceMovement;
-            BlockPos routeTarget;
-            synchronized (this) {
-                millisSinceMovement = now - lastMovementAtMs;
-                routeTarget = selectCommittedEscapeRouteTarget(world, playerFootPos, now);
-            }
-            if (trapped && millisSinceMovement > NO_MOVEMENT_REPLAN_MS) {
-                synchronized (this) {
-                    if (!executionState.committedEscape.isEmpty()) {
-                        pathPlanner.rememberFailedMove(playerFootPos, playerFootPos.relative(executionState.committedEscape.direction()), now);
-                    }
-                }
-                clearExcavationPlan(now, "trapped redirect", "trapped stationary");
-                ensureExcavationPlan(world, playerFootPos, waypoint, now);
-                breakTarget = selectTrappedSpaceBreakTarget(world, playerFootPos, waypoint, now);
-                if (breakTarget != null) {
-                    return continueBreakingEscapeBlock(client, world, player, breakTarget, now);
-                }
-                synchronized (this) {
-                    routeTarget = selectCommittedEscapeRouteTarget(world, playerFootPos, now);
-                }
-            }
-            if (routeTarget != null) {
-                continueCommittedEscapeMovement(client, world, player, playerFootPos, routeTarget, now);
-                return true;
-            }
-            releaseMovementKeys(client);
-            clearExcavationPlan(now, "trapped recovery reset", "escape reevaluation");
-            return false;
-        }
-        return continueBreakingEscapeBlock(client, world, player, breakTarget, now);
-    }
-
-    private BlockPos selectVerticalEscapeTarget(Level world, BlockPos playerFootPos, BlockPos waypoint) {
-        if (world == null || playerFootPos == null || waypoint == null || !allowBlockPlacing) {
-            return null;
-        }
-        if (shouldPreferFinalApproachController(world, playerFootPos)) {
-            return null;
-        }
-        boolean trappedContext;
-        boolean allowEscapePillar;
-        synchronized (this) {
-            trappedContext = isCommittedEscapeState(System.currentTimeMillis())
-                || isTrappedInCrampedSpace(world, playerFootPos, waypoint);
-            allowEscapePillar = isActiveEscapePillarPrimitiveLocked();
-        }
-        if (!trappedContext || !allowEscapePillar) {
-            return null;
-        }
-        BlockPos immediateUp = playerFootPos.above();
-        long now = System.currentTimeMillis();
-        return pathPlanner.canPillarTo(world, playerFootPos, immediateUp) && !pathPlanner.isFailedPillar(playerFootPos, immediateUp, now)
-            ? immediateUp.immutable()
-            : null;
-    }
-
-    private boolean shouldPreferFinalApproachController(Level world, BlockPos playerFootPos) {
-        if (world == null || playerFootPos == null) {
-            return false;
-        }
-        BlockPos activeTarget;
-        synchronized (this) {
-            activeTarget = targetPos;
-        }
-        if (activeTarget == null || !pathPlanner.isStandable(world, activeTarget)) {
-            return false;
-        }
-        return pathPlanner.horizontalDistanceSq(playerFootPos, activeTarget) <= 4.0D
-            && Math.abs(playerFootPos.getY() - activeTarget.getY()) <= 1;
-    }
-
-    private void continueCommittedEscapeMovement(
-        Minecraft client,
-        ClientLevel world,
-        LocalPlayer player,
-        BlockPos playerFootPos,
-        BlockPos routeTarget,
-        long now
-    ) {
-        if (client == null || world == null || player == null || playerFootPos == null || routeTarget == null || client.options == null) {
-            return;
-        }
-        boolean jumpOpportunity = pathPlanner.hasJumpUpOpportunity(world, playerFootPos, routeTarget);
-        BlockPos jumpTarget = jumpOpportunity ? pathPlanner.resolveJumpUpApproachTarget(world, playerFootPos, routeTarget) : routeTarget;
-        Vec3 frontCenter = new Vec3(jumpTarget.getX() + 0.5D, player.getY(), jumpTarget.getZ() + 0.5D);
-        Vec3 currentPos = new Vec3(player.getX(), player.getY(), player.getZ());
-        double dx = frontCenter.x - currentPos.x;
-        double dz = frontCenter.z - currentPos.z;
-        double horizontalDistance = Math.sqrt(dx * dx + dz * dz);
-        float targetYaw = (float) (Mth.wrapDegrees(Math.toDegrees(Math.atan2(dz, dx)) - 90.0D));
-        float nextYaw = stepAngle(player.getYRot(), targetYaw, movementYawStep());
-        float jumpYawError = Math.abs(Mth.wrapDegrees(targetYaw - nextYaw));
-        player.setYRot(nextYaw);
-        player.setYHeadRot(player.getYRot());
-        player.setYBodyRot(player.getYRot());
-
-        boolean blocked = pathPlanner.isBlockedTowardWaypoint(world, playerFootPos, routeTarget) && !jumpOpportunity;
-        releaseMovementKeys(client);
-        if (client.options.keyUp != null) {
-            client.options.keyUp.setDown(!blocked && horizontalDistance > 0.2D || jumpOpportunity);
-        }
-        if (client.options.keySprint != null) {
-            client.options.keySprint.setDown(false);
-        }
-        if (client.options.keyJump != null) {
-            boolean canHop = player.onGround()
-                && jumpOpportunity
-                && horizontalDistance <= 1.6D
-                && jumpYawError <= JUMP_YAW_ALIGNMENT_DEGREES;
-            client.options.keyJump.setDown(false);
-            if (canHop) {
-                player.jumpFromGround();
-                synchronized (this) {
-                    executionState.lastJumpAtMs = now;
-                    executionState.committedJumpWaypoint = jumpTarget.immutable();
-                    executionState.committedJumpUntilMs = now + JUMP_COMMIT_WINDOW_MS;
-                    lastReplanReason = "escape primitive jump";
-                    lastStuckReason = "jumping out";
-                }
-                noteControllerActivity(now);
-                return;
-            }
-        }
-
-        synchronized (this) {
-            lastProgressAtMs = now;
-            lastReplanReason = "escape primitive move";
-            lastStuckReason = blocked ? "escape step blocked" : "following excavation route";
-        }
-        noteControllerActivity(now);
-    }
-
-    private void ensureExcavationPlan(Level world, BlockPos playerFootPos, BlockPos waypoint, long now) {
-        synchronized (this) {
-            boolean rebuild = executionState.committedEscape.isEmpty() || executionState.committedEscapePrimitiveIndex >= executionState.committedEscape.primitives().size();
-            if (rebuild) {
-                ExcavationPlan plan = buildExcavationPlan(world, playerFootPos, waypoint, now);
-                if (plan != null) {
-                    executionState.committedEscape = plan.escapePlan();
-                    executionState.committedEscapePrimitiveIndex = 0;
-                    executionState.committedEscapeUntilMs = now + TRAPPED_RECOVERY_COMMIT_MS;
-                    lastReplanReason = "escape plan";
-                    lastStuckReason = "committed excavation";
-                }
-            } else if (!executionState.committedEscape.isEmpty()) {
-                executionState.committedEscapeUntilMs = now + TRAPPED_RECOVERY_COMMIT_MS;
-            }
-        }
-    }
-
-    private void clearExcavationPlan(long now, String replanReason, String stuckReason) {
-        synchronized (this) {
-            executionState.committedEscapeTarget = null;
-            executionState.committedEscapeUntilMs = 0L;
-            executionState.committedEscape = EscapePlan.empty();
-            executionState.committedEscapePrimitiveIndex = 0;
-            lastReplanReason = replanReason;
-            lastStuckReason = stuckReason;
-            executionState.controllerProgressAtMs = now;
-        }
-    }
-
-    private BlockPos selectCommittedEscapeRouteTarget(Level world, BlockPos playerFootPos, long now) {
-        synchronized (this) {
-            if (executionState.committedEscape.isEmpty()) {
-                return null;
-            }
-            while (executionState.committedEscapePrimitiveIndex < executionState.committedEscape.primitives().size()) {
-                EscapePrimitive primitive = executionState.committedEscape.primitives().get(executionState.committedEscapePrimitiveIndex);
-                if (primitive == null || primitive.target() == null) {
-                    executionState.committedEscapePrimitiveIndex++;
-                    continue;
-                }
-                BlockPos step = primitive.target();
-                if (primitive.type() != EscapePrimitiveType.MOVE) {
-                    return null;
-                }
-                if (pathPlanner.horizontalDistanceSq(playerFootPos, step) <= 0.25D && Math.abs(step.getY() - playerFootPos.getY()) <= 1) {
-                    executionState.committedEscapePrimitiveIndex++;
-                    continue;
-                }
-                if (pathPlanner.isFailedNode(step, now) || requiresBreakingForWaypoint(world, step) || pathPlanner.needsPlacedSupport(world, step)) {
-                    return null;
-                }
-                if (isWaypointActionable(world, step)) {
-                    executionState.committedEscapeTarget = step.immutable();
-                    return executionState.committedEscapeTarget;
-                }
-                return null;
-            }
-            return null;
-        }
-    }
-
-    private boolean isCommittedEscapeState(long now) {
-        synchronized (this) {
-            return !executionState.committedEscape.isEmpty() && executionState.committedEscapeUntilMs > now;
-        }
-    }
-
-    private boolean isCommittedLocalEscapeChain(long now) {
-        synchronized (this) {
-            return !executionState.committedEscape.isEmpty()
-                && executionState.committedEscapeUntilMs > now
-                && executionState.committedEscapePrimitiveIndex < executionState.committedEscape.primitives().size();
-        }
-    }
-
-    private boolean canExitTrappedRecovery(Level world, BlockPos playerFootPos, BlockPos waypoint, long now) {
-        if (world == null || playerFootPos == null || waypoint == null) {
-            return false;
-        }
-        if (!pathPlanner.canOccupy(world, playerFootPos.above())) {
-            return false;
-        }
-        return countPhysicalWalkNeighbors(world, playerFootPos) >= 2;
-    }
-
-    private BlockPos selectBreakTarget(Level world, BlockPos playerFootPos, BlockPos waypoint, PlannedPrimitive plannedPrimitive) {
-        if (world == null || waypoint == null) {
-            return null;
-        }
-        BlockPos currentBreakTarget = null;
-        synchronized (this) {
-            currentBreakTarget = executionState.activeBreakTarget;
-        }
-        List<BlockPos> breakTargets = primitiveRequiresBreak(plannedPrimitive)
-            ? plannedPrimitive.breakTargets()
-            : List.of();
-        if (breakTargets == null || breakTargets.isEmpty()) {
-            return null;
-        }
-        synchronized (this) {
-            if (executionState.activeBreakTarget != null && breakTargets.contains(executionState.activeBreakTarget) && pathPlanner.isBreakableForNavigator(world, executionState.activeBreakTarget)) {
-                return executionState.activeBreakTarget;
-            }
-        }
-        BlockPos pendingTarget = firstPendingBreakTarget(world, breakTargets);
-        if (pendingTarget != null && isPlannedBreakTargetReachable(playerFootPos, pendingTarget)) {
-            return pendingTarget;
-        }
-        for (BlockPos candidate : breakTargets) {
-            if (!pathPlanner.isBreakableForNavigator(world, candidate)) {
-                continue;
-            }
-            if (!isPlannedBreakTargetReachable(playerFootPos, candidate)) {
-                continue;
-            }
-            return candidate;
-        }
-        return null;
-    }
-
-    private BlockPos selectBreakTarget(
-        ClientLevel world,
-        LocalPlayer player,
-        BlockPos playerFootPos,
-        BlockPos waypoint,
-        PlannedPrimitive plannedPrimitive
-    ) {
-        BlockPos target = selectBreakTarget((Level) world, playerFootPos, waypoint, plannedPrimitive);
-        if (target == null) {
-            return null;
-        }
-        if (!canBreakTargetNow(world, player, target)) {
-            synchronized (this) {
-                if (target.equals(executionState.activeBreakTarget)) {
-                    executionState.activeBreakTarget = null;
-                }
-            }
-            return null;
-        }
-        return target;
-    }
-
-    private BlockPos firstPendingBreakTarget(Level world, List<BlockPos> breakTargets) {
-        if (world == null || breakTargets == null || breakTargets.isEmpty()) {
-            return null;
-        }
-        for (BlockPos candidate : breakTargets) {
-            if (candidate != null && pathPlanner.isBreakableForNavigator(world, candidate)) {
-                return candidate;
-            }
-        }
-        return null;
-    }
-
-    private boolean isPlannedBreakTargetReachable(BlockPos playerFootPos, BlockPos target) {
-        if (playerFootPos == null || target == null) {
-            return false;
-        }
-        return pathPlanner.horizontalDistanceSq(playerFootPos, target) <= 9.0D
-            && Math.abs(playerFootPos.getY() - target.getY()) <= 3;
-    }
-
-    private boolean isTrappedInCrampedSpace(Level world, BlockPos playerFootPos, BlockPos waypoint) {
-        if (world == null || playerFootPos == null || waypoint == null) {
-            return false;
-        }
-        int physicalWalkNeighbors = countPhysicalWalkNeighbors(world, playerFootPos);
-        boolean boxedIn = physicalWalkNeighbors <= 1;
-        if (boxedIn) {
-            return true;
-        }
-        boolean lowPlannerMobility = pathPlanner.countDirectWalkNeighbors(world, playerFootPos, playerFootPos, waypoint, System.currentTimeMillis()) <= 1;
-        return lowPlannerMobility && physicalWalkNeighbors <= 2;
-    }
-
-    private int countPhysicalWalkNeighbors(Level world, BlockPos playerFootPos) {
-        if (world == null || playerFootPos == null) {
-            return 0;
-        }
-        int count = 0;
-        for (Direction direction : Direction.Plane.HORIZONTAL) {
-            BlockPos candidate = playerFootPos.relative(direction);
-            if (!isPhysicalWalkNeighbor(world, candidate)) {
-                continue;
-            }
-            count++;
-        }
-        return count;
-    }
-
-    private boolean isPhysicalWalkNeighbor(Level world, BlockPos footPos) {
-        if (world == null || footPos == null) {
-            return false;
-        }
-        if (!pathPlanner.canOccupy(world, footPos) || !pathPlanner.canOccupy(world, footPos.above())) {
-            return false;
-        }
-        if (pathPlanner.resolveSupportSurfaceY(world, footPos).isEmpty() && !pathPlanner.isWaterNode(world, footPos)) {
-            return false;
-        }
-        return !pathPlanner.isHardDanger(world, footPos);
-    }
-
-    private BlockPos selectTrappedSpaceBreakTarget(Level world, BlockPos playerFootPos, BlockPos waypoint, long now) {
-        if (world == null || playerFootPos == null || waypoint == null) {
-            return null;
-        }
-
-        synchronized (this) {
-            while (executionState.committedEscapePrimitiveIndex < executionState.committedEscape.primitives().size()) {
-                EscapePrimitive primitive = executionState.committedEscape.primitives().get(executionState.committedEscapePrimitiveIndex);
-                if (primitive == null || primitive.target() == null) {
-                    executionState.committedEscapePrimitiveIndex++;
-                    continue;
-                }
-                if (primitive.type() != EscapePrimitiveType.MINE) {
-                    return null;
-                }
-                BlockPos planned = primitive.target();
-                if (!isReachableTrappedBreakTarget(playerFootPos, executionState.committedEscape.direction(), planned)) {
-                    return null;
-                }
-                if (pathPlanner.canOccupy(world, planned)) {
-                    executionState.committedEscapePrimitiveIndex++;
-                    continue;
-                }
-                if (pathPlanner.isBreakableForNavigator(world, planned)) {
-                    executionState.committedEscapeTarget = planned.immutable();
-                    return executionState.committedEscapeTarget;
-                }
-                return null;
-            }
-            if (executionState.committedEscapeTarget != null && executionState.committedEscapeUntilMs <= now) {
-                executionState.committedEscapeTarget = null;
-                executionState.committedEscapeUntilMs = 0L;
-            }
-        }
-        return null;
-    }
-
-    private boolean isReachableTrappedBreakTarget(BlockPos playerFootPos, Direction direction, BlockPos target) {
-        if (playerFootPos == null || target == null) {
-            return false;
-        }
-        int dx = target.getX() - playerFootPos.getX();
-        int dy = target.getY() - playerFootPos.getY();
-        int dz = target.getZ() - playerFootPos.getZ();
-        if (Math.abs(dx) + Math.abs(dz) == 0) {
-            return dy >= 1 && dy <= 2;
-        }
-        if (direction == null || direction.getAxis().isVertical()) {
-            return false;
-        }
-        if (dx != direction.getStepX() || dz != direction.getStepZ()) {
-            return false;
-        }
-        return dy >= 0 && dy <= 2;
-    }
-
-    private Direction chooseEscapeDirection(Level world, BlockPos current, BlockPos goal, long now) {
-        if (world == null || current == null || goal == null) {
-            return null;
-        }
-        Direction bestDirection = null;
-        double bestScore = Double.POSITIVE_INFINITY;
-        for (Direction direction : Direction.Plane.HORIZONTAL) {
-            Double score = scoreEscapeDirection(world, current, goal, direction, now);
-            if (score == null || score >= bestScore) {
-                continue;
-            }
-            bestScore = score;
-            bestDirection = direction;
-        }
-        return bestDirection;
-    }
-
-    private ExcavationPlan buildExcavationPlan(Level world, BlockPos current, BlockPos goal, long now) {
-        if (world == null || current == null || goal == null) {
-            return null;
-        }
-        Direction direction = chooseEscapeDirection(world, current, goal, now);
-        if (direction == null) {
-            return null;
-        }
-        StairEscapePlan stairPlan = buildStairEscapePlan(world, current, goal, direction, now);
-        if (stairPlan == null || stairPlan.route().isEmpty()) {
-            return null;
-        }
-        return new ExcavationPlan(stairPlan.escapePlan());
-    }
-
-    private StairEscapePlan buildStairEscapePlan(Level world, BlockPos current, BlockPos goal, Direction direction, long now) {
-        if (world == null || current == null || goal == null || direction == null || direction.getAxis().isVertical()) {
-            return null;
-        }
-        List<BlockPos> route = new ArrayList<>();
-        List<EscapePrimitive> primitives = new ArrayList<>();
-        int stepX = direction.getStepX();
-        int stepZ = direction.getStepZ();
-        BlockPos cursor = current;
-
-        addThreeHighExcavationBreaks(primitives, world, cursor);
-
-        for (int distance = 1; distance <= 8; distance++) {
-            BlockPos flat = cursor.offset(stepX, 0, stepZ);
-            BlockPos up = cursor.offset(stepX, 1, stepZ);
-            BlockPos chosen = null;
-
-            boolean canFlat = isValidEscapeStepCandidate(world, cursor, flat, now) && hasExcavatableThreeHighClearance(world, flat);
-            boolean canUp = isValidEscapeStepCandidate(world, cursor, up, now) && canExcavateEscapeJumpCorridor(world, cursor, up);
-
-            boolean preferUp = goal.getY() > cursor.getY() || !canFlat;
-            if (preferUp && canUp) {
-                chosen = up;
-            } else if (canFlat) {
-                chosen = flat;
-            } else if (canUp) {
-                chosen = up;
-            }
-
-            if (chosen == null) {
-                return null;
-            }
-
-            route.add(chosen.immutable());
-            if (chosen.getY() > cursor.getY()) {
-                addAscendingExcavationBreaks(primitives, world, cursor, chosen);
-            } else {
-                addThreeHighExcavationBreaks(primitives, world, chosen);
-            }
-            addEscapePrimitive(primitives, EscapePrimitiveType.MOVE, chosen);
-
-            cursor = chosen;
-            if (isEscapeLipReached(world, current, cursor, goal, now)) {
-                break;
-            }
-        }
-
-        return route.isEmpty() ? null : new StairEscapePlan(new EscapePlan(direction, List.copyOf(route), List.copyOf(primitives)));
-    }
-
-    private boolean isEscapeLipReached(Level world, BlockPos start, BlockPos cursor, BlockPos goal, long now) {
-        if (world == null || start == null || cursor == null || goal == null) {
-            return false;
-        }
-        if (!hasThreeHighExcavationClearance(world, cursor)) {
-            return false;
-        }
-        if (pathPlanner.countDirectWalkNeighbors(world, cursor, cursor, goal, now) < 2) {
-            return false;
-        }
-        int targetLipY = Math.max(start.getY() + 1, goal.getY() - 1);
-        return cursor.getY() >= targetLipY;
-    }
-
-    private boolean isValidEscapeStepCandidate(Level world, BlockPos from, BlockPos candidate, long now) {
-        if (world == null || from == null || candidate == null) {
-            return false;
-        }
-        return pathPlanner.isChunkLoaded(world, candidate)
-            && !pathPlanner.isFailedNode(candidate, now)
-            && !pathPlanner.isFailedEdge(from, candidate, now)
-            && !pathPlanner.isHardDanger(world, candidate)
-            && !pathPlanner.needsPlacedSupport(world, candidate);
-    }
-
-    private boolean hasExcavatableThreeHighClearance(Level world, BlockPos foot) {
-        if (world == null || foot == null) {
-            return false;
-        }
-        return pathPlanner.isExcavationClearable(world, foot)
-            && pathPlanner.isExcavationClearable(world, foot.above())
-            && pathPlanner.isExcavationClearable(world, foot.above(2));
-    }
-
-    private void addThreeHighExcavationBreaks(List<EscapePrimitive> plan, Level world, BlockPos foot) {
-        if (plan == null || world == null || foot == null) {
-            return;
-        }
-        addOrderedExcavationBreaks(plan, world, List.of(foot, foot.above(), foot.above(2)));
-    }
-
-    private void addAscendingExcavationBreaks(List<EscapePrimitive> plan, Level world, BlockPos from, BlockPos to) {
-        if (plan == null || world == null || from == null || to == null) {
-            return;
-        }
-        addOrderedExcavationBreaks(plan, world, List.of(
-            from.above(),
-            from.above(2),
-            to,
-            to.above(),
-            to.above(2)
-        ));
-    }
-
-    private boolean canExcavateEscapeJumpCorridor(Level world, BlockPos from, BlockPos to) {
-        return pathPlanner.canExcavateJumpCorridor(world, from, to);
-    }
-
-    private void addOrderedExcavationBreaks(List<EscapePrimitive> plan, Level world, List<BlockPos> candidates) {
-        if (plan == null || world == null || candidates == null || candidates.isEmpty()) {
-            return;
-        }
-        for (BlockPos candidate : candidates) {
-            if (candidate == null || !pathPlanner.isBreakableForNavigator(world, candidate)) {
-                continue;
-            }
-            addPlannedBreak(plan, world, candidate.immutable());
-        }
-    }
-
-    private void addPlannedBreak(List<EscapePrimitive> plan, Level world, BlockPos pos) {
-        if (plan == null || world == null || pos == null) {
-            return;
-        }
-        if (!pathPlanner.isBreakableForNavigator(world, pos)) {
-            return;
-        }
-        addEscapePrimitive(plan, EscapePrimitiveType.MINE, pos);
-    }
-
-    private void addEscapePrimitive(List<EscapePrimitive> plan, EscapePrimitiveType type, BlockPos pos) {
-        if (plan == null || type == null || pos == null) {
-            return;
-        }
-        EscapePrimitive primitive = new EscapePrimitive(type, pos.immutable());
-        if (!plan.contains(primitive)) {
-            plan.add(primitive);
-        }
-    }
-
-    private boolean hasThreeHighExcavationClearance(Level world, BlockPos foot) {
-        if (world == null || foot == null) {
-            return false;
-        }
-        return pathPlanner.canOccupy(world, foot)
-            && pathPlanner.canOccupy(world, foot.above())
-            && pathPlanner.canOccupy(world, foot.above(2));
-    }
-
-    private Double scoreEscapeDirection(Level world, BlockPos current, BlockPos goal, Direction direction, long now) {
-        if (world == null || current == null || goal == null || direction == null || direction.getAxis().isVertical()) {
-            return null;
-        }
-        int stepX = direction.getStepX();
-        int stepZ = direction.getStepZ();
-
-        double score = 0.0D;
-        int consecutiveOpen = 0;
-        boolean foundExit = false;
-
-        StairEscapePlan plan = buildStairEscapePlan(world, current, goal, direction, now);
-        if (plan == null || plan.route().isEmpty()) {
-            return null;
-        }
-        BlockPos cursor = current;
-        for (int i = 0; i < plan.route().size(); i++) {
-            BlockPos step = plan.route().get(i);
-            if (step == null) {
-                return null;
-            }
-            double segmentScore = 0.0D;
-            int requiredBreaks = 0;
-            if (step.getY() > cursor.getY()) {
-                for (BlockPos candidate : List.of(cursor.above(), cursor.above(2), step, step.above(), step.above(2))) {
-                    if (!pathPlanner.canOccupy(world, candidate)) {
-                        if (!pathPlanner.isBreakableForNavigator(world, candidate)) {
-                            return null;
-                        }
-                        segmentScore += pathPlanner.breakPenalty(world, candidate);
-                        requiredBreaks++;
-                    }
-                }
-            } else {
-                for (BlockPos candidate : List.of(step, step.above(), step.above(2))) {
-                    if (!pathPlanner.canOccupy(world, candidate)) {
-                        if (!pathPlanner.isBreakableForNavigator(world, candidate)) {
-                            return null;
-                        }
-                        segmentScore += pathPlanner.breakPenalty(world, candidate);
-                        requiredBreaks++;
-                    }
-                }
-            }
-
-            if (!pathPlanner.hasCollision(world, step.below()) && !pathPlanner.isWaterNode(world, step)) {
-                if (!allowBlockPlacing || !pathPlanner.canPlaceSupportAt(world, step.below())) {
-                    return null;
-                }
-                segmentScore += PLACE_MOVE_PENALTY * 3.5D;
-            }
-
-            if (requiredBreaks == 0 && hasThreeHighExcavationClearance(world, step)) {
-                score -= 4.0D + ((i + 1) * 1.5D);
-                consecutiveOpen++;
-            } else {
-                score += segmentScore + ((i + 1) * 0.65D);
-                consecutiveOpen = 0;
-            }
-
-            if (consecutiveOpen >= 2
-                && hasThreeHighExcavationClearance(world, step)
-                && pathPlanner.countDirectWalkNeighbors(world, step, step, goal, now) >= 2) {
-                score -= 14.0D + ((i + 1) * 2.0D);
-                foundExit = true;
-                break;
-            }
-            cursor = step;
-        }
-        if (!foundExit) {
-            score += 18.0D;
-        }
-        int targetDistance = Math.abs(goal.getX() - (current.getX() + stepX))
-            + Math.abs(goal.getZ() - (current.getZ() + stepZ));
-        score += targetDistance * 0.03D;
-        return score;
-    }
-
-    private void addBreakCandidate(List<BlockPos> candidates, BlockPos candidate) {
-        if (candidates != null && candidate != null) {
-            candidates.add(candidate);
-        }
-    }
-
-    private boolean continueBreakingBlock(Minecraft client, LocalPlayer player, BlockPos target, long now) {
-        if (client == null || client.gameMode == null || client.level == null || player == null || target == null) {
-            return false;
-        }
-        BlockState targetState = client.level.getBlockState(target);
-        if (targetState == null || targetState.isAir()) {
-            return false;
-        }
-        BlockPos waypoint;
-        PlannedPrimitive plannedPrimitive;
-        synchronized (this) {
-            waypoint = activeWaypoint;
-            plannedPrimitive = executionState.activePlannedPrimitive;
-        }
-        if (waypoint == null) {
-            return false;
-        }
-        List<BlockPos> requiredTargets = primitiveRequiresBreak(plannedPrimitive)
-            ? plannedPrimitive.breakTargets()
-            : pathPlanner.getRequiredBreakTargets(client.level, waypoint);
-        return continueBreakingRequiredTarget(client, player, target, requiredTargets, now);
-    }
-
-    private boolean continueBreakingRequiredTarget(
-        Minecraft client,
-        LocalPlayer player,
-        BlockPos target,
-        List<BlockPos> requiredTargets,
-        long now
-    ) {
-        if (client == null || client.gameMode == null || client.level == null || player == null || target == null) {
-            return false;
-        }
-        if (requiredTargets == null || !requiredTargets.contains(target)) {
-            synchronized (this) {
-                executionState.activeBreakTarget = null;
-            }
-            return false;
-        }
-        BlockPos pendingTarget = firstPendingBreakTarget(client.level, requiredTargets);
-        if (pendingTarget == null || !target.equals(pendingTarget)) {
-            synchronized (this) {
-                executionState.activeBreakTarget = null;
-            }
-            return false;
-        }
-        BlockState targetState = client.level.getBlockState(target);
-        if (targetState == null || targetState.isAir()) {
-            synchronized (this) {
-                executionState.activeBreakTarget = null;
-            }
-            return false;
-        }
-        BreakTargeting targeting = resolveBreakTargeting(client.level, player, target);
-        if (targeting == null) {
-            synchronized (this) {
-                executionState.activeBreakTarget = null;
-            }
-            return false;
-        }
-        equipBestMiningTool(player, targetState);
-        releaseMovementKeys(client);
-        applyWaterInteractionStance(client, client.level, player, target);
-        lookAtPosition(player, targeting.hitPos());
-        Direction face = targeting.face();
-        boolean startingNewTarget;
-        synchronized (this) {
-            startingNewTarget = executionState.activeBreakTarget == null || !executionState.activeBreakTarget.equals(target);
-            executionState.activeBreakTarget = target.immutable();
-            if (startingNewTarget) {
-                executionState.lastInteractAtMs = now;
-            }
-        }
-        if (startingNewTarget) {
-            client.gameMode.startDestroyBlock(target, face);
-        }
-        client.gameMode.continueDestroyBlock(target, face);
-        player.swing(InteractionHand.MAIN_HAND);
-        noteControllerActivity(now);
-        return true;
-    }
-
-    private void syncPathToPillarTarget(ClientLevel world, BlockPos pillarTarget, long now) {
-        if (world == null || pillarTarget == null) {
-            return;
-        }
-
-        BlockPos navTarget;
-        synchronized (this) {
-            navTarget = targetPos;
-            if (executionState.controllerMode == ControllerMode.PILLAR
-                && executionState.controllerTarget != null
-                && pillarTarget.equals(executionState.controllerTarget)
-                && !currentPath.isEmpty()
-                && pathIndex >= 0
-                && pathIndex < currentPath.size()
-                && pillarTarget.equals(currentPath.get(pathIndex))
-                && routeCommitUntilMs > now) {
-                activeWaypoint = pillarTarget.immutable();
-                return;
-            }
-        }
-
-        List<BlockPos> syncedPath = List.of(pillarTarget.immutable());
-        PathComputation continuation = null;
-        if (navTarget != null) {
-            continuation = findPath(world, pillarTarget, navTarget);
-            if (continuation != null && !continuation.path().isEmpty()) {
-                List<BlockPos> continuationPath = continuation.path();
-                if (pillarTarget.equals(continuationPath.get(0))) {
-                    syncedPath = List.copyOf(continuationPath);
-                } else {
-                    List<BlockPos> combined = new ArrayList<>(continuationPath.size() + 1);
-                    combined.add(pillarTarget.immutable());
-                    combined.addAll(continuationPath);
-                    syncedPath = List.copyOf(combined);
-                }
-            }
-        }
-
-        synchronized (this) {
-            currentPath = syncedPath;
-            pathIndex = 0;
-            furthestVisitedPathIndex = 0;
-            activeWaypoint = pillarTarget.immutable();
-            committedPathGoalPos = pillarTarget.immutable();
-            executionState.plannedBreakTargets = buildPathBreakPlan(world, currentPath, pathIndex);
-            rebuildCurrentPlanLocked(world);
-            if (!isPillarPrimitive(executionState.activePlannedPrimitive)) {
-                executionState.activePlannedPrimitive = createPrimitiveSnapshot(world, activeWaypoint.below(), activeWaypoint, SearchPrimitiveType.PILLAR, PlannedPrimitiveType.PILLAR, List.of(), activeWaypoint.below());
-            }
-            lastPlanAtMs = now;
-            routeCommitUntilMs = Math.max(routeCommitUntilMs, now + 1400L);
-            lastReplanReason = "pillar sync";
-            if (continuation != null && !continuation.path().isEmpty()) {
-                candidatePaths = continuation.candidatePaths();
-                candidatePathsVisibleUntilMs = now + PATH_DECISION_VISIBILITY_MS;
-                goalMode = shouldTrackResolvedPlanningGoal(navTarget, continuation.resolvedGoalPos(), continuation.goalMode())
-                    ? continuation.goalMode()
-                    : GoalMode.EXACT;
-                resolvedGoalPos = goalMode == GoalMode.NEAREST_STANDABLE ? continuation.resolvedGoalPos() : navTarget.immutable();
-                committedPathGoalPos = continuation.resolvedGoalPos() != null ? continuation.resolvedGoalPos().immutable() : resolvedGoalPos;
-            }
-        }
-    }
-
-    private boolean continueBreakingEscapeBlock(
-        Minecraft client,
-        ClientLevel world,
-        LocalPlayer player,
-        BlockPos target,
-        long now
-    ) {
-        if (client == null || world == null || client.gameMode == null || player == null || target == null) {
-            return false;
-        }
-        BlockState targetState = world.getBlockState(target);
-        if (targetState == null || targetState.isAir() || !pathPlanner.isBreakableForNavigator(world, target)) {
-            return false;
-        }
-        BreakTargeting targeting = resolveBreakTargeting(world, player, target);
-        if (targeting == null) {
-            return false;
-        }
-        equipBestMiningTool(player, targetState);
-        releaseMovementKeys(client);
-        applyWaterInteractionStance(client, world, player, target);
-        lookAtPosition(player, targeting.hitPos());
-        Direction face = targeting.face();
-        boolean startingNewTarget;
-        synchronized (this) {
-            startingNewTarget = executionState.activeBreakTarget == null || !executionState.activeBreakTarget.equals(target);
-            executionState.activeBreakTarget = target.immutable();
-            if (startingNewTarget) {
-                executionState.committedEscapeTarget = target.immutable();
-                executionState.committedEscapeUntilMs = now + TRAPPED_RECOVERY_COMMIT_MS;
-                executionState.lastInteractAtMs = now;
-                lastReplanReason = "escape primitive mine";
-                lastStuckReason = "excavating escape";
-            }
-        }
-        if (startingNewTarget) {
-            client.gameMode.startDestroyBlock(target, face);
-        }
-        client.gameMode.continueDestroyBlock(target, face);
-        player.swing(InteractionHand.MAIN_HAND);
-        noteControllerActivity(now);
-        return true;
-    }
-
-    private boolean shouldSuppressMiningNearGoal(Level world, LocalPlayer player, BlockPos playerFootPos, BlockPos waypoint) {
-        if (world == null || player == null || playerFootPos == null || waypoint == null) {
-            return false;
-        }
-        BlockPos activeTarget;
-        synchronized (this) {
-            activeTarget = targetPos;
-        }
-        if (activeTarget == null) {
-            return false;
-        }
-        if (pathPlanner.horizontalDistanceSq(playerFootPos, activeTarget) > 2.25D || Math.abs(playerFootPos.getY() - activeTarget.getY()) > 1) {
-            return false;
-        }
-        if (!activeTarget.equals(waypoint) && !activeTarget.above().equals(waypoint)) {
-            return false;
-        }
-        return pathPlanner.hasReachedExactGoal(playerFootPos, activeTarget);
-    }
-
-    private boolean shouldForceFinalApproach(Level world, BlockPos playerFootPos, BlockPos target) {
-        if (world == null || playerFootPos == null || target == null) {
-            return false;
-        }
-        return pathPlanner.isStandable(world, target)
-            && pathPlanner.horizontalDistanceSq(playerFootPos, target) <= 4.0D
-            && Math.abs(playerFootPos.getY() - target.getY()) <= 1;
-    }
-
-    private boolean shouldBreakForWaypoint(BlockPos playerFootPos, BlockPos waypoint, BlockPos breakTarget) {
-        if (playerFootPos == null || waypoint == null || breakTarget == null) {
-            return false;
-        }
-        if (pathPlanner.horizontalDistanceSq(playerFootPos, waypoint) > 4.0D || Math.abs(waypoint.getY() - playerFootPos.getY()) > 1) {
-            return isPlannedBreakTargetReachable(playerFootPos, breakTarget);
-        }
-        return breakTarget.equals(waypoint)
-            || breakTarget.equals(waypoint.above())
-            || isPlannedBreakTargetReachable(playerFootPos, breakTarget);
-    }
-
-    private boolean requiresBreakingForWaypoint(Level world, BlockPos waypoint) {
-        if (world == null || waypoint == null) {
-            return false;
-        }
-        List<BlockPos> breakTargets = pathPlanner.getRequiredBreakTargets(world, waypoint);
-        return breakTargets != null && !breakTargets.isEmpty();
-    }
-
-    private boolean shouldPlaceForWaypoint(Level world, BlockPos playerFootPos, BlockPos waypoint) {
-        if (world == null || playerFootPos == null || waypoint == null) {
-            return false;
-        }
-        if (pathPlanner.isWaterNode(world, waypoint) || pathPlanner.isWaterNode(world, playerFootPos)) {
-            double horizontalDistanceSq = pathPlanner.horizontalDistanceSq(playerFootPos, waypoint);
-            int deltaY = waypoint.getY() - playerFootPos.getY();
-            if (!pathPlanner.canOccupy(world, waypoint) || !pathPlanner.canOccupy(world, waypoint.above())) {
-                return false;
-            }
-            return deltaY >= -1
-                && deltaY <= 1
-                && horizontalDistanceSq >= 0.01D
-                && horizontalDistanceSq <= 2.25D;
-        }
-        if (pathPlanner.canPillarTo(world, playerFootPos, waypoint)) {
-            return false;
-        }
-        BlockPos activeTarget;
-        synchronized (this) {
-            activeTarget = targetPos;
-        }
-        if (activeTarget != null) {
-            if (waypoint.equals(activeTarget) || waypoint.below().equals(activeTarget)) {
-                return false;
-            }
-            if (pathPlanner.isStandable(world, activeTarget)
-                && pathPlanner.horizontalDistanceSq(playerFootPos, activeTarget) <= 9.0D
-                && Math.abs(playerFootPos.getY() - activeTarget.getY()) <= 2) {
-                return false;
-            }
-            if (pathPlanner.isStandable(world, activeTarget)
-                && pathPlanner.horizontalDistanceSq(playerFootPos, activeTarget) <= 4.0D
-                && Math.abs(playerFootPos.getY() - activeTarget.getY()) <= 1) {
-                return false;
-            }
-        }
-        if (requiresBreakingForWaypoint(world, waypoint)) {
-            return false;
-        }
-        if (pathPlanner.isTreeCanopyNode(world, waypoint)) {
-            return false;
-        }
-        if (!pathPlanner.canOccupy(world, waypoint) || !pathPlanner.canOccupy(world, waypoint.above())) {
-            return false;
-        }
-        if (waypoint.getY() < playerFootPos.getY()) {
-            return false;
-        }
-        double horizontalDistanceSq = pathPlanner.horizontalDistanceSq(playerFootPos, waypoint);
-        if (waypoint.getY() == playerFootPos.getY() && horizontalDistanceSq < 0.01D) {
-            return false;
-        }
-        if (horizontalDistanceSq < 0.64D || horizontalDistanceSq > 1.05D) {
-            return false;
-        }
-        int deltaY = waypoint.getY() - playerFootPos.getY();
-        if (deltaY < 0 || deltaY > 1) {
-            return false;
-        }
-        return deltaY == 0;
-    }
-
-    private boolean isCommittedWaterPlaceState(
-        ClientLevel world,
-        LocalPlayer player,
-        BlockPos playerFootPos,
-        BlockPos waypoint,
-        BlockPos placeTarget
-    ) {
-        if (world == null || player == null || playerFootPos == null || waypoint == null || placeTarget == null) {
-            return false;
-        }
-        boolean inWater = player.isInWater()
-            || player.isUnderWater()
-            || pathPlanner.isWaterNode(world, playerFootPos)
-            || pathPlanner.isWaterNode(world, waypoint);
-        if (!inWater) {
-            return false;
-        }
-        if (pathPlanner.hasCollision(world, placeTarget) || !pathPlanner.canPlaceSupportAt(world, placeTarget)) {
-            return false;
-        }
-        return pathPlanner.horizontalDistanceSq(playerFootPos, placeTarget.above()) <= 4.0D
-            && Math.abs(playerFootPos.getY() - placeTarget.getY()) <= 2;
-    }
-
-    private void equipBestMiningTool(LocalPlayer player, BlockState targetState) {
-        if (player == null || player.getInventory() == null || targetState == null) {
-            return;
-        }
-        int bestSlot = findBestMiningHotbarSlot(player, targetState);
-        if (bestSlot < 0) {
-            return;
-        }
-        if (PlayerInventoryBridge.getSelectedSlot(player.getInventory()) != bestSlot) {
-            HotbarSlotSynchronizer.selectHotbarSlot(Minecraft.getInstance(), bestSlot);
-        }
-    }
-
-    private int findBestMiningHotbarSlot(LocalPlayer player, BlockState targetState) {
-        if (player == null || player.getInventory() == null || targetState == null) {
-            return -1;
-        }
-        int hotbarSize = net.minecraft.world.entity.player.Inventory.getSelectionSize();
-        int bestSlot = -1;
-        double bestScore = Double.NEGATIVE_INFINITY;
-        for (int slot = 0; slot < hotbarSize; slot++) {
-            ItemStack stack = player.getInventory().getItem(slot);
-            if (stack == null || stack.isEmpty()) {
-                continue;
-            }
-            double score = miningToolScore(stack, targetState);
-            if (score > bestScore) {
-                bestScore = score;
-                bestSlot = slot;
-            }
-        }
-        return bestSlot;
-    }
-
-    private double miningToolScore(ItemStack stack, BlockState targetState) {
-        if (stack == null || stack.isEmpty() || targetState == null) {
-            return Double.NEGATIVE_INFINITY;
-        }
-        double speed = stack.getDestroySpeed(targetState);
-        double score = speed;
-        if (stack.isCorrectToolForDrops(targetState)) {
-            score += 100.0D;
-        }
-        if (stack.getItem() instanceof BlockItem) {
-            score -= 8.0D;
-        }
-        return score;
-    }
-
-    private void lookAtPosition(LocalPlayer player, Vec3 targetPos) {
-        if (player == null || targetPos == null) {
-            return;
-        }
-        Vec3 delta = targetPos.subtract(player.getEyePosition());
-        double horizontalDistance = Math.sqrt(delta.x * delta.x + delta.z * delta.z);
-        float targetYaw = (float) (Mth.wrapDegrees(Math.toDegrees(Math.atan2(delta.z, delta.x)) - 90.0D));
-        float targetPitch = (float) -Math.toDegrees(Math.atan2(delta.y, Math.max(0.0001D, horizontalDistance)));
-        float clampedPitch = Mth.clamp(targetPitch, -60.0F, 60.0F);
-        player.setYRot(targetYaw);
-        player.setYHeadRot(targetYaw);
-        player.setYBodyRot(targetYaw);
-        player.setXRot(clampedPitch);
-    }
-
-    private BreakTargeting resolveBreakTargeting(ClientLevel world, LocalPlayer player, BlockPos target) {
-        if (world == null || player == null || target == null) {
-            return null;
-        }
-        return resolveBlockTargeting(world, player, player.getEyePosition(), target, blockInteractionReachSquared(player));
-    }
-
-    private BreakTargeting resolveBlockTargeting(
-        ClientLevel world,
-        LocalPlayer player,
-        Vec3 eyePos,
-        BlockPos target,
-        double reachSq
-    ) {
-        if (world == null || player == null || eyePos == null || target == null) {
-            return null;
-        }
-        BlockState targetState = world.getBlockState(target);
-        if (targetState == null || targetState.isAir()) {
-            return null;
-        }
-        for (Vec3 hitPos : getBreakAimPoints(world, targetState, target, preferredBreakFaces(player, target))) {
-            BlockHitResult hit = raycastToBreakTarget(world, player, eyePos, target, hitPos, reachSq);
-            if (hit != null) {
-                return new BreakTargeting(target.immutable(), hit.getDirection(), hit.getLocation());
-            }
-        }
-        return null;
-    }
-
-    private boolean canBreakTargetNow(ClientLevel world, LocalPlayer player, BlockPos target) {
-        return resolveBreakTargeting(world, player, target) != null;
-    }
-
-    private boolean canInteractWithBlockFromFoot(
-        ClientLevel world,
-        LocalPlayer player,
-        BlockPos footPos,
-        BlockPos target,
-        double reachSq
-    ) {
-        if (world == null || player == null || footPos == null || target == null) {
-            return false;
-        }
-        double eyeOffset = Mth.clamp(player.getEyePosition().y - player.getY(), 1.27D, 1.62D);
-        Vec3 eyePos = new Vec3(footPos.getX() + 0.5D, footPos.getY() + eyeOffset, footPos.getZ() + 0.5D);
-        return resolveBlockTargeting(world, player, eyePos, target, reachSq) != null;
-    }
-
-    private boolean isBlockShapeWithinReachFromFoot(
-        ClientLevel world,
-        LocalPlayer player,
-        BlockPos footPos,
-        BlockPos target,
-        double reachSq
-    ) {
-        if (world == null || player == null || footPos == null || target == null) {
-            return false;
-        }
-        BlockState targetState = world.getBlockState(target);
-        if (targetState == null || targetState.isAir()) {
-            return false;
-        }
-        double eyeOffset = Mth.clamp(player.getEyePosition().y - player.getY(), 1.27D, 1.62D);
-        Vec3 eyePos = new Vec3(footPos.getX() + 0.5D, footPos.getY() + eyeOffset, footPos.getZ() + 0.5D);
-        for (Vec3 hitPos : getBreakAimPoints(world, targetState, target, preferredBreakFaces(player, target))) {
-            if (eyePos.distanceToSqr(hitPos) <= reachSq) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private double blockInteractionReachSquared(LocalPlayer player) {
-        double reach = DEFAULT_BLOCK_INTERACTION_REACH;
-        if (player != null) {
-            reach = Math.max(0.0D, player.blockInteractionRange());
-        }
-        return reach * reach;
-    }
-
-    private List<Direction> preferredBreakFaces(LocalPlayer player, BlockPos target) {
-        if (player == null || target == null) {
-            return List.of(Direction.UP);
-        }
-        Vec3 eyePos = player.getEyePosition();
-        Vec3 center = Vec3.atCenterOf(target);
-        Vec3 delta = center.subtract(eyePos);
-        Direction primary = Direction.getApproximateNearest(delta.x, delta.y, delta.z).getOpposite();
-        List<Direction> faces = new ArrayList<>(6);
-        faces.add(primary);
-        for (Direction face : Direction.values()) {
-            if (!faces.contains(face)) {
-                faces.add(face);
-            }
-        }
-        return faces;
-    }
-
-    private List<Vec3> getBreakAimPoints(ClientLevel world, BlockState targetState, BlockPos target, List<Direction> preferredFaces) {
-        if (world == null || targetState == null || target == null) {
-            return List.of();
-        }
-        VoxelShape shape = targetState.getShape(world, target);
-        if (shape == null || shape.isEmpty()) {
-            shape = targetState.getCollisionShape(world, target);
-        }
-        List<AABB> boxes = shape == null || shape.isEmpty()
-            ? List.of(new AABB(0.0D, 0.0D, 0.0D, 1.0D, 1.0D, 1.0D))
-            : shape.toAabbs();
-        if (boxes.isEmpty()) {
-            boxes = List.of(new AABB(0.0D, 0.0D, 0.0D, 1.0D, 1.0D, 1.0D));
-        }
-        boxes = boxes.stream()
-            .sorted(Comparator.comparingDouble(AABB::getSize).reversed())
-            .toList();
-
-        List<Vec3> points = new ArrayList<>(boxes.size() * Math.max(1, preferredFaces.size()) + boxes.size() + 1);
-        for (Direction face : preferredFaces) {
-            for (AABB box : boxes) {
-                points.add(getBreakFaceAimPoint(target, box, face));
-            }
-        }
-        for (AABB box : boxes) {
-            points.add(worldBoxCenter(target, box));
-        }
-        points.add(Vec3.atCenterOf(target));
-        return points;
-    }
-
-    private Vec3 getBreakFaceAimPoint(BlockPos target, AABB localBox, Direction face) {
-        Vec3 center = worldBoxCenter(target, localBox);
-        if (target == null || localBox == null || face == null) {
-            return center;
-        }
-        double minX = target.getX() + localBox.minX;
-        double minY = target.getY() + localBox.minY;
-        double minZ = target.getZ() + localBox.minZ;
-        double maxX = target.getX() + localBox.maxX;
-        double maxY = target.getY() + localBox.maxY;
-        double maxZ = target.getZ() + localBox.maxZ;
-        double x = center.x;
-        double y = center.y;
-        double z = center.z;
-        double epsilon;
-        switch (face) {
-            case EAST -> {
-                epsilon = inwardEpsilon(minX, maxX);
-                x = maxX - epsilon;
-            }
-            case WEST -> {
-                epsilon = inwardEpsilon(minX, maxX);
-                x = minX + epsilon;
-            }
-            case UP -> {
-                epsilon = inwardEpsilon(minY, maxY);
-                y = maxY - epsilon;
-            }
-            case DOWN -> {
-                epsilon = inwardEpsilon(minY, maxY);
-                y = minY + epsilon;
-            }
-            case SOUTH -> {
-                epsilon = inwardEpsilon(minZ, maxZ);
-                z = maxZ - epsilon;
-            }
-            case NORTH -> {
-                epsilon = inwardEpsilon(minZ, maxZ);
-                z = minZ + epsilon;
-            }
-        }
-        return new Vec3(x, y, z);
-    }
-
-    private Vec3 worldBoxCenter(BlockPos target, AABB localBox) {
-        if (target == null || localBox == null) {
-            return Vec3.ZERO;
-        }
-        return new Vec3(
-            target.getX() + (localBox.minX + localBox.maxX) * 0.5D,
-            target.getY() + (localBox.minY + localBox.maxY) * 0.5D,
-            target.getZ() + (localBox.minZ + localBox.maxZ) * 0.5D
-        );
-    }
-
-    private double inwardEpsilon(double min, double max) {
-        return Math.min(BREAK_AIM_EPSILON, Math.max(0.0D, (max - min) * 0.25D));
-    }
-
-    private BlockHitResult raycastToBreakTarget(
-        ClientLevel world,
-        LocalPlayer player,
-        Vec3 eyePos,
-        BlockPos target,
-        Vec3 hitPos,
-        double reachSq
-    ) {
-        if (world == null || player == null || eyePos == null || target == null || hitPos == null) {
-            return null;
-        }
-        if (eyePos.distanceToSqr(hitPos) > reachSq) {
-            return null;
-        }
-        BlockHitResult outlineHit = world.clip(new ClipContext(
-            eyePos,
-            hitPos,
-            ClipContext.Block.OUTLINE,
-            ClipContext.Fluid.NONE,
-            player
-        ));
-        if (outlineHit == null || outlineHit.getType() != HitResult.Type.BLOCK || !target.equals(outlineHit.getBlockPos())) {
-            return null;
-        }
-        Vec3 outlineHitPos = outlineHit.getLocation();
-        if (outlineHitPos == null || eyePos.distanceToSqr(outlineHitPos) > reachSq) {
-            return null;
-        }
-        BlockHitResult collisionHit = world.clip(new ClipContext(
-            eyePos,
-            outlineHitPos,
-            ClipContext.Block.COLLIDER,
-            ClipContext.Fluid.NONE,
-            player
-        ));
-        if (collisionHit != null && collisionHit.getType() == HitResult.Type.BLOCK && !target.equals(collisionHit.getBlockPos())) {
-            return null;
-        }
-        return outlineHit;
-    }
-
-    private boolean tryPlaceSupportBlock(
-        Minecraft client,
-        ClientLevel world,
-        LocalPlayer player,
-        BlockPos placePos,
-        long now
-    ) {
-        return tryPlaceSupportBlock(client, world, player, placePos, now, false);
-    }
-
-    private boolean tryPlaceSupportBlock(
-        Minecraft client,
-        ClientLevel world,
-        LocalPlayer player,
-        BlockPos placePos,
-        long now,
-        boolean preserveMovementState
-    ) {
-        if (client == null || world == null || player == null || placePos == null || client.gameMode == null) {
-            synchronized (this) {
-                executionState.lastPlaceTarget = placePos != null ? placePos.immutable() : null;
-                executionState.lastPlaceResult = "client unavailable";
-            }
-            return false;
-        }
-        if (now - executionState.lastInteractAtMs < 250L) {
-            synchronized (this) {
-                executionState.lastPlaceTarget = placePos.immutable();
-                executionState.lastPlaceResult = "cooldown";
-            }
-            return false;
-        }
-        PlacementTarget placementTarget = findPlacementTarget(world, placePos);
-        if (placementTarget == null) {
-            synchronized (this) {
-                executionState.lastPlaceTarget = placePos.immutable();
-                executionState.lastPlaceResult = "no support face";
-            }
-            return false;
-        }
-        int hotbarSlot = ensurePlaceableHotbarSlot(client, player);
-        if (hotbarSlot < 0) {
-            synchronized (this) {
-                executionState.lastPlaceTarget = placePos.immutable();
-                executionState.lastPlaceResult = "no placeable block";
-            }
-            return false;
-        }
-        int previousSlot = PlayerInventoryBridge.getSelectedSlot(player.getInventory());
-        HotbarSlotSynchronizer.selectHotbarSlot(client, hotbarSlot);
-        if (!preserveMovementState) {
-            releaseMovementKeys(client);
-        }
-        applyWaterInteractionStance(client, world, player, placePos);
-        InteractionResult result = client.gameMode.useItemOn(
-            player,
-            InteractionHand.MAIN_HAND,
-            new BlockHitResult(placementTarget.hitPos(), placementTarget.face(), placementTarget.supportPos(), false)
-        );
-        boolean accepted = result != null && result.consumesAction();
-        if (!accepted) {
-            InteractionResult fallback = client.gameMode.useItem(player, InteractionHand.MAIN_HAND);
-            accepted = fallback != null && fallback.consumesAction();
-        }
-        if (accepted) {
-            player.swing(InteractionHand.MAIN_HAND);
-        }
-        HotbarSlotSynchronizer.selectHotbarSlot(client, previousSlot);
-        boolean placedNow = pathPlanner.hasCollision(world, placePos);
-        synchronized (this) {
-            executionState.lastPlaceTarget = placePos.immutable();
-            if (!accepted) {
-                executionState.lastPlaceResult = "rejected";
-            } else if (placedNow) {
-                executionState.lastPlaceResult = "placed";
-            } else {
-                executionState.lastPlaceResult = "accepted no block";
-            }
-        }
-        if (!accepted || !placedNow) {
-            return false;
-        }
-        synchronized (this) {
-            executionState.lastInteractAtMs = now;
-        }
-        return true;
-    }
-
-    private void applyWaterInteractionStance(Minecraft client, ClientLevel world, LocalPlayer player, BlockPos anchor) {
-        if (client == null || world == null || player == null || anchor == null || client.options == null) {
-            return;
-        }
-        boolean inWater = player.isInWater()
-            || player.isUnderWater()
-            || pathPlanner.isWaterNode(world, resolvePlayerFootPos(player))
-            || pathPlanner.isWaterNode(world, anchor);
-        if (!inWater) {
-            return;
-        }
-
-        Vec3 anchorCenter = Vec3.atCenterOf(anchor);
-        Vec3 currentPos = new Vec3(player.getX(), player.getY(), player.getZ());
-        double dx = anchorCenter.x - currentPos.x;
-        double dz = anchorCenter.z - currentPos.z;
-        float targetYaw = (float) (Mth.wrapDegrees(Math.toDegrees(Math.atan2(dz, dx)) - 90.0D));
-        player.setYRot(stepAngle(player.getYRot(), targetYaw, movementYawStep()));
-        player.setYHeadRot(player.getYRot());
-        player.setYBodyRot(player.getYRot());
-
-        Vec3 velocity = player.getDeltaMovement();
-        player.setDeltaMovement(
-            velocity.x * 0.55D + Mth.clamp(dx * 0.14D, -0.06D, 0.06D),
-            velocity.y,
-            velocity.z * 0.55D + Mth.clamp(dz * 0.14D, -0.06D, 0.06D)
-        );
-
-        double bobTargetY = anchor.getY() + 0.55D;
-        boolean bobUp = player.getY() < bobTargetY || player.getDeltaMovement().y < -0.02D;
-
-        if (client.options.keyUp != null) {
-            client.options.keyUp.setDown(Math.abs(dx) > 0.18D || Math.abs(dz) > 0.18D);
-        }
-        if (client.options.keyDown != null) {
-            client.options.keyDown.setDown(false);
-        }
-        if (client.options.keyLeft != null) {
-            client.options.keyLeft.setDown(false);
-        }
-        if (client.options.keyRight != null) {
-            client.options.keyRight.setDown(false);
-        }
-        if (client.options.keySprint != null) {
-            client.options.keySprint.setDown(false);
-        }
-        if (client.options.keyShift != null) {
-            client.options.keyShift.setDown(false);
-        }
-        if (client.options.keyJump != null) {
-            client.options.keyJump.setDown(bobUp);
-        }
-    }
-
-    private int findPlaceableHotbarSlot(LocalPlayer player) {
-        if (player == null || player.getInventory() == null) {
-            return -1;
-        }
-        int hotbarSize = net.minecraft.world.entity.player.Inventory.getSelectionSize();
-        for (int slot = 0; slot < hotbarSize; slot++) {
-            ItemStack stack = player.getInventory().getItem(slot);
-            if (!stack.isEmpty() && stack.getItem() instanceof BlockItem) {
-                return slot;
-            }
-        }
-        return -1;
-    }
-
-    private int findPlaceableMainInventorySlot(LocalPlayer player) {
-        if (player == null || player.getInventory() == null) {
-            return -1;
-        }
-        int hotbarSize = net.minecraft.world.entity.player.Inventory.getSelectionSize();
-        for (int slot = hotbarSize; slot < net.minecraft.world.entity.player.Inventory.INVENTORY_SIZE; slot++) {
-            ItemStack stack = player.getInventory().getItem(slot);
-            if (!stack.isEmpty() && stack.getItem() instanceof BlockItem) {
-                return slot;
-            }
-        }
-        return -1;
-    }
-
-    private int findEmptyHotbarSlot(net.minecraft.world.entity.player.Inventory inventory) {
-        if (inventory == null) {
-            return -1;
-        }
-        int hotbarSize = net.minecraft.world.entity.player.Inventory.getSelectionSize();
-        for (int slot = 0; slot < hotbarSize; slot++) {
-            if (inventory.getItem(slot).isEmpty()) {
-                return slot;
-            }
-        }
-        return -1;
-    }
-
-    private int ensurePlaceableHotbarSlot(Minecraft client, LocalPlayer player) {
-        int hotbarSlot = findPlaceableHotbarSlot(player);
-        if (hotbarSlot >= 0) {
-            return hotbarSlot;
-        }
-        if (client == null || player == null || player.getInventory() == null || client.gameMode == null) {
-            return -1;
-        }
-        int inventorySlot = findPlaceableMainInventorySlot(player);
-        if (inventorySlot < 0) {
-            return -1;
-        }
-        return moveInventoryStackToHotbar(client, player, inventorySlot);
-    }
-
-    private int moveInventoryStackToHotbar(Minecraft client, LocalPlayer player, int inventorySlot) {
-        if (client == null || player == null || player.getInventory() == null || client.gameMode == null) {
-            return -1;
-        }
-        net.minecraft.world.entity.player.Inventory inventory = player.getInventory();
-        AbstractContainerMenu handler = player.containerMenu;
-        if (handler == null) {
-            return -1;
-        }
-        int targetHotbarSlot = findEmptyHotbarSlot(inventory);
-        if (targetHotbarSlot == -1) {
-            try {
-                targetHotbarSlot = PlayerInventoryBridge.getSelectedSlot(inventory);
-            } catch (IllegalStateException ignored) {
-                targetHotbarSlot = 0;
-            }
-        }
-        int handlerSlot = mapPlayerInventorySlot(handler, inventorySlot);
-        if (handlerSlot < 0) {
-            return -1;
-        }
-        client.gameMode.handleInventoryMouseClick(handler.containerId, handlerSlot, targetHotbarSlot, ClickType.SWAP, player);
-        ItemStack hotbarStack = inventory.getItem(targetHotbarSlot);
-        return !hotbarStack.isEmpty() && hotbarStack.getItem() instanceof BlockItem ? targetHotbarSlot : -1;
-    }
-
-    private int mapPlayerInventorySlot(AbstractContainerMenu handler, int inventorySlot) {
-        if (handler == null) {
-            return -1;
-        }
-        List<Slot> slots = handler.slots;
-        for (int slotIdx = 0; slotIdx < slots.size(); slotIdx++) {
-            Slot slot = slots.get(slotIdx);
-            if (slot.container instanceof net.minecraft.world.entity.player.Inventory && slot.getContainerSlot() == inventorySlot) {
-                return slotIdx;
-            }
-        }
-        return -1;
-    }
-
-    private PlacementTarget findPlacementTarget(Level world, BlockPos placePos) {
-        if (world == null || placePos == null) {
-            return null;
-        }
-        Direction[] preferredOrder = {
-            Direction.DOWN,
-            Direction.NORTH,
-            Direction.SOUTH,
-            Direction.WEST,
-            Direction.EAST,
-            Direction.UP
-        };
-        for (Direction direction : preferredOrder) {
-            BlockPos support = placePos.relative(direction);
-            if (!pathPlanner.hasCollision(world, support)) {
-                continue;
-            }
-            Direction face = direction.getOpposite();
-            Vec3 hitPos = Vec3.atCenterOf(support).add(
-                face.getStepX() * 0.5D,
-                face.getStepY() * 0.5D,
-                face.getStepZ() * 0.5D
-            );
-            return new PlacementTarget(support, face, hitPos);
-        }
-        return null;
     }
 
     private BlockPos resolvePlayerFootPos(LocalPlayer player) {
         return player == null ? null : player.blockPosition().immutable();
     }
 
-    private static void releaseMovementKeys(Minecraft client) {
+    static void releaseMovementKeys(Minecraft client) {
         if (client == null || client.options == null) {
             return;
         }
@@ -7075,7 +3441,7 @@ public final class PathmindNavigator {
         }
     }
 
-    private static void applySneakState(Minecraft client, boolean active) {
+    static void applySneakState(Minecraft client, boolean active) {
         if (client == null || client.player == null) {
             return;
         }
@@ -7092,7 +3458,7 @@ public final class PathmindNavigator {
         }
     }
 
-    private static BlockHitResult raycastBlockFromOrientation(Minecraft client, float yaw, float pitch, double distance) {
+    static BlockHitResult raycastBlockFromOrientation(Minecraft client, float yaw, float pitch, double distance) {
         if (client == null || client.player == null || client.level == null) {
             return null;
         }
@@ -7132,11 +3498,11 @@ public final class PathmindNavigator {
         return null;
     }
 
-    private static float movementYawStep() {
+    static float movementYawStep() {
         return LoaderMetadata.isNeoForge() ? NEOFORGE_MAX_YAW_STEP : MAX_YAW_STEP;
     }
 
-    private static float stepAngle(float current, float target, float maxStep) {
+    static float stepAngle(float current, float target, float maxStep) {
         float delta = Mth.wrapDegrees(target - current);
         return current + Mth.clamp(delta, -maxStep, maxStep);
     }

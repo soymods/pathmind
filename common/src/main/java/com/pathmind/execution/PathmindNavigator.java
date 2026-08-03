@@ -250,13 +250,7 @@ public final class PathmindNavigator {
     private double lastDistanceCheckpoint = Double.POSITIVE_INFINITY;
     private long lastDistanceCheckpointAtMs;
     private volatile Snapshot renderSnapshot;
-    private final Map<EdgeKey, Long> failedEdges = new HashMap<>();
-    private final Map<BlockPos, Long> failedNodes = new HashMap<>();
-    private final Map<EdgeKey, Long> failedBreaks = new HashMap<>();
-    private final Map<EdgeKey, Long> failedJumps = new HashMap<>();
-    private final Map<EdgeKey, Long> failedDrops = new HashMap<>();
-    private final Map<EdgeKey, Long> failedPlaces = new HashMap<>();
-    private final Map<EdgeKey, Long> failedPillars = new HashMap<>();
+    private final NavigatorFailureMemory failureMemory = new NavigatorFailureMemory();
     private String lastReplanReason = "none";
     private String lastStuckReason = "none";
     private String previousControllerMode = "none";
@@ -271,7 +265,7 @@ public final class PathmindNavigator {
     private String lastReplaceDecision = "none";
     private final Deque<String> debugEvents = new LinkedList<>();
     private long lastDebugHeartbeatAtMs;
-    private final ThreadLocal<PlanningCache> activePlanningCache = new ThreadLocal<>();
+    private final ThreadLocal<NavigatorPlanningCache> activePlanningCache = new ThreadLocal<>();
 
     public enum State {
         IDLE,
@@ -462,13 +456,7 @@ public final class PathmindNavigator {
         this.lastMovementAtMs = this.startedAtMs;
         this.lastDistanceCheckpoint = startingPosition.distanceTo(Vec3.atCenterOf(this.targetPos));
         this.lastDistanceCheckpointAtMs = this.startedAtMs;
-        this.failedEdges.clear();
-        this.failedNodes.clear();
-        this.failedBreaks.clear();
-        this.failedJumps.clear();
-        this.failedDrops.clear();
-        this.failedPlaces.clear();
-        this.failedPillars.clear();
+        this.failureMemory.clear();
         this.lastReplanReason = "start goto";
         this.lastStuckReason = "none";
         this.previousControllerMode = this.controllerMode.name();
@@ -993,7 +981,7 @@ public final class PathmindNavigator {
         return pos.getX() + "," + pos.getY() + "," + pos.getZ();
     }
 
-    private void recordPlanningDiagnostics(PlanningCache cache, PathComputation result, long elapsedMs) {
+    private void recordPlanningDiagnostics(NavigatorPlanningCache cache, PathComputation result, long elapsedMs) {
         if (cache == null) {
             return;
         }
@@ -1083,13 +1071,7 @@ public final class PathmindNavigator {
         this.previousPrimitiveLabel = "none";
         this.previousMiningAscentPhase = this.activeMiningAscentPhase.name();
         this.previousPillarPhase = this.activePillarPhase.name();
-        this.failedEdges.clear();
-        this.failedNodes.clear();
-        this.failedBreaks.clear();
-        this.failedJumps.clear();
-        this.failedDrops.clear();
-        this.failedPlaces.clear();
-        this.failedPillars.clear();
+        this.failureMemory.clear();
 
         BlockPos start = resolvePlayerFootPos(client.player);
         PathComputation computation = findPath(client.level, start, this.targetPos);
@@ -3560,8 +3542,8 @@ public final class PathmindNavigator {
             return new PathComputation(List.of(), List.of(), List.of(), null, GoalMode.EXACT, FailureReason.CLIENT_UNAVAILABLE, null);
         }
 
-        PlanningCache previousCache = activePlanningCache.get();
-        PlanningCache cache = new PlanningCache(world);
+        NavigatorPlanningCache previousCache = activePlanningCache.get();
+        NavigatorPlanningCache cache = new NavigatorPlanningCache(world);
         activePlanningCache.set(cache);
         long startedNanos = System.nanoTime();
         PathComputation result = null;
@@ -3929,7 +3911,7 @@ public final class PathmindNavigator {
         long deadlineMs,
         boolean allowWorldModification
     ) {
-        PlanningCache cache = planningCacheFor(world);
+        NavigatorPlanningCache cache = planningCacheFor(world);
         boolean previousModificationMode = cache == null || cache.allowWorldModification;
         if (cache != null) {
             cache.allowWorldModification = allowWorldModification;
@@ -4306,27 +4288,19 @@ public final class PathmindNavigator {
     }
 
     private double turnPenalty(BlockPos previous, BlockPos current, BlockPos next) {
-        if (previous == null || current == null || next == null) {
-            return 0.0D;
-        }
-        int prevDx = Integer.compare(current.getX() - previous.getX(), 0);
-        int prevDz = Integer.compare(current.getZ() - previous.getZ(), 0);
-        int nextDx = Integer.compare(next.getX() - current.getX(), 0);
-        int nextDz = Integer.compare(next.getZ() - current.getZ(), 0);
-        if (prevDx == nextDx && prevDz == nextDz) {
-            return 0.0D;
-        }
-        if (prevDx == -nextDx && prevDz == -nextDz) {
-            return TURN_PENALTY_REVERSE;
-        }
-        boolean diagonalTurn = Math.abs(prevDx + prevDz) == 1 && Math.abs(nextDx + nextDz) == 2
-            || Math.abs(prevDx + prevDz) == 2 && Math.abs(nextDx + nextDz) == 1;
-        return diagonalTurn ? TURN_PENALTY_DIAGONAL : TURN_PENALTY_CORNER;
+        return NavigatorPathCostPolicy.turnPenalty(
+            previous,
+            current,
+            next,
+            TURN_PENALTY_DIAGONAL,
+            TURN_PENALTY_CORNER,
+            TURN_PENALTY_REVERSE
+        );
     }
 
     private List<Neighbor> getNeighbors(Level world, BlockPos current, BlockPos start, BlockPos goal) {
         List<Neighbor> neighbors = new ArrayList<>(MOVES.length + 8);
-        PlanningCache cache = planningCacheFor(world);
+        NavigatorPlanningCache cache = planningCacheFor(world);
         if (cache != null) {
             cache.expandedNodes++;
         }
@@ -4414,7 +4388,7 @@ public final class PathmindNavigator {
         if (world == null || from == null || candidate == null) {
             return null;
         }
-        PlanningCache cache = planningCacheFor(world);
+        NavigatorPlanningCache cache = planningCacheFor(world);
         if (cache != null) {
             cache.movementEvaluations++;
         }
@@ -5478,61 +5452,48 @@ public final class PathmindNavigator {
     }
 
     private double moveTypePenalty(Level world, BlockPos from, BlockPos to) {
-        MoveType moveType = classifyMoveType(world, from, to);
-        return switch (moveType) {
-            case STRAIGHT -> 0.0D;
-            case DIAGONAL -> 0.22D;
-            case STEP_UP -> 0.7D;
-            case DROP -> 0.12D;
-            case WATER_ENTER -> 0.8D;
-            case WATER_SWIM -> 1.1D;
-            case WATER_EXIT -> 0.55D;
-            case CLIMB_UP -> 0.55D;
-            case CLIMB_DOWN -> 0.2D;
-            case INTERACTABLE -> 0.18D;
-        };
+        return NavigatorPathCostPolicy.moveTypePenalty(classifyMoveType(world, from, to));
     }
 
-    private MoveType classifyMoveType(Level world, BlockPos from, BlockPos to) {
+    private NavigatorPathCostPolicy.MoveType classifyMoveType(Level world, BlockPos from, BlockPos to) {
         if (from == null || to == null) {
-            return MoveType.STRAIGHT;
+            return NavigatorPathCostPolicy.MoveType.STRAIGHT;
         }
         boolean fromWater = isWaterNode(world, from);
         boolean toWater = isWaterNode(world, to);
         if (!fromWater && toWater) {
-            return MoveType.WATER_ENTER;
+            return NavigatorPathCostPolicy.MoveType.WATER_ENTER;
         }
         if (fromWater && toWater) {
-            return MoveType.WATER_SWIM;
+            return NavigatorPathCostPolicy.MoveType.WATER_SWIM;
         }
         if (fromWater) {
-            return MoveType.WATER_EXIT;
+            return NavigatorPathCostPolicy.MoveType.WATER_EXIT;
         }
         if (from.getX() == to.getX() && from.getZ() == to.getZ()) {
-            return to.getY() > from.getY() ? MoveType.CLIMB_UP : MoveType.CLIMB_DOWN;
+            return to.getY() > from.getY()
+                ? NavigatorPathCostPolicy.MoveType.CLIMB_UP
+                : NavigatorPathCostPolicy.MoveType.CLIMB_DOWN;
         }
         if (requiresInteractableTraversal(world, from, to)) {
-            return MoveType.INTERACTABLE;
+            return NavigatorPathCostPolicy.MoveType.INTERACTABLE;
         }
 
         int deltaY = to.getY() - from.getY();
         if (deltaY > 0) {
-            return MoveType.STEP_UP;
+            return NavigatorPathCostPolicy.MoveType.STEP_UP;
         }
         if (deltaY < 0) {
-            return MoveType.DROP;
+            return NavigatorPathCostPolicy.MoveType.DROP;
         }
-        return (from.getX() != to.getX() && from.getZ() != to.getZ()) ? MoveType.DIAGONAL : MoveType.STRAIGHT;
+        return (from.getX() != to.getX() && from.getZ() != to.getZ())
+            ? NavigatorPathCostPolicy.MoveType.DIAGONAL
+            : NavigatorPathCostPolicy.MoveType.STRAIGHT;
     }
 
     private void rememberFailedMove(BlockPos from, BlockPos to, long now) {
         boolean protectedGoal = isProtectedNavigationGoal(to);
-        if (to != null && !protectedGoal) {
-            failedNodes.put(to.immutable(), now + FAILED_MOVE_MEMORY_MS);
-        }
-        if (from != null && to != null && !protectedGoal) {
-            failedEdges.put(new EdgeKey(from.immutable(), to.immutable()), now + FAILED_MOVE_MEMORY_MS);
-        }
+        failureMemory.rememberMove(from, to, now, FAILED_MOVE_MEMORY_MS, protectedGoal);
     }
 
     private boolean isProtectedNavigationGoal(BlockPos pos) {
@@ -5546,103 +5507,59 @@ public final class PathmindNavigator {
 
     private void rememberFailedBreak(BlockPos from, BlockPos to, long now) {
         rememberFailedMove(from, to, now);
-        if (from != null && to != null) {
-            failedBreaks.put(new EdgeKey(from.immutable(), to.immutable()), now + FAILED_BREAK_MEMORY_MS);
-        }
+        failureMemory.rememberAction(NavigatorFailureMemory.Action.BREAK, from, to, now, FAILED_BREAK_MEMORY_MS);
     }
 
     private void rememberFailedJump(BlockPos from, BlockPos to, long now) {
         rememberFailedMove(from, to, now);
-        if (from != null && to != null) {
-            failedJumps.put(new EdgeKey(from.immutable(), to.immutable()), now + FAILED_JUMP_MEMORY_MS);
-        }
+        failureMemory.rememberAction(NavigatorFailureMemory.Action.JUMP, from, to, now, FAILED_JUMP_MEMORY_MS);
     }
 
     private void rememberFailedDrop(BlockPos from, BlockPos to, long now) {
         rememberFailedMove(from, to, now);
-        if (from != null && to != null) {
-            failedDrops.put(new EdgeKey(from.immutable(), to.immutable()), now + FAILED_DROP_MEMORY_MS);
-        }
+        failureMemory.rememberAction(NavigatorFailureMemory.Action.DROP, from, to, now, FAILED_DROP_MEMORY_MS);
     }
 
     private void rememberFailedPlace(BlockPos from, BlockPos to, long now) {
         rememberFailedMove(from, to, now);
-        if (from != null && to != null) {
-            failedPlaces.put(new EdgeKey(from.immutable(), to.immutable()), now + FAILED_PLACE_MEMORY_MS);
-        }
+        failureMemory.rememberAction(NavigatorFailureMemory.Action.PLACE, from, to, now, FAILED_PLACE_MEMORY_MS);
     }
 
     private void rememberFailedPillar(BlockPos from, BlockPos to, long now) {
         rememberFailedMove(from, to, now);
-        if (from != null && to != null) {
-            failedPillars.put(new EdgeKey(from.immutable(), to.immutable()), now + FAILED_PILLAR_MEMORY_MS);
-        }
+        failureMemory.rememberAction(NavigatorFailureMemory.Action.PILLAR, from, to, now, FAILED_PILLAR_MEMORY_MS);
     }
 
     private void pruneFailureMemory(long now) {
-        failedNodes.entrySet().removeIf(entry -> entry.getValue() <= now);
-        failedEdges.entrySet().removeIf(entry -> entry.getValue() <= now);
-        failedBreaks.entrySet().removeIf(entry -> entry.getValue() <= now);
-        failedJumps.entrySet().removeIf(entry -> entry.getValue() <= now);
-        failedDrops.entrySet().removeIf(entry -> entry.getValue() <= now);
-        failedPlaces.entrySet().removeIf(entry -> entry.getValue() <= now);
-        failedPillars.entrySet().removeIf(entry -> entry.getValue() <= now);
+        failureMemory.prune(now);
     }
 
     private boolean isFailedNode(BlockPos pos, long now) {
-        if (pos == null) {
-            return false;
-        }
-        Long expiresAt = failedNodes.get(pos);
-        return expiresAt != null && expiresAt > now;
+        return failureMemory.isFailedNode(pos, now);
     }
 
     private boolean isFailedEdge(BlockPos from, BlockPos to, long now) {
-        if (from == null || to == null) {
-            return false;
-        }
-        Long expiresAt = failedEdges.get(new EdgeKey(from, to));
-        return expiresAt != null && expiresAt > now;
+        return failureMemory.isFailedEdge(from, to, now);
     }
 
     private boolean isFailedBreak(BlockPos from, BlockPos to, long now) {
-        if (from == null || to == null) {
-            return false;
-        }
-        Long expiresAt = failedBreaks.get(new EdgeKey(from, to));
-        return expiresAt != null && expiresAt > now;
+        return failureMemory.isFailedAction(NavigatorFailureMemory.Action.BREAK, from, to, now);
     }
 
     private boolean isFailedJump(BlockPos from, BlockPos to, long now) {
-        if (from == null || to == null) {
-            return false;
-        }
-        Long expiresAt = failedJumps.get(new EdgeKey(from, to));
-        return expiresAt != null && expiresAt > now;
+        return failureMemory.isFailedAction(NavigatorFailureMemory.Action.JUMP, from, to, now);
     }
 
     private boolean isFailedDrop(BlockPos from, BlockPos to, long now) {
-        if (from == null || to == null) {
-            return false;
-        }
-        Long expiresAt = failedDrops.get(new EdgeKey(from, to));
-        return expiresAt != null && expiresAt > now;
+        return failureMemory.isFailedAction(NavigatorFailureMemory.Action.DROP, from, to, now);
     }
 
     private boolean isFailedPlace(BlockPos from, BlockPos to, long now) {
-        if (from == null || to == null) {
-            return false;
-        }
-        Long expiresAt = failedPlaces.get(new EdgeKey(from, to));
-        return expiresAt != null && expiresAt > now;
+        return failureMemory.isFailedAction(NavigatorFailureMemory.Action.PLACE, from, to, now);
     }
 
     private boolean isFailedPillar(BlockPos from, BlockPos to, long now) {
-        if (from == null || to == null) {
-            return false;
-        }
-        Long expiresAt = failedPillars.get(new EdgeKey(from, to));
-        return expiresAt != null && expiresAt > now;
+        return failureMemory.isFailedAction(NavigatorFailureMemory.Action.PILLAR, from, to, now);
     }
 
     private boolean isGoal(BlockPos pos, BlockPos target, Set<BlockPos> goalSet) {
@@ -5650,34 +5567,15 @@ public final class PathmindNavigator {
     }
 
     private double heuristic(BlockPos pos, List<BlockPos> goals) {
-        double best = Double.POSITIVE_INFINITY;
-        for (BlockPos goal : goals) {
-            double dx = Math.abs(pos.getX() - goal.getX());
-            double dz = Math.abs(pos.getZ() - goal.getZ());
-            double min = Math.min(dx, dz);
-            double max = Math.max(dx, dz);
-            double octile = min * Math.sqrt(2.0D) + (max - min);
-            double verticalPenalty = Math.abs(pos.getY() - goal.getY()) * 1.15D;
-            best = Math.min(best, octile + verticalPenalty);
-        }
-        return best == Double.POSITIVE_INFINITY ? 0.0D : best * HEURISTIC_WEIGHT;
+        return NavigatorPathCostPolicy.heuristic(pos, goals, HEURISTIC_WEIGHT);
     }
 
     private double elevationPenalty(BlockPos from, BlockPos to) {
-        int delta = to.getY() - from.getY();
-        if (delta > 0) {
-            return delta * 0.35D;
-        }
-        if (delta < 0) {
-            return Math.abs(delta) * 0.12D;
-        }
-        return 0.0D;
+        return NavigatorPathCostPolicy.elevationPenalty(from, to);
     }
 
     private double horizontalDistanceSq(BlockPos a, BlockPos b) {
-        double dx = a.getX() - b.getX();
-        double dz = a.getZ() - b.getZ();
-        return dx * dx + dz * dz;
+        return NavigatorPathCostPolicy.horizontalDistanceSq(a, b);
     }
 
     private BlockPos searchPosition(BlockPos pos) {
@@ -5702,7 +5600,7 @@ public final class PathmindNavigator {
         if (world == null || footPos == null) {
             return false;
         }
-        PlanningCache cache = planningCacheFor(world);
+        NavigatorPlanningCache cache = planningCacheFor(world);
         BlockPos key = footPos.immutable();
         if (cache != null) {
             Boolean cached = cache.navigableNodes.get(key);
@@ -5721,7 +5619,7 @@ public final class PathmindNavigator {
         if (world == null || footPos == null) {
             return false;
         }
-        PlanningCache cache = planningCacheFor(world);
+        NavigatorPlanningCache cache = planningCacheFor(world);
         BlockPos key = footPos.immutable();
         if (cache != null) {
             Boolean cached = cache.standableNodes.get(key);
@@ -5768,7 +5666,7 @@ public final class PathmindNavigator {
     }
 
     private boolean hasCollision(Level world, BlockPos pos) {
-        PlanningCache cache = planningCacheFor(world);
+        NavigatorPlanningCache cache = planningCacheFor(world);
         BlockPos key = pos == null ? null : pos.immutable();
         if (cache != null && key != null) {
             Boolean cached = cache.hasCollision.get(key);
@@ -5798,8 +5696,8 @@ public final class PathmindNavigator {
         if (world == null || footPos == null || !isChunkLoaded(world, footPos)) {
             return false;
         }
-        PlanningCache cache = planningCacheFor(world);
-        NodeFitKey key = cache == null ? null : new NodeFitKey(footPos.immutable(), requireSupport);
+        NavigatorPlanningCache cache = planningCacheFor(world);
+        NavigatorNodeFitKey key = cache == null ? null : new NavigatorNodeFitKey(footPos.immutable(), requireSupport);
         if (cache != null) {
             Boolean cached = cache.nodeFit.get(key);
             if (cached != null) {
@@ -5825,7 +5723,7 @@ public final class PathmindNavigator {
         if (world == null || footPos == null) {
             return OptionalDouble.empty();
         }
-        PlanningCache cache = planningCacheFor(world);
+        NavigatorPlanningCache cache = planningCacheFor(world);
         BlockPos key = footPos.immutable();
         if (cache != null) {
             OptionalDouble cached = cache.supportSurfaces.get(key);
@@ -5910,8 +5808,8 @@ public final class PathmindNavigator {
         if (world == null || body == null) {
             return true;
         }
-        PlanningCache cache = planningCacheFor(world);
-        BodyKey bodyKey = cache == null ? null : BodyKey.of(body);
+        NavigatorPlanningCache cache = planningCacheFor(world);
+        NavigatorBodyKey bodyKey = cache == null ? null : NavigatorBodyKey.of(body);
         if (cache != null) {
             Boolean cached = cache.bodyCollisions.get(bodyKey);
             if (cached != null) {
@@ -5977,7 +5875,7 @@ public final class PathmindNavigator {
         if (world == null || pos == null) {
             return false;
         }
-        PlanningCache cache = planningCacheFor(world);
+        NavigatorPlanningCache cache = planningCacheFor(world);
         BlockPos key = pos.immutable();
         if (cache != null) {
             Boolean cached = cache.occupiable.get(key);
@@ -6002,13 +5900,13 @@ public final class PathmindNavigator {
         return result;
     }
 
-    private PlanningCache planningCacheFor(Level world) {
-        PlanningCache cache = activePlanningCache.get();
+    private NavigatorPlanningCache planningCacheFor(Level world) {
+        NavigatorPlanningCache cache = activePlanningCache.get();
         return cache != null && cache.world == world ? cache : null;
     }
 
     private boolean worldModificationAllowed(Level world) {
-        PlanningCache cache = planningCacheFor(world);
+        NavigatorPlanningCache cache = planningCacheFor(world);
         return cache == null || cache.allowWorldModification;
     }
 
@@ -6016,7 +5914,7 @@ public final class PathmindNavigator {
         if (world == null || pos == null) {
             return null;
         }
-        PlanningCache cache = planningCacheFor(world);
+        NavigatorPlanningCache cache = planningCacheFor(world);
         if (cache == null) {
             return world.getBlockState(pos);
         }
@@ -6037,7 +5935,7 @@ public final class PathmindNavigator {
         if (world == null || pos == null) {
             return null;
         }
-        PlanningCache cache = planningCacheFor(world);
+        NavigatorPlanningCache cache = planningCacheFor(world);
         if (cache == null) {
             return world.getFluidState(pos);
         }
@@ -6057,7 +5955,7 @@ public final class PathmindNavigator {
         if (state == null) {
             return net.minecraft.world.phys.shapes.Shapes.empty();
         }
-        PlanningCache cache = planningCacheFor(world);
+        NavigatorPlanningCache cache = planningCacheFor(world);
         if (cache == null || pos == null) {
             return state.getCollisionShape(world, pos);
         }
@@ -6080,7 +5978,7 @@ public final class PathmindNavigator {
         if (world == null || pos == null) {
             return false;
         }
-        PlanningCache cache = planningCacheFor(world);
+        NavigatorPlanningCache cache = planningCacheFor(world);
         BlockPos key = pos.immutable();
         if (cache != null) {
             Boolean cached = cache.treeCanopyNodes.get(key);
@@ -6126,10 +6024,10 @@ public final class PathmindNavigator {
         }
         BlockPos normalizedFrom = from == null ? footPos.immutable() : from.immutable();
         BlockPos normalizedTo = footPos.immutable();
-        PlanningCache cache = planningCacheFor(world);
-        MovementQueryKey key = cache == null ? null : new MovementQueryKey(normalizedFrom, normalizedTo);
+        NavigatorPlanningCache cache = planningCacheFor(world);
+        NavigatorMovementQueryKey key = cache == null ? null : new NavigatorMovementQueryKey(normalizedFrom, normalizedTo);
         if (cache != null) {
-            BreakTargetCacheEntry cached = cache.breakTargets.get(key);
+            NavigatorBreakTargetCacheEntry cached = cache.breakTargets.get(key);
             if (cached != null) {
                 return cached.valid() ? cached.targets() : null;
             }
@@ -6139,8 +6037,8 @@ public final class PathmindNavigator {
             cache.breakTargets.put(
                 key,
                 result == null
-                    ? new BreakTargetCacheEntry(false, List.of())
-                    : new BreakTargetCacheEntry(true, result)
+                    ? new NavigatorBreakTargetCacheEntry(false, List.of())
+                    : new NavigatorBreakTargetCacheEntry(true, result)
             );
         }
         return result;
@@ -6311,7 +6209,7 @@ public final class PathmindNavigator {
         }
         int chunkX = pos.getX() >> 4;
         int chunkZ = pos.getZ() >> 4;
-        PlanningCache cache = planningCacheFor(world);
+        NavigatorPlanningCache cache = planningCacheFor(world);
         if (cache == null) {
             return clientWorld.hasChunk(chunkX, chunkZ);
         }
@@ -6329,8 +6227,8 @@ public final class PathmindNavigator {
         if (world == null || from == null || waypoint == null) {
             return false;
         }
-        PlanningCache cache = planningCacheFor(world);
-        MovementQueryKey key = cache == null ? null : new MovementQueryKey(from.immutable(), waypoint.immutable());
+        NavigatorPlanningCache cache = planningCacheFor(world);
+        NavigatorMovementQueryKey key = cache == null ? null : new NavigatorMovementQueryKey(from.immutable(), waypoint.immutable());
         if (cache != null) {
             Boolean cached = cache.stepJumps.get(key);
             if (cached != null) {
@@ -6403,8 +6301,8 @@ public final class PathmindNavigator {
         if (world == null || from == null || waypoint == null) {
             return false;
         }
-        PlanningCache cache = planningCacheFor(world);
-        MovementQueryKey key = cache == null ? null : new MovementQueryKey(from.immutable(), waypoint.immutable());
+        NavigatorPlanningCache cache = planningCacheFor(world);
+        NavigatorMovementQueryKey key = cache == null ? null : new NavigatorMovementQueryKey(from.immutable(), waypoint.immutable());
         if (cache != null) {
             Boolean cached = cache.jumpAttempts.get(key);
             if (cached != null) {
@@ -6698,7 +6596,7 @@ public final class PathmindNavigator {
         if (world == null || pos == null) {
             return false;
         }
-        PlanningCache cache = planningCacheFor(world);
+        NavigatorPlanningCache cache = planningCacheFor(world);
         BlockPos key = pos.immutable();
         if (cache != null) {
             Boolean cached = cache.waterNodes.get(key);
@@ -6783,7 +6681,7 @@ public final class PathmindNavigator {
         if (world == null || pos == null) {
             return false;
         }
-        PlanningCache cache = planningCacheFor(world);
+        NavigatorPlanningCache cache = planningCacheFor(world);
         BlockPos key = pos.immutable();
         if (cache != null) {
             Boolean cached = cache.hardDanger.get(key);
@@ -6805,7 +6703,7 @@ public final class PathmindNavigator {
         if (world == null || pos == null) {
             return false;
         }
-        PlanningCache cache = planningCacheFor(world);
+        NavigatorPlanningCache cache = planningCacheFor(world);
         BlockPos key = pos.immutable();
         if (cache != null) {
             Boolean cached = cache.nearDanger.get(key);
@@ -6901,8 +6799,8 @@ public final class PathmindNavigator {
         if (!allowBlockPlacing || world == null || pos == null) {
             return false;
         }
-        PlanningCache cache = planningCacheFor(world);
-        NodeFitKey key = cache == null ? null : new NodeFitKey(pos.immutable(), allowOccupied);
+        NavigatorPlanningCache cache = planningCacheFor(world);
+        NavigatorNodeFitKey key = cache == null ? null : new NavigatorNodeFitKey(pos.immutable(), allowOccupied);
         if (cache != null) {
             Boolean cached = cache.supportPlacement.get(key);
             if (cached != null) {
@@ -6985,8 +6883,8 @@ public final class PathmindNavigator {
         if (world == null || from == null || to == null || to.getY() >= from.getY()) {
             return false;
         }
-        PlanningCache cache = planningCacheFor(world);
-        MovementQueryKey key = cache == null ? null : new MovementQueryKey(from.immutable(), to.immutable());
+        NavigatorPlanningCache cache = planningCacheFor(world);
+        NavigatorMovementQueryKey key = cache == null ? null : new NavigatorMovementQueryKey(from.immutable(), to.immutable());
         if (cache != null) {
             Boolean cached = cache.safeDrops.get(key);
             if (cached != null) {
@@ -7040,8 +6938,8 @@ public final class PathmindNavigator {
         if (world == null || from == null || to == null) {
             return false;
         }
-        PlanningCache cache = planningCacheFor(world);
-        MovementQueryKey key = cache == null ? null : new MovementQueryKey(from.immutable(), to.immutable());
+        NavigatorPlanningCache cache = planningCacheFor(world);
+        NavigatorMovementQueryKey key = cache == null ? null : new NavigatorMovementQueryKey(from.immutable(), to.immutable());
         if (cache != null) {
             Boolean cached = cache.interactableTraversal.get(key);
             if (cached != null) {
@@ -7071,8 +6969,8 @@ public final class PathmindNavigator {
         if (world == null || from == null || to == null) {
             return false;
         }
-        PlanningCache cache = planningCacheFor(world);
-        MovementQueryKey key = cache == null ? null : new MovementQueryKey(from.immutable(), to.immutable());
+        NavigatorPlanningCache cache = planningCacheFor(world);
+        NavigatorMovementQueryKey key = cache == null ? null : new NavigatorMovementQueryKey(from.immutable(), to.immutable());
         if (cache != null) {
             Boolean cached = cache.pathOpenableAhead.get(key);
             if (cached != null) {
@@ -10766,58 +10664,6 @@ public final class PathmindNavigator {
         return current + Mth.clamp(delta, -maxStep, maxStep);
     }
 
-    private static final class PlanningCache {
-        private final Level world;
-        private final Map<BlockPos, BlockState> blockStates = new HashMap<>();
-        private final Map<BlockPos, FluidState> fluidStates = new HashMap<>();
-        private final Map<BlockPos, VoxelShape> collisionShapes = new HashMap<>();
-        private final Map<BlockPos, OptionalDouble> supportSurfaces = new HashMap<>();
-        private final Map<BlockPos, Boolean> navigableNodes = new HashMap<>();
-        private final Map<BlockPos, Boolean> standableNodes = new HashMap<>();
-        private final Map<BlockPos, Boolean> waterNodes = new HashMap<>();
-        private final Map<BlockPos, Boolean> hardDanger = new HashMap<>();
-        private final Map<BlockPos, Boolean> nearDanger = new HashMap<>();
-        private final Map<BlockPos, Boolean> treeCanopyNodes = new HashMap<>();
-        private final Map<BlockPos, Boolean> hasCollision = new HashMap<>();
-        private final Map<BlockPos, Boolean> occupiable = new HashMap<>();
-        private final Map<NodeFitKey, Boolean> nodeFit = new HashMap<>();
-        private final Map<NodeFitKey, Boolean> supportPlacement = new HashMap<>();
-        private final Map<BodyKey, Boolean> bodyCollisions = new HashMap<>();
-        private final Map<Long, Boolean> loadedChunks = new HashMap<>();
-        private final Map<MovementQueryKey, BreakTargetCacheEntry> breakTargets = new HashMap<>();
-        private final Map<MovementQueryKey, Boolean> interactableTraversal = new HashMap<>();
-        private final Map<MovementQueryKey, Boolean> pathOpenableAhead = new HashMap<>();
-        private final Map<MovementQueryKey, Boolean> stepJumps = new HashMap<>();
-        private final Map<MovementQueryKey, Boolean> jumpAttempts = new HashMap<>();
-        private final Map<MovementQueryKey, Boolean> safeDrops = new HashMap<>();
-        private int blockStateHits;
-        private int collisionShapeHits;
-        private int expandedNodes;
-        private int movementEvaluations;
-        private int cleanSearches;
-        private int modifiedSearches;
-        private boolean allowWorldModification = true;
-
-        private PlanningCache(Level world) {
-            this.world = world;
-        }
-    }
-
-    private record NodeFitKey(BlockPos pos, boolean requireSupport) {
-    }
-
-    private record BodyKey(double minX, double minY, double minZ, double maxX, double maxY, double maxZ) {
-        private static BodyKey of(AABB body) {
-            return new BodyKey(body.minX, body.minY, body.minZ, body.maxX, body.maxY, body.maxZ);
-        }
-    }
-
-    private record MovementQueryKey(BlockPos from, BlockPos to) {
-    }
-
-    private record BreakTargetCacheEntry(boolean valid, List<BlockPos> targets) {
-    }
-
     private record SearchNode(BlockPos pos, double fScore, double gScore) {
     }
 
@@ -10892,19 +10738,6 @@ public final class PathmindNavigator {
     }
 
     private record Move(int dx, int dz, double cost) {
-    }
-
-    private enum MoveType {
-        STRAIGHT,
-        DIAGONAL,
-        STEP_UP,
-        DROP,
-        WATER_ENTER,
-        WATER_SWIM,
-        WATER_EXIT,
-        CLIMB_UP,
-        CLIMB_DOWN,
-        INTERACTABLE
     }
 
     private enum PlannedPrimitiveType {
@@ -11122,9 +10955,6 @@ public final class PathmindNavigator {
     }
 
     private record PlacementTarget(BlockPos supportPos, Direction face, Vec3 hitPos) {
-    }
-
-    private record EdgeKey(BlockPos from, BlockPos to) {
     }
 
     private enum FailureReason {

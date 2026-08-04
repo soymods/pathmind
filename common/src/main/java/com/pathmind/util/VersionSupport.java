@@ -24,6 +24,8 @@ public final class VersionSupport {
         "1.21.10",
         "1.21.11",
         "26.1",
+        "26.1.1",
+        "26.1.2",
         "26.2"
     );
     public static final String SUPPORTED_RANGE = MIN_VERSION + " - " + MAX_VERSION;

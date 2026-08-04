@@ -37,7 +37,7 @@ Development launch commands remain `runFabricClient`, `runNeoForgeClient`, `runF
 
 The complete operational playbook, graphics smoke procedure, and deprecation policy live in [`compatibility-maintenance.md`](compatibility-maintenance.md).
 
-The [`gradle/minecraft-version-templates/26.x.properties`](../gradle/minecraft-version-templates/26.x.properties) file records the 26.x generation contract. Passes 5 and 6 added verified `26.1` and `26.2` manifest rows and isolated Java 25 builds. The shared build uses Gradle 9.5.1, Fabric Loom 1.17, and backend-neutral 26.x source families; future rows must still use verified releases rather than guessed pins.
+The [`gradle/minecraft-version-templates/26.x.properties`](../gradle/minecraft-version-templates/26.x.properties) file records the 26.x generation contract. Verified `26.1`, `26.1.1`, `26.1.2`, and `26.2` manifest rows use isolated Java 25 builds. The shared build uses Gradle 9.5.1, Fabric Loom 1.17, and backend-neutral 26.x source families; future rows must still use verified releases rather than guessed pins.
 
 ## Artifact and CI contract
 

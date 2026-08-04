@@ -32,7 +32,7 @@ Gradle's Java toolchain is always set from the selected manifest row. The pre-26
 
 ## Protected target matrix
 
-The `1.21.x` baseline targets use Java 21 and `pre26-remapped`; `26.1` and `26.2` use Java 25 and `mc26-unobfuscated`. Fabric and NeoForge are release loaders for every row.
+The `1.21.x` baseline targets use Java 21 and `pre26-remapped`; `26.1` through `26.2` use Java 25 and `mc26-unobfuscated`. Fabric and NeoForge are release loaders for every row.
 
 | Minecraft | Compatibility family | Fabric API | NeoForge |
 | --- | --- | --- | --- |
@@ -49,9 +49,11 @@ The `1.21.x` baseline targets use Java 21 and `pre26-remapped`; `26.1` and `26.2
 | `1.21.10` | `mc-1.21.9-1.21.10` | `0.138.4+1.21.10` | `21.10.64` |
 | `1.21.11` | `mc-1.21.11` | `0.140.2+1.21.11` | `21.11.42` |
 | `26.1` | `mc-26.1` | `0.145.1+26.1` | `26.1.0.19-beta` |
+| `26.1.1` | `mc-26.1` | `0.145.4+26.1.1` | `26.1.1.15-beta` |
+| `26.1.2` | `mc-26.1` | `0.155.2+26.1.2` | `26.1.2.94` |
 | `26.2` | `mc-26.2` | `0.154.2+26.2` | `26.2.0.15-beta` |
 
-The `1.21.x` Fabric build pin is `0.17.3`, with release metadata accepting `0.17.2` or newer. Minecraft `26.1` and `26.2` build and require Fabric Loader `0.19.3`. These values remain explicit in the manifest so packaging cannot silently change.
+The `1.21.x` Fabric build pin is `0.17.3`, with release metadata accepting `0.17.2` or newer. Minecraft `26.1` through `26.2` build and require Fabric Loader `0.19.3`. These values remain explicit in the manifest so packaging cannot silently change.
 
 ## Source-family baseline
 
@@ -147,6 +149,10 @@ Record manual runs in this table when a compatibility-changing pass is prepared 
 | `1.21.11` | NeoForge | Pending | Pending | Pending | Pending | Pending | Pending | — |
 | `26.1` | Fabric | Pending | Pending | Pending | Pending | Pending | Pending | — |
 | `26.1` | NeoForge | Pending | Pending | Pending | Pending | Pending | Pending | — |
+| `26.1.1` | Fabric | Pending | Pending | Pending | Pending | Pending | Pending | — |
+| `26.1.1` | NeoForge | Pending | Pending | Pending | Pending | Pending | Pending | — |
+| `26.1.2` | Fabric | Pending | Pending | Pending | Pending | Pending | Pending | — |
+| `26.1.2` | NeoForge | Pending | Pending | Pending | Pending | Pending | Pending | — |
 | `26.2` | Fabric | Pending | Pending | Pending | Pending | Pending | Pending | — |
 | `26.2` | NeoForge | Pending | Pending | Pending | Pending | Pending | Pending | — |
 
@@ -165,4 +171,4 @@ Before merging compatibility, mapping, build, source-set, metadata, or release c
 ./gradlew buildAllTargets -q
 ```
 
-The full command builds and validates 28 public jars: one Fabric and one NeoForge artifact for each of the 14 supported Minecraft targets.
+The full command builds and validates 32 public jars: one Fabric and one NeoForge artifact for each of the 16 supported Minecraft targets.

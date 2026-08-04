@@ -203,7 +203,7 @@ Unqualified `runClient` and `runServer` default to Fabric because Fabric is the 
 Convenience tasks:
 
 - `./gradlew buildMc1_21_11` - builds both platforms for 1.21.11
-- `./gradlew buildAllTargets` - builds all 14 declared Minecraft targets and verifies all 28 release jars
+- `./gradlew buildAllTargets` - builds all 16 declared Minecraft targets and verifies all 32 release jars
 
 Compatibility tasks:
 
@@ -217,7 +217,7 @@ The machine-readable version source of truth is [`gradle/minecraft-versions.prop
 
 ### Supported Build Targets
 
-`1.21`, `1.21.1`, `1.21.2`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.6`, `1.21.7`, `1.21.8`, `1.21.9`, `1.21.10`, `1.21.11`, `26.1`, `26.2`
+`1.21`, `1.21.1`, `1.21.2`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.6`, `1.21.7`, `1.21.8`, `1.21.9`, `1.21.10`, `1.21.11`, `26.1`, `26.1.1`, `26.1.2`, `26.2`
 
 ## Version Information
 

@@ -79,7 +79,8 @@ val sharedSourceTransforms = linkedMapOf(
     "Item spawnEgg = SpawnEggItem.byId(entityType);" to
         "Item spawnEgg = SpawnEggItem.byId(entityType).map(holder -> holder.value()).orElse(null);"
 )
-val versionSourceTransforms: Map<String, String> = when (minecraftVersion) {
+val sourceTransformVersion = if (minecraftVersion.startsWith("26.1.")) "26.1" else minecraftVersion
+val versionSourceTransforms: Map<String, String> = when (sourceTransformVersion) {
     "26.1" -> emptyMap()
     "26.2" -> linkedMapOf(
         "this.minecraft.setScreen(" to "this.minecraft.gui.setScreen(",

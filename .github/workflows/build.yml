@@ -227,7 +227,7 @@ jobs:
                     | if test("-fabric-") then
                         {file: ., version: $version.version, loader: "Fabric"}
                       elif test("-neoforge-") then
-                        {file: ., version: $version.version, loader: "Neoforge BETA"}
+                        {file: ., version: $version.version, loader: "NeoForge"}
                       else
                         empty
                       end

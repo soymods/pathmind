@@ -32,26 +32,26 @@ Gradle's Java toolchain is always set from the selected manifest row. The pre-26
 
 ## Protected target matrix
 
-The `1.21.x` baseline targets use Java 21 and `pre26-remapped`; `26.1` through `26.2` use Java 25 and `mc26-unobfuscated`. Fabric and NeoForge are release loaders for every row.
+The `1.21.x` baseline targets use Java 21 and `pre26-remapped`; `26.1` through `26.2` use Java 25 and `mc26-unobfuscated`. Fabric is a release loader for every row. NeoForge is released only for rows with a non-`unsupported` NeoForge pin.
 
 | Minecraft | Compatibility family | Fabric API | NeoForge |
 | --- | --- | --- | --- |
 | `1.21` | `mc-1.21.0-1.21.8` | `0.102.0+1.21` | `21.0.166` |
 | `1.21.1` | `mc-1.21.0-1.21.8` | `0.116.7+1.21.1` | `21.1.230` |
-| `1.21.2` | `mc-1.21.0-1.21.8` | `0.106.1+1.21.2` | `21.2.1-beta` |
+| `1.21.2` | `mc-1.21.0-1.21.8` | `0.106.1+1.21.2` | `unsupported` |
 | `1.21.3` | `mc-1.21.0-1.21.8` | `0.114.1+1.21.3` | `21.3.96` |
 | `1.21.4` | `mc-1.21.0-1.21.8` | `0.119.4+1.21.4` | `21.4.157` |
 | `1.21.5` | `mc-1.21.0-1.21.8` | `0.128.2+1.21.5` | `21.5.97` |
-| `1.21.6` | `mc-1.21.0-1.21.8` | `0.128.2+1.21.6` | `21.6.20-beta` |
-| `1.21.7` | `mc-1.21.0-1.21.8` | `0.129.0+1.21.7` | `21.7.25-beta` |
+| `1.21.6` | `mc-1.21.0-1.21.8` | `0.128.2+1.21.6` | `unsupported` |
+| `1.21.7` | `mc-1.21.0-1.21.8` | `0.129.0+1.21.7` | `unsupported` |
 | `1.21.8` | `mc-1.21.0-1.21.8` | `0.133.4+1.21.8` | `21.8.53` |
-| `1.21.9` | `mc-1.21.9-1.21.10` | `0.134.1+1.21.9` | `21.9.16-beta` |
+| `1.21.9` | `mc-1.21.9-1.21.10` | `0.134.1+1.21.9` | `unsupported` |
 | `1.21.10` | `mc-1.21.9-1.21.10` | `0.138.4+1.21.10` | `21.10.64` |
 | `1.21.11` | `mc-1.21.11` | `0.140.2+1.21.11` | `21.11.42` |
-| `26.1` | `mc-26.1` | `0.145.1+26.1` | `26.1.0.19-beta` |
-| `26.1.1` | `mc-26.1` | `0.145.4+26.1.1` | `26.1.1.15-beta` |
+| `26.1` | `mc-26.1` | `0.145.1+26.1` | `unsupported` |
+| `26.1.1` | `mc-26.1` | `0.145.4+26.1.1` | `unsupported` |
 | `26.1.2` | `mc-26.1` | `0.155.2+26.1.2` | `26.1.2.94` |
-| `26.2` | `mc-26.2` | `0.154.2+26.2` | `26.2.0.15-beta` |
+| `26.2` | `mc-26.2` | `0.154.2+26.2` | `unsupported` |
 
 The `1.21.x` Fabric build pin is `0.17.3`, with release metadata accepting `0.17.2` or newer. Minecraft `26.1` through `26.2` build and require Fabric Loader `0.19.3`. These values remain explicit in the manifest so packaging cannot silently change.
 
@@ -144,17 +144,13 @@ Record manual runs in this table when a compatibility-changing pass is prepared 
 | `1.21.8` | Fabric | Pending | Pending | Pending | Pending | Pending | Pending | — |
 | `1.21.8` | NeoForge | Pending | Pending | Pending | Pending | Pending | Pending | — |
 | `1.21.9` | Fabric | Pending | Pending | Pending | Pending | Pending | Pending | — |
-| `1.21.9` | NeoForge | Pending | Pending | Pending | Pending | Pending | Pending | — |
 | `1.21.11` | Fabric | Pending | Pending | Pending | Pending | Pending | Pending | — |
 | `1.21.11` | NeoForge | Pending | Pending | Pending | Pending | Pending | Pending | — |
 | `26.1` | Fabric | Pending | Pending | Pending | Pending | Pending | Pending | — |
-| `26.1` | NeoForge | Pending | Pending | Pending | Pending | Pending | Pending | — |
 | `26.1.1` | Fabric | Pending | Pending | Pending | Pending | Pending | Pending | — |
-| `26.1.1` | NeoForge | Pending | Pending | Pending | Pending | Pending | Pending | — |
 | `26.1.2` | Fabric | Pending | Pending | Pending | Pending | Pending | Pending | — |
 | `26.1.2` | NeoForge | Pending | Pending | Pending | Pending | Pending | Pending | — |
 | `26.2` | Fabric | Pending | Pending | Pending | Pending | Pending | Pending | — |
-| `26.2` | NeoForge | Pending | Pending | Pending | Pending | Pending | Pending | — |
 
 ## Automated verification commands
 
@@ -171,4 +167,4 @@ Before merging compatibility, mapping, build, source-set, metadata, or release c
 ./gradlew buildAllTargets -q
 ```
 
-The full command builds and validates 32 public jars: one Fabric and one NeoForge artifact for each of the 16 supported Minecraft targets.
+The full command builds and validates one public Fabric jar for each supported Minecraft target, plus NeoForge jars for targets with a non-`unsupported` NeoForge pin.

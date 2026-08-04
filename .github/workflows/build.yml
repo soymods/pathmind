@@ -217,39 +217,53 @@ jobs:
             exit 1
           fi
 
-          format_downloads_for_platform() {
-            local platform="$1"
-
+          format_downloads_by_version() {
             printf '%s\n' "${jars[@]}" \
               | sed 's#^.*/##' \
               | jq -R . \
-              | jq -s -r --arg repo "${GITHUB_REPOSITORY}" --arg platform "${platform}" '
-                  map(select(test("-" + $platform + "-")))
-                  | sort_by(capture("\\+mc(?<version>[0-9.]+)\\.jar$").version | split(".") | map(tonumber))
+              | jq -s -r --arg repo "${GITHUB_REPOSITORY}" '
+                  map(
+                    capture("\\+mc(?<version>[0-9.]+)\\.jar$") as $version
+                    | if test("-fabric-") then
+                        {file: ., version: $version.version, loader: "Fabric"}
+                      elif test("-neoforge-") then
+                        {file: ., version: $version.version, loader: "Neoforge BETA"}
+                      else
+                        empty
+                      end
+                  )
+                  | sort_by(.version | split(".") | map(tonumber))
+                  | group_by(.version)
                   | map(
+                      . as $builds
                       "* `"
-                      + (capture("\\+mc(?<version>[0-9.]+)\\.jar$").version)
-                      + "` - [Download](<https://github.com/"
-                      + $repo
-                      + "/releases/download/test-builds/"
-                      + .
-                      + ">)"
+                      + $builds[0].version
+                      + "` - "
+                      + (
+                          $builds
+                          | sort_by(.loader)
+                          | map(
+                              "["
+                              + .loader
+                              + "](<https://github.com/"
+                              + $repo
+                              + "/releases/download/test-builds/"
+                              + .file
+                              + ">)"
+                            )
+                          | join(" | ")
+                        )
                     )
                   | join("\n")
                 '
           }
 
-          FABRIC_DOWNLOADS="$(format_downloads_for_platform fabric)"
-          NEOFORGE_DOWNLOADS="$(format_downloads_for_platform neoforge)"
+          DOWNLOADS="$(format_downloads_by_version)"
 
-          if [ -z "${FABRIC_DOWNLOADS}${NEOFORGE_DOWNLOADS}" ]; then
+          if [ -z "${DOWNLOADS}" ]; then
             echo "No release download links were available to post."
             exit 1
           fi
-
-          DOWNLOADS="$(printf '**Fabric**\n%s\n\n**Neoforge (BETA)**\n%s' \
-            "${FABRIC_DOWNLOADS:-_No Fabric jars were found._}" \
-            "${NEOFORGE_DOWNLOADS:-_No Neoforge jars were found._}")"
 
           SUMMARY_LINE="$(printf '**Branch:** %s\n**Commit:** [`%s`](<https://github.com/%s/commit/%s>) %s\n**Built:** <t:%s:F>' \
             "${GITHUB_REF_NAME:-${GITHUB_REF}}" \

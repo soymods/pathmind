@@ -1,5 +1,9 @@
 package com.pathmind.screen;
 
+import com.pathmind.screen.PathmindMarketplaceBrowseController.AuthorSummary;
+import com.pathmind.screen.PathmindMarketplaceBrowseController.MyPresetsFilter;
+import com.pathmind.screen.PathmindMarketplaceBrowseController.SortMode;
+
 // Canonical UI shared by the default and 26.x Stonecutter targets.
 
 import com.pathmind.PathmindCommon;
@@ -197,6 +201,34 @@ public class PathmindMarketplaceScreen extends Screen {
     private final PathmindMarketplacePopupController popupController = new PathmindMarketplacePopupController(this);
     private final PathmindMarketplacePreviewLoader previewLoader = new PathmindMarketplacePreviewLoader();
     private final PathmindMarketplaceAvatarLoader avatarLoader = new PathmindMarketplaceAvatarLoader();
+    private final PathmindMarketplaceBrowseController browseController =
+        new PathmindMarketplaceBrowseController(new BrowseHost());
+
+    private final class BrowseHost implements PathmindMarketplaceBrowseController.Host {
+        @Override public List<MarketplacePreset> allPresets() { return allPresets; }
+        @Override public boolean myPresetsOnly() { return myPresetsOnly; }
+        @Override public MyPresetsFilter myPresetsFilter() { return myPresetsFilter; }
+        @Override public SortMode sortMode() { return sortMode; }
+        @Override public boolean canManagePreset(MarketplacePreset preset) {
+            return PathmindMarketplaceScreen.this.canManagePreset(preset);
+        }
+        @Override public boolean isPresetSavedLocally(MarketplacePreset preset) {
+            return PathmindMarketplaceScreen.this.isPresetSavedLocally(preset);
+        }
+        @Override public boolean isViewingAuthorProfile() {
+            return PathmindMarketplaceScreen.this.isViewingAuthorProfile();
+        }
+        @Override public String viewedAuthorKey() { return viewedAuthorKey; }
+        @Override public MarketplaceAuthManager.AuthSession authSession() { return authSession; }
+        @Override public int pageIndex() { return pageIndex; }
+        @Override public int selectedIndex() { return selectedIndex; }
+        @Override public int maxPageIndex() { return getMaxPageIndex(); }
+        @Override public void setPresets(List<MarketplacePreset> value) { presets = value; }
+        @Override public void setAuthorResults(List<AuthorSummary> value) { authorResults = value; }
+        @Override public void setPageIndex(int value) { pageIndex = value; }
+        @Override public void setSelectedIndex(int value) { selectedIndex = value; }
+        @Override public void setStatusMessage(String value) { statusMessage = value; }
+    }
 
     public PathmindMarketplaceScreen(Screen parent) {
         this(parent, false, null, null);
@@ -3357,124 +3389,7 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     private void applyFilters() {
-        String query = searchField == null ? "" : normalizeSearch(searchField.getValue());
-        List<MarketplacePreset> filtered = new ArrayList<>();
-        for (MarketplacePreset preset : allPresets) {
-            if (!myPresetsOnly && !preset.isPublished()) {
-                continue;
-            }
-            if (myPresetsOnly && !canManagePreset(preset)) {
-                continue;
-            }
-            if (myPresetsOnly && !myPresetsFilter.matches(preset)) {
-                continue;
-            }
-            if (!sortMode.matches(this, preset)) {
-                continue;
-            }
-            if (isViewingAuthorProfile() && (!preset.isPublished() || !isViewedAuthorPreset(preset))) {
-                continue;
-            }
-            boolean matches = isAuthorDirectoryMode()
-                ? query.isEmpty() || containsNormalized(preset.getAuthorName(), query)
-                : query.isEmpty() || matchesQuery(preset, query);
-            if (matches) {
-                filtered.add(preset);
-            }
-        }
-        filtered.sort(sortMode.comparator);
-        presets = PathmindMarketplaceActions.dedupePresetsById(filtered);
-        authorResults = buildAuthorResults(filtered);
-        pageIndex = Math.max(0, Math.min(pageIndex, getMaxPageIndex()));
-        int currentCount = getCurrentResultCount();
-        selectedIndex = currentCount == 0 ? -1 : Math.max(0, Math.min(selectedIndex, currentCount - 1));
-        if (myPresetsOnly && authSession == null) {
-            statusMessage = Component.translatable("pathmind.status.signInViewPresets").getString();
-        } else if (isAuthorDirectoryMode() && authorResults.isEmpty()) {
-            statusMessage = query.isEmpty() ? Component.translatable("pathmind.status.noAuthorsPublic").getString() : Component.translatable("pathmind.status.noAuthorsSearch").getString();
-        } else if (isViewingAuthorProfile() && presets.isEmpty()) {
-            statusMessage = Component.translatable("pathmind.status.noCreatorPresets").getString();
-        } else if (allPresets.isEmpty()) {
-            statusMessage = myPresetsOnly ? Component.translatable("pathmind.status.noCloudPresets").getString() : Component.translatable("pathmind.status.noPublishedPresets").getString();
-        } else if (presets.isEmpty()) {
-            if (myPresetsOnly) {
-                statusMessage = switch (myPresetsFilter) {
-                    case PUBLIC -> Component.translatable("pathmind.status.noPublicSearch").getString();
-                    case PRIVATE -> Component.translatable("pathmind.status.noPrivateSearch").getString();
-                    default -> Component.translatable("pathmind.status.noPresetsSearch").getString();
-                };
-            } else {
-                statusMessage = sortMode == SortMode.SAVED ? Component.translatable("pathmind.status.noSavedSearch").getString() : Component.translatable("pathmind.status.noPresetsSearch").getString();
-            }
-        } else {
-            if (isAuthorDirectoryMode()) {
-                statusMessage = Component.translatable("pathmind.status.loadedAuthors", authorResults.size(), authorResults.size() == 1 ? "" : "s").getString();
-            } else {
-                statusMessage = translatedCount("pathmind.status.loadedPresets", presets.size());
-            }
-        }
-    }
-
-    private List<AuthorSummary> buildAuthorResults(List<MarketplacePreset> filtered) {
-        if (filtered == null || filtered.isEmpty()) {
-            return List.of();
-        }
-        Map<String, AuthorAccumulator> authors = new LinkedHashMap<>();
-        for (MarketplacePreset preset : filtered) {
-            if (preset == null || !preset.isPublished()) {
-                continue;
-            }
-            String key = buildAuthorKey(preset);
-            if (key == null || key.isBlank()) {
-                continue;
-            }
-            AuthorAccumulator accumulator = authors.computeIfAbsent(key, ignored -> new AuthorAccumulator(
-                key,
-                fallback(preset.getAuthorName(), Component.translatable("pathmind.marketplace.unknown").getString()),
-                fallback(preset.getAuthorAvatarUrl(), ""),
-                preset
-            ));
-            accumulator.presetCount++;
-            accumulator.totalLikes += Math.max(0, preset.getLikesCount());
-            accumulator.totalDownloads += Math.max(0, preset.getDownloadsCount());
-            if ((accumulator.avatarUrl == null || accumulator.avatarUrl.isBlank())
-                && preset.getAuthorAvatarUrl() != null && !preset.getAuthorAvatarUrl().isBlank()) {
-                accumulator.avatarUrl = preset.getAuthorAvatarUrl();
-            }
-        }
-        List<AuthorSummary> summaries = new ArrayList<>(authors.size());
-        for (AuthorAccumulator accumulator : authors.values()) {
-            summaries.add(new AuthorSummary(
-                accumulator.key,
-                accumulator.displayName,
-                accumulator.avatarUrl,
-                accumulator.presetCount,
-                accumulator.totalLikes,
-                accumulator.totalDownloads,
-                accumulator.representativePreset
-            ));
-        }
-        summaries.sort(Comparator.comparing((AuthorSummary author) -> normalizeSearch(author.displayName())));
-        return List.copyOf(summaries);
-    }
-
-    private boolean matchesQuery(MarketplacePreset preset, String query) {
-        if (containsNormalized(preset.getName(), query)
-            || containsNormalized(preset.getSlug(), query)
-            || containsNormalized(preset.getAuthorName(), query)
-            || containsNormalized(preset.getDescription(), query)) {
-            return true;
-        }
-        for (String tag : preset.getTags()) {
-            if (containsNormalized(tag, query)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private boolean containsNormalized(String value, String query) {
-        return value != null && normalizeSearch(value).contains(query);
+        browseController.applyFilters(searchField == null ? "" : searchField.getValue());
     }
 
     private Rect getCardAuthorRect(Rect cardRect, MarketplacePreset preset) {
@@ -3550,15 +3465,7 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     private String buildAuthorKey(MarketplacePreset preset) {
-        if (preset == null) {
-            return null;
-        }
-        String userId = fallback(preset.getAuthorUserId(), "").trim();
-        if (!userId.isEmpty()) {
-            return "id:" + userId;
-        }
-        String authorName = normalizeSearch(fallback(preset.getAuthorName(), ""));
-        return authorName.isEmpty() ? null : "name:" + authorName;
+        return PathmindMarketplaceBrowseController.buildAuthorKey(preset);
     }
 
     private boolean isAuthorDirectoryMode() {
@@ -3609,7 +3516,7 @@ public class PathmindMarketplaceScreen extends Screen {
     }
 
     private String normalizeSearch(String value) {
-        return value == null ? "" : value.toLowerCase(Locale.ROOT).trim();
+        return PathmindMarketplaceBrowseController.normalizeSearch(value);
     }
 
     CompatibilityStatus getCompatibilityStatus(MarketplacePreset preset) {
@@ -3827,91 +3734,6 @@ public class PathmindMarketplaceScreen extends Screen {
         Map<String, Node> nodeLookup,
         GraphBounds bounds
     ) {
-    }
-
-    private record AuthorSummary(
-        String key,
-        String displayName,
-        String avatarUrl,
-        int presetCount,
-        int totalLikes,
-        int totalDownloads,
-        MarketplacePreset representativePreset
-    ) {
-    }
-
-    private static final class AuthorAccumulator {
-        private final String key;
-        private final String displayName;
-        private String avatarUrl;
-        private final MarketplacePreset representativePreset;
-        private int presetCount;
-        private int totalLikes;
-        private int totalDownloads;
-
-        private AuthorAccumulator(String key, String displayName, String avatarUrl, MarketplacePreset representativePreset) {
-            this.key = key;
-            this.displayName = displayName;
-            this.avatarUrl = avatarUrl;
-            this.representativePreset = representativePreset;
-        }
-    }
-
-    private enum SortMode {
-        TRENDING(Component.translatable("pathmind.marketplace.sort.trending").getString(), Comparator
-            .comparingInt(MarketplacePreset::getDownloadsCount).reversed()
-            .thenComparing(Comparator.comparingInt(MarketplacePreset::getLikesCount).reversed())
-            .thenComparing(Comparator.comparing((MarketplacePreset preset) -> fallbackStatic(preset.getUpdatedAt(), "")).reversed())),
-        SAVED(Component.translatable("pathmind.marketplace.saved").getString(), Comparator.comparing((MarketplacePreset preset) -> fallbackStatic(preset.getName(), "").toLowerCase(Locale.ROOT))),
-        NEWEST(Component.translatable("pathmind.marketplace.sort.newest").getString(), Comparator.comparing((MarketplacePreset preset) -> fallbackStatic(preset.getCreatedAt(), "")).reversed()),
-        UPDATED(Component.translatable("pathmind.marketplace.sort.updated").getString(), Comparator.comparing((MarketplacePreset preset) -> fallbackStatic(preset.getUpdatedAt(), "")).reversed()),
-        DOWNLOADS(Component.translatable("pathmind.marketplace.downloads").getString(), Comparator.comparingInt(MarketplacePreset::getDownloadsCount).reversed()),
-        LIKES(Component.translatable("pathmind.marketplace.likes").getString(), Comparator.comparingInt(MarketplacePreset::getLikesCount).reversed()),
-        NAME(Component.translatable("pathmind.marketplace.sort.name").getString(), Comparator.comparing((MarketplacePreset preset) -> fallbackStatic(preset.getName(), "").toLowerCase(Locale.ROOT))),
-        AUTHOR(Component.translatable("pathmind.marketplace.sort.author").getString(), Comparator.comparing((MarketplacePreset preset) -> fallbackStatic(preset.getAuthorName(), "").toLowerCase(Locale.ROOT)));
-
-        private final String label;
-        private final Comparator<MarketplacePreset> comparator;
-
-        SortMode(String label, Comparator<MarketplacePreset> comparator) {
-            this.label = label;
-            this.comparator = comparator;
-        }
-
-        private boolean matches(PathmindMarketplaceScreen screen, MarketplacePreset preset) {
-            if (this == SAVED) {
-                return screen.isPresetSavedLocally(preset);
-            }
-            return true;
-        }
-
-        private MarketplaceService.ListingMode toListingMode() {
-            return switch (this) {
-                case TRENDING -> MarketplaceService.ListingMode.TRENDING;
-                case UPDATED -> MarketplaceService.ListingMode.UPDATED;
-                case DOWNLOADS -> MarketplaceService.ListingMode.DOWNLOADS;
-                case LIKES -> MarketplaceService.ListingMode.LIKES;
-                default -> MarketplaceService.ListingMode.NEWEST;
-            };
-        }
-
-        private static String fallbackStatic(String value, String fallback) {
-            return value == null || value.isBlank() ? fallback : value;
-        }
-    }
-
-    private enum MyPresetsFilter {
-        ALL,
-        PUBLIC,
-        PRIVATE;
-
-        private boolean matches(MarketplacePreset preset) {
-            return switch (this) {
-                case ALL -> true;
-                case PUBLIC -> preset != null && preset.isPublished();
-                case PRIVATE -> preset != null && !preset.isPublished();
-            };
-        }
     }
 
     enum ConfirmAction {

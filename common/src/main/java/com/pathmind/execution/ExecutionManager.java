@@ -2201,6 +2201,10 @@ public class ExecutionManager {
         return ExecutionGraphSnapshotSupport.buildBranchData(startNode, nodes, connections);
     }
 
+    private NodeGraphData createGraphSnapshot(List<Node> nodes, List<NodeConnection> connections) {
+        return ExecutionGraphSnapshotSupport.createGraphSnapshot(nodes, connections);
+    }
+
     private BranchLaunchData createBranchLaunchData(BranchData branchData, int startNodeNumber) {
         return ExecutionGraphSnapshotSupport.createBranchLaunchData(branchData, startNodeNumber);
     }

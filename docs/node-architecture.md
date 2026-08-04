@@ -122,11 +122,12 @@ For new work, prefer adding metadata to `NodeCatalog` and keeping the compatibil
 - validation before command execution;
 - dispatch into command executors.
 
-The current direction is for `Node.java` to keep shrinking. New behavior should usually be placed in the smallest owner that matches the concern.
+`Node.java` is the stable compatibility facade. New behavior should usually be placed in the smallest owner that matches the concern.
 
 ## Graph Editing
 
-`NodeGraph` is the visual editor's graph model. It owns:
+`NodeGraph` is the stable graph-editor facade. It owns the live node and connection
+collections and coordinates the package-private controllers that operate on them:
 
 - `List<Node> nodes`;
 - `List<NodeConnection> connections`;
@@ -138,9 +139,18 @@ The current direction is for `Node.java` to keep shrinking. New behavior should 
 - inline parameter editing state;
 - history, clipboard, and persistence entry points.
 
-The version-specific `PathmindVisualEditorScreen` classes handle screen integration and UI chrome, then delegate graph-specific actions to `NodeGraph`. For example, the screen creates `NodeGraph`, sets the active preset, routes mouse/key events, switches preset tabs, imports/exports, and calls `ExecutionManager` when the user presses play.
+The shared Stonecutter `PathmindVisualEditorScreen` handles Minecraft screen
+integration and UI chrome, then delegates graph-specific actions to `NodeGraph`.
+For example, the screen creates `NodeGraph`, sets the active preset, routes
+mouse/key events, switches preset tabs, imports/exports, and calls
+`ExecutionManager` when the user presses play. Stonecutter conditionals are kept
+at the changed Minecraft callback signatures instead of duplicating the screen.
 
-`NodeGraph` is therefore both a model and a large editor controller. It is not only a plain data structure.
+Rendering, selection, connections, inline fields, dropdowns, sticky notes,
+viewport movement, history, clipboard operations, loading, and routine workspace
+state each have a dedicated owner under `ui/graph`. `NodeGraph` intentionally
+keeps its widely used public API as forwarding methods rather than exposing those
+implementation classes to callers.
 
 ## Attachments Versus Connections
 
@@ -192,6 +202,13 @@ Execution starts in `ExecutionManager`.
 
 `executeFromNode` and `executeBranch` are narrower launch paths used by node-level play controls and start-specific execution. They still snapshot, clone branch data, create a `ChainController`, seed runtime variables, and run a chain.
 
+`ExecutionGraphSnapshotSupport` owns graph snapshotting, branch isolation, runtime
+node IDs, and clone traversal. `ExecutionRuntimeValueStore` owns global and
+per-chain variables and lists. `ExecutionSessionState` owns active execution IDs,
+node timing, pause accounting, completion display state, and execution context.
+`ExecutionManager` remains the public coordinator for launches, traversal,
+routines, events, cancellation, and graph activation.
+
 `ChainController` is the runtime scope for a branch. It tracks:
 
 - root start node and execution id;
@@ -241,8 +258,6 @@ Routines are the only user-facing synchronous reusable blocks. They are embedded
 
 The old Custom Node type and preset-wide input editor have been removed. When a saved graph containing `CUSTOM_NODE` is loaded, persistence migrates it to `RUN_PRESET`. `TEMPLATE` and serialized `customNodeDefinition` remain hidden legacy adapters so old saves can load; new presets never generate that metadata.
 
-The completed migration contract is documented in [`routines-redesign-roadmap.md`](routines-redesign-roadmap.md).
-
 ## Current Refactor Guidance
 
 `Node.java` is the compatibility shell for editor state, serialization, and legacy call sites. New behavior should not be added there by default.
@@ -258,7 +273,10 @@ When adding or changing a node type, prefer the smallest owner:
 7. Update `NodeGraphPersistence` only when the node has new persisted state beyond ordinary parameters, mode, position, connections, and attachments.
 8. Update `GraphValidator` when the new type introduces a new graph-level invariant.
 
-The goal is for `Node.java` and `NodeGraph.java` to keep losing responsibilities over time while preserving old save data and public APIs.
+`Node.java` and `NodeGraph.java` are now compatibility facades. Do not split them
+based on line count alone. Extract only when a new or existing cohesive behavior
+has a clearly smaller owner; retain thin forwarding methods when callers rely on
+the facade API.
 
 ## Contributor Workflow: Adding Or Changing A Node
 
@@ -374,7 +392,7 @@ Use this map when tracing a bug:
 - Preset not appearing or wrong file path: start in `PresetManager`.
 - Graph JSON looks wrong: inspect `NodeGraphData` and `NodeGraphPersistence.buildNodeGraphData`.
 - Saved graph loads incorrectly: inspect `NodeGraphPersistence.convertToNodes` and `convertToConnections`.
-- Editor drag/drop, selection, rendering, connection creation, or inline edit issue: start in `NodeGraph`, then the version-specific `PathmindVisualEditorScreen`.
+- Editor drag/drop, selection, rendering, connection creation, or inline edit issue: start in `NodeGraph`, then the shared Stonecutter `PathmindVisualEditorScreen`.
 - Parameter defaults are wrong: inspect `NodeCatalog`, then the `NodeParameterDefinitionRegistry` facade if a call site is stale.
 - Parameter node cannot attach: inspect `NodeCatalog`, then `NodeTraitRegistry` and `NodeCompatibility`.
 - Node category/sidebar/color/trait behavior is wrong: inspect `NodeCatalog`.

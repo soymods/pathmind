@@ -110,7 +110,7 @@ Every one of the 36 common compatibility files has a matching Fabric path. Of th
 
 Pass 4 removed the Fabric product mirror, promoted family-independent marketplace behavior to `common/src/main`, and consolidated the preview loader, preset popup, and graph preview renderer shared by `1.21` through `1.21.10`. The historical counts above remain useful for measuring the migration, but they no longer describe the active layout.
 
-The Fabric-only compatibility files cover loader events, key bindings, chat hooks, use-item callbacks, main-menu integration, and version-specific world-overlay rendering. NeoForge has loader-specific bootstrap/event logic plus its legacy/modern main-menu button implementation. These are expected loader or Minecraft API boundaries, although Pass 4 will narrow their contracts.
+The Fabric-only compatibility files cover loader events, key bindings, chat hooks, use-item callbacks, main-menu integration, and version-specific world-overlay rendering. NeoForge has loader-specific bootstrap/event logic plus its legacy/modern main-menu button implementation. These are the expected loader and Minecraft API boundaries after Pass 4 narrowed their contracts.
 
 ## Runtime smoke-test contract
 

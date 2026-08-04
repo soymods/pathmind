@@ -10,7 +10,8 @@ Keep service calls, workflows, request construction, media loading, and UI state
 2. repeated multi-step marketplace workflow: `PathmindMarketplaceFlowController`
 3. request construction or pure marketplace helper: `PathmindMarketplaceActions`
 4. avatar or preview graph loading: `PathmindMarketplaceAvatarLoader` or `PathmindMarketplacePreviewLoader`
-5. popup state, status text, rendering, mouse handling, and navigation: screen/controller classes
+5. gallery filtering, sorting, author grouping, and result-state updates: `PathmindMarketplaceBrowseController`
+6. popup state, status text, rendering, mouse handling, and navigation: screen/controller classes
 
 Screens should read like UI orchestration. They can decide what the user sees, but they should not directly chain marketplace service calls when a reusable workflow exists.
 
@@ -78,6 +79,21 @@ Use these for:
 
 Screens should request media and render the resulting cached state. They should not own HTTP/download mechanics.
 
+## Browse Controller
+
+`PathmindMarketplaceBrowseController` owns the gallery's browse policy:
+
+- published versus manageable-preset filtering
+- saved, visibility, text, and author-profile filtering
+- result sorting and duplicate removal
+- author-directory aggregation
+- page and selected-result clamping
+- empty/loading-result status selection
+
+It receives screen state and callbacks through its downward-only `Host`
+interface. Keep rendering, hit testing, popup opening, and service calls out of
+this controller.
+
 ## Screen Ownership
 
 Screens and UI controllers still own user-facing behavior:
@@ -109,6 +125,9 @@ Use this decision path:
 
 5. Is it popup state, status messaging, rendering, navigation, or mouse/key behavior?
    Keep it in the screen or an extracted UI controller.
+
+6. Does it change which gallery results are visible or how author results are grouped?
+   Put it in `PathmindMarketplaceBrowseController`.
 
 Prefer structured result enums over boolean flags for workflows. They make call sites easier to audit and give contributors an obvious place to add new outcomes later.
 

@@ -259,11 +259,30 @@ jobs:
             "${COMMIT_MESSAGE}" \
             "${BUILD_TIMESTAMP}")"
 
-          DESCRIPTION="$(printf '%s\n\n**Downloads**\n%s\n\n[View GitHub Actions run](<https://github.com/%s/actions/runs/%s>)' \
-            "${SUMMARY_LINE}" \
-            "${DOWNLOADS}" \
+          ACTIONS_LINK="$(printf '[View GitHub Actions run](<https://github.com/%s/actions/runs/%s>)' \
             "${GITHUB_REPOSITORY}" \
             "${GITHUB_RUN_ID}")"
+          DESCRIPTION="$(printf '%s\n\n**Downloads**\n%s\n\n%s' \
+            "${SUMMARY_LINE}" \
+            "${DOWNLOADS}" \
+            "${ACTIONS_LINK}")"
+          if [ "${#DESCRIPTION}" -gt 4096 ]; then
+            TRUNCATION_NOTICE=$'\n\n_Additional builds omitted; use the Actions run link for the full artifact list._'
+            FIXED_TEXT="$(printf '%s\n\n**Downloads**\n\n%s%s' \
+              "${SUMMARY_LINE}" \
+              "${ACTIONS_LINK}" \
+              "${TRUNCATION_NOTICE}")"
+            MAX_DOWNLOAD_LENGTH=$((4096 - ${#FIXED_TEXT} - 32))
+            if [ "$MAX_DOWNLOAD_LENGTH" -lt 0 ]; then
+              MAX_DOWNLOAD_LENGTH=0
+            fi
+            DOWNLOADS="${DOWNLOADS:0:$MAX_DOWNLOAD_LENGTH}"
+            DESCRIPTION="$(printf '%s\n\n**Downloads**\n%s\n\n%s%s' \
+              "${SUMMARY_LINE}" \
+              "${DOWNLOADS}" \
+              "${ACTIONS_LINK}" \
+              "${TRUNCATION_NOTICE}")"
+          fi
 
           PAYLOAD="$(jq -cn \
             --arg title "Pathmind test builds" \

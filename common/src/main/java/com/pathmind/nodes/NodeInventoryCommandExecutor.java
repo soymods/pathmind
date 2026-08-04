@@ -239,20 +239,18 @@ final class NodeInventoryCommandExecutor {
 
         client.execute(() -> {
             boolean moved = InputCompatibilityBridge.dispatchCursorPos(client, windowX, windowY);
-            boolean pressed = InputCompatibilityBridge.dispatchScreenMouseClicked(
+            boolean pressedWithMouseHandler = InputCompatibilityBridge.dispatchMouseButton(
+                client,
+                GLFW.GLFW_MOUSE_BUTTON_LEFT,
+                GLFW.GLFW_PRESS,
+                0
+            );
+            boolean pressed = pressedWithMouseHandler || InputCompatibilityBridge.dispatchScreenMouseClicked(
                 client.screen,
                 targetGuiX,
                 targetGuiY,
                 GLFW.GLFW_MOUSE_BUTTON_LEFT
             );
-            if (!pressed) {
-                pressed = InputCompatibilityBridge.dispatchMouseButton(
-                    client,
-                    GLFW.GLFW_MOUSE_BUTTON_LEFT,
-                    GLFW.GLFW_PRESS,
-                    0
-                );
-            }
             if (!moved || !pressed) {
                 sendNodeErrorMessage(client, tr("pathmind.error.screenClickDispatchFailed"));
                 future.complete(null);
@@ -266,13 +264,24 @@ final class NodeInventoryCommandExecutor {
                     return;
                 }
                 releaseClient.execute(() -> {
-                    boolean released = InputCompatibilityBridge.dispatchScreenMouseReleased(
-                        releaseClient.screen,
-                        targetGuiX,
-                        targetGuiY,
-                        GLFW.GLFW_MOUSE_BUTTON_LEFT
-                    );
+                    boolean released = false;
+                    if (pressedWithMouseHandler) {
+                        released = InputCompatibilityBridge.dispatchMouseButton(
+                            releaseClient,
+                            GLFW.GLFW_MOUSE_BUTTON_LEFT,
+                            GLFW.GLFW_RELEASE,
+                            0
+                        );
+                    }
                     if (!released) {
+                        released = InputCompatibilityBridge.dispatchScreenMouseReleased(
+                            releaseClient.screen,
+                            targetGuiX,
+                            targetGuiY,
+                            GLFW.GLFW_MOUSE_BUTTON_LEFT
+                        );
+                    }
+                    if (!released && !pressedWithMouseHandler) {
                         InputCompatibilityBridge.dispatchMouseButton(
                             releaseClient,
                             GLFW.GLFW_MOUSE_BUTTON_LEFT,

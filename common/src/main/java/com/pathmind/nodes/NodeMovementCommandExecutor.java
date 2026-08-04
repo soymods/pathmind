@@ -12,6 +12,7 @@ import net.minecraft.client.KeyMapping;
 import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Pose;
+import org.lwjgl.glfw.GLFW;
 
 final class NodeMovementCommandExecutor {
     private final Node owner;
@@ -241,8 +242,14 @@ final class NodeMovementCommandExecutor {
             NodeClientRuntimeSupport.runOnClientThread(client, () -> {
                 if (client.screen != null) {
                     handledByScreen[0] = InputCompatibilityBridge.dispatchScreenKeyPressed(client.screen, keyCode, 0, 0);
+                    Character typedCharacter = resolveTypedCharacter(buttonValue, keyCode);
+                    if (!handledByScreen[0] && typedCharacter != null) {
+                        handledByScreen[0] = InputCompatibilityBridge.dispatchScreenCharTyped(client.screen, typedCharacter, 0);
+                    }
                 }
-                KeyMapping.click(inputKey);
+                if (!handledByScreen[0]) {
+                    KeyMapping.click(inputKey);
+                }
             });
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -273,6 +280,56 @@ final class NodeMovementCommandExecutor {
                 future.complete(null);
             });
         }, holdDurationMs, TimeUnit.MILLISECONDS);
+    }
+
+    private Character resolveTypedCharacter(String buttonValue, int keyCode) {
+        if (buttonValue != null) {
+            String trimmed = buttonValue.trim();
+            if (trimmed.length() == 1 && isAllowedTypedCharacter(trimmed.charAt(0))) {
+                return trimmed.charAt(0);
+            }
+        }
+        if (keyCode >= GLFW.GLFW_KEY_A && keyCode <= GLFW.GLFW_KEY_Z) {
+            return (char) ('a' + (keyCode - GLFW.GLFW_KEY_A));
+        }
+        if (keyCode >= GLFW.GLFW_KEY_0 && keyCode <= GLFW.GLFW_KEY_9) {
+            return (char) ('0' + (keyCode - GLFW.GLFW_KEY_0));
+        }
+        return switch (keyCode) {
+            case GLFW.GLFW_KEY_SPACE -> ' ';
+            case GLFW.GLFW_KEY_APOSTROPHE -> '\'';
+            case GLFW.GLFW_KEY_COMMA -> ',';
+            case GLFW.GLFW_KEY_MINUS -> '-';
+            case GLFW.GLFW_KEY_PERIOD -> '.';
+            case GLFW.GLFW_KEY_SLASH -> '/';
+            case GLFW.GLFW_KEY_SEMICOLON -> ';';
+            case GLFW.GLFW_KEY_EQUAL -> '=';
+            case GLFW.GLFW_KEY_LEFT_BRACKET -> '[';
+            case GLFW.GLFW_KEY_BACKSLASH -> '\\';
+            case GLFW.GLFW_KEY_RIGHT_BRACKET -> ']';
+            case GLFW.GLFW_KEY_GRAVE_ACCENT -> '`';
+            case GLFW.GLFW_KEY_KP_0 -> '0';
+            case GLFW.GLFW_KEY_KP_1 -> '1';
+            case GLFW.GLFW_KEY_KP_2 -> '2';
+            case GLFW.GLFW_KEY_KP_3 -> '3';
+            case GLFW.GLFW_KEY_KP_4 -> '4';
+            case GLFW.GLFW_KEY_KP_5 -> '5';
+            case GLFW.GLFW_KEY_KP_6 -> '6';
+            case GLFW.GLFW_KEY_KP_7 -> '7';
+            case GLFW.GLFW_KEY_KP_8 -> '8';
+            case GLFW.GLFW_KEY_KP_9 -> '9';
+            case GLFW.GLFW_KEY_KP_DECIMAL -> '.';
+            case GLFW.GLFW_KEY_KP_DIVIDE -> '/';
+            case GLFW.GLFW_KEY_KP_MULTIPLY -> '*';
+            case GLFW.GLFW_KEY_KP_SUBTRACT -> '-';
+            case GLFW.GLFW_KEY_KP_ADD -> '+';
+            case GLFW.GLFW_KEY_KP_EQUAL -> '=';
+            default -> null;
+        };
+    }
+
+    private boolean isAllowedTypedCharacter(char character) {
+        return !Character.isISOControl(character) && character != '\u00A7';
     }
     
     void executeCrouchCommand(CompletableFuture<Void> future) {

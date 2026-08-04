@@ -21,6 +21,9 @@ public final class InputCompatibilityBridge {
     private static final Method SCREEN_KEY_PRESSED_LEGACY = resolveScreenKeyPressedLegacy();
     private static final Constructor<?> KEY_INPUT_CONSTRUCTOR = resolveKeyInputConstructor();
     private static final Method SCREEN_KEY_PRESSED_MODERN = resolveScreenKeyPressedModern();
+    private static final Constructor<?> CHARACTER_EVENT_CONSTRUCTOR = resolveCharacterEventConstructor();
+    private static final Method SCREEN_CHAR_TYPED_LEGACY = resolveScreenCharTypedLegacy();
+    private static final Method SCREEN_CHAR_TYPED_MODERN = resolveScreenCharTypedModern();
     private static final Method SCREEN_MOUSE_CLICKED = resolveScreenMouseMethod("mouseClicked");
     private static final Method SCREEN_MOUSE_RELEASED = resolveScreenMouseMethod("mouseReleased");
     private static final Method MOUSE_CURSOR_POS_CALLBACK = resolveMouseCursorPosCallback();
@@ -174,6 +177,30 @@ public final class InputCompatibilityBridge {
         return false;
     }
 
+    public static boolean dispatchScreenCharTyped(Screen screen, char character, int modifiers) {
+        if (screen == null) {
+            return false;
+        }
+        if (SCREEN_CHAR_TYPED_LEGACY != null) {
+            try {
+                Object result = SCREEN_CHAR_TYPED_LEGACY.invoke(screen, character, modifiers);
+                return result instanceof Boolean value && value;
+            } catch (IllegalAccessException | InvocationTargetException ignored) {
+                return false;
+            }
+        }
+        if (SCREEN_CHAR_TYPED_MODERN != null && CHARACTER_EVENT_CONSTRUCTOR != null) {
+            try {
+                Object characterEvent = CHARACTER_EVENT_CONSTRUCTOR.newInstance((int) character, modifiers);
+                Object result = SCREEN_CHAR_TYPED_MODERN.invoke(screen, characterEvent);
+                return result instanceof Boolean value && value;
+            } catch (InstantiationException | IllegalAccessException | InvocationTargetException ignored) {
+                return false;
+            }
+        }
+        return false;
+    }
+
     private static Method resolveScreenMethod(String name) {
         try {
             Method method = Screen.class.getMethod(name);
@@ -264,6 +291,41 @@ public final class InputCompatibilityBridge {
         Class<?> keyInputClass = KEY_INPUT_CONSTRUCTOR.getDeclaringClass();
         try {
             Method method = Screen.class.getMethod("keyPressed", keyInputClass);
+            method.setAccessible(true);
+            return method;
+        } catch (NoSuchMethodException ignored) {
+            return null;
+        }
+    }
+
+    private static Constructor<?> resolveCharacterEventConstructor() {
+        try {
+            Class<?> characterEventClass = Class.forName("net.minecraft.client.input.CharacterEvent");
+            Constructor<?> constructor = characterEventClass.getConstructor(int.class, int.class);
+            constructor.setAccessible(true);
+            return constructor;
+        } catch (ReflectiveOperationException ignored) {
+            return null;
+        }
+    }
+
+    private static Method resolveScreenCharTypedLegacy() {
+        try {
+            Method method = Screen.class.getMethod("charTyped", char.class, int.class);
+            method.setAccessible(true);
+            return method;
+        } catch (NoSuchMethodException ignored) {
+            return null;
+        }
+    }
+
+    private static Method resolveScreenCharTypedModern() {
+        if (CHARACTER_EVENT_CONSTRUCTOR == null) {
+            return null;
+        }
+        Class<?> characterEventClass = CHARACTER_EVENT_CONSTRUCTOR.getDeclaringClass();
+        try {
+            Method method = Screen.class.getMethod("charTyped", characterEventClass);
             method.setAccessible(true);
             return method;
         } catch (NoSuchMethodException ignored) {

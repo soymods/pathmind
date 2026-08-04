@@ -236,6 +236,7 @@ jobs:
                   | group_by(.version)
                   | map(
                       . as $builds
+                      |
                       "* `"
                       + $builds[0].version
                       + "` - "

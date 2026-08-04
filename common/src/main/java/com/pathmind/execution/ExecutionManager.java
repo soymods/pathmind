@@ -57,11 +57,7 @@ public class ExecutionManager {
     public static final String CHAT_SENDER_VARIABLE_NAME = "chat_sender";
     public static final String CHAT_MESSAGE_VARIABLE_NAME = "chat_message";
     private static volatile ExecutionManager instance;
-    private Node activeNode;
-    private boolean isExecuting;
-    private long executionStartTime;
-    private long executionEndTime;
-    private static final long MINIMUM_DISPLAY_DURATION = 3000; // 3 seconds minimum display
+    private final ExecutionSessionState sessionState;
     private NodeGraphData lastExecutedGraph;
     private NodeGraphData lastGlobalGraph;
     private List<Node> activeNodes;
@@ -78,22 +74,10 @@ public class ExecutionManager {
     private final Map<ConnectionKey, Node> eventConnectionOwners;
     private final Set<Node> activeEventFunctionNodes;
     private final Map<Integer, Node> activeExecutionNodes;
-    private final Map<Integer, Long> executionNodeStartTimes;
-    private final Map<Integer, Long> executionNodePausedDurations;
-    private final Map<Integer, Long> executionNodePauseStartTimes;
     private final Map<Integer, RoutineCallFrame> routineCallFrames;
-    private final AtomicInteger nextExecutionId;
-    private Integer primaryExecutionId;
-    private boolean globalExecutionActive;
     private boolean lastSnapshotWasGlobal;
-    private long activeNodeStartTime;
-    private long activeNodePausedDuration;
-    private long activeNodePauseStartTime;
-    private long activeNodeEndTime;
-    private boolean singleplayerPaused;
     private Integer lastStartNodeNumber;
     private String lastStartPreset;
-    private static final ThreadLocal<Integer> CURRENT_EXECUTION_ID = new ThreadLocal<>();
 
 
     private static class ChainController {
@@ -359,10 +343,7 @@ public class ExecutionManager {
     }
 
     private ExecutionManager() {
-        this.activeNode = null;
-        this.isExecuting = false;
-        this.executionStartTime = 0;
-        this.executionEndTime = 0;
+        this.sessionState = new ExecutionSessionState();
         this.activeNodes = new ArrayList<>();
         this.activeConnections = new ArrayList<>();
         this.workspaceNodes = new ArrayList<>();
@@ -372,24 +353,13 @@ public class ExecutionManager {
         this.activeChains = new ConcurrentHashMap<>();
         this.controllerRoutines = new ConcurrentHashMap<>();
         this.runtimeValues = new ExecutionRuntimeValueStore(new RuntimeValueHost());
-        this.globalExecutionActive = false;
         this.lastSnapshotWasGlobal = false;
         this.activeConnectionLookup = ConcurrentHashMap.newKeySet();
         this.outputNodeLookup = new ConcurrentHashMap<>();
         this.eventConnectionOwners = new ConcurrentHashMap<>();
         this.activeEventFunctionNodes = ConcurrentHashMap.newKeySet();
-        this.activeExecutionNodes = new ConcurrentHashMap<>();
-        this.executionNodeStartTimes = new ConcurrentHashMap<>();
-        this.executionNodePausedDurations = new ConcurrentHashMap<>();
-        this.executionNodePauseStartTimes = new ConcurrentHashMap<>();
+        this.activeExecutionNodes = sessionState.activeExecutionNodes;
         this.routineCallFrames = new ConcurrentHashMap<>();
-        this.nextExecutionId = new AtomicInteger(1);
-        this.primaryExecutionId = null;
-        this.activeNodeStartTime = 0;
-        this.activeNodePausedDuration = 0;
-        this.activeNodePauseStartTime = 0;
-        this.activeNodeEndTime = 0;
-        this.singleplayerPaused = false;
         this.lastStartNodeNumber = null;
         this.lastStartPreset = null;
     }
@@ -475,7 +445,7 @@ public class ExecutionManager {
         if (startFresh) {
             startExecution(rootNodes, false);
         } else {
-            this.isExecuting = true;
+            this.sessionState.markExecuting();
         }
 
         for (EventHandlerLaunchData handler : handlers) {
@@ -809,7 +779,7 @@ public class ExecutionManager {
         if (activeChains.isEmpty()) {
             startExecution(Collections.singletonList(launchData.rootNode), false);
         } else {
-            this.isExecuting = true;
+            this.sessionState.markExecuting();
         }
 
         int executionId = allocateExecutionId();
@@ -866,7 +836,7 @@ public class ExecutionManager {
             startExecution(Collections.singletonList(launchData.rootNode), false);
         } else {
             mergeActiveGraph(launchData.branchData.nodes, launchData.branchData.connections);
-            this.isExecuting = true;
+            this.sessionState.markExecuting();
         }
 
         int executionId = allocateExecutionId();
@@ -964,10 +934,10 @@ public class ExecutionManager {
         this.cancelRequested = false;
         mergeActiveGraph(launchData.branchData.nodes, launchData.branchData.connections);
 
-        if (!isExecuting && activeChains.isEmpty()) {
+        if (!sessionState.isActivelyExecuting() && activeChains.isEmpty()) {
             startExecution(Collections.singletonList(launchData.rootNode), false);
         } else {
-            this.isExecuting = true;
+            this.sessionState.markExecuting();
         }
 
         int executionId = allocateExecutionId();
@@ -1048,23 +1018,9 @@ public class ExecutionManager {
      */
     private void startExecution(List<Node> startNodes, boolean markGlobal) {
         runtimeValues.clear();
-        this.activeExecutionNodes.clear();
-        this.executionNodeStartTimes.clear();
-        this.executionNodePausedDurations.clear();
-        this.executionNodePauseStartTimes.clear();
         this.routineCallFrames.clear();
-        this.primaryExecutionId = null;
-        this.activeNode = startNodes.isEmpty() ? null : startNodes.get(0);
-        if (this.activeNode != null) {
-            resetActiveNodeTiming();
-        } else {
-            clearActiveNodeTiming();
-        }
-        this.isExecuting = true;
-        this.globalExecutionActive = markGlobal;
+        sessionState.start(startNodes, markGlobal);
         this.cancelRequested = false;
-        this.executionStartTime = System.currentTimeMillis();
-        this.executionEndTime = 0;
         if (!startNodes.isEmpty()) {
             LOGGER.debug("Started execution with {} start node(s)", startNodes.size());
         } else {
@@ -1076,33 +1032,11 @@ public class ExecutionManager {
      * Set the currently active node
      */
     public void setActiveNode(Node node) {
-        setActiveNode(node, primaryExecutionId != null ? primaryExecutionId : -1);
+        sessionState.setActiveNode(node);
     }
 
     private void setActiveNode(Node node, int executionId) {
-        if (executionId >= 0) {
-            if (node != null) {
-                activeExecutionNodes.put(executionId, node);
-                resetExecutionTiming(executionId);
-            } else {
-                activeExecutionNodes.remove(executionId);
-                clearExecutionTiming(executionId);
-            }
-        }
-
-        if (primaryExecutionId == null && executionId >= 0) {
-            primaryExecutionId = executionId;
-        }
-
-        if (primaryExecutionId != null && executionId == primaryExecutionId) {
-            this.activeNode = node;
-            if (node != null) {
-                resetActiveNodeTiming();
-            } else {
-                clearActiveNodeTiming();
-            }
-            LOGGER.trace("Set active node to {}", node != null ? node.getType() : "null");
-        }
+        sessionState.setActiveNode(node, executionId);
     }
     
     /**
@@ -1110,17 +1044,9 @@ public class ExecutionManager {
      */
     public void stopExecution() {
         LOGGER.debug("Stopping execution");
-        this.isExecuting = false;
-        this.globalExecutionActive = false;
+        sessionState.stop(cancelRequested);
         if (cancelRequested) {
-            this.executionEndTime = 0;
-            this.executionStartTime = 0;
-            this.activeNode = null;
-            clearActiveNodeTiming();
             cancelRequested = false;
-        } else {
-            this.executionEndTime = System.currentTimeMillis();
-            this.activeNodeEndTime = this.executionEndTime;
         }
         // Keep activeNode for minimum display duration
     }
@@ -1131,7 +1057,7 @@ public class ExecutionManager {
     public void requestStopAll() {
         cancelAllNavigationCommands();
 
-        if (!isExecuting && activeNode == null && activeChains.isEmpty()) {
+        if (!sessionState.isActivelyExecuting() && sessionState.getActiveNode() == null && activeChains.isEmpty()) {
             runtimeValues.clear();
             routineCallFrames.clear();
             return;
@@ -1142,23 +1068,13 @@ public class ExecutionManager {
         for (ChainController controller : activeChains.values()) {
             controller.cancelRequested = true;
         }
-        this.isExecuting = false;
-        this.globalExecutionActive = false;
-        this.activeNode = null;
-        clearActiveNodeTiming();
-        this.executionStartTime = 0;
-        this.executionEndTime = 0;
+        this.sessionState.reset();
         this.activeNodes.clear();
         this.activeConnections.clear();
         this.activeConnectionLookup.clear();
         this.outputNodeLookup.clear();
         this.eventConnectionOwners.clear();
         this.activeEventFunctionNodes.clear();
-        this.activeExecutionNodes.clear();
-        this.executionNodeStartTimes.clear();
-        this.executionNodePausedDurations.clear();
-        this.executionNodePauseStartTimes.clear();
-        this.primaryExecutionId = null;
         this.activeChains.clear();
         this.controllerRoutines.clear();
         this.runtimeValues.clear();
@@ -1213,47 +1129,27 @@ public class ExecutionManager {
      * Get the currently active node
      */
     public Node getActiveNode() {
-        return activeNode;
+        return sessionState.getActiveNode();
     }
 
     public boolean isExecutionActiveOnNode(Integer executionId, String nodeId) {
-        if (executionId == null || executionId < 0 || nodeId == null || nodeId.isEmpty()) {
-            return false;
-        }
-        Node active = activeExecutionNodes.get(executionId);
-        return active != null && nodeId.equals(active.getId());
+        return sessionState.isExecutionActiveOnNode(executionId, nodeId);
     }
 
     public long getExecutionNodeDuration(Integer executionId) {
-        if (executionId == null || executionId < 0) {
-            return 0L;
-        }
-
-        Long startTime = executionNodeStartTimes.get(executionId);
-        if (startTime == null || startTime <= 0L) {
-            return 0L;
-        }
-
-        long referenceTime = System.currentTimeMillis();
-        long pausedTime = executionNodePausedDurations.getOrDefault(executionId, 0L);
-        long pauseStart = executionNodePauseStartTimes.getOrDefault(executionId, 0L);
-        if (singleplayerPaused && pauseStart > 0L) {
-            pausedTime += referenceTime - pauseStart;
-        }
-
-        return Math.max(0L, referenceTime - startTime - pausedTime);
+        return sessionState.getExecutionNodeDuration(executionId);
     }
 
     public Integer getCurrentExecutionId() {
-        return CURRENT_EXECUTION_ID.get();
+        return sessionState.getCurrentExecutionId();
     }
 
     private ChainController resolveCurrentChainController() {
-        Integer executionId = CURRENT_EXECUTION_ID.get();
+        Integer executionId = sessionState.getCurrentExecutionId();
         if (executionId == null || executionId < 0) {
             return null;
         }
-        Node activeExecutionNode = activeExecutionNodes.get(executionId);
+        Node activeExecutionNode = sessionState.getActiveExecutionNode(executionId);
         if (activeExecutionNode == null) {
             return null;
         }
@@ -1265,41 +1161,11 @@ public class ExecutionManager {
     }
 
     public void runWithExecutionContext(int executionId, Runnable runnable) {
-        Integer previous = CURRENT_EXECUTION_ID.get();
-        if (executionId >= 0) {
-            CURRENT_EXECUTION_ID.set(executionId);
-        } else {
-            CURRENT_EXECUTION_ID.remove();
-        }
-        try {
-            runnable.run();
-        } finally {
-            if (previous != null) {
-                CURRENT_EXECUTION_ID.set(previous);
-            } else {
-                CURRENT_EXECUTION_ID.remove();
-            }
-        }
+        sessionState.runWithExecutionContext(executionId, runnable);
     }
 
     public List<Node> getActiveNodeChainSnapshot() {
-        LinkedHashSet<Node> ordered = new LinkedHashSet<>();
-        if (activeNode != null) {
-            ordered.add(activeNode);
-        }
-
-        if (!activeExecutionNodes.isEmpty()) {
-            List<Integer> ids = new ArrayList<>(activeExecutionNodes.keySet());
-            Collections.sort(ids);
-            for (Integer id : ids) {
-                Node node = activeExecutionNodes.get(id);
-                if (node != null) {
-                    ordered.add(node);
-                }
-            }
-        }
-
-        return new ArrayList<>(ordered);
+        return sessionState.getActiveNodeChainSnapshot();
     }
 
     public boolean requestStopForStart(Node startNode) {
@@ -1374,10 +1240,10 @@ public class ExecutionManager {
 
         mergeActiveGraph(launchData.branchData.nodes, launchData.branchData.connections);
 
-        if (!isExecuting && activeChains.isEmpty()) {
-            startExecution(Collections.singletonList(launchData.rootNode), globalExecutionActive);
+        if (!sessionState.isActivelyExecuting() && activeChains.isEmpty()) {
+            startExecution(Collections.singletonList(launchData.rootNode), sessionState.isGlobalExecutionActive());
         } else {
-            this.isExecuting = true;
+            this.sessionState.markExecuting();
         }
 
         int executionId = allocateExecutionId();
@@ -1534,165 +1400,50 @@ public class ExecutionManager {
      * Check if execution is currently running or should still be displayed
      */
     public boolean isExecuting() {
-        if (isExecuting) {
-            return true;
-        }
-
-        return isCompletionDisplayActive();
+        return sessionState.isExecuting();
     }
 
     /**
      * Returns true when the overlay should show completion state messaging.
      */
     public boolean isDisplayingCompletion() {
-        if (isExecuting) {
-            return false;
-        }
-
-        return isCompletionDisplayActive();
-    }
-
-    private boolean isCompletionDisplayActive() {
-        if (executionEndTime > 0 && activeNode != null) {
-            long timeSinceEnd = System.currentTimeMillis() - executionEndTime;
-            if (timeSinceEnd < MINIMUM_DISPLAY_DURATION) {
-                return true;
-            } else {
-                // Clear the active node after minimum display duration
-                this.activeNode = null;
-                this.executionEndTime = 0;
-                clearActiveNodeTiming();
-            }
-        }
-        return false;
+        return sessionState.isDisplayingCompletion();
     }
 
     public boolean isGlobalExecutionActive() {
-        return globalExecutionActive;
+        return sessionState.isGlobalExecutionActive();
     }
     
     /**
      * Get the execution start time
      */
     public long getExecutionStartTime() {
-        return executionStartTime;
+        return sessionState.getExecutionStartTime();
     }
     
     /**
      * Get the current execution duration in milliseconds
      */
     public long getExecutionDuration() {
-        if (executionStartTime == 0) {
-            return 0;
-        }
-        
-        if (isExecuting) {
-            return System.currentTimeMillis() - executionStartTime;
-        } else if (executionEndTime > 0) {
-            return executionEndTime - executionStartTime;
-        }
-        
-        return 0;
+        return sessionState.getExecutionDuration();
     }
 
     /**
      * Get the elapsed duration for the currently active node in milliseconds.
      */
     public long getActiveNodeDuration() {
-        if (activeNodeStartTime == 0) {
-            return 0;
-        }
-
-        long referenceTime;
-        if (isExecuting) {
-            referenceTime = System.currentTimeMillis();
-        } else if (activeNodeEndTime > 0) {
-            referenceTime = activeNodeEndTime;
-        } else {
-            referenceTime = System.currentTimeMillis();
-        }
-
-        long pausedTime = activeNodePausedDuration;
-        if (singleplayerPaused && activeNodePauseStartTime > 0) {
-            pausedTime += referenceTime - activeNodePauseStartTime;
-        }
-
-        return Math.max(0, referenceTime - activeNodeStartTime - pausedTime);
+        return sessionState.getActiveNodeDuration();
     }
 
     /**
      * Update whether Pathmind execution should be paused so node timers and polling can be frozen.
      */
     public void setSingleplayerPaused(boolean paused) {
-        if (this.singleplayerPaused == paused) {
-            return;
-        }
-
-        this.singleplayerPaused = paused;
-        long now = System.currentTimeMillis();
-        if (paused) {
-            if (activeNode != null) {
-                this.activeNodePauseStartTime = now;
-            }
-            for (Map.Entry<Integer, Node> entry : activeExecutionNodes.entrySet()) {
-                Integer executionId = entry.getKey();
-                if (executionId == null || entry.getValue() == null) {
-                    continue;
-                }
-                executionNodePauseStartTimes.put(executionId, now);
-            }
-        } else if (activeNodePauseStartTime > 0) {
-            this.activeNodePausedDuration += now - this.activeNodePauseStartTime;
-            this.activeNodePauseStartTime = 0;
-            for (Map.Entry<Integer, Node> entry : activeExecutionNodes.entrySet()) {
-                Integer executionId = entry.getKey();
-                if (executionId == null || entry.getValue() == null) {
-                    continue;
-                }
-                long pauseStart = executionNodePauseStartTimes.getOrDefault(executionId, 0L);
-                if (pauseStart > 0L) {
-                    executionNodePausedDurations.merge(executionId, now - pauseStart, Long::sum);
-                    executionNodePauseStartTimes.put(executionId, 0L);
-                }
-            }
-        }
+        sessionState.setSingleplayerPaused(paused);
     }
 
     public boolean isExecutionPaused() {
-        return singleplayerPaused;
-    }
-
-    private void resetActiveNodeTiming() {
-        this.activeNodeStartTime = System.currentTimeMillis();
-        this.activeNodePausedDuration = 0;
-        this.activeNodeEndTime = 0;
-        this.activeNodePauseStartTime = singleplayerPaused ? activeNodeStartTime : 0;
-    }
-
-    private void clearActiveNodeTiming() {
-        this.activeNodeStartTime = 0;
-        this.activeNodePausedDuration = 0;
-        this.activeNodePauseStartTime = 0;
-        this.activeNodeEndTime = 0;
-    }
-
-    private void resetExecutionTiming(int executionId) {
-        if (executionId < 0) {
-            return;
-        }
-        long now = System.currentTimeMillis();
-        executionNodeStartTimes.put(executionId, now);
-        executionNodePausedDurations.put(executionId, 0L);
-        executionNodePauseStartTimes.put(executionId, singleplayerPaused ? now : 0L);
-    }
-
-    private void clearExecutionTiming(int executionId) {
-        if (executionId < 0) {
-            return;
-        }
-        executionNodeStartTimes.remove(executionId);
-        executionNodePausedDurations.remove(executionId);
-        executionNodePauseStartTimes.remove(executionId);
+        return sessionState.isExecutionPaused();
     }
 
     private CompletableFuture<Void> runChain(Node currentNode, ChainController controller, int executionId) {
@@ -1914,7 +1665,7 @@ public class ExecutionManager {
     }
 
     private CompletableFuture<Void> waitForExecutionResume() {
-        if (!singleplayerPaused) {
+        if (!sessionState.isExecutionPaused()) {
             return CompletableFuture.completedFuture(null);
         }
 
@@ -1929,7 +1680,7 @@ public class ExecutionManager {
         }
 
         CompletableFuture.runAsync(() -> {
-            if (cancelRequested || !singleplayerPaused) {
+            if (cancelRequested || !sessionState.isExecutionPaused()) {
                 future.complete(null);
                 return;
             }
@@ -2358,13 +2109,9 @@ public class ExecutionManager {
         }
 
         if (executionId >= 0) {
-            activeExecutionNodes.remove(executionId);
+            sessionState.removeExecution(executionId);
             routineCallFrames.remove(executionId);
             controller.executionFunctionDepths.remove(executionId);
-            clearExecutionTiming(executionId);
-            if (primaryExecutionId != null && primaryExecutionId == executionId) {
-                refreshPrimaryExecution();
-            }
         }
 
         if (!releaseChainExecution(controller)) {
@@ -2374,7 +2121,7 @@ public class ExecutionManager {
         activeChains.remove(controller.startNode, controller);
         controllerRoutines.remove(controller);
 
-        if (activeChains.isEmpty() && isExecuting) {
+        if (activeChains.isEmpty() && sessionState.isActivelyExecuting()) {
             stopExecution();
             activeNodes.clear();
             activeConnections.clear();
@@ -2382,50 +2129,12 @@ public class ExecutionManager {
             outputNodeLookup.clear();
             eventConnectionOwners.clear();
             activeEventFunctionNodes.clear();
-            activeExecutionNodes.clear();
-            executionNodeStartTimes.clear();
-            executionNodePausedDurations.clear();
-            executionNodePauseStartTimes.clear();
-            primaryExecutionId = null;
+            sessionState.clearExecutionNodes();
         }
     }
 
     private int allocateExecutionId() {
-        return nextExecutionId.getAndIncrement();
-    }
-
-    private void refreshPrimaryExecution() {
-        if (activeExecutionNodes.isEmpty()) {
-            primaryExecutionId = null;
-            activeNode = null;
-            clearActiveNodeTiming();
-            return;
-        }
-
-        int replacementId = Integer.MAX_VALUE;
-        Node replacementNode = null;
-        for (Map.Entry<Integer, Node> entry : activeExecutionNodes.entrySet()) {
-            Integer id = entry.getKey();
-            Node node = entry.getValue();
-            if (id == null || node == null) {
-                continue;
-            }
-            if (id < replacementId) {
-                replacementId = id;
-                replacementNode = node;
-            }
-        }
-
-        if (replacementNode == null) {
-            primaryExecutionId = null;
-            activeNode = null;
-            clearActiveNodeTiming();
-            return;
-        }
-
-        primaryExecutionId = replacementId;
-        activeNode = replacementNode;
-        resetActiveNodeTiming();
+        return sessionState.allocateExecutionId();
     }
 
     private boolean retainChainExecution(ChainController controller, int executionId, int parentExecutionId, boolean functionCall) {
@@ -2582,7 +2291,7 @@ public class ExecutionManager {
 
 
     public boolean shouldAnimateConnection(NodeConnection connection) {
-        if (connection == null || !isExecuting) {
+        if (connection == null || !sessionState.isActivelyExecuting()) {
             return false;
         }
 
@@ -2594,7 +2303,7 @@ public class ExecutionManager {
             return false;
         }
 
-        Node currentNode = activeNode;
+        Node currentNode = sessionState.getActiveNode();
         if (currentNode == null) {
             return false;
         }

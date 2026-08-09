@@ -177,6 +177,7 @@ class NodeCatalogTest {
     void catalogOwnsParameterTraitSchema() {
         assertEquals(EnumSet.of(NodeValueTrait.NUMBER), NodeCatalog.providedTraits(NodeType.CALCULATE));
         assertEquals(EnumSet.of(NodeValueTrait.VILLAGER_TRADE), NodeCatalog.providedTraits(NodeType.SENSOR_FIND_TRADE));
+        assertEquals(EnumSet.of(NodeValueTrait.NUMBER), NodeCatalog.providedTraits(NodeType.SENSOR_DURABILITY_OF));
         assertEquals(EnumSet.of(NodeValueTrait.DIRECTION), NodeCatalog.providedTraits(NodeType.PARAM_BLOCK_FACE));
 
         assertFalse(NodeCatalog.canHostParameter(NodeType.CALCULATE));
@@ -188,6 +189,8 @@ class NodeCatalogTest {
 
         assertFalse(NodeCatalog.canHostParameter(NodeType.SENSOR_FIND_TRADE));
         assertEquals(EnumSet.of(NodeValueTrait.GUI), NodeCatalog.acceptedTraits(NodeType.SENSOR_GUI_FILLED, 0));
+        assertEquals(EnumSet.of(NodeValueTrait.INVENTORY_SLOT), NodeCatalog.acceptedTraits(NodeType.SENSOR_DURABILITY_OF, 0));
+        assertTrue(NodeCatalog.isParameterSlotAlwaysRequired(NodeType.SENSOR_DURABILITY_OF, 0));
     }
 
     @Test
@@ -208,6 +211,7 @@ class NodeCatalogTest {
     void catalogOwnsExecutionRoutes() {
         assertEquals(NodeCatalog.ExecutionRoute.SENSOR_EVALUATION, NodeCatalog.executionRoute(NodeType.SENSOR_GUI_FILLED));
         assertEquals(NodeCatalog.ExecutionRoute.SENSOR_EVALUATION, NodeCatalog.executionRoute(NodeType.SENSOR_FIND_TRADE));
+        assertEquals(NodeCatalog.ExecutionRoute.SENSOR_EVALUATION, NodeCatalog.executionRoute(NodeType.SENSOR_DURABILITY_OF));
         assertEquals(NodeCatalog.ExecutionRoute.RUN_PRESET, NodeCatalog.executionRoute(NodeType.RUN_PRESET));
         assertEquals(NodeCatalog.ExecutionRoute.REMOVE_LIST_ITEM, NodeCatalog.executionRoute(NodeType.REMOVE_LIST_ITEM));
 

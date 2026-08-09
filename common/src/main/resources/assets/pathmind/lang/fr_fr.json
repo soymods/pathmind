@@ -278,6 +278,8 @@
   "pathmind.node.type.sensorPositionOf.desc": "Renvoie la position actuelle d'une cible ; les recherches à proximité inspectent uniquement les chunks et entités chargés",
   "pathmind.node.type.sensorSlotItemCount": "Quantité dans le slot",
   "pathmind.node.type.sensorSlotItemCount.desc": "Gets the current item count in the selected inventory slot",
+  "pathmind.node.type.sensorDurabilityOf": "Durability Of",
+  "pathmind.node.type.sensorDurabilityOf.desc": "Returns the remaining durability of the item in the selected inventory slot",
   "pathmind.node.type.sensorTargetedBlock": "Bloc ciblé",
   "pathmind.node.type.sensorTargetedBlock.desc": "Obtient le bloc que le joueur vise",
   "pathmind.node.type.sensorTargetedBlockFace": "Face du bloc ciblé",

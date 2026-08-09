@@ -20,6 +20,8 @@ final class SensorComparableDefinitions {
                 NodeBehaviorDefinitionSupport.numberComparable(SensorComparableDefinitions::resolveDistanceValue));
             case SENSOR_SLOT_ITEM_COUNT -> Optional.of(
                 NodeBehaviorDefinitionSupport.numberComparable(SensorComparableDefinitions::resolveSlotItemCount));
+            case SENSOR_DURABILITY_OF -> Optional.of(
+                NodeBehaviorDefinitionSupport.numberComparable(SensorComparableDefinitions::resolveSlotItemDurability));
             default -> Optional.empty();
         };
     }
@@ -93,12 +95,19 @@ final class SensorComparableDefinitions {
     }
 
     private static Optional<Double> resolveSlotItemCount(Node owner, Node node) {
-        Map<String, String> values = node.exportParameterValues();
-        String amountValue = owner.getRuntimeValue(values, "amount");
-        if (amountValue.isEmpty()) {
-            amountValue = owner.getRuntimeValue(values, "count");
+        Node slotNode = owner.resolveSensorParameterNode(node.getAttachedParameter(0), 0);
+        if (slotNode == null || !owner.providesTrait(slotNode, NodeValueTrait.INVENTORY_SLOT)) {
+            return Optional.empty();
         }
-        return amountValue.isEmpty() ? Optional.empty() : Optional.ofNullable(Node.parseDoubleOrNull(amountValue));
+        return owner.resolveInventorySlotCount(slotNode).map(Integer::doubleValue);
+    }
+
+    private static Optional<Double> resolveSlotItemDurability(Node owner, Node node) {
+        Node slotNode = owner.resolveSensorParameterNode(node.getAttachedParameter(0), 0);
+        if (slotNode == null || !owner.providesTrait(slotNode, NodeValueTrait.INVENTORY_SLOT)) {
+            return Optional.empty();
+        }
+        return owner.resolveInventorySlotDurability(slotNode).map(Integer::doubleValue);
     }
 
     private SensorComparableDefinitions() {

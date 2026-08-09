@@ -701,6 +701,8 @@
   "pathmind.node.type.sensorPositionOf.desc": "Returns a target's current position; nearby target searches only inspect loaded chunks and entities",
   "pathmind.node.type.sensorSlotItemCount": "Slot Item Count",
   "pathmind.node.type.sensorSlotItemCount.desc": "Returns the current item count in the selected inventory slot",
+  "pathmind.node.type.sensorDurabilityOf": "Durability Of",
+  "pathmind.node.type.sensorDurabilityOf.desc": "Returns the remaining durability of the item in the selected inventory slot",
   "pathmind.node.type.sensorFindTrade": "Trade Slot",
   "pathmind.node.type.sensorFindTrade.desc": "Returns the villager trade in the selected numbered slot of an open merchant screen",
   "pathmind.node.type.sensorInStock": "Is In Stock",

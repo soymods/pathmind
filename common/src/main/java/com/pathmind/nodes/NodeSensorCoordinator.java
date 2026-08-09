@@ -65,6 +65,7 @@ final class NodeSensorCoordinator {
             case SENSOR_ITEM_IN_INVENTORY -> inventorySensorEvaluator().evaluateItemInInventory();
             case SENSOR_ITEM_IN_SLOT -> inventorySensorEvaluator().evaluateItemInSlot();
             case SENSOR_SLOT_ITEM_COUNT -> inventorySensorEvaluator().evaluateSlotItemCount();
+            case SENSOR_DURABILITY_OF -> inventorySensorEvaluator().evaluateDurabilityOf();
             case SENSOR_IS_SWIMMING -> playerStateSensorEvaluator().isSwimming();
             case SENSOR_IS_IN_LAVA -> playerStateSensorEvaluator().isInLava();
             case SENSOR_IS_UNDERWATER -> playerStateSensorEvaluator().isUnderwater();
@@ -208,23 +209,50 @@ final class NodeSensorCoordinator {
         if (slotNode == null || !providesTrait(slotNode, NodeValueTrait.INVENTORY_SLOT)) {
             return Optional.empty();
         }
+        Optional<ItemStack> resolvedStack = resolveInventorySlotStack(slotNode);
+        if (resolvedStack.isEmpty()) {
+            return Optional.empty();
+        }
+        ItemStack stack = resolvedStack.get();
+        if (stack == null || stack.isEmpty()) {
+            return Optional.of(0);
+        }
+        return Optional.of(stack.getCount());
+    }
+
+    Optional<Integer> resolveInventorySlotDurability(Node slotNode) {
+        if (slotNode == null || !providesTrait(slotNode, NodeValueTrait.INVENTORY_SLOT)) {
+            return Optional.empty();
+        }
+        Optional<ItemStack> resolvedStack = resolveInventorySlotStack(slotNode);
+        if (resolvedStack.isEmpty()) {
+            return Optional.empty();
+        }
+        ItemStack stack = resolvedStack.get();
+        if (stack == null || stack.isEmpty() || !stack.isDamageableItem()) {
+            return Optional.of(0);
+        }
+        return Optional.of(Math.max(0, stack.getMaxDamage() - stack.getDamageValue()));
+    }
+
+    private Optional<ItemStack> resolveInventorySlotStack(Node slotNode) {
         net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
         if (client == null || client.player == null) {
             return Optional.empty();
         }
         Inventory inventory = client.player.getInventory();
         AbstractContainerMenu handler = client.player.containerMenu;
-        int slotValue = Node.parseNodeInt(slotNode, "Slot", 0);
-        SlotSelectionType selectionType = owner.resolveInventorySlotSelectionType(slotNode);
+        Map<String, String> values = slotNode.exportParameterValues();
+        Integer comparableSlot = InventorySlotValueResolver.resolveComparableSlotIndex(values);
+        int slotValue = comparableSlot != null ? comparableSlot : Node.parseNodeInt(slotNode, "Slot", 0);
+        SlotSelectionType selectionType = comparableSlot != null
+            ? InventorySlotValueResolver.resolveComparableSlotSelectionType(values)
+            : owner.resolveInventorySlotSelectionType(slotNode);
         SlotResolution resolved = owner.resolveInventorySlot(handler, inventory, slotValue, selectionType);
         if (resolved == null || resolved.slot == null) {
             return Optional.empty();
         }
-        ItemStack stack = resolved.slot.getItem();
-        if (stack == null || stack.isEmpty()) {
-            return Optional.of(0);
-        }
-        return Optional.of(stack.getCount());
+        return Optional.ofNullable(resolved.slot.getItem());
     }
 
     boolean matchesAnyBlock(List<BlockSelection> selections, BlockState state) {

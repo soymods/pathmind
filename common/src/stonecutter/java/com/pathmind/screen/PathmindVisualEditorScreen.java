@@ -1827,6 +1827,7 @@ public class PathmindVisualEditorScreen extends Screen {
             return false;
         }
 
+        nodeGraph.commitPendingEdits();
         boolean started = ExecutionManager.getInstance().executeFromNode(
             clickedNode,
             nodeGraph.getNodes(),
@@ -2876,10 +2877,12 @@ public class PathmindVisualEditorScreen extends Screen {
     }
 
     boolean saveRootPresetWorkspace() {
+        nodeGraph.commitPendingEdits();
         return workspaceLifecycleController.saveRootPresetWorkspace();
     }
 
     private NodeGraphData snapshotRootPresetWorkspace() {
+        nodeGraph.commitPendingEdits();
         return workspaceLifecycleController.snapshotRootPresetWorkspace();
     }
 
@@ -3628,6 +3631,7 @@ public class PathmindVisualEditorScreen extends Screen {
         validationExecutionController.closePanel();
         dismissParameterOverlay();
         workspaceDragController.clearSidebarDrag();
+        nodeGraph.commitPendingEdits();
         NodeGraphData.RoutineDefinitionData activeRoutine = getActiveRoutineWorkspace();
         saveRootPresetWorkspace();
         if (activeRoutine != null) {

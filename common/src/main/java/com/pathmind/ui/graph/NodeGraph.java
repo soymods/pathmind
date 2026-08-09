@@ -1886,7 +1886,7 @@ public class NodeGraph {
         connectionController.startDraggingConnection(node, socketIndex, isOutput, screenToWorldX(mouseX), screenToWorldY(mouseY));
     }
 
-    private void stopConnectionEditors() {
+    public void commitPendingEdits() {
         stopCoordinateEditing(true);
         stopAmountEditing(true);
         stopStopTargetEditing(true);
@@ -1896,6 +1896,10 @@ public class NodeGraph {
         stopEventNameEditing(true);
         stopParameterEditing(true);
         stopMessageEditing(true);
+    }
+
+    private void stopConnectionEditors() {
+        commitPendingEdits();
     }
 
     public void updateDrag(int mouseX, int mouseY) {
@@ -2500,7 +2504,8 @@ public class NodeGraph {
             && node.getType() != NodeType.SENSOR_LOOK_DIRECTION
             && node.getType() != NodeType.SENSOR_DISTANCE_BETWEEN
             && node.getType() != NodeType.SENSOR_CURRENT_GUI
-            && node.getType() != NodeType.SENSOR_SLOT_ITEM_COUNT;
+            && node.getType() != NodeType.SENSOR_SLOT_ITEM_COUNT
+            && node.getType() != NodeType.SENSOR_DURABILITY_OF;
     }
 
     private boolean shouldRenderNodeSockets(Node node) {
@@ -4243,8 +4248,7 @@ public class NodeGraph {
             return false;
         }
 
-        stopCoordinateEditing(true);
-        stopAmountEditing(true);
+        commitPendingEdits();
 
         hoveredStartNode = startNode;
 

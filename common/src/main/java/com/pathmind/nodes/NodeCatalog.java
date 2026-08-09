@@ -77,6 +77,7 @@ public final class NodeCatalog {
             NodeType.SENSOR_ITEM_IN_INVENTORY,
             NodeType.SENSOR_ITEM_IN_SLOT,
             NodeType.SENSOR_SLOT_ITEM_COUNT,
+            NodeType.SENSOR_DURABILITY_OF,
             NodeType.SENSOR_FIND_TRADE,
             NodeType.SENSOR_VILLAGER_TRADE,
             NodeType.SENSOR_IN_STOCK,
@@ -244,6 +245,7 @@ public final class NodeCatalog {
             NodeType.SENSOR_ITEM_IN_INVENTORY,
             NodeType.SENSOR_ITEM_IN_SLOT,
             NodeType.SENSOR_SLOT_ITEM_COUNT,
+            NodeType.SENSOR_DURABILITY_OF,
             NodeType.SENSOR_FIND_TRADE,
             NodeType.SENSOR_VILLAGER_TRADE,
             NodeType.SENSOR_IN_STOCK,
@@ -372,6 +374,7 @@ public final class NodeCatalog {
             NodeType.SENSOR_IS_ON_GROUND,
             NodeType.SENSOR_FIND_TRADE,
             NodeType.SENSOR_SLOT_ITEM_COUNT,
+            NodeType.SENSOR_DURABILITY_OF,
             NodeType.VARIABLE,
             NodeType.OPERATOR_RANDOM,
             NodeType.OPERATOR_MOD,
@@ -404,6 +407,7 @@ public final class NodeCatalog {
             NodeType.SENSOR_ITEM_IN_INVENTORY,
             NodeType.SENSOR_ITEM_IN_SLOT,
             NodeType.SENSOR_SLOT_ITEM_COUNT,
+            NodeType.SENSOR_DURABILITY_OF,
             NodeType.SENSOR_ATTRIBUTE_DETECTION,
             NodeType.SENSOR_CHAT_MESSAGE,
             NodeType.SENSOR_JOINED_SERVER,
@@ -641,6 +645,7 @@ public final class NodeCatalog {
             NodeType.SENSOR_ITEM_IN_INVENTORY,
             NodeType.SENSOR_ITEM_IN_SLOT,
             NodeType.SENSOR_SLOT_ITEM_COUNT,
+            NodeType.SENSOR_DURABILITY_OF,
             NodeType.SENSOR_GUI_FILLED,
             NodeType.SENSOR_CURRENT_GUI);
         sidebar(NodeCategory.SENSORS, "pathmind.sidebar.group.trading",
@@ -691,6 +696,7 @@ public final class NodeCatalog {
         provided(NodeType.OPERATOR_BOOLEAN_AND, NodeValueTrait.BOOLEAN);
         provided(NodeType.OPERATOR_BOOLEAN_XOR, NodeValueTrait.BOOLEAN);
         provided(NodeType.SENSOR_SLOT_ITEM_COUNT, NodeValueTrait.NUMBER);
+        provided(NodeType.SENSOR_DURABILITY_OF, NodeValueTrait.NUMBER);
         provided(NodeType.SENSOR_FIND_TRADE, NodeValueTrait.VILLAGER_TRADE);
         provided(NodeType.LIST_ITEM,
             NodeValueTrait.LIST_ITEM,
@@ -775,6 +781,7 @@ public final class NodeCatalog {
         parameterHost(NodeType.SENSOR_ITEM_IN_INVENTORY, NodeValueTrait.ITEM, NodeValueTrait.NUMBER);
         parameterHost(NodeType.SENSOR_ITEM_IN_SLOT, slot("Item", true, NodeValueTrait.ITEM), slot("Selection", true, NodeValueTrait.INVENTORY_SLOT));
         parameterHost(NodeType.SENSOR_SLOT_ITEM_COUNT, "Slot", NodeValueTrait.INVENTORY_SLOT);
+        parameterHost(NodeType.SENSOR_DURABILITY_OF, "Slot", NodeValueTrait.INVENTORY_SLOT);
         parameterHost(NodeType.SENSOR_ATTRIBUTE_DETECTION, "Target", NodeValueTrait.ENTITY, NodeValueTrait.PLAYER, NodeValueTrait.ITEM);
         parameterHost(NodeType.SENSOR_VILLAGER_TRADE, "Villager Trade", NodeValueTrait.VILLAGER_TRADE);
         parameterHost(NodeType.SENSOR_IN_STOCK, "Villager Trade", NodeValueTrait.VILLAGER_TRADE);
@@ -1181,6 +1188,7 @@ public final class NodeCatalog {
             NodeType.SENSOR_HUNGER_BELOW,
             NodeType.SENSOR_ITEM_IN_INVENTORY,
             NodeType.SENSOR_ITEM_IN_SLOT,
+            NodeType.SENSOR_DURABILITY_OF,
             NodeType.SENSOR_FIND_TRADE,
             NodeType.SENSOR_VILLAGER_TRADE,
             NodeType.SENSOR_IN_STOCK,
@@ -1313,7 +1321,8 @@ public final class NodeCatalog {
             && type != NodeType.SENSOR_DISTANCE_BETWEEN
             && type != NodeType.SENSOR_LOOK_DIRECTION
             && type != NodeType.SENSOR_CURRENT_GUI
-            && type != NodeType.SENSOR_SLOT_ITEM_COUNT;
+            && type != NodeType.SENSOR_SLOT_ITEM_COUNT
+            && type != NodeType.SENSOR_DURABILITY_OF;
     }
 
     public static boolean hasBooleanToggle(NodeType type) {
@@ -1542,6 +1551,7 @@ public final class NodeCatalog {
             case SENSOR_ITEM_IN_INVENTORY -> "pathmind.node.type.sensorItemInInventory";
             case SENSOR_ITEM_IN_SLOT -> "pathmind.node.type.sensorItemInSlot";
             case SENSOR_SLOT_ITEM_COUNT -> "pathmind.node.type.sensorSlotItemCount";
+            case SENSOR_DURABILITY_OF -> "pathmind.node.type.sensorDurabilityOf";
             case SENSOR_FIND_TRADE -> "pathmind.node.type.sensorFindTrade";
             case SENSOR_VILLAGER_TRADE -> "pathmind.node.type.sensorVillagerTrade";
             case SENSOR_IN_STOCK -> "pathmind.node.type.sensorInStock";
@@ -1692,6 +1702,7 @@ public final class NodeCatalog {
             case SENSOR_ITEM_IN_INVENTORY -> "pathmind.node.type.sensorItemInInventory.desc";
             case SENSOR_ITEM_IN_SLOT -> "pathmind.node.type.sensorItemInSlot.desc";
             case SENSOR_SLOT_ITEM_COUNT -> "pathmind.node.type.sensorSlotItemCount.desc";
+            case SENSOR_DURABILITY_OF -> "pathmind.node.type.sensorDurabilityOf.desc";
             case SENSOR_FIND_TRADE -> "pathmind.node.type.sensorFindTrade.desc";
             case SENSOR_VILLAGER_TRADE -> "pathmind.node.type.sensorVillagerTrade.desc";
             case SENSOR_IN_STOCK -> "pathmind.node.type.sensorInStock.desc";
@@ -1840,6 +1851,7 @@ public final class NodeCatalog {
             case SENSOR_ITEM_IN_INVENTORY -> 0xFF64B5F6;
             case SENSOR_ITEM_IN_SLOT -> 0xFF64B5F6;
             case SENSOR_SLOT_ITEM_COUNT -> 0xFF64B5F6;
+            case SENSOR_DURABILITY_OF -> 0xFF64B5F6;
             case SENSOR_FIND_TRADE -> 0xFF64B5F6;
             case SENSOR_VILLAGER_TRADE -> 0xFF64B5F6;
             case SENSOR_IN_STOCK -> 0xFF64B5F6;

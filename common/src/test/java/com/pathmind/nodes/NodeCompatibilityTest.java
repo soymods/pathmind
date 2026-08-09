@@ -78,6 +78,16 @@ class NodeCompatibilityTest {
     }
 
     @Test
+    void durabilityOfSensorAcceptsInventorySlotParameter() {
+        Node sensor = new Node(NodeType.SENSOR_DURABILITY_OF, 0, 0);
+        Node slot = new Node(NodeType.PARAM_INVENTORY_SLOT, 0, 0);
+
+        assertTrue(sensor.hasParameterSlot());
+        assertTrue(sensor.canAcceptParameterNode(slot, 0));
+        assertTrue(sensor.attachParameter(slot, 0));
+    }
+
+    @Test
     void distanceBetweenAcceptsUserParameter() {
         Node sensor = new Node(NodeType.SENSOR_DISTANCE_BETWEEN, 0, 0);
         Node user = new Node(NodeType.PARAM_PLAYER, 0, 0);
@@ -122,6 +132,53 @@ class NodeCompatibilityTest {
 
         assertTrue(sensor.canAcceptParameterNode(currentHand, 0));
         assertTrue(sensor.attachParameter(currentHand, 0));
+    }
+
+    @Test
+    void durabilityOfAcceptsCurrentHandSensor() {
+        Node sensor = new Node(NodeType.SENSOR_DURABILITY_OF, 0, 0);
+        Node currentHand = new Node(NodeType.SENSOR_CURRENT_HAND, 0, 0);
+
+        assertTrue(sensor.canAcceptParameterNode(currentHand, 0));
+        assertTrue(sensor.attachParameter(currentHand, 0));
+    }
+
+    @Test
+    void selectedHotbarSlotExportsComparableInventorySlot() {
+        Node currentHand = new Node(NodeType.SENSOR_CURRENT_HAND, 0, 0) {
+            @Override
+            Optional<Integer> getCurrentHotbarSlot() {
+                return Optional.of(4);
+            }
+        };
+
+        Map<String, String> values = currentHand.exportParameterValues();
+
+        assertEquals(4, InventorySlotValueResolver.resolveComparableSlotIndex(values));
+        assertEquals(SlotSelectionType.PLAYER_INVENTORY,
+            InventorySlotValueResolver.resolveComparableSlotSelectionType(values));
+    }
+
+    @Test
+    void durabilityOfComparesAsNumericValueInEqualsOperator() {
+        Node equals = new Node(NodeType.OPERATOR_EQUALS, 0, 0) {
+            @Override
+            Optional<Integer> resolveInventorySlotDurability(Node slotNode) {
+                return Optional.of(1);
+            }
+        };
+        Node durability = new Node(NodeType.SENSOR_DURABILITY_OF, 0, 0);
+        Node currentHand = new Node(NodeType.SENSOR_CURRENT_HAND, 0, 0);
+        Node amount = new Node(NodeType.PARAM_AMOUNT, 0, 0);
+        amount.getParameter("Amount").setStringValue("2");
+
+        assertTrue(durability.attachParameter(currentHand, 0));
+        assertTrue(equals.attachParameter(durability, 0));
+        assertTrue(equals.attachParameter(amount, 1));
+        assertFalse(new NodeOperatorSensorEvaluator(equals).evaluateOperatorEquals());
+
+        amount.getParameter("Amount").setStringValue("1");
+        assertTrue(new NodeOperatorSensorEvaluator(equals).evaluateOperatorEquals());
     }
 
     @Test

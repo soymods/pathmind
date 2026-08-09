@@ -278,6 +278,8 @@
   "pathmind.node.type.sensorPositionOf.desc": "Возвращает текущую позицию цели; поиск поблизости проверяет только загруженные чанки и сущности",
   "pathmind.node.type.sensorSlotItemCount": "Количество предметов в слоте",
   "pathmind.node.type.sensorSlotItemCount.desc": "Gets the current item count in the selected inventory slot",
+  "pathmind.node.type.sensorDurabilityOf": "Durability Of",
+  "pathmind.node.type.sensorDurabilityOf.desc": "Returns the remaining durability of the item in the selected inventory slot",
   "pathmind.node.type.sensorTargetedBlock": "Целевой блок",
   "pathmind.node.type.sensorTargetedBlock.desc": "Получает блок, на который смотрит игрок",
   "pathmind.node.type.sensorTargetedBlockFace": "Грань выбранного блока",

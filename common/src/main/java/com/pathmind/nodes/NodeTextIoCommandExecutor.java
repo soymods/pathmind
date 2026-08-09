@@ -953,6 +953,7 @@ final class NodeTextIoCommandExecutor {
                 return getRuntimeValue(values, "amount");
             }
             case SENSOR_SLOT_ITEM_COUNT:
+            case SENSOR_DURABILITY_OF:
                 return getRuntimeValue(values, "amount");
             case OPERATOR_RANDOM:
                 String value = getRuntimeValue(values, "value");

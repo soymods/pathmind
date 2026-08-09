@@ -251,6 +251,20 @@ final class NodeParameterValueExporter {
                 values.put("Value", countValue);
                 values.put(Node.normalizeParameterKey("Value"), countValue);
             }
+            case SENSOR_DURABILITY_OF -> {
+                Node slotNode = node.resolveSensorParameterNode(node.getAttachedParameter(0), 0);
+                int durability = 0;
+                if (slotNode != null && node.providesTrait(slotNode, NodeValueTrait.INVENTORY_SLOT)) {
+                    durability = Math.max(0, node.resolveInventorySlotDurability(slotNode).orElse(0));
+                }
+                String durabilityValue = Integer.toString(durability);
+                values.put("Amount", durabilityValue);
+                values.put(Node.normalizeParameterKey("Amount"), durabilityValue);
+                values.put("Durability", durabilityValue);
+                values.put(Node.normalizeParameterKey("Durability"), durabilityValue);
+                values.put("Value", durabilityValue);
+                values.put(Node.normalizeParameterKey("Value"), durabilityValue);
+            }
             case SENSOR_FIND_TRADE -> {
                 node.villagerTradeSensorEvaluator().exportTradeSlotValues(values);
             }

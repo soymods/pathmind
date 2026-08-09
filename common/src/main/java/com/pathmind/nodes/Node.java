@@ -728,7 +728,8 @@ public class Node {
 					|| type == NodeType.PARAM_BLOCK_FACE
 					|| type == NodeType.SENSOR_POSITION_OF
 					|| type == NodeType.SENSOR_DISTANCE_BETWEEN
-					|| type == NodeType.SENSOR_SLOT_ITEM_COUNT;
+					|| type == NodeType.SENSOR_SLOT_ITEM_COUNT
+					|| type == NodeType.SENSOR_DURABILITY_OF;
 		}
 
     public boolean hasParameterSlot() {
@@ -1316,7 +1317,7 @@ public class Node {
             case SENSOR_LOOK_DIRECTION -> isSensorLookSingleAxisMode() ? NodeType.PARAM_AMOUNT : NodeType.PARAM_ROTATION;
             case SENSOR_CURRENT_HAND -> NodeType.PARAM_INVENTORY_SLOT;
             case SENSOR_CURRENT_GUI -> NodeType.PARAM_GUI;
-            case SENSOR_SLOT_ITEM_COUNT, LIST_LENGTH, OPERATOR_RANDOM, OPERATOR_MOD -> NodeType.PARAM_AMOUNT;
+            case SENSOR_SLOT_ITEM_COUNT, SENSOR_DURABILITY_OF, LIST_LENGTH, OPERATOR_RANDOM, OPERATOR_MOD -> NodeType.PARAM_AMOUNT;
             case SENSOR_FIND_TRADE -> NodeType.PARAM_VILLAGER_TRADE;
             case CALCULATE -> NodeType.PARAM_AMOUNT;
             default -> type;
@@ -3341,6 +3342,10 @@ public class Node {
 
     Optional<Integer> resolveInventorySlotCount(Node slotNode) {
         return sensorCoordinator.resolveInventorySlotCount(slotNode);
+    }
+
+    Optional<Integer> resolveInventorySlotDurability(Node slotNode) {
+        return sensorCoordinator.resolveInventorySlotDurability(slotNode);
     }
 
     boolean evaluateConditionFromParameters() {

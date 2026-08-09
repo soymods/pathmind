@@ -113,6 +113,18 @@ final class NodeInventorySensorEvaluator {
         return owner.resolveInventorySlotCount(slotNode).isPresent();
     }
 
+    boolean evaluateDurabilityOf() {
+        Node slotNode = owner.resolveSensorParameterNode(owner.getAttachedParameter(0), 0);
+        if (slotNode == null || !owner.providesTrait(slotNode, NodeValueTrait.INVENTORY_SLOT)) {
+            Minecraft client = Minecraft.getInstance();
+            if (client != null) {
+                owner.sendNodeErrorMessage(client, tr("pathmind.error.requiresInventorySlotParameter", owner.getType().getDisplayName()));
+            }
+            return false;
+        }
+        return owner.resolveInventorySlotDurability(slotNode).isPresent();
+    }
+
     boolean hasItemInInventory(String itemId) {
         Minecraft client = Minecraft.getInstance();
         if (client == null || client.player == null || itemId == null || itemId.isEmpty()) {

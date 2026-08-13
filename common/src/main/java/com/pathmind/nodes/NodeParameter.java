@@ -1,5 +1,7 @@
 package com.pathmind.nodes;
 
+import com.pathmind.util.PathmindI18n;
+
 /**
  * Represents a parameter for a node in the Pathmind visual editor.
  * Each parameter has a name, value, and type.
@@ -149,7 +151,7 @@ public class NodeParameter {
             case DOUBLE:
                 return String.format("%.2f", doubleValue);
             case BOOLEAN:
-                return boolValue ? "True" : "False";
+                return PathmindI18n.tr(boolValue ? "pathmind.option.true" : "pathmind.option.false");
             case STRING:
             default:
                 return stringValue;

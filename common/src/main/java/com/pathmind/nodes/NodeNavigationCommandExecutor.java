@@ -231,7 +231,7 @@ final class NodeNavigationCommandExecutor {
             }
             String message = throwable.getMessage();
             if (message == null || message.isBlank()) {
-                message = "Travel failed";
+                message = tr("pathmind.error.travelFailed");
             }
             failTravelNode(future, message);
         });

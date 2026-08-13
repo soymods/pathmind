@@ -1,5 +1,7 @@
 package com.pathmind.ui.graph;
 
+import static com.pathmind.util.PathmindI18n.tr;
+
 import static com.pathmind.ui.graph.ParameterDropdownOptions.getAttributeDetectionTargetKind;
 import static com.pathmind.ui.graph.ParameterTypeClassifier.*;
 
@@ -410,26 +412,26 @@ final class ParameterTextEditorController {
     }
 
     static String formatMouseButtonValue(String value) {
-        if (value == null || value.isEmpty()) return "Left";
+        if (value == null || value.isEmpty()) return tr("pathmind.option.mouse.left");
         return switch (value.toUpperCase(Locale.ROOT)) {
-            case "GLFW_MOUSE_BUTTON_LEFT", "LEFT" -> "Left";
-            case "GLFW_MOUSE_BUTTON_RIGHT", "RIGHT" -> "Right";
-            case "GLFW_MOUSE_BUTTON_MIDDLE", "MIDDLE" -> "Middle";
-            case "GLFW_MOUSE_BUTTON_4", "BUTTON_4" -> "Button 4";
-            case "GLFW_MOUSE_BUTTON_5", "BUTTON_5" -> "Button 5";
-            case "GLFW_MOUSE_BUTTON_6", "BUTTON_6" -> "Button 6";
-            case "GLFW_MOUSE_BUTTON_7", "BUTTON_7" -> "Button 7";
-            case "GLFW_MOUSE_BUTTON_8", "BUTTON_8" -> "Button 8";
+            case "GLFW_MOUSE_BUTTON_LEFT", "LEFT" -> tr("pathmind.option.mouse.left");
+            case "GLFW_MOUSE_BUTTON_RIGHT", "RIGHT" -> tr("pathmind.option.mouse.right");
+            case "GLFW_MOUSE_BUTTON_MIDDLE", "MIDDLE" -> tr("pathmind.option.mouse.middle");
+            case "GLFW_MOUSE_BUTTON_4", "BUTTON_4" -> tr("pathmind.option.mouse.button4");
+            case "GLFW_MOUSE_BUTTON_5", "BUTTON_5" -> tr("pathmind.option.mouse.button5");
+            case "GLFW_MOUSE_BUTTON_6", "BUTTON_6" -> tr("pathmind.option.mouse.button6");
+            case "GLFW_MOUSE_BUTTON_7", "BUTTON_7" -> tr("pathmind.option.mouse.button7");
+            case "GLFW_MOUSE_BUTTON_8", "BUTTON_8" -> tr("pathmind.option.mouse.button8");
             default -> value;
         };
     }
 
     static String formatHandValue(String value) {
-        if (isDefaultHandValue(value) || value == null || value.isEmpty()) return "Main Hand";
+        if (isDefaultHandValue(value) || value == null || value.isEmpty()) return tr("pathmind.option.hand.main");
         String normalized = value.trim().toLowerCase(Locale.ROOT);
         return "off".equals(normalized) || "offhand".equals(normalized)
             || "off_hand".equals(normalized) || "off-hand".equals(normalized)
-            || "off hand".equals(normalized) ? "Offhand" : value;
+            || "off hand".equals(normalized) ? tr("pathmind.option.hand.offhand") : value;
     }
 
     static boolean isAnyBlockItemValue(String value) {

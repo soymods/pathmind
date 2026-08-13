@@ -20,6 +20,7 @@ import com.pathmind.util.UiUtilsDependencyChecker;
 import com.pathmind.util.DrawContextBridge;
 import com.pathmind.util.ScrollbarHelper;
 import com.pathmind.util.TextRenderUtil;
+import com.pathmind.util.PathmindI18n;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -928,7 +929,7 @@ public class Sidebar {
             && mouseY >= contentY && mouseY < contentY + NODE_HEIGHT;
         PathmindSidebarEntryUi.renderRowBackground(context, rowLeft, contentY, rowRight, NODE_HEIGHT,
             "routine-sidebar:add-input:" + routine.getId(), hoveredAddRoutineInput);
-        context.drawString(textRenderer, Component.literal("    + Add input"), indicatorX, contentY + 5,
+        context.drawString(textRenderer, Component.literal("    + " + PathmindI18n.tr("pathmind.routine.addInput")), indicatorX, contentY + 5,
             PathmindSidebarEntryUi.animatedTextColor("routine-sidebar:add-input-text:" + routine.getId(),
                 hoveredAddRoutineInput, UITheme.TEXT_SECONDARY, UITheme.TEXT_HEADER));
         contentY += NODE_HEIGHT;

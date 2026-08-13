@@ -40,6 +40,7 @@ import com.pathmind.ui.graph.InlineVariableRenderer.InlineVariableRender;
 import com.pathmind.ui.theme.UIStyleHelper;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.DrawContextBridge;
+import com.pathmind.util.PathmindI18n;
 
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -513,7 +514,7 @@ final class NodeRenderer {
         int fieldWidth = node.getModeFieldWidth();
         int fieldHeight = node.getModeFieldHeight();
         String labelText = node.getModeFieldLabelText();
-        String modeValue = node.getMode() != null ? node.getMode().getDisplayName() : "Select Mode";
+        String modeValue = node.getMode() != null ? node.getMode().getDisplayName() : PathmindI18n.tr("pathmind.node.mode.select");
         renderDropdownSelectorField(
             context, textRenderer, node, isOverSidebar, mouseX, mouseY,
             fieldLeft, fieldTop, fieldWidth, fieldHeight,
@@ -681,7 +682,7 @@ final class NodeRenderer {
             ? host.toGrayscale(routineInput ? UITheme.NODE_EVENT_TITLE : UITheme.NODE_VARIABLE_TITLE, 0.9f)
             : (lowDetail ? UITheme.TEXT_SECONDARY : (routineInput ? UITheme.NODE_EVENT_TITLE : UITheme.NODE_VARIABLE_TITLE));
         host.drawNodeText(context, textRenderer,
-            routineInput ? Component.literal("Input") : Component.translatable("pathmind.node.type.variable"),
+            routineInput ? Component.translatable("pathmind.routine.input") : Component.translatable("pathmind.node.type.variable"),
             x + 6, y + 4, titleColor);
 
         int boxLeft = x + 6;
@@ -793,12 +794,12 @@ final class NodeRenderer {
                 int labelColor = isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.NODE_LABEL_COLOR;
                 int valueColor = isOverSidebar ? UITheme.TEXT_TERTIARY
                     : AnimationHelper.lerpColor(UITheme.TEXT_PRIMARY, UITheme.TEXT_HEADER, progress);
-                String labelText = "Mode:";
+                String labelText = PathmindI18n.tr("pathmind.field.mode");
                 int labelX = fieldLeft + 4;
                 int labelY = fieldTop + (fieldHeight - textRenderer.lineHeight) / 2;
                 host.drawNodeText(context, textRenderer, Component.literal(labelText), labelX, labelY, labelColor);
 
-                String modeValue = node.getMode() != null ? node.getMode().getDisplayName() : "Select Mode";
+                String modeValue = node.getMode() != null ? node.getMode().getDisplayName() : PathmindI18n.tr("pathmind.node.mode.select");
                 int valueStartX = labelX + textRenderer.width(labelText) + 6;
                 int maxValueWidth = Math.max(0, fieldRight - valueStartX - 4);
                 String displayValue = host.trimTextToWidth(modeValue, textRenderer, maxValueWidth);
@@ -941,12 +942,12 @@ final class NodeRenderer {
                 }
                 if (!editingThis && (value.isEmpty() || host.isAnyBlockItemValue(value)) && isBlockItemParameter(node, i)) {
                     value = (isBlockStateParameter(node, i) || isEntityStateParameter(node, i))
-                        ? "Any State"
-                        : "Any";
+                        ? PathmindI18n.tr("pathmind.option.anyState")
+                        : PathmindI18n.tr("pathmind.option.any");
                 }
                 if (!editingThis && isFabricEventSensorParameter(node, i)
                     && (value.isEmpty() || "Any".equalsIgnoreCase(value))) {
-                    value = "Any";
+                    value = PathmindI18n.tr("pathmind.option.any");
                 }
                 if (!editingThis && isMouseButtonParam) {
                     value = host.formatMouseButtonValue(value);
@@ -958,7 +959,7 @@ final class NodeRenderer {
                     value = host.formatAttributeDetectionInlineValue(node, param, value);
                 }
                 if (!editingThis && isBooleanLiteralParameter(node, i) && value.isEmpty()) {
-                    value = "True";
+                    value = PathmindI18n.tr("pathmind.option.true");
                 }
                 if (!editingThis && isBooleanLiteralParameter(node, i) && !value.isEmpty()) {
                     value = Character.toUpperCase(value.charAt(0)) + value.substring(1).toLowerCase(Locale.ROOT);
@@ -971,23 +972,23 @@ final class NodeRenderer {
                     || showGuiPlaceholder || showMouseButtonPlaceholder || showHandPlaceholder || showAmountPlaceholder
                     || showDirectionPlaceholder || showBlockFacePlaceholder || showTradePlaceholder) {
                     if (isBlockStateParameter(node, i) || isEntityStateParameter(node, i)) {
-                        value = "Any State";
+                        value = PathmindI18n.tr("pathmind.option.anyState");
                     } else if (showPlayerPlaceholder) {
-                        value = "Self";
+                        value = PathmindI18n.tr("pathmind.option.self");
                     } else if (showMouseButtonPlaceholder) {
-                        value = "Left";
+                        value = PathmindI18n.tr("pathmind.option.mouse.left");
                     } else if (showHandPlaceholder) {
-                        value = "Main Hand";
+                        value = PathmindI18n.tr("pathmind.option.hand.main");
                     } else if (showTradePlaceholder) {
                         value = "1";
                     } else if (showAmountPlaceholder) {
                         value = "0";
                     } else if (showBlockFacePlaceholder) {
-                        value = "North";
+                        value = PathmindI18n.tr("pathmind.option.direction.north");
                     } else if (showDirectionPlaceholder) {
-                        value = "North";
+                        value = PathmindI18n.tr("pathmind.option.direction.north");
                     } else {
-                        value = "Any";
+                        value = PathmindI18n.tr("pathmind.option.any");
                     }
                     valueColor = UITheme.TEXT_TERTIARY;
                 }
@@ -1251,7 +1252,7 @@ final class NodeRenderer {
         String display;
         boolean showPlaceholder = !editingEventName && value.isEmpty();
         if (showPlaceholder) {
-            display = "enter name";
+            display = PathmindI18n.tr("pathmind.field.enterName");
         } else {
             display = value;
         }
@@ -1379,7 +1380,7 @@ final class NodeRenderer {
         String display;
         boolean showPlaceholder = !editingEventName && value.isEmpty();
         if (showPlaceholder) {
-            display = "enter name";
+            display = PathmindI18n.tr("pathmind.field.enterName");
         } else {
             display = value;
         }

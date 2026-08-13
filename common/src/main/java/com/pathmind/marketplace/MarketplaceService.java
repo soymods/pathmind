@@ -6,6 +6,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.pathmind.data.NodeGraphData;
 import com.pathmind.data.NodeGraphPersistence;
+import com.pathmind.util.PathmindI18n;
 
 import java.io.IOException;
 import java.net.URI;
@@ -787,39 +788,39 @@ public final class MarketplaceService {
         if (normalized.contains("marketplace_presets_slug_unique")
             || normalized.contains("duplicate key value violates unique constraint")
             || normalized.contains("already exists")) {
-            return "A preset with this name already exists. Try a different name.";
+            return PathmindI18n.tr("pathmind.marketplace.error.presetNameExists");
         }
         if (normalized.contains("marketplace_presets_name_not_blank") || normalized.contains("preset name is required")) {
-            return "Enter a preset name.";
+            return PathmindI18n.tr("pathmind.status.enterPresetName");
         }
         if (normalized.contains("marketplace_presets_name_len")) {
-            return "Preset name is too long.";
+            return PathmindI18n.tr("pathmind.marketplace.error.presetNameTooLong");
         }
         if (normalized.contains("marketplace_presets_description_len")) {
-            return "Description is too long.";
+            return PathmindI18n.tr("pathmind.marketplace.error.descriptionTooLong");
         }
         if (normalized.contains("maximum of 32 presets")) {
-            return "You have reached the maximum of 32 presets. Delete one to publish another.";
+            return PathmindI18n.tr("pathmind.marketplace.error.presetLimitReached");
         }
         if (normalized.contains("at most 6 times per minute")) {
-            return "You can publish at most 6 times per minute. Try again shortly.";
+            return PathmindI18n.tr("pathmind.marketplace.error.publishRateLimited");
         }
         if (normalized.contains("10 seconds between publishes") || normalized.contains("between publishes")) {
-            return "Wait at least 10 seconds between publishes.";
+            return PathmindI18n.tr("pathmind.marketplace.error.publishCooldown");
         }
         if (normalized.contains("like rate limit exceeded")) {
-            return "You're clicking like too quickly. Try again in a moment.";
+            return PathmindI18n.tr("pathmind.marketplace.error.likeRateLimited");
         }
         if (normalized.contains("authentication required")) {
-            return "Marketplace auth expired.";
+            return PathmindI18n.tr("pathmind.marketplace.error.authExpired");
         }
         if (normalized.contains("not found or not owned by current user")) {
             return updateOperation
-                ? "You can only edit presets you published or moderate."
-                : "You can only delete presets you published or moderate.";
+                ? PathmindI18n.tr("pathmind.marketplace.error.editPermissionDenied")
+                : PathmindI18n.tr("pathmind.marketplace.error.deletePermissionDenied");
         }
         if (publishOperation && normalized.contains("preset file path is required")) {
-            return "Preset file upload failed.";
+            return PathmindI18n.tr("pathmind.marketplace.error.uploadFailed");
         }
         return null;
     }

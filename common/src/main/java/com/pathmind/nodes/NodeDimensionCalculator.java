@@ -1,5 +1,7 @@
 package com.pathmind.nodes;
 
+import static com.pathmind.util.PathmindI18n.tr;
+
 /**
  * Editor sizing rules for nodes.
  *
@@ -104,8 +106,8 @@ final class NodeDimensionCalculator {
             return "";
         }
         NodeMode nodeMode = node.getMode();
-        String modeName = nodeMode != null ? nodeMode.getDisplayName() : "Select Mode";
-        return "Mode: " + modeName;
+        String modeName = nodeMode != null ? nodeMode.getDisplayName() : tr("pathmind.node.mode.select");
+        return tr("pathmind.field.modeValue", modeName);
     }
 
     private static int computeWidth(Node node, NodeLayoutState layoutState) {

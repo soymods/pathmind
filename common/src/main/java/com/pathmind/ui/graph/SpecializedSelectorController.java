@@ -187,7 +187,7 @@ final class SpecializedSelectorController {
             )
         );
 
-        String inlineLabel = "Preset:";
+        String inlineLabel = host.translate("pathmind.field.preset") + ":";
         int labelX = fieldLeft + 4;
         int labelY = fieldTop + (fieldHeight - textRenderer.lineHeight) / 2;
         host.drawNodeText(context, textRenderer, Component.literal(inlineLabel), labelX, labelY, labelColor);
@@ -208,7 +208,7 @@ final class SpecializedSelectorController {
         String display = value;
         int valueDrawColor = animatedTextColor;
         if (!editing && display.isEmpty()) {
-            display = "preset";
+            display = host.translate("pathmind.placeholder.preset");
             valueDrawColor = isOverSidebar ? UITheme.NODE_LABEL_DIMMED : UITheme.TEXT_SECONDARY;
         }
         display = editing ? display : host.trimTextToWidth(display, textRenderer, maxValueWidth);

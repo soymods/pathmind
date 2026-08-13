@@ -109,8 +109,8 @@ public class NodeGraph {
     private static final int NODE_HEADER_BUTTON_SIZE = 12;
     private static final int GRID_SNAP_SIZE = 20;
 
-    private static String tr(String key) {
-        return Component.translatable(key).getString();
+    private static String tr(String key, Object... args) {
+        return Component.translatable(key, args).getString();
     }
     private static final int TEMPLATE_PREVIEW_TOP = 42;
     private static final int TEMPLATE_PREVIEW_BOTTOM_MARGIN = 6;
@@ -1067,6 +1067,7 @@ public class NodeGraph {
         @Override public int adjustColorBrightness(int color, float factor) {
             return nodeControls.adjustColorBrightness(color, factor);
         }
+        @Override public String translate(String key, Object... args) { return tr(key, args); }
         @Override public void drawNodeText(GuiGraphics context, Font renderer, String text, int x, int y, int color) {
             NodeGraph.this.drawNodeText(context, renderer, text, x, y, color);
         }

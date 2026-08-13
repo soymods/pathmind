@@ -301,7 +301,7 @@ final class InlineFieldRenderer {
             : host.trimTextToWidth(value, textRenderer, fieldWidth - 6);
         if (showPlaceholder) {
             if (node.getType() == NodeType.MOVE_ITEM) {
-                display = "All";
+                display = Component.translatable("pathmind.option.all").getString();
             } else if (node.getType() == NodeType.TRADE
                 || node.getType() == NodeType.SENSOR_VILLAGER_TRADE
                 || node.getType() == NodeType.SENSOR_IN_STOCK) {

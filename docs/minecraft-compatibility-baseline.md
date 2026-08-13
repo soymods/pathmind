@@ -48,10 +48,10 @@ The `1.21.x` baseline targets use Java 21 and `pre26-remapped`; `26.1` through `
 | `1.21.9` | `mc-1.21.9-1.21.10` | `0.134.1+1.21.9` | `unsupported` |
 | `1.21.10` | `mc-1.21.9-1.21.10` | `0.138.4+1.21.10` | `21.10.64` |
 | `1.21.11` | `mc-1.21.11` | `0.140.2+1.21.11` | `21.11.42` |
-| `26.1` | `mc-26.1` | `0.145.1+26.1` | `unsupported` |
-| `26.1.1` | `mc-26.1` | `0.145.4+26.1.1` | `unsupported` |
+| `26.1` | `mc-26.1` | `0.145.1+26.1` | `26.1.0.19-beta` |
+| `26.1.1` | `mc-26.1` | `0.145.4+26.1.1` | `26.1.1.15-beta` |
 | `26.1.2` | `mc-26.1` | `0.155.2+26.1.2` | `26.1.2.94` |
-| `26.2` | `mc-26.2` | `0.154.2+26.2` | `unsupported` |
+| `26.2` | `mc-26.2` | `0.154.2+26.2` | `26.2.0.42-beta` |
 
 The `1.21.x` Fabric build pin is `0.17.3`, with release metadata accepting `0.17.2` or newer. Minecraft `26.1` through `26.2` build and require Fabric Loader `0.19.3`. These values remain explicit in the manifest so packaging cannot silently change.
 
@@ -147,10 +147,13 @@ Record manual runs in this table when a compatibility-changing pass is prepared 
 | `1.21.11` | Fabric | Pending | Pending | Pending | Pending | Pending | Pending | — |
 | `1.21.11` | NeoForge | Pending | Pending | Pending | Pending | Pending | Pending | — |
 | `26.1` | Fabric | Pending | Pending | Pending | Pending | Pending | Pending | — |
+| `26.1` | NeoForge | Pending | Pending | Pending | Pending | Pending | Pending | — |
 | `26.1.1` | Fabric | Pending | Pending | Pending | Pending | Pending | Pending | — |
+| `26.1.1` | NeoForge | Pending | Pending | Pending | Pending | Pending | Pending | — |
 | `26.1.2` | Fabric | Pending | Pending | Pending | Pending | Pending | Pending | — |
 | `26.1.2` | NeoForge | Pending | Pending | Pending | Pending | Pending | Pending | — |
 | `26.2` | Fabric | Pending | Pending | Pending | Pending | Pending | Pending | — |
+| `26.2` | NeoForge | Pending | Pending | Pending | Pending | Pending | Pending | — |
 
 ## Automated verification commands
 

@@ -8,6 +8,7 @@ plugins {
     id("architectury-plugin") version "3.4.161"
     id("dev.architectury.loom") version "1.14.473" apply false
     id("com.gradleup.shadow") version "9.5.1" apply false
+    id("com.modrinth.minotaur") version "2.9.0"
 }
 
 // ------------------------------------------------------------
@@ -111,6 +112,53 @@ val supportedMinecraftVersions = linkedMapOf<String, MinecraftVersionSpec>().app
             baritoneRuntime = manifestValue(prefix + "baritone_runtime").toBooleanStrictOrNull()
                 ?: throw GradleException("Invalid Baritone runtime flag for Minecraft $version")
         ))
+    }
+}
+
+val modrinthVersionTypes = setOf("release", "beta", "alpha")
+val modrinthPublishMinecraftVersion = providers.gradleProperty("modrinth_mc_version")
+    .orElse(defaultMinecraftVersion)
+    .get()
+val modrinthPublishLoader = providers.gradleProperty("modrinth_loader")
+    .orElse("fabric")
+    .get()
+val modrinthPublishVersionType = providers.gradleProperty("modrinth_version_type")
+    .orElse("beta")
+    .get()
+val modrinthDebugMode = providers.gradleProperty("modrinth_debug")
+    .map(String::toBoolean)
+    .orElse(false)
+    .get()
+
+fun modrinthPublishSpec(): MinecraftVersionSpec {
+    val spec = supportedMinecraftVersions[modrinthPublishMinecraftVersion]
+        ?: throw GradleException(
+            "No version spec configured for Modrinth Minecraft target $modrinthPublishMinecraftVersion"
+        )
+    if (modrinthPublishLoader !in spec.releaseLoaders) {
+        throw GradleException(
+            "Minecraft $modrinthPublishMinecraftVersion does not publish loader '$modrinthPublishLoader'. " +
+                "Supported loaders: ${spec.releaseLoaders.sorted().joinToString(", ")}"
+        )
+    }
+    if (modrinthPublishVersionType !in modrinthVersionTypes) {
+        throw GradleException(
+            "Invalid Modrinth version type '$modrinthPublishVersionType'. " +
+                "Use one of: ${modrinthVersionTypes.joinToString(", ")}"
+        )
+    }
+    return spec
+}
+
+fun modrinthPublishJarFile(): File {
+    modrinthPublishSpec()
+    val modVersion = rootProject.property("mod_version") as String
+    val jarName = "pathmind-$modrinthPublishLoader-$modVersion+mc$modrinthPublishMinecraftVersion.jar"
+    val downloadedArtifact = layout.buildDirectory.file("release-assets/$jarName").get().asFile
+    return if (downloadedArtifact.isFile) {
+        downloadedArtifact
+    } else {
+        layout.buildDirectory.file("multiVersion/$modrinthPublishMinecraftVersion/$jarName").get().asFile
     }
 }
 
@@ -956,4 +1004,100 @@ verifyBuiltCompatibilityArtifacts.configure {
 
 buildAllTargets.configure {
     dependsOn(verifyBuiltCompatibilityArtifacts)
+}
+
+val verifyModrinthPublishInputs = tasks.register("verifyModrinthPublishInputs") {
+    group = "publishing"
+    description = "Checks the selected Modrinth publish target and staged jar"
+
+    doLast {
+        val spec = modrinthPublishSpec()
+        val jar = modrinthPublishJarFile()
+        if (!jar.isFile) {
+            throw GradleException(
+                "Missing Modrinth upload jar: ${jar.relativeTo(projectDir)}. " +
+                    "Run buildAllTargets or download CI artifacts first."
+            )
+        }
+        verifyCompatibilityJar(jar, modrinthPublishMinecraftVersion, spec, modrinthPublishLoader)
+        println(
+            "Modrinth publish target: " +
+                "${jar.relativeTo(projectDir)} -> " +
+                "gameVersions=[$modrinthPublishMinecraftVersion], " +
+                "loaders=[$modrinthPublishLoader], " +
+                "versionType=$modrinthPublishVersionType, " +
+                "debugMode=$modrinthDebugMode"
+        )
+    }
+}
+
+val verifyAllModrinthPublishInputs = tasks.register("verifyAllModrinthPublishInputs") {
+    group = "publishing"
+    description = "Checks every supported Modrinth publish target and staged jar"
+
+    doLast {
+        val modVersion = rootProject.property("mod_version") as String
+        var checkedCount = 0
+        supportedMinecraftVersions.forEach { (version, spec) ->
+            spec.releaseLoaders.forEach { loader ->
+                val jarName = "pathmind-$loader-$modVersion+mc$version.jar"
+                val downloadedArtifact = layout.buildDirectory.file("release-assets/$jarName").get().asFile
+                val jar = if (downloadedArtifact.isFile) {
+                    downloadedArtifact
+                } else {
+                    layout.buildDirectory.file("multiVersion/$version/$jarName").get().asFile
+                }
+                if (!jar.isFile) {
+                    throw GradleException(
+                        "Missing Modrinth upload jar for Minecraft $version ($loader): ${jar.relativeTo(projectDir)}"
+                    )
+                }
+                verifyCompatibilityJar(jar, version, spec, loader)
+                checkedCount++
+            }
+        }
+        println("Verified $checkedCount Modrinth publish targets.")
+    }
+}
+
+modrinth {
+    val modVersion = rootProject.property("mod_version") as String
+    token.set(
+        providers.environmentVariable("MODRINTH_TOKEN")
+            .orElse(if (modrinthDebugMode) "debug-token" else "")
+    )
+    projectId.set("pathmind")
+    versionNumber.set("$modVersion+mc$modrinthPublishMinecraftVersion-$modrinthPublishLoader")
+    versionName.set(
+        "Pathmind $modVersion for Minecraft $modrinthPublishMinecraftVersion " +
+            "(${modrinthPublishLoader.replaceFirstChar { it.titlecase() }})"
+    )
+    versionType.set(modrinthPublishVersionType)
+    changelog.set(
+        providers.gradleProperty("modrinth_changelog")
+            .orElse(providers.environmentVariable("MODRINTH_CHANGELOG"))
+            .orElse("No changelog was specified.")
+    )
+    uploadFile.set(modrinthPublishJarFile())
+    gameVersions.add(modrinthPublishMinecraftVersion)
+    loaders.add(modrinthPublishLoader)
+    debugMode.set(modrinthDebugMode)
+    detectLoaders.set(false)
+
+    dependencies {
+        if (modrinthPublishLoader == "fabric") {
+            required.project("fabric-api")
+        }
+    }
+}
+
+tasks.named("modrinth") {
+    group = "publishing"
+    description = "Publishes one selected Pathmind jar to Modrinth"
+    dependsOn(verifyModrinthPublishInputs)
+    doFirst {
+        if (!modrinthDebugMode && System.getenv("MODRINTH_TOKEN").isNullOrBlank()) {
+            throw GradleException("MODRINTH_TOKEN is required when modrinth_debug is false.")
+        }
+    }
 }

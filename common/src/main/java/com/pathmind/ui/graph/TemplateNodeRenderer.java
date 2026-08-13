@@ -24,6 +24,7 @@ final class TemplateNodeRenderer {
         int cameraX();
         int cameraY();
         int adjustColorBrightness(int color, float factor);
+        String translate(String key, Object... args);
         void drawNodeText(GuiGraphics context, Font renderer, String text, int x, int y, int color);
         String trimTextToWidth(String text, Font renderer, int maxWidth);
         NodeGraphData.CustomNodeDefinition getTemplateDefinition(Node node);
@@ -61,11 +62,11 @@ final class TemplateNodeRenderer {
         NodeGraphData.CustomNodeDefinition definition = host.getTemplateDefinition(node);
         String headerName = definition != null && definition.getName() != null && !definition.getName().isBlank()
             ? definition.getName().trim()
-            : "Preset";
+            : host.translate("pathmind.field.preset");
         String versionLabel = definition != null && definition.getVersion() != null && definition.getVersion() > 0
             ? " v" + definition.getVersion()
             : "";
-        String badge = "LINK";
+        String badge = host.translate("pathmind.template.link");
         int badgeWidth = textRenderer.width(badge) + 8;
         int badgeLeft = x + width - badgeWidth - 6;
         int badgeTop = y + 2;
@@ -207,15 +208,18 @@ final class TemplateNodeRenderer {
         int lineY = previewTop + 4;
         int lineStep = textRenderer.lineHeight + 2;
 
-        String presetLine = "Preset: " + host.trimTextToWidth(host.getSelectedPresetName(node), textRenderer, Math.max(0, previewWidth - 10 - textRenderer.width("Preset: ")));
+        String presetPrefix = host.translate("pathmind.template.presetValue", "");
+        String presetLine = host.translate("pathmind.template.presetValue", host.trimTextToWidth(
+            host.getSelectedPresetName(node), textRenderer, Math.max(0, previewWidth - 10 - textRenderer.width(presetPrefix))));
         host.drawNodeText(context, textRenderer, presetLine, textX, lineY, mutedColor);
         lineY += lineStep;
 
         int instanceVersion = node.getTemplateVersion();
         int definitionVersion = definition.getVersion() != null ? definition.getVersion() : 0;
-        String versionLine = "Version: " + (definitionVersion > 0 ? ("v" + definitionVersion) : "unversioned");
+        String versionLine = host.translate("pathmind.template.versionValue",
+            definitionVersion > 0 ? ("v" + definitionVersion) : host.translate("pathmind.template.unversioned"));
         if (instanceVersion > 0 && definitionVersion > instanceVersion) {
-            versionLine += " (instance v" + instanceVersion + ")";
+            versionLine += host.translate("pathmind.template.instanceVersion", instanceVersion);
             host.drawNodeText(context, textRenderer, host.trimTextToWidth(versionLine, textRenderer, previewWidth - 10), textX, lineY, warningColor);
         } else {
             host.drawNodeText(context, textRenderer, host.trimTextToWidth(versionLine, textRenderer, previewWidth - 10), textX, lineY, textColor);

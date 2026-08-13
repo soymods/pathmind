@@ -28,6 +28,7 @@ import net.minecraft.util.Mth;
 import com.pathmind.util.DrawContextBridge;
 import com.pathmind.util.InputCompatibilityBridge;
 import com.pathmind.util.ButtonWidgetCompatibilityBridge;
+import com.pathmind.util.PathmindI18n;
 
 /**
  * Overlay widget for editing node parameters.
@@ -1340,25 +1341,25 @@ public class NodeParameterOverlay {
                 || "main_hand".equals(normalized)
                 || "main-hand".equals(normalized)
                 || "mainhand".equals(normalized)) {
-                return "Main Hand";
+                return PathmindI18n.tr("pathmind.option.hand.main");
             }
             if ("off".equals(normalized)
                 || "offhand".equals(normalized)
                 || "off hand".equals(normalized)
                 || "off_hand".equals(normalized)
                 || "off-hand".equals(normalized)) {
-                return "Offhand";
+                return PathmindI18n.tr("pathmind.option.hand.offhand");
             }
         }
         if (node.getType() == NodeType.PARAM_BLOCK_FACE && "Face".equalsIgnoreCase(parameter.getName())) {
             String normalized = value.trim().toLowerCase(java.util.Locale.ROOT);
             return switch (normalized) {
-                case "north" -> "North";
-                case "south" -> "South";
-                case "east" -> "East";
-                case "west" -> "West";
-                case "up" -> "Up";
-                case "down" -> "Down";
+                case "north" -> PathmindI18n.tr("pathmind.option.direction.north");
+                case "south" -> PathmindI18n.tr("pathmind.option.direction.south");
+                case "east" -> PathmindI18n.tr("pathmind.option.direction.east");
+                case "west" -> PathmindI18n.tr("pathmind.option.direction.west");
+                case "up" -> PathmindI18n.tr("pathmind.option.direction.up");
+                case "down" -> PathmindI18n.tr("pathmind.option.direction.down");
                 default -> value;
             };
         }

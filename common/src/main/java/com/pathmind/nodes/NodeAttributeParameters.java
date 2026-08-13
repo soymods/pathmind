@@ -3,6 +3,7 @@ package com.pathmind.nodes;
 import com.pathmind.util.BlockSelection;
 import com.pathmind.util.EntityStateOptions;
 import com.pathmind.util.GuiSelectionMode;
+import com.pathmind.util.PathmindI18n;
 import java.util.List;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -64,7 +65,7 @@ final class NodeAttributeParameters {
                 AttributeDetectionConfig.AttributeOption attribute =
                     AttributeDetectionConfig.getAttribute(Node.getParameterString(node, "Attribute"));
                 if (attribute != null && attribute.valueType() == AttributeDetectionConfig.ValueType.BOOLEAN) {
-                    return parseBooleanLike(value) ? "True" : "False";
+                    return PathmindI18n.tr(parseBooleanLike(value) ? "pathmind.option.true" : "pathmind.option.false");
                 }
             }
         }

@@ -4,6 +4,31 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      publish_modrinth:
+        description: 'Publish all supported jars to Modrinth after the build'
+        required: true
+        default: false
+        type: boolean
+      modrinth_version_type:
+        description: 'Modrinth release channel'
+        required: true
+        default: beta
+        type: choice
+        options:
+          - release
+          - beta
+          - alpha
+      modrinth_debug:
+        description: 'Print upload metadata without publishing'
+        required: true
+        default: true
+        type: boolean
+      modrinth_changelog:
+        description: 'Changelog to apply to each uploaded Modrinth version'
+        required: false
+        default: ''
+        type: string
   schedule:
     - cron: '17 8 * * *'
 
@@ -374,3 +399,64 @@ jobs:
             --title "Pathmind test builds" \
             --notes-file "$notes_file" \
             --prerelease
+
+  publish-modrinth:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_modrinth }}
+    needs:
+      - build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+          cache-dependency-path: |
+            **/*.gradle*
+            gradle/wrapper/gradle-wrapper.properties
+
+      - name: Download release jars
+        uses: actions/download-artifact@v4
+        with:
+          path: build/release-assets
+          merge-multiple: true
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Publish all supported jars to Modrinth
+        shell: bash
+        env:
+          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+          MODRINTH_CHANGELOG: ${{ inputs.modrinth_changelog }}
+          MODRINTH_VERSION_TYPE: ${{ inputs.modrinth_version_type }}
+          MODRINTH_DEBUG: ${{ inputs.modrinth_debug }}
+        run: |
+          set -euo pipefail
+
+          if [ "${MODRINTH_DEBUG}" != "true" ] && [ -z "${MODRINTH_TOKEN:-}" ]; then
+            echo "MODRINTH_TOKEN is required when modrinth_debug is false."
+            exit 1
+          fi
+
+          MANIFEST=gradle/minecraft-versions.properties
+          while read -r version; do
+            LOADERS="$(awk -F= -v key="version.${version}.release_loaders" '$1 == key { print $2 }' "$MANIFEST")"
+            IFS=',' read -ra EXPECTED_LOADERS <<< "$LOADERS"
+            for loader in "${EXPECTED_LOADERS[@]}"; do
+              echo "Publishing Pathmind for Minecraft ${version} (${loader}) as ${MODRINTH_VERSION_TYPE}; debug=${MODRINTH_DEBUG}"
+              ./gradlew --no-daemon modrinth \
+                -Pmodrinth_mc_version="${version}" \
+                -Pmodrinth_loader="${loader}" \
+                -Pmodrinth_version_type="${MODRINTH_VERSION_TYPE}" \
+                -Pmodrinth_debug="${MODRINTH_DEBUG}"
+            done
+          done < <(sed -n 's/^supported_versions=//p' "$MANIFEST" | tr ',' '\n')

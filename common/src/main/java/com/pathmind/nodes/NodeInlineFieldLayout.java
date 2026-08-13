@@ -1,5 +1,7 @@
 package com.pathmind.nodes;
 
+import com.pathmind.util.PathmindI18n;
+
 /**
  * Presentation policy and geometry for fields rendered directly inside nodes.
  */
@@ -77,9 +79,9 @@ final class NodeInlineFieldLayout {
 
     String getModeFieldLabelText() {
         if (owner.getType() == NodeType.SENSOR_POSITION_OF || owner.getType() == NodeType.SENSOR_LOOK_DIRECTION) {
-            return "Axis:";
+            return PathmindI18n.tr("pathmind.field.axis");
         }
-        return "Mode:";
+        return PathmindI18n.tr("pathmind.field.mode");
     }
 
     int getCoordinateFieldLabelTop() {

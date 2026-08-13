@@ -19,6 +19,7 @@ import com.pathmind.ui.control.PathmindRoutineUi;
 import com.pathmind.ui.control.PathmindWorkspaceChrome;
 import com.pathmind.ui.graph.NodeGraph;
 import com.pathmind.ui.sidebar.Sidebar;
+import com.pathmind.util.PathmindI18n;
 
 import net.minecraft.client.gui.GuiGraphics;
 
@@ -71,7 +72,7 @@ final class PathmindWorkspaceLifecycleController {
 
     void resetFromCurrentGraph() {
         workspaceTabs.clear();
-        workspaceTabs.add(new WorkspaceTab("Main", host.nodeGraph().exportGraphDataSnapshot(), null, null));
+        workspaceTabs.add(new WorkspaceTab(PathmindI18n.tr("pathmind.workspace.main"), host.nodeGraph().exportGraphDataSnapshot(), null, null));
         activeWorkspaceTabIndex = 0;
     }
 
@@ -415,7 +416,7 @@ final class PathmindWorkspaceLifecycleController {
                 }
             }
         } else {
-            tab.label = "Main";
+            tab.label = PathmindI18n.tr("pathmind.workspace.main");
         }
     }
 

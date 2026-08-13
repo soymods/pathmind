@@ -316,7 +316,7 @@ final class NodeControlController {
             if (useLogicSlotTitle) {
                 return;
             }
-            String placeholder = "Drag a sensor here";
+            String placeholder = host.translate("pathmind.node.slot.dragSensorHere");
             String display = host.trimTextToWidth(placeholder, textRenderer, slotWidth - 8);
             int textWidth = textRenderer.width(display);
             int textX = slotX + Math.max(4, (slotWidth - textWidth) / 2);
@@ -391,14 +391,14 @@ final class NodeControlController {
     }
 
     String getLogicSensorSlotTitle(Node node) {
-        return "Condition";
+        return host.translate("pathmind.node.slot.condition");
     }
 
     String getLogicActionSlotTitle(Node node) {
         if (node != null && node.getType() == NodeType.CONTROL_REPEAT) {
-            return "Repeat Body";
+            return host.translate("pathmind.node.slot.repeatBody");
         }
-        return "Loop Body";
+        return host.translate("pathmind.node.slot.loopBody");
     }
 
     boolean isPointInsideBooleanToggle(Node node, int mouseX, int mouseY) {

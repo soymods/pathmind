@@ -77,10 +77,15 @@ sourceSets {
                 throw GradleException("Unknown NeoForge UI family '$neoForgeUiFamily' for Minecraft $requestedMinecraftVersion")
             }
         }
+        resources {
+            srcDir(project(":common").layout.projectDirectory.dir("src/main/resources"))
+            exclude("architectury.common.json")
+        }
     }
 }
 
 tasks.processResources {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     val properties = mapOf(
         "version" to version,
         "minecraft_version" to requestedMinecraftVersion,
@@ -91,6 +96,7 @@ tasks.processResources {
 }
 
 tasks.shadowJar {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     exclude("architectury.common.json")
     configurations = listOf(project.configurations["shadowCommon"])
     if (neoForgeReleaseTask == "shadowJar") {

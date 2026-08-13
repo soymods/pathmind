@@ -49,10 +49,19 @@ val compatibilityManifest = java.util.Properties().apply {
 }
 val packagingGeneration = compatibilityManifest
     .getProperty("version.$requestedMinecraftVersion.packaging_generation")
+val releaseLoaders = compatibilityManifest
+    .getProperty("version.$requestedMinecraftVersion.release_loaders")
+    ?.split(',')
+    ?.map(String::trim)
+    ?.toSet()
+    ?: emptySet()
 
 // Minecraft 26+ uses unobfuscated Fabric Loom and ModDevGradle in the isolated
 // mc26 build. Loading the pre-26 Architectury projects would configure an
 // incompatible remapping toolchain before root delegation can occur.
 if (packagingGeneration != "mc26-unobfuscated") {
-    include("common", "fabric", "neoforge")
+    include("common", "fabric")
+    if ("neoforge" in releaseLoaders) {
+        include("neoforge")
+    }
 }

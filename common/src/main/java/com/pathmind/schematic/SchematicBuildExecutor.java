@@ -3,6 +3,8 @@ package com.pathmind.schematic;
 import com.pathmind.data.SettingsManager;
 import com.pathmind.execution.PathmindNavigator;
 import com.pathmind.execution.NavigatorCameraController;
+import com.pathmind.ui.overlay.NodeErrorNotificationOverlay;
+import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.HotbarSlotSynchronizer;
 import com.pathmind.util.PlayerInventoryBridge;
 import java.util.ArrayList;
@@ -406,16 +408,23 @@ public final class SchematicBuildExecutor {
             }
             return;
         }
-        SchematicPlacementPlanner.ConstructionStep next = constructionPlan.steps().stream()
+        List<SchematicPlacementPlanner.ConstructionStep> eligibleSteps = constructionPlan.steps().stream()
             .filter(step -> (step.action() == SchematicPlacementPlanner.StepAction.PLACE
                 || step.action() == SchematicPlacementPlanner.StepAction.REPLACE
                 || isRepairableOwnPlacement(client.level, step))
                 && dependenciesAreComplete(client.level, step))
             .map(this::asRepairStepIfNeeded)
-            .min(Comparator
-                .comparingDouble((SchematicPlacementPlanner.ConstructionStep step) -> step.worldPosition().distSqr(client.player.blockPosition()))
-                .thenComparingInt(step -> step.worldPosition().getY()))
-            .orElse(null);
+            .toList();
+        // Do not stop a build merely because the nearest block's material is
+        // unavailable while other ready work can still be completed. This is
+        // also the build-side batching rule: drain every placement that can
+        // be clicked from the current position before creating another native
+        // navigation leg.
+        List<SchematicPlacementPlanner.ConstructionStep> materialReadySteps = eligibleSteps.stream()
+            .filter(step -> hasDesiredMaterial(client.player, step.desired().state().getBlock().asItem()))
+            .toList();
+        SchematicPlacementPlanner.ConstructionStep next = selectBestStep(client,
+            materialReadySteps.isEmpty() ? eligibleSteps : materialReadySteps);
         if (next == null) {
             SchematicPlacementPlanner.ConstructionStep blocked = constructionPlan.steps().stream()
                 .filter(step -> step.action() == SchematicPlacementPlanner.StepAction.BLOCKED)
@@ -907,11 +916,92 @@ public final class SchematicBuildExecutor {
                 .sorted(Comparator.comparingInt(approach -> placementApproachPriority(step.desired().state(), approach)))
                 .findFirst().orElse(null);
         }
+        List<SchematicPlacementPlanner.PlacementApproach> candidates = step.approaches().stream()
+            .filter(approach -> isSolid(client.level.getBlockState(approach.supportPosition())))
+            .filter(approach -> !isRejectedApproach(step.worldPosition(), approach))
+            .toList();
+        // A support face already within the player's genuine interaction
+        // range always beats a geometrically-preferred approach that would
+        // require a fresh route through the partially-built structure.
+        List<SchematicPlacementPlanner.PlacementApproach> reachableNow = candidates.stream()
+            .filter(approach -> isWithinPlacementReach(client.player, approach))
+            .toList();
+        // Survival needs the same outside-in construction invariant as
+        // creative flight.  Interior cells can be valid standing positions
+        // on paper yet become ceiling-trapped as soon as a shell closes.
+        List<SchematicPlacementPlanner.PlacementApproach> exterior = candidates.stream()
+            .filter(approach -> !isInsideSchematicInterior(approach.standingPosition()))
+            .toList();
+        List<SchematicPlacementPlanner.PlacementApproach> pool = !reachableNow.isEmpty() ? reachableNow
+            : !exterior.isEmpty() ? exterior : candidates;
+        return pool.stream()
+            .sorted(Comparator
+                .comparingInt((SchematicPlacementPlanner.PlacementApproach approach) ->
+                    placementApproachPriority(step.desired().state(), approach))
+                .thenComparingDouble(SchematicPlacementPlanner.PlacementApproach::playerDistanceSq)
+                .thenComparingDouble(SchematicPlacementPlanner.PlacementApproach::interactionDistanceSq))
+            .findFirst().orElse(null);
+    }
+
+    /**
+     * Select work by actual click reach, not merely the target block's feet
+     * distance. A block whose usable support face is already in reach should
+     * always be completed before the navigator is asked to move elsewhere.
+     */
+    private SchematicPlacementPlanner.ConstructionStep selectBestStep(
+        Minecraft client, List<SchematicPlacementPlanner.ConstructionStep> candidates
+    ) {
+        if (client == null || client.player == null || candidates == null || candidates.isEmpty()) {
+            return null;
+        }
+        return candidates.stream()
+            .min(Comparator
+                .comparingInt((SchematicPlacementPlanner.ConstructionStep step) ->
+                    hasReachablePlacementApproach(client, step) ? 0 : 1)
+                .thenComparingDouble(step -> nearestApproachDistanceSq(client, step))
+                .thenComparingInt(step -> step.worldPosition().getY()))
+            .orElse(null);
+    }
+
+    private boolean hasReachablePlacementApproach(
+        Minecraft client, SchematicPlacementPlanner.ConstructionStep step
+    ) {
+        if (creativeFlight || client == null || client.player == null || client.level == null || step == null) {
+            return false;
+        }
         return step.approaches().stream()
             .filter(approach -> isSolid(client.level.getBlockState(approach.supportPosition())))
             .filter(approach -> !isRejectedApproach(step.worldPosition(), approach))
-            .sorted(Comparator.comparingInt(approach -> placementApproachPriority(step.desired().state(), approach)))
-            .findFirst().orElse(null);
+            .anyMatch(approach -> isWithinPlacementReach(client.player, approach));
+    }
+
+    private double nearestApproachDistanceSq(
+        Minecraft client, SchematicPlacementPlanner.ConstructionStep step
+    ) {
+        if (client == null || client.player == null || step == null) {
+            return Double.MAX_VALUE;
+        }
+        return step.approaches().stream()
+            .filter(approach -> client.level == null || isSolid(client.level.getBlockState(approach.supportPosition())))
+            .filter(approach -> !isRejectedApproach(step.worldPosition(), approach))
+            .mapToDouble(approach -> client.player.getEyePosition().distanceToSqr(approach.hitPosition()))
+            .min().orElse(client.player.blockPosition().distSqr(step.worldPosition()));
+    }
+
+    private boolean hasDesiredMaterial(LocalPlayer player, Item item) {
+        if (creativeFlight) {
+            return true;
+        }
+        if (player == null || item == null) {
+            return false;
+        }
+        Inventory inventory = player.getInventory();
+        for (int slot = 0; slot < inventory.getContainerSize(); slot++) {
+            if (inventory.getItem(slot).is(item)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean isInsideSchematicInterior(BlockPos position) {
@@ -1434,6 +1524,11 @@ public final class SchematicBuildExecutor {
         state = State.PAUSED;
         LOGGER.warn("build paused: {}", message);
         liveLog("paused reason=" + message);
+        // Pausing is an actionable state (for example, the player needs to
+        // bring more materials), not a terminal execution failure. Surface it
+        // through Pathmind's normal notification stack and retain the future
+        // so !build resume or a resumed node can continue the same build.
+        NodeErrorNotificationOverlay.getInstance().show(message, UITheme.STATE_ERROR);
         PathmindNavigator.getInstance().stop("schematic build paused");
         PathmindNavigator.getInstance().stopExternalNavigation(Minecraft.getInstance());
         NavigatorCameraController.end(Minecraft.getInstance().player);
@@ -1441,10 +1536,6 @@ public final class SchematicBuildExecutor {
         // preview until an explicit resume rather than leaving a misleading
         // ghost after an automatic safety cancellation.
         SchematicPreview.clearBuild();
-        if (completion != null && !completion.isDone()) {
-            completion.completeExceptionally(new IllegalStateException(message));
-        }
-        completion = null;
     }
 
     private void complete() {

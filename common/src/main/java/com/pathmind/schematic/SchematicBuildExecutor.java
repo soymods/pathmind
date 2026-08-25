@@ -65,6 +65,8 @@ public final class SchematicBuildExecutor {
     private boolean creativeFlight;
     private boolean activeScaffold;
     private boolean activeScaffoldCleanup;
+    /** True when a creative cleanup should return to construction immediately. */
+    private boolean cleanupDuringBuild;
     /** Only blocks confirmed as placed by this build are eligible for cleanup. */
     private final Map<BlockPos, BlockState> temporaryScaffolds = new LinkedHashMap<>();
     /** Approaches which received a click but never produced the desired state. */
@@ -74,6 +76,7 @@ public final class SchematicBuildExecutor {
     private long nextPlaceAttemptAtMs;
     private long waitUntilMs;
     private int placementAttempts;
+    private long lastLiveFlightLogAtMs;
     private String lastPlacementOutcome = "no interaction sent";
     private String status = "idle";
 
@@ -110,6 +113,7 @@ public final class SchematicBuildExecutor {
         origin = buildOrigin.immutable();
         completion = future;
         constructionPlan = SchematicPlacementPlanner.plan(client.level, plan, origin, client.player.blockPosition(), conflictPolicy());
+        SchematicPreview.showBuild(plan, origin);
         creativeFlight = client.player.getAbilities().mayfly && client.player.getAbilities().instabuild;
         if (creativeFlight && !client.player.getAbilities().flying) {
             client.player.getAbilities().flying = true;
@@ -127,6 +131,8 @@ public final class SchematicBuildExecutor {
         status = "planning";
         state = State.PLANNING;
         LOGGER.info("build started source={} origin={} creative={}", plan.source(), format(origin), creativeFlight);
+        liveLog("start source=" + plan.source().getFileName() + " origin=" + format(origin)
+            + " creative=" + creativeFlight + " steps=" + constructionPlan.steps().size());
         return true;
     }
 
@@ -271,7 +277,14 @@ public final class SchematicBuildExecutor {
             SchematicPlacementPlanner.ConstructionStep blocked = constructionPlan.steps().stream()
                 .filter(step -> step.action() == SchematicPlacementPlanner.StepAction.BLOCKED)
                 .findFirst().orElse(null);
+            if (blocked != null && !creativeFlight
+                && !Boolean.TRUE.equals(SettingsManager.getCurrent().schematicAllowScaffolding)) {
+                pause("Build paused at " + format(blocked.worldPosition()) + ": no support face is available. "
+                    + "Enable Allow scaffolding while building to let survival construction create temporary supports.");
+                return;
+            }
             if (blocked != null && startScaffoldStep(client, blocked.worldPosition())) {
+                liveLog("scaffold requested blocked=" + format(blocked.worldPosition()));
                 return;
             }
             SchematicPlacementPlanner.ConstructionStep conflict = constructionPlan.steps().stream()
@@ -305,16 +318,13 @@ public final class SchematicBuildExecutor {
                     + " rejected by the server; no alternative approach remains.");
             return;
         }
+        liveLog("schematic step=" + next.action() + " target=" + format(next.worldPosition())
+            + " support=" + format(activeApproach.supportPosition()));
         if (creativeFlight) {
-            flightPath = SchematicFlightPlanner.findPath(client.level, client.player.blockPosition(), activeApproach.standingPosition());
-            flightPathIndex = flightPath.size() > 1 ? 1 : 0;
-            if (flightPath.isEmpty()) {
+            if (!beginCreativeFlight(client, "flying to place " + next.desired().stateId() + " at " + format(next.worldPosition()))) {
                 pause("Creative flight could not find an aerial route to " + format(activeApproach.standingPosition()) + ".");
                 return;
             }
-            actionStartedAtMs = System.currentTimeMillis();
-            status = "flying to place " + next.desired().stateId() + " at " + format(next.worldPosition());
-            state = State.FLYING;
             LOGGER.info("build step={} action={} mode=creative routeNodes={}", format(next.worldPosition()), next.action(), flightPath.size());
             return;
         }
@@ -371,7 +381,7 @@ public final class SchematicBuildExecutor {
 
     private void tickFlight(Minecraft client) {
         if (System.currentTimeMillis() - actionStartedAtMs > FLIGHT_TIMEOUT_MS) {
-            clearFlightKeys(client);
+            PathmindNavigator.getInstance().pauseExternalNavigation(client);
             if (!activeScaffold && !activeScaffoldCleanup) {
                 retryFromAlternateApproach("creative flight timed out before reaching the placement position");
             } else {
@@ -380,18 +390,49 @@ public final class SchematicBuildExecutor {
             return;
         }
         if (flightPath.isEmpty() || flightPathIndex >= flightPath.size()) {
-            clearFlightKeys(client);
+            PathmindNavigator.getInstance().pauseExternalNavigation(client);
             beginWorldAction(client);
             return;
         }
         BlockPos waypoint = flightPath.get(flightPathIndex);
         Vec3 target = new Vec3(waypoint.getX() + 0.5D, waypoint.getY() + 0.15D, waypoint.getZ() + 0.5D);
         Vec3 position = client.player.position();
-        if (position.distanceToSqr(target) <= 0.20D) {
+        if (position.distanceToSqr(target) <= 0.72D) {
             flightPathIndex++;
             return;
         }
-        steerFlight(client, target);
+        PathmindNavigator.getInstance().updateExternalNavigation(client, flightPath, flightPathIndex);
+        long now = System.currentTimeMillis();
+        if (now - lastLiveFlightLogAtMs >= 1000L) {
+            lastLiveFlightLogAtMs = now;
+            liveLog("flight pos=" + format(client.player.blockPosition()) + " waypoint=" + format(waypoint)
+                + " index=" + flightPathIndex + "/" + flightPath.size() + " flying=" + client.player.getAbilities().flying);
+        }
+    }
+
+    /**
+     * Every creative flight leg goes through this single entry point. This
+     * keeps ordinary placements, temporary supports, and cleanup on the same
+     * navigator-owned camera/input/route lifecycle.
+     */
+    private boolean beginCreativeFlight(Minecraft client, String flightStatus) {
+        if (client == null || client.level == null || client.player == null || activeApproach == null) {
+            return false;
+        }
+        flightPath = SchematicFlightPlanner.findPath(client.level, client.player.blockPosition(), activeApproach.standingPosition());
+        flightPathIndex = flightPath.size() > 1 ? 1 : 0;
+        if (flightPath.isEmpty()
+            || !PathmindNavigator.getInstance().beginExternalNavigation(client, activeApproach.standingPosition(), "Build Creative Flight")) {
+            flightPath = List.of();
+            flightPathIndex = 0;
+            return false;
+        }
+        actionStartedAtMs = System.currentTimeMillis();
+        status = flightStatus;
+        state = State.FLYING;
+        liveLog("flight start target=" + format(activeApproach.standingPosition()) + " route=" + flightPath.size()
+            + " support=" + format(activeApproach.supportPosition()));
+        return true;
     }
 
     private void beginWorldAction(Minecraft client) {
@@ -435,7 +476,12 @@ public final class SchematicBuildExecutor {
                 temporaryScaffolds.remove(target);
                 activeScaffoldCleanup = false;
                 status = "removed temporary support at " + format(target);
-                state = State.CLEANUP_PLANNING;
+                if (cleanupDuringBuild) {
+                    cleanupDuringBuild = false;
+                    state = State.PLANNING;
+                } else {
+                    state = State.CLEANUP_PLANNING;
+                }
                 return;
             }
             waitUntilMs = System.currentTimeMillis() + MINED_DROP_PICKUP_WAIT_MS;
@@ -457,32 +503,6 @@ public final class SchematicBuildExecutor {
         client.gameMode.startDestroyBlock(target, face);
         client.gameMode.continueDestroyBlock(target, face);
         client.player.swing(InteractionHand.MAIN_HAND);
-    }
-
-    private void steerFlight(Minecraft client, Vec3 target) {
-        if (client == null || client.player == null || client.options == null) {
-            return;
-        }
-        Vec3 position = client.player.position();
-        double dx = target.x - position.x;
-        double dz = target.z - position.z;
-        double horizontal = Math.sqrt(dx * dx + dz * dz);
-        if (horizontal > 0.02D) {
-            client.player.setYRot((float) (Math.atan2(dz, dx) * 180.0D / Math.PI) - 90.0F);
-            client.player.setXRot(0.0F);
-        }
-        if (client.options.keyUp != null) client.options.keyUp.setDown(horizontal > 0.14D);
-        if (client.options.keyJump != null) client.options.keyJump.setDown(target.y - position.y > 0.18D);
-        if (client.options.keyShift != null) client.options.keyShift.setDown(position.y - target.y > 0.18D);
-    }
-
-    private void clearFlightKeys(Minecraft client) {
-        if (client == null || client.options == null) {
-            return;
-        }
-        if (client.options.keyUp != null) client.options.keyUp.setDown(false);
-        if (client.options.keyJump != null) client.options.keyJump.setDown(false);
-        if (client.options.keyShift != null) client.options.keyShift.setDown(false);
     }
 
     private void tickDropPickupWait(Minecraft client) {
@@ -551,11 +571,15 @@ public final class SchematicBuildExecutor {
         if (client.level.getBlockState(activeStep.worldPosition()).equals(activeStep.desired().state())) {
             status = activeScaffold ? "placed temporary support at " + format(activeStep.worldPosition())
                 : "placed " + activeStep.desired().stateId() + " at " + format(activeStep.worldPosition());
+            liveLog((activeScaffold ? "scaffold placed=" : "schematic placed=") + format(activeStep.worldPosition()));
             if (activeScaffold) {
                 temporaryScaffolds.put(activeStep.worldPosition().immutable(), activeStep.desired().state());
             }
             rejectedApproaches.remove(activeStep.worldPosition());
             activeScaffold = false;
+            if (creativeFlight && beginImmediateCreativeScaffoldCleanup(client)) {
+                return;
+            }
             state = State.PLANNING;
             return;
         }
@@ -575,6 +599,9 @@ public final class SchematicBuildExecutor {
         if (world == null || step == null || step.dependencies().isEmpty()) {
             return true;
         }
+        if (step.approaches().stream().anyMatch(approach -> isSolid(world.getBlockState(approach.supportPosition())))) {
+            return true;
+        }
         for (BlockPos dependency : step.dependencies()) {
             SchematicBuildPlan.Placement expected = expectedAt(dependency);
             if (expected != null && !world.getBlockState(dependency).equals(expected.state())) {
@@ -588,7 +615,7 @@ public final class SchematicBuildExecutor {
         if (schematic == null || origin == null || worldPosition == null) {
             return null;
         }
-        BlockPos base = origin.offset(schematic.schematicOffset());
+        BlockPos base = origin.subtract(schematic.placementAnchor());
         BlockPos relative = worldPosition.subtract(base);
         for (SchematicBuildPlan.Placement placement : schematic.placements()) {
             if (placement.relativePosition().equals(relative)) {
@@ -672,7 +699,11 @@ public final class SchematicBuildExecutor {
     }
 
     private boolean startScaffoldStep(Minecraft client, BlockPos blockedTarget) {
-        if (!Boolean.TRUE.equals(SettingsManager.getCurrent().schematicAllowScaffolding)
+        // Creative mode has no material cost and already creates the configured
+        // support block in the hotbar.  It should be able to establish the
+        // first legal placement face even when the survival scaffolding toggle
+        // is off; that toggle remains an explicit survival-world permission.
+        if ((!creativeFlight && !Boolean.TRUE.equals(SettingsManager.getCurrent().schematicAllowScaffolding))
             || client == null || client.level == null || blockedTarget == null) {
             return false;
         }
@@ -703,12 +734,7 @@ public final class SchematicBuildExecutor {
         activeScaffold = true;
         activeScaffoldCleanup = false;
         if (creativeFlight) {
-            flightPath = SchematicFlightPlanner.findPath(client.level, client.player.blockPosition(), activeApproach.standingPosition());
-            flightPathIndex = flightPath.size() > 1 ? 1 : 0;
-            if (flightPath.isEmpty()) return false;
-            actionStartedAtMs = System.currentTimeMillis();
-            status = "flying to place temporary support at " + format(scaffoldPos);
-            state = State.FLYING;
+            if (!beginCreativeFlight(client, "flying to place temporary support at " + format(scaffoldPos))) return false;
         } else {
             navigationFuture = new CompletableFuture<>();
             if (!PathmindNavigator.getInstance().startGoto(activeApproach.standingPosition(), "Build scaffold", navigationFuture)) return false;
@@ -749,16 +775,11 @@ public final class SchematicBuildExecutor {
             return;
         }
         if (creativeFlight) {
-            flightPath = SchematicFlightPlanner.findPath(client.level, client.player.blockPosition(), activeApproach.standingPosition());
-            flightPathIndex = flightPath.size() > 1 ? 1 : 0;
-            if (flightPath.isEmpty()) {
+            if (!beginCreativeFlight(client, "flying to remove temporary support at " + format(target))) {
                 temporaryScaffolds.remove(target);
                 status = "retained unreachable temporary support at " + format(target);
                 return;
             }
-            actionStartedAtMs = System.currentTimeMillis();
-            status = "flying to remove temporary support at " + format(target);
-            state = State.FLYING;
             return;
         }
         navigationFuture = new CompletableFuture<>();
@@ -782,6 +803,34 @@ public final class SchematicBuildExecutor {
     }
 
     /**
+     * Creative mode does not need to preserve reusable support material.  When
+     * the just-confirmed build block made its temporary support redundant, mine
+     * that exact block before selecting the next build step.
+     */
+    private boolean beginImmediateCreativeScaffoldCleanup(Minecraft client) {
+        if (client == null || client.player == null || activeApproach == null) {
+            return false;
+        }
+        BlockPos scaffold = activeApproach.supportPosition();
+        if (!temporaryScaffolds.containsKey(scaffold) || !canSafelyRemoveScaffold(client.level, scaffold)) {
+            return false;
+        }
+        Vec3 center = Vec3.atCenterOf(scaffold);
+        if (client.player.getEyePosition().distanceToSqr(center) > 4.50D * 4.50D) {
+            return false;
+        }
+        BlockState scaffoldState = temporaryScaffolds.get(scaffold);
+        String id = BuiltInRegistries.BLOCK.getKey(scaffoldState.getBlock()).toString();
+        activeStep = new SchematicPlacementPlanner.ConstructionStep(
+            new SchematicBuildPlan.Placement(scaffold, scaffoldState, id), scaffold,
+            SchematicPlacementPlanner.StepAction.REPLACE, List.of(), List.of(), null);
+        activeScaffoldCleanup = true;
+        cleanupDuringBuild = true;
+        beginScaffoldCleanupBreak();
+        return true;
+    }
+
+    /**
      * Cleanup is deliberately conservative.  A temporary block is removed
      * only after all scaffold blocks above it are gone and it is not touching a
      * non-solid schematic block or a falling block that could depend on it.
@@ -791,6 +840,9 @@ public final class SchematicBuildExecutor {
             return false;
         }
         if (temporaryScaffolds.containsKey(position.above())) {
+            return false;
+        }
+        if (hasPendingScaffoldDependency(world, position)) {
             return false;
         }
         for (Direction direction : Direction.values()) {
@@ -811,6 +863,33 @@ public final class SchematicBuildExecutor {
             }
         }
         return true;
+    }
+
+    /**
+     * A scaffold must survive until the final unfinished placement that can
+     * click it as a support face has been confirmed. Removing it earlier
+     * turns a deterministic support chain into repeated, apparently random
+     * scaffold placement.
+     */
+    private boolean hasPendingScaffoldDependency(Level world, BlockPos scaffold) {
+        if (world == null || scaffold == null || constructionPlan == null) {
+            return false;
+        }
+        for (SchematicPlacementPlanner.ConstructionStep step : constructionPlan.steps()) {
+            if (step.action() != SchematicPlacementPlanner.StepAction.PLACE
+                && step.action() != SchematicPlacementPlanner.StepAction.REPLACE) {
+                continue;
+            }
+            if (world.getBlockState(step.worldPosition()).equals(step.desired().state())) {
+                continue;
+            }
+            boolean usesScaffold = step.approaches().stream()
+                .anyMatch(approach -> scaffold.equals(approach.supportPosition()));
+            if (usesScaffold) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void discardChangedScaffoldRecords(Level world) {
@@ -852,8 +931,29 @@ public final class SchematicBuildExecutor {
         }
         if (sourceSlot < 0 && creativeFlight && client.gameMode != null) {
             int destination = findHotbarDestination(inventory);
-            client.gameMode.handleCreativeModeItemAdd(new ItemStack(item), destination);
-            return inventory.getItem(destination).is(item) ? destination : -1;
+            int menuSlot = client.player.containerMenu == null ? -1
+                : mapPlayerInventorySlot(client.player.containerMenu, destination);
+            if (menuSlot < 0) {
+                return -1;
+            }
+            // handleCreativeModeItemAdd sends the authoritative creative
+            // inventory packet, but the local Inventory is not guaranteed to
+            // reflect it until the next server update.  The executor needs the
+            // item immediately for the interaction below, so mirror the same
+            // legal creative edit locally before sending it to the server.
+            ItemStack supplied = new ItemStack(item);
+            inventory.setItem(destination, supplied.copy());
+            // The creative packet uses the player's *menu* slot id, not its
+            // hotbar index. Sending 0..8 targets unrelated menu slots, which
+            // leaves the server holding the old item and makes its correction
+            // erase the client's predicted placement a tick later.
+            client.gameMode.handleCreativeModeItemAdd(supplied, menuSlot);
+            if (inventory.getItem(destination).is(item)) {
+                liveLog("creative supplied=" + BuiltInRegistries.ITEM.getKey(item)
+                    + " hotbar=" + destination + " menuSlot=" + menuSlot);
+                return destination;
+            }
+            return -1;
         }
         if (sourceSlot < 0 || client.gameMode == null || client.player.containerMenu == null) {
             return -1;
@@ -1009,8 +1109,9 @@ public final class SchematicBuildExecutor {
         status = message;
         state = State.PAUSED;
         LOGGER.warn("build paused: {}", message);
+        liveLog("paused reason=" + message);
         PathmindNavigator.getInstance().stop("schematic build paused");
-        clearFlightKeys(Minecraft.getInstance());
+        PathmindNavigator.getInstance().stopExternalNavigation(Minecraft.getInstance());
         if (completion != null && !completion.isDone()) {
             completion.completeExceptionally(new IllegalStateException(message));
         }
@@ -1024,7 +1125,9 @@ public final class SchematicBuildExecutor {
                 + (retainedScaffolds == 1 ? "" : "s") + " still needed for safe support";
         state = State.COMPLETED;
         LOGGER.info("build complete source={} origin={}", schematic == null ? "--" : schematic.source(), format(origin));
-        clearFlightKeys(Minecraft.getInstance());
+        PathmindNavigator.getInstance().stopExternalNavigation(Minecraft.getInstance());
+        SchematicPreview.clearBuild();
+        liveLog("complete");
         if (completion != null && !completion.isDone()) {
             completion.complete(null);
         }
@@ -1035,6 +1138,9 @@ public final class SchematicBuildExecutor {
         status = message;
         state = State.FAILED;
         LOGGER.error("build failed: {}", message);
+        PathmindNavigator.getInstance().stopExternalNavigation(Minecraft.getInstance());
+        SchematicPreview.clearBuild();
+        liveLog("failed reason=" + message);
         if (completion != null && !completion.isDone()) {
             completion.completeExceptionally(new IllegalStateException(message));
         }
@@ -1055,7 +1161,9 @@ public final class SchematicBuildExecutor {
         status = reason;
         state = State.IDLE;
         LOGGER.info("build stopped: {}", reason);
-        clearFlightKeys(Minecraft.getInstance());
+        PathmindNavigator.getInstance().stopExternalNavigation(Minecraft.getInstance());
+        SchematicPreview.clearBuild();
+        liveLog("stopped reason=" + reason);
         clearTerminalState();
     }
 
@@ -1071,11 +1179,17 @@ public final class SchematicBuildExecutor {
         creativeFlight = false;
         activeScaffold = false;
         activeScaffoldCleanup = false;
+        cleanupDuringBuild = false;
         rejectedApproaches.clear();
         temporaryScaffolds.clear();
         completion = null;
         placementAttempts = 0;
         waitUntilMs = 0L;
+    }
+
+    private void liveLog(String event) {
+        LOGGER.info("build live: {}", event);
+        PathmindNavigator.getInstance().recordExternalEvent(event);
     }
 
     private enum State {

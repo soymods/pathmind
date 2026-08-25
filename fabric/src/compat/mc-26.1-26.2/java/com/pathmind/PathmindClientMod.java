@@ -12,6 +12,7 @@ import com.pathmind.schematic.SchematicFiles;
 import com.pathmind.schematic.SchematicLoadException;
 import com.pathmind.schematic.SchematicLoader;
 import com.pathmind.schematic.SchematicPlacementPlanner;
+import com.pathmind.schematic.SchematicPreview;
 import com.pathmind.marketplace.MarketplaceAuthManager;
 import com.pathmind.nodes.Node;
 import com.pathmind.nodes.NodeType;
@@ -665,7 +666,7 @@ public class PathmindClientMod implements ClientModInitializer {
         }
         String command = rawCommand == null ? "" : rawCommand.trim();
         if (command.isEmpty() || command.equalsIgnoreCase("help")) {
-            showNavigatorMessage("Pathmind Nav: !build <schematic> <x> <y> <z>, !build status|pause|resume|cancel, !travel, !path, !nav debug, !stop");
+            showNavigatorMessage("Pathmind Nav: !build <schematic> <x> <y> <z>, !build preview <schematic> <x> <y> <z>, !build status|pause|resume|cancel, !travel, !path, !nav debug, !stop");
             return true;
         }
 
@@ -723,6 +724,22 @@ public class PathmindClientMod implements ClientModInitializer {
         if (client == null) {
             return;
         }
+        if (parts.length == 6 && "preview".equalsIgnoreCase(parts[1])) {
+            int x;
+            int y;
+            int z;
+            try {
+                x = Integer.parseInt(parts[3]);
+                y = Integer.parseInt(parts[4]);
+                z = Integer.parseInt(parts[5]);
+            } catch (NumberFormatException ignored) {
+                showNavigatorMessage("Preview coordinates must be whole numbers.");
+                return;
+            }
+            SchematicPreview.Result result = SchematicPreview.show(client, parts[2], new BlockPos(x, y, z));
+            showNavigatorMessage(result.message());
+            return;
+        }
         if (parts.length == 2) {
             String control = parts[1].toLowerCase(Locale.ROOT);
             if ("status".equals(control)) {
@@ -748,7 +765,7 @@ public class PathmindClientMod implements ClientModInitializer {
             }
         }
         if (client.gameDirectory == null || parts.length != 5) {
-            showNavigatorMessage("Usage: !build <schematic> <x> <y> <z> | !build status|pause|resume|cancel");
+            showNavigatorMessage("Usage: !build <schematic> <x> <y> <z> | !build preview <schematic> <x> <y> <z> | !build status|pause|resume|cancel");
             return;
         }
         int x;

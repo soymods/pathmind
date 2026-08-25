@@ -171,6 +171,9 @@ final class NodeRenderer {
         boolean hasRunPresetSelection(Node node);
         void renderRunPresetOpenButton(GuiGraphics context, Font textRenderer, Node node,
                                        boolean isOverSidebar, int mouseX, int mouseY);
+        boolean hasBuildSchematicPreview(Node node);
+        void renderBuildSchematicPreviewButton(GuiGraphics context, Font textRenderer, Node node,
+                                               boolean isOverSidebar, int mouseX, int mouseY);
     }
 
     private static final int MINIMAL_NODE_TAB_WIDTH = 6;
@@ -501,6 +504,9 @@ final class NodeRenderer {
         }
         if (host.hasRunPresetSelection(node)) {
             host.renderRunPresetOpenButton(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+        }
+        if (host.hasBuildSchematicPreview(node)) {
+            host.renderBuildSchematicPreviewButton(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
         }
     }
 

@@ -91,6 +91,14 @@ public final class PathmindNavigator {
     private final Deque<String> debugEvents = new LinkedList<>();
     private long lastDebugHeartbeatAtMs;
     private long exactGoalSupportedSinceMs;
+    /**
+     * A creative schematic build owns a three-dimensional route, but it must
+     * still use this navigator as the sole owner of camera/input/route display.
+     */
+    private boolean externalRouteActive;
+    private BlockPos externalRouteTarget;
+    private String externalRouteLabel;
+    private long externalRouteStartedAtMs;
 
     private enum ExactGoalArrival {
         NOT_REACHED,
@@ -362,6 +370,7 @@ public final class PathmindNavigator {
     }
 
     private boolean startGotoInternal(BlockPos targetPos, String commandLabel, CompletableFuture<Void> future) {
+        stopExternalNavigation(Minecraft.getInstance());
         stopInternal(false, "replaced");
         SettingsManager.Settings settings = SettingsManager.getCurrent();
         // Global pathfinding permissions are the hard ceiling. Individual nodes
@@ -700,12 +709,132 @@ public final class PathmindNavigator {
         appendDebugEventLocked("logging=" + (enabled ? "enabled" : "disabled"));
     }
 
+    /** Allows adjacent Pathmind systems to contribute to the same live nav log. */
+    public synchronized void recordExternalEvent(String event) {
+        appendDebugEventLocked(event == null ? null : "build " + event);
+    }
+
     /**
      * Returns the immutable snapshot prepared by the client tick. Render callbacks must
      * never run world scans, collision checks, or planner work.
      */
     public Snapshot getSnapshot() {
         return renderSnapshot;
+    }
+
+    /** Starts a navigator-owned creative-flight route. */
+    public synchronized boolean beginExternalNavigation(Minecraft client, BlockPos target, String label) {
+        if (client == null || client.player == null || target == null || isActive()) {
+            return false;
+        }
+        if (externalRouteActive) {
+            externalRouteTarget = target.immutable();
+            externalRouteLabel = label == null || label.isBlank() ? "Creative Flight" : label.trim();
+            return true;
+        }
+        externalRouteActive = true;
+        externalRouteTarget = target.immutable();
+        externalRouteLabel = label == null || label.isBlank() ? "Creative Flight" : label.trim();
+        externalRouteStartedAtMs = System.currentTimeMillis();
+        NavigatorCameraController.begin(client.player);
+        return true;
+    }
+
+    /**
+     * Advances a creative-flight route using the same input, camera, and HUD
+     * ownership as native navigation. The caller owns only route planning.
+     */
+    public synchronized boolean updateExternalNavigation(Minecraft client, List<BlockPos> route, int routeIndex) {
+        if (!externalRouteActive || client == null || client.player == null || externalRouteTarget == null) {
+            return false;
+        }
+        if (client.player.getAbilities().mayfly && !client.player.getAbilities().flying) {
+            client.player.getAbilities().flying = true;
+            client.player.onUpdateAbilities();
+        }
+        List<BlockPos> safeRoute = route == null ? List.of() : List.copyOf(route);
+        int index = Math.max(0, Math.min(routeIndex, safeRoute.size()));
+        BlockPos waypoint = index < safeRoute.size() ? safeRoute.get(index) : externalRouteTarget;
+        steerExternalFlight(client, Vec3.atCenterOf(waypoint).add(0.0D, -0.35D, 0.0D));
+        double distance = client.player.position().distanceTo(Vec3.atCenterOf(externalRouteTarget));
+        renderSnapshot = new Snapshot(
+            true, State.PATHING, externalRouteTarget, externalRouteTarget, waypoint.immutable(), index, index,
+            List.of(), List.of(), externalRouteLabel, distance, safeRoute.size(),
+            Math.max(0L, System.currentTimeMillis() - externalRouteStartedAtMs), safeRoute, List.of()
+        );
+        return true;
+    }
+
+    /** Stops movement and route rendering while retaining free-look for the active build. */
+    public synchronized void pauseExternalNavigation(Minecraft client) {
+        if (!externalRouteActive) {
+            return;
+        }
+        releaseMovementKeys(client);
+        renderSnapshot = null;
+    }
+
+    /** Fully releases the navigator-owned creative-flight session. */
+    public synchronized void stopExternalNavigation(Minecraft client) {
+        if (!externalRouteActive) {
+            return;
+        }
+        releaseMovementKeys(client);
+        externalRouteActive = false;
+        externalRouteTarget = null;
+        externalRouteLabel = null;
+        externalRouteStartedAtMs = 0L;
+        renderSnapshot = null;
+        NavigatorCameraController.end(client != null ? client.player : null);
+    }
+
+    private static void steerExternalFlight(Minecraft client, Vec3 target) {
+        if (client == null || client.player == null || client.options == null || target == null) {
+            return;
+        }
+        Vec3 position = client.player.position();
+        double dx = target.x - position.x;
+        double dz = target.z - position.z;
+        double horizontal = Math.sqrt(dx * dx + dz * dz);
+        float yawError = 0.0F;
+        if (horizontal > 0.02D) {
+            float desiredYaw = (float) (Math.atan2(dz, dx) * 180.0D / Math.PI) - 90.0F;
+            float yaw = stepAngle(client.player.getYRot(), desiredYaw, MAX_YAW_STEP);
+            client.player.setYRot(yaw);
+            client.player.setYHeadRot(yaw);
+            client.player.setYBodyRot(yaw);
+            yawError = Math.abs(Mth.wrapDegrees(desiredYaw - yaw));
+        }
+        // Creative forward flight follows camera pitch. Aim at the actual 3D
+        // waypoint so a route that needs to rise beside/around a wall moves
+        // diagonally through its clear corridor instead of pushing flat into
+        // the wall while separately holding jump.
+        double dy = target.y - position.y;
+        float desiredPitch = (float) -Math.toDegrees(Math.atan2(dy, Math.max(horizontal, 0.02D)));
+        desiredPitch = Mth.clamp(desiredPitch, -45.0F, 45.0F);
+        client.player.setXRot(stepAngle(client.player.getXRot(), desiredPitch, MAX_YAW_STEP));
+        // Turning and accelerating at the same time produces broad circles
+        // around close waypoints. Native route following waits for alignment;
+        // creative flight follows the same rule.
+        double distance = position.distanceTo(target);
+        // Do not stop based solely on horizontal distance: a waypoint can be
+        // nearby on X/Z while still being almost a block above or below the
+        // player. That former dead zone is what left creative builds hovering
+        // forever beside a route waypoint. Slow down near it, but keep moving
+        // until the executor's own arrival radius can be reached.
+        boolean atWaypoint = distance <= 0.35D;
+        client.options.keyUp.setDown(!atWaypoint && yawError <= 32.0F);
+        if (distance <= 1.35D) {
+            Vec3 velocity = client.player.getDeltaMovement();
+            client.player.setDeltaMovement(velocity.x * 0.65D, velocity.y, velocity.z * 0.65D);
+        }
+        // Pitch guides the horizontal component, while jump/shift supplies
+        // reliable vertical thrust. Keep that thrust for diagonal segments
+        // too: when the player is beside a newly built wall, forward motion
+        // alone can be collision-clamped before it gains enough height to
+        // enter the planned escape corridor.
+        client.options.keyJump.setDown(dy > 0.18D);
+        client.options.keyShift.setDown(dy < -0.18D);
     }
 
     private synchronized Snapshot buildRenderSnapshot(Minecraft client) {

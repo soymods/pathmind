@@ -218,6 +218,7 @@ public final class NavigatorChatSuggestions {
                     "add .schem files to the profile's schematics folder", "!build "));
             }
             suggestions.add(new SuggestionEntry("status", "show live build progress", "!build status"));
+            suggestions.add(new SuggestionEntry("preview", "preview a schematic at coordinates", "!build preview "));
             suggestions.add(new SuggestionEntry("pause", "pause the active build", "!build pause"));
             suggestions.add(new SuggestionEntry("resume", "resume a paused build", "!build resume"));
             suggestions.add(new SuggestionEntry("cancel", "cancel the active build", "!build cancel"));
@@ -227,9 +228,22 @@ public final class NavigatorChatSuggestions {
             String partial = parts[1];
             addSchematicSuggestions(suggestions, partial);
             addIfMatches(suggestions, "status", "show live build progress", "!build status", partial);
+            addIfMatches(suggestions, "preview", "preview a schematic at coordinates", "!build preview ", partial);
             addIfMatches(suggestions, "pause", "pause the active build", "!build pause", partial);
             addIfMatches(suggestions, "resume", "resume a paused build", "!build resume", partial);
             addIfMatches(suggestions, "cancel", "cancel the active build", "!build cancel", partial);
+        }
+        if (parts.length == 2 && endsWithSpace && "preview".equals(parts[1])) {
+            addSchematicSuggestions(suggestions, "");
+            return suggestions;
+        }
+        if (parts.length == 3 && endsWithSpace && "preview".equals(parts[1])) {
+            Minecraft client = Minecraft.getInstance();
+            if (client != null && client.player != null) {
+                suggestions.add(new SuggestionEntry(client.player.getBlockX() + " " + client.player.getBlockY() + " " + client.player.getBlockZ(),
+                    "use current position", "!build preview " + parts[2] + " " + client.player.getBlockX() + " " + client.player.getBlockY() + " " + client.player.getBlockZ()));
+            }
+            return suggestions;
         }
         if (parts.length == 2 && endsWithSpace && !isBuildControl(parts[1])) {
             Minecraft client = Minecraft.getInstance();
@@ -262,7 +276,7 @@ public final class NavigatorChatSuggestions {
     }
 
     private boolean isBuildControl(String value) {
-        return "status".equals(value) || "pause".equals(value) || "resume".equals(value) || "cancel".equals(value);
+        return "status".equals(value) || "preview".equals(value) || "pause".equals(value) || "resume".equals(value) || "cancel".equals(value);
     }
 
     private String abbreviate(Font font, String text, int maxWidth) {

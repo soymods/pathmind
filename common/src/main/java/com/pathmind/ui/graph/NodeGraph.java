@@ -49,6 +49,7 @@ import com.pathmind.nodes.ParameterType;
 import com.pathmind.nodes.RuntimeValueScope;
 import com.pathmind.nodes.StartLaunchMode;
 import com.pathmind.nodes.StartScreenTarget;
+import com.pathmind.schematic.SchematicPreview;
 import com.pathmind.ui.menu.ContextMenuSelection;
 import com.pathmind.ui.animation.AnimatedValue;
 import com.pathmind.ui.animation.AnimationHelper;
@@ -83,6 +84,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
@@ -1059,6 +1061,13 @@ public class NodeGraph {
         @Override public void renderRunPresetOpenButton(GuiGraphics context, Font textRenderer, Node node,
                                                         boolean isOverSidebar, int mouseX, int mouseY) {
             NodeGraph.this.renderRunPresetOpenButton(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
+        }
+        @Override public boolean hasBuildSchematicPreview(Node node) {
+            return NodeGraph.this.hasBuildSchematicPreview(node);
+        }
+        @Override public void renderBuildSchematicPreviewButton(GuiGraphics context, Font textRenderer, Node node,
+                                                                 boolean isOverSidebar, int mouseX, int mouseY) {
+            NodeGraph.this.renderBuildSchematicPreviewButton(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
         }
     });
     private final TemplateNodeRenderer templateNodeRenderer = new TemplateNodeRenderer(new TemplateNodeRenderer.Host() {
@@ -2541,6 +2550,61 @@ public class NodeGraph {
         nodeControls.renderNodeHeaderTextButton(context, textRenderer, getRunPresetOpenButtonWorldX(node),
             getRunPresetOpenButtonWorldY(node), NODE_HEADER_BUTTON_SIZE, "↗", dimmed, true,
             nodeControls.getSelectedNodeAccentColor(), mouseX, mouseY);
+    }
+
+    private boolean hasBuildSchematicPreview(Node node) {
+        return node != null && node.getType() == NodeType.BUILD;
+    }
+
+    private int getBuildSchematicPreviewButtonWorldX(Node node) {
+        return node.getX() + node.getWidth() - NODE_HEADER_BUTTON_SIZE - 2;
+    }
+
+    private int getBuildSchematicPreviewButtonWorldY(Node node) {
+        return node.getY() + 2;
+    }
+
+    private void renderBuildSchematicPreviewButton(GuiGraphics context, Font textRenderer, Node node,
+                                                    boolean dimmed, int mouseX, int mouseY) {
+        nodeControls.renderNodeHeaderTextButton(context, textRenderer, getBuildSchematicPreviewButtonWorldX(node),
+            getBuildSchematicPreviewButtonWorldY(node), NODE_HEADER_BUTTON_SIZE, "P", dimmed, true,
+            nodeControls.getSelectedNodeAccentColor(), mouseX, mouseY);
+    }
+
+    public boolean isPointInsideBuildSchematicPreviewButton(Node node, int screenX, int screenY) {
+        return hasBuildSchematicPreview(node)
+            && nodeControls.isPointInsideNodeHeaderButton(getBuildSchematicPreviewButtonWorldX(node),
+                getBuildSchematicPreviewButtonWorldY(node), NODE_HEADER_BUTTON_SIZE, screenX, screenY);
+    }
+
+    /** Opens a non-mutating in-world preview from the BUILD node's selected file and XYZ position. */
+    public boolean handleBuildSchematicPreviewClick(Node node, int screenX, int screenY) {
+        if (!isPointInsideBuildSchematicPreviewButton(node, screenX, screenY)) {
+            return false;
+        }
+        Minecraft client = Minecraft.getInstance();
+        if (client == null || client.player == null) {
+            return true;
+        }
+        NodeParameter schematic = node.getParameter("Schematic");
+        if (schematic == null || schematic.getStringValue() == null || schematic.getStringValue().isBlank()) {
+            node.sendNodeErrorMessageToPlayer("Build Schematic preview: select a schematic first.");
+            return true;
+        }
+        Node positionParameter = node.getAttachedParameter(0);
+        NodeParameter x = positionParameter == null ? null : positionParameter.getParameter("X");
+        NodeParameter y = positionParameter == null ? null : positionParameter.getParameter("Y");
+        NodeParameter z = positionParameter == null ? null : positionParameter.getParameter("Z");
+        if (x == null || y == null || z == null) {
+            node.sendNodeErrorMessageToPlayer("Build Schematic preview: set Position to Coordinate first.");
+            return true;
+        }
+        SchematicPreview.Result result = SchematicPreview.show(client, schematic.getStringValue(),
+            new BlockPos(x.getIntValue(), y.getIntValue(), z.getIntValue()));
+        if (!result.success()) {
+            node.sendNodeErrorMessageToPlayer("Build Schematic preview: " + result.message());
+        }
+        return true;
     }
 
 
@@ -4172,6 +4236,9 @@ public class NodeGraph {
             return true;
         }
         if (node.getType() == NodeType.TEMPLATE && isPointInsideTemplateEditButton(node, mouseX, mouseY)) {
+            return true;
+        }
+        if (isPointInsideBuildSchematicPreviewButton(node, mouseX, mouseY)) {
             return true;
         }
         if (nodeControls.isPointInsideBooleanToggle(node, mouseX, mouseY)

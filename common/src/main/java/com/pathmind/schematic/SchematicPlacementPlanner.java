@@ -52,7 +52,7 @@ public final class SchematicPlacementPlanner {
 
         Map<BlockPos, SchematicBuildPlan.Placement> desiredByWorldPosition = new HashMap<>();
         for (SchematicBuildPlan.Placement placement : schematic.placements()) {
-            desiredByWorldPosition.put(toWorldPosition(origin, schematic.schematicOffset(), placement.relativePosition()), placement);
+            desiredByWorldPosition.put(toWorldPosition(origin, schematic.placementAnchor(), placement.relativePosition()), placement);
         }
 
         ConflictPolicy policy = conflictPolicy == null ? ConflictPolicy.KEEP_EXISTING : conflictPolicy;
@@ -63,7 +63,7 @@ public final class SchematicPlacementPlanner {
         int blocked = 0;
         int conflicts = 0;
         for (SchematicBuildPlan.Placement placement : schematic.placements()) {
-            BlockPos target = toWorldPosition(origin, schematic.schematicOffset(), placement.relativePosition());
+            BlockPos target = toWorldPosition(origin, schematic.placementAnchor(), placement.relativePosition());
             if (!world.hasChunkAt(target)) {
                 steps.add(new ConstructionStep(placement, target, StepAction.BLOCKED, List.of(), List.of(),
                     "Target chunk is not loaded."));
@@ -162,8 +162,11 @@ public final class SchematicPlacementPlanner {
         return world == null || target == null ? List.of() : findApproaches(world, target, Map.of(), playerFeet);
     }
 
-    private static BlockPos toWorldPosition(BlockPos origin, BlockPos offset, BlockPos relative) {
-        return origin.offset(offset).offset(relative).immutable();
+    private static BlockPos toWorldPosition(BlockPos origin, BlockPos anchor, BlockPos relative) {
+        // Sponge exporters commonly retain the source world's absolute
+        // position in Offset. Pathmind instead anchors the occupied build
+        // footprint's bottom-centre at the user-selected world position.
+        return origin.offset(relative.subtract(anchor)).immutable();
     }
 
     private static List<BlockPos> plannedSupportDependencies(

@@ -26,6 +26,42 @@ final class SchematicFlightPlanner {
         if (world == null || start == null || goal == null || !isFlyable(world, goal)) {
             return List.of();
         }
+        int directDistance = Math.abs(goal.getX() - start.getX())
+            + Math.abs(goal.getY() - start.getY())
+            + Math.abs(goal.getZ() - start.getZ());
+        // A takeoff/cruise/descent pattern makes nearby interactions look
+        // wildly indirect (one block sideways becomes three blocks upward,
+        // over, then back down). Prefer the collision-aware direct route for
+        // short legs; only use a cruise lane when a local obstacle actually
+        // makes that necessary.
+        if (directDistance <= 5) {
+            List<BlockPos> direct = findSegment(world, start, goal);
+            if (!direct.isEmpty()) {
+                return direct;
+            }
+        }
+        // Do not skim terrain just because the destination is near ground
+        // level. A creative flight leg always takes off first, cruises above
+        // local obstacles, then descends into interaction range.
+        int cruiseY = Math.min(world.getMinY() + world.getHeight() - 3, Math.max(start.getY(), goal.getY()) + 3);
+        BlockPos departure = new BlockPos(start.getX(), cruiseY, start.getZ());
+        BlockPos arrival = new BlockPos(goal.getX(), cruiseY, goal.getZ());
+        List<BlockPos> ascent = findSegment(world, start, departure);
+        List<BlockPos> cruise = ascent.isEmpty() ? List.of() : findSegment(world, departure, arrival);
+        List<BlockPos> descent = cruise.isEmpty() ? List.of() : findSegment(world, arrival, goal);
+        if (!ascent.isEmpty() && !cruise.isEmpty() && !descent.isEmpty()) {
+            List<BlockPos> route = new ArrayList<>(ascent.size() + cruise.size() + descent.size());
+            appendDistinct(route, ascent);
+            appendDistinct(route, cruise);
+            appendDistinct(route, descent);
+            return simplify(route);
+        }
+        // Tight interiors may not have room for a cruise lane. Retain the
+        // collision-aware direct route rather than failing a valid build.
+        return findSegment(world, start, goal);
+    }
+
+    private static List<BlockPos> findSegment(Level world, BlockPos start, BlockPos goal) {
         int horizontalDistance = Math.abs(goal.getX() - start.getX()) + Math.abs(goal.getZ() - start.getZ());
         int radius = Math.min(48, Math.max(12, horizontalDistance + 8));
         int minX = Math.min(start.getX(), goal.getX()) - radius;
@@ -70,6 +106,14 @@ final class SchematicFlightPlanner {
             }
         }
         return List.of();
+    }
+
+    private static void appendDistinct(List<BlockPos> output, List<BlockPos> segment) {
+        for (BlockPos position : segment) {
+            if (output.isEmpty() || !output.get(output.size() - 1).equals(position)) {
+                output.add(position);
+            }
+        }
     }
 
     static boolean isFlyable(Level world, BlockPos feet) {

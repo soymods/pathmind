@@ -1,6 +1,7 @@
 package com.pathmind.ui.overlay;
 
 import com.pathmind.execution.PathmindNavigator;
+import com.pathmind.schematic.SchematicPreview;
 import java.util.List;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -21,6 +22,7 @@ public final class NavigatorWorldOverlay {
     private static final int STEP_COLOR = 0xFF7FD36B;
     private static final int BREAK_COLOR = 0xFFFF5A4F;
     private static final int PLACE_COLOR = 0xFFC47BFF;
+    private static final int SCHEMATIC_PREVIEW_COLOR = 0xAA64E6FF;
     private static final float PATH_LINE_WIDTH = 2.5F;
     private static final float STEP_STROKE_WIDTH = 1.4F;
     private static final float BREAK_STROKE_WIDTH = 1.8F;
@@ -39,24 +41,42 @@ public final class NavigatorWorldOverlay {
         }
 
         PathmindNavigator.Snapshot snapshot = PathmindNavigator.getInstance().getSnapshot();
-        if (snapshot == null || (snapshot.state() != PathmindNavigator.State.PATHING && snapshot.state() != PathmindNavigator.State.PREVIEW)) {
-            return;
-        }
-
-        BlockPos goalPos = snapshot.targetPos();
-        if (goalPos == null) {
+        boolean hasNavigatorRoute = snapshot != null
+            && (snapshot.state() == PathmindNavigator.State.PATHING || snapshot.state() == PathmindNavigator.State.PREVIEW)
+            && snapshot.targetPos() != null;
+        SchematicPreview.Snapshot schematicPreview = SchematicPreview.snapshot();
+        if (!hasNavigatorRoute && schematicPreview == null) {
             return;
         }
 
         try (Gizmos.TemporaryCollection ignored = worldRenderer.collectPerFrameGizmos()) {
-            renderCandidatePaths(snapshot.candidatePaths());
-            renderStepMarkers(snapshot.path(), snapshot.visitedPathIndex());
-            renderBreakTargets(snapshot.breakTargets());
-            renderPlaceTargets(snapshot.placeTargets());
-            renderPath(snapshot.path(), goalPos, snapshot.visitedPathIndex());
-            renderGoal(goalPos);
+            if (hasNavigatorRoute) {
+                renderCandidatePaths(snapshot.candidatePaths());
+                renderStepMarkers(snapshot.path(), snapshot.visitedPathIndex());
+                renderBreakTargets(snapshot.breakTargets());
+                renderPlaceTargets(snapshot.placeTargets());
+                renderPath(snapshot.path(), snapshot.targetPos(), snapshot.visitedPathIndex());
+                renderGoal(snapshot.targetPos());
+            }
+            renderSchematicPreview(schematicPreview);
         } catch (Throwable ignored) {
             // Never fail the world renderer because of a debug-style overlay.
+        }
+    }
+
+    private static void renderSchematicPreview(SchematicPreview.Snapshot preview) {
+        if (preview == null || preview.plan() == null || preview.origin() == null) {
+            return;
+        }
+        // The requested build origin is the occupied footprint's bottom-centre.
+        // Sponge's stored Offset is export metadata and must not move preview
+        // separately from the executor's real placement coordinates.
+        BlockPos base = preview.origin().subtract(preview.plan().placementAnchor());
+        for (com.pathmind.schematic.SchematicBuildPlan.Placement placement : preview.plan().placements()) {
+            BlockPos position = base.offset(placement.relativePosition());
+            Gizmos.cuboid(new AABB(position), GizmoStyle.stroke(SCHEMATIC_PREVIEW_COLOR, 1.15F))
+                .setAlwaysOnTop()
+                .persistForMillis(1);
         }
     }
 

@@ -147,6 +147,10 @@ final class PathmindNodeInteractionController {
             return true;
         }
 
+        if (nodeGraph.handleBuildSchematicPreviewClick(clickedNode, clickX, clickY)) {
+            return true;
+        }
+
         if (clickedNode.getType() == NodeType.RUN_PRESET
             && nodeGraph.isPointInsideRunPresetOpenButton(clickedNode, clickX, clickY)) {
             openRunPresetTarget(nodeGraph.getSelectedPresetNameForNode(clickedNode));

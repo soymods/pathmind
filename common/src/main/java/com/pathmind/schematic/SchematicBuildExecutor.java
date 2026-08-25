@@ -2,6 +2,7 @@ package com.pathmind.schematic;
 
 import com.pathmind.data.SettingsManager;
 import com.pathmind.execution.PathmindNavigator;
+import com.pathmind.execution.NavigatorCameraController;
 import com.pathmind.util.HotbarSlotSynchronizer;
 import com.pathmind.util.PlayerInventoryBridge;
 import java.util.ArrayList;
@@ -55,6 +56,8 @@ public final class SchematicBuildExecutor {
     private static final double FLIGHT_PROGRESS_DISTANCE_SQ = 0.09D;
     private static final long MINED_DROP_PICKUP_WAIT_MS = 1_200L;
     private static final int MAX_PLACE_ATTEMPTS = 4;
+    /** Vanilla survival block-use reach, kept aligned with the placement planner. */
+    private static final double SURVIVAL_INTERACTION_RANGE_SQ = 4.50D * 4.50D;
 
     private SchematicBuildPlan schematic;
     private BlockPos origin;
@@ -125,6 +128,9 @@ public final class SchematicBuildExecutor {
         constructionPlan = SchematicPlacementPlanner.plan(client.level, plan, origin, client.player.blockPosition(), conflictPolicy());
         SchematicPreview.showBuild(plan, origin);
         creativeFlight = client.player.getAbilities().mayfly && client.player.getAbilities().instabuild;
+        if (!creativeFlight) {
+            NavigatorCameraController.begin(client.player);
+        }
         if (creativeFlight && !client.player.getAbilities().flying) {
             client.player.getAbilities().flying = true;
             client.player.onUpdateAbilities();
@@ -233,6 +239,9 @@ public final class SchematicBuildExecutor {
             return false;
         }
         creativeFlight = client.player.getAbilities().mayfly && client.player.getAbilities().instabuild;
+        if (!creativeFlight) {
+            NavigatorCameraController.begin(client.player);
+        }
         if (creativeFlight && !client.player.getAbilities().flying) {
             client.player.getAbilities().flying = true;
             client.player.onUpdateAbilities();
@@ -331,7 +340,7 @@ public final class SchematicBuildExecutor {
         if (evacuationTarget == null || client == null || client.player == null) return false;
         if (!creativeFlight) {
             navigationFuture = new CompletableFuture<>();
-            if (!PathmindNavigator.getInstance().startGoto(evacuationTarget, "Leave schematic bounds", navigationFuture)) {
+            if (!PathmindNavigator.getInstance().startGotoSilently(evacuationTarget, "Leave schematic bounds", navigationFuture)) {
                 return false;
             }
             state = State.EVACUATING;
@@ -462,8 +471,15 @@ public final class SchematicBuildExecutor {
             LOGGER.info("build step={} action={} mode=creative routeNodes={}", format(next.worldPosition()), next.action(), flightPath.size());
             return;
         }
+        if (isWithinPlacementReach(client.player, activeApproach)) {
+            status = "placing " + next.desired().stateId() + " at " + format(next.worldPosition()) + " (already in range)";
+            liveLog("placement approach already reached target=" + format(next.worldPosition())
+                + " approach=" + format(activeApproach.standingPosition()));
+            beginWorldAction(client);
+            return;
+        }
         navigationFuture = new CompletableFuture<>();
-        boolean started = PathmindNavigator.getInstance().startGoto(
+        boolean started = PathmindNavigator.getInstance().startGotoSilently(
             activeApproach.standingPosition(), "Build " + format(next.worldPosition()), navigationFuture);
         if (!started) {
             pause("Native pathfinding could not start for " + format(activeApproach.standingPosition()) + ".");
@@ -492,25 +508,7 @@ public final class SchematicBuildExecutor {
             status = "replanning placement approach";
             return;
         }
-        if (activeScaffoldCleanup) {
-            beginScaffoldCleanupBreak();
-            return;
-        }
-        actionStartedAtMs = System.currentTimeMillis();
-        if (activeStep.action() == SchematicPlacementPlanner.StepAction.REPLACE
-            && !client.level.getBlockState(activeStep.worldPosition()).isAir()) {
-            if (!PathmindNavigator.getInstance().isBlockBreakingAllowed()) {
-                pause("Build paused: block breaking is disabled.");
-                return;
-            }
-            status = "breaking replacement at " + format(activeStep.worldPosition());
-            state = State.BREAKING;
-            return;
-        }
-        placementAttempts = 0;
-        nextPlaceAttemptAtMs = 0L;
-        lastPlacementOutcome = "no interaction sent";
-        state = State.PLACING;
+        beginWorldAction(client);
     }
 
     private void tickFlight(Minecraft client) {
@@ -635,6 +633,13 @@ public final class SchematicBuildExecutor {
     }
 
     private void beginWorldAction(Minecraft client) {
+        // Placement needs the player's server-facing rotation, but the build
+        // owns that rotation independently from the rendered mouse camera.
+        // Keeping the navigator camera session alive here gives survival
+        // builds the same free-look behavior as native Pathmind navigation.
+        if (!creativeFlight && client != null && client.player != null && !NavigatorCameraController.isActive()) {
+            NavigatorCameraController.begin(client.player);
+        }
         actionStartedAtMs = System.currentTimeMillis();
         if (activeScaffoldCleanup) {
             beginScaffoldCleanupBreak();
@@ -1010,7 +1015,11 @@ public final class SchematicBuildExecutor {
             if (!beginCreativeFlight(client, "flying to place temporary support at " + format(scaffoldPos))) return false;
         } else {
             navigationFuture = new CompletableFuture<>();
-            if (!PathmindNavigator.getInstance().startGoto(activeApproach.standingPosition(), "Build scaffold", navigationFuture)) return false;
+            if (isWithinPlacementReach(client.player, activeApproach)) {
+                beginWorldAction(client);
+                return true;
+            }
+            if (!PathmindNavigator.getInstance().startGotoSilently(activeApproach.standingPosition(), "Build scaffold", navigationFuture)) return false;
             status = "traveling to place temporary support at " + format(scaffoldPos);
             state = State.TRAVELING;
         }
@@ -1056,7 +1065,11 @@ public final class SchematicBuildExecutor {
             return;
         }
         navigationFuture = new CompletableFuture<>();
-        if (!PathmindNavigator.getInstance().startGoto(activeApproach.standingPosition(), "Remove scaffold", navigationFuture)) {
+        if (isWithinPlacementReach(client.player, activeApproach)) {
+            beginWorldAction(client);
+            return;
+        }
+        if (!PathmindNavigator.getInstance().startGotoSilently(activeApproach.standingPosition(), "Remove scaffold", navigationFuture)) {
             temporaryScaffolds.remove(target);
             status = "retained unreachable temporary support at " + format(target);
             return;
@@ -1302,6 +1315,20 @@ public final class SchematicBuildExecutor {
         return current != null && target != null && current.distSqr(target) <= 1.0D;
     }
 
+    /**
+     * A planned standing position is only a fallback for navigation.  Before
+     * issuing a navigator job, always use the player's real eye position: a
+     * nearby support face can already be placed from several different feet
+     * positions.  Routing to one arbitrarily selected candidate was causing
+     * redundant navigation (and, in dense builds, unnecessary pillar plans).
+     */
+    private static boolean isWithinPlacementReach(
+        LocalPlayer player, SchematicPlacementPlanner.PlacementApproach approach
+    ) {
+        return player != null && approach != null
+            && player.getEyePosition().distanceToSqr(approach.hitPosition()) <= SURVIVAL_INTERACTION_RANGE_SQ;
+    }
+
     private static Direction faceToward(Vec3 from, BlockPos target) {
         if (from == null || target == null) {
             return Direction.UP;
@@ -1409,6 +1436,7 @@ public final class SchematicBuildExecutor {
         liveLog("paused reason=" + message);
         PathmindNavigator.getInstance().stop("schematic build paused");
         PathmindNavigator.getInstance().stopExternalNavigation(Minecraft.getInstance());
+        NavigatorCameraController.end(Minecraft.getInstance().player);
         // A paused build has relinquished world control. Hide its persistent
         // preview until an explicit resume rather than leaving a misleading
         // ghost after an automatic safety cancellation.
@@ -1427,6 +1455,7 @@ public final class SchematicBuildExecutor {
         state = State.COMPLETED;
         LOGGER.info("build complete source={} origin={}", schematic == null ? "--" : schematic.source(), format(origin));
         PathmindNavigator.getInstance().stopExternalNavigation(Minecraft.getInstance());
+        NavigatorCameraController.end(Minecraft.getInstance().player);
         SchematicPreview.clearBuild();
         liveLog("complete");
         if (completion != null && !completion.isDone()) {
@@ -1440,6 +1469,7 @@ public final class SchematicBuildExecutor {
         state = State.FAILED;
         LOGGER.error("build failed: {}", message);
         PathmindNavigator.getInstance().stopExternalNavigation(Minecraft.getInstance());
+        NavigatorCameraController.end(Minecraft.getInstance().player);
         SchematicPreview.clearBuild();
         liveLog("failed reason=" + message);
         if (completion != null && !completion.isDone()) {
@@ -1463,6 +1493,7 @@ public final class SchematicBuildExecutor {
         state = State.IDLE;
         LOGGER.info("build stopped: {}", reason);
         PathmindNavigator.getInstance().stopExternalNavigation(Minecraft.getInstance());
+        NavigatorCameraController.end(Minecraft.getInstance().player);
         SchematicPreview.clearBuild();
         liveLog("stopped reason=" + reason);
         clearTerminalState();

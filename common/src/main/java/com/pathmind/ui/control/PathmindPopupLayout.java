@@ -151,7 +151,10 @@ public final class PathmindPopupLayout {
         int hudDividerY = overlayDividerY + 22;
         int profilerDividerY = hudDividerY + 22;
         int delayDividerY = profilerDividerY + 26;
-        return delayDividerY + 156;
+        // Keep this in lockstep with the Pathfinding section. It contains the
+        // scaffolding block picker (search, results, and selected list) in
+        // addition to the original toggles and sliders.
+        return delayDividerY + 320;
     }
 
     public static int settingsNodeSectionBodyY(int contentPopupY, int optionHeight) {

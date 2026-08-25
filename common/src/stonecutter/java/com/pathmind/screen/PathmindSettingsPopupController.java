@@ -12,6 +12,7 @@ import com.pathmind.ui.animation.PopupAnimationHandler;
 import com.pathmind.ui.control.PathmindTextField;
 import com.pathmind.ui.control.PathmindPopupLayout;
 import com.pathmind.ui.control.PathmindPopupRenderer;
+import com.pathmind.ui.control.PathmindDropdownRenderer;
 import com.pathmind.ui.control.PathmindSettingsRowRenderer;
 import com.pathmind.ui.graph.NodeGraph;
 import com.pathmind.ui.overlay.NodeErrorNotificationOverlay;
@@ -23,8 +24,10 @@ import com.pathmind.util.PathmindI18n;
 import com.pathmind.util.RenderStateBridge;
 import com.pathmind.util.ScrollbarHelper;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -37,6 +40,7 @@ import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 //?}
 import net.minecraft.network.chat.Component;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.util.Mth;
 import org.lwjgl.glfw.GLFW;
 
@@ -117,6 +121,7 @@ final class PathmindSettingsPopupController {
     private boolean schematicPlacementSpeedDragging;
     private boolean createListRadiusDragging;
     private EditBox nodeDelayField;
+    private EditBox schematicPlacementSpeedField;
     private EditBox scaffoldingBlocksField;
     private EditBox createListRadiusField;
     private EditBox settingsNodeSearchField;
@@ -246,15 +251,35 @@ final class PathmindSettingsPopupController {
             host.addWidget(nodeDelayField);
         }
         if (scaffoldingBlocksField == null) {
-            scaffoldingBlocksField = PathmindTextField.createInactive(host.font(), 0, 0, 160, 20, Component.literal("Block ids"), 96);
+            scaffoldingBlocksField = PathmindTextField.createInactive(host.font(), 0, 0, 160, 20, Component.literal("Search blocks"), 96);
             scaffoldingBlocksField.setTextColor(UITheme.TEXT_HEADER);
             scaffoldingBlocksField.setTextColorUneditable(UITheme.TEXT_HEADER);
-            scaffoldingBlocksField.setResponder(value -> {
-                settings.schematicScaffoldingBlocks = value == null ? "" : value.trim();
-                SettingsManager.save(settings);
-            });
-            scaffoldingBlocksField.setValue(settings.schematicScaffoldingBlocks);
+            // This is a search field, not the persisted comma-separated
+            // setting. Selection buttons below update that allow-list.
+            scaffoldingBlocksField.setValue("");
             host.addWidget(scaffoldingBlocksField);
+        }
+        if (schematicPlacementSpeedField == null) {
+            schematicPlacementSpeedField = PathmindTextField.createInactive(host.font(), 0, 0, 48, 20,
+                Component.literal("Speed"), 2);
+            schematicPlacementSpeedField.setTextColor(UITheme.TEXT_HEADER);
+            schematicPlacementSpeedField.setTextColorUneditable(UITheme.TEXT_HEADER);
+            ((PathmindTextField) schematicPlacementSpeedField).setPathmindFilter(value ->
+                value == null || value.isEmpty() || value.chars().allMatch(Character::isDigit));
+            schematicPlacementSpeedField.setResponder(value -> {
+                try {
+                    int parsed = Integer.parseInt(value);
+                    if (parsed >= SCHEMATIC_PLACEMENT_SPEED_MIN && parsed <= SCHEMATIC_PLACEMENT_SPEED_MAX) {
+                        schematicPlacementSpeed = parsed;
+                        settings.schematicPlacementSpeed = parsed;
+                        SettingsManager.save(settings);
+                    }
+                } catch (NumberFormatException ignored) {
+                    // Keep editing permissive; the canonical value is restored on blur.
+                }
+            });
+            schematicPlacementSpeedField.setValue(Integer.toString(schematicPlacementSpeed));
+            host.addWidget(schematicPlacementSpeedField);
         }
         if (createListRadiusField == null) {
             createListRadiusField = PathmindTextField.createInactive(host.font(), 0, 0, 120, 20, Component.translatable("pathmind.field.radius"), 6);
@@ -538,6 +563,16 @@ final class PathmindSettingsPopupController {
         int[] bodyBounds = getSettingsPopupBodyBounds(popupX, popupY, popupWidth, popupHeight);
         boolean bodyHovered = host.isPointInRect(mouseXi, mouseYi, bodyBounds[0], bodyBounds[1], bodyBounds[2], bodyBounds[3]);
 
+        // Text fields are explicit controls in this popup. A click anywhere else
+        // should commit/blur a search instead of leaving its caret captured.
+        if (scaffoldingBlocksField != null && scaffoldingBlocksField.isFocused()) {
+            scaffoldingBlocksField.setFocused(false);
+        }
+        if (schematicPlacementSpeedField != null && schematicPlacementSpeedField.isFocused()) {
+            schematicPlacementSpeedField.setFocused(false);
+            schematicPlacementSpeedField.setValue(Integer.toString(schematicPlacementSpeed));
+        }
+
         if (!host.isPointInRect(mouseXi, mouseYi, popupX, popupY, popupWidth, popupHeight)) {
             close();
             return true;
@@ -705,8 +740,8 @@ final class PathmindSettingsPopupController {
             SettingsManager.save(settings);
             return true;
         }
-        int blocksWidth = Math.min(160, popupWidth - 150);
-        int blocksX = popupX + popupWidth - blocksWidth - 20;
+        int blocksWidth = popupWidth - 40;
+        int blocksX = contentX;
         int blocksY = scaffoldDividerY + 8;
         if (scaffoldingBlocksField != null && bodyHovered && host.isPointInRect(mouseXi, mouseYi, blocksX, blocksY, blocksWidth, 16)) {
             scaffoldingBlocksField.setEditable(true);
@@ -718,10 +753,49 @@ final class PathmindSettingsPopupController {
             //?}
             return true;
         }
-        int placementSpeedDividerY = scaffoldDividerY + 52;
-        int placementSpeedCenterY = (scaffoldDividerY + 30 + placementSpeedDividerY) / 2;
+        int resultY = blocksY + 20;
+        for (String id : matchingScaffoldingBlockIds()) {
+            if (bodyHovered && host.isPointInRect(mouseXi, mouseYi, blocksX + blocksWidth - 20, resultY + 1, 18, 12)) {
+                addAllowedScaffoldingBlock(id);
+                return true;
+            }
+            resultY += 15;
+        }
+        int selectedRowY = blocksY + 82;
+        List<String> allowedScaffolding = allowedScaffoldingBlockIds();
+        for (int index = 0; index < Math.min(3, allowedScaffolding.size()); index++) {
+            String id = allowedScaffolding.get(index);
+            if (bodyHovered && host.isPointInRect(mouseXi, mouseYi, blocksX + blocksWidth - 20, selectedRowY + 1, 18, 12)) {
+                removeAllowedScaffoldingBlock(id);
+                return true;
+            }
+            selectedRowY += 15;
+        }
+        int scaffoldingPickerBottomY = scaffoldDividerY + 142;
+        int placementSpeedDividerY = scaffoldingPickerBottomY + 22;
+        int placementSpeedCenterY = (scaffoldingPickerBottomY + placementSpeedDividerY) / 2;
         int placementSpeedSliderX = popupX + popupWidth - SETTINGS_SLIDER_WIDTH - 20;
         int placementSpeedSliderY = placementSpeedCenterY - SETTINGS_SLIDER_HEIGHT / 2;
+        String placementSpeedText = schematicPlacementSpeedField != null
+            ? schematicPlacementSpeedField.getValue() : Integer.toString(schematicPlacementSpeed);
+        int[] placementSpeedValueBox = getSchematicPlacementSpeedFieldBounds(
+            popupX, popupWidth, placementSpeedCenterY, placementSpeedText);
+        if (schematicPlacementSpeedField != null) {
+            if (bodyHovered && host.isPointInRect(mouseXi, mouseYi, placementSpeedValueBox[0], placementSpeedValueBox[1],
+                placementSpeedValueBox[2], placementSpeedValueBox[3])) {
+                schematicPlacementSpeedField.setEditable(true);
+                schematicPlacementSpeedField.setFocused(true);
+                //? if MC_1_21_8 {
+                /*schematicPlacementSpeedField.mouseClicked(mouseX, mouseY, button);*/
+                //?} else {
+                schematicPlacementSpeedField.mouseClicked(click, inBounds);
+                //?}
+                return true;
+            } else if (schematicPlacementSpeedField.isFocused()) {
+                schematicPlacementSpeedField.setFocused(false);
+                schematicPlacementSpeedField.setValue(Integer.toString(schematicPlacementSpeed));
+            }
+        }
         if (bodyHovered && host.isPointInRect(mouseXi, mouseYi, placementSpeedSliderX, placementSpeedSliderY - 4,
             SETTINGS_SLIDER_WIDTH, SETTINGS_SLIDER_HEIGHT + 8)) {
             schematicPlacementSpeedDragging = true;
@@ -729,7 +803,7 @@ final class PathmindSettingsPopupController {
             return true;
         }
         int matchingReplaceDividerY = placementSpeedDividerY + 22;
-        int matchingReplaceToggleY = ((scaffoldDividerY + 30 + matchingReplaceDividerY) / 2) - SETTINGS_TOGGLE_HEIGHT / 2;
+        int matchingReplaceToggleY = ((placementSpeedDividerY + matchingReplaceDividerY) / 2) - SETTINGS_TOGGLE_HEIGHT / 2;
         if (bodyHovered && host.isPointInRect(mouseXi, mouseYi, gridToggleX, matchingReplaceToggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT)) {
             settings.schematicReplaceMatchingBlocks = !Boolean.TRUE.equals(settings.schematicReplaceMatchingBlocks);
             SettingsManager.save(settings);
@@ -961,6 +1035,13 @@ final class PathmindSettingsPopupController {
             scaffoldingBlocksField.mouseReleased(click);
             //?}
         }
+        if (schematicPlacementSpeedField != null) {
+            //? if MC_1_21_8 {
+            /*schematicPlacementSpeedField.mouseReleased(mouseX, mouseY, button);*/
+            //?} else {
+            schematicPlacementSpeedField.mouseReleased(click);
+            //?}
+        }
     }
 
     //? if MC_1_21_8 {
@@ -974,6 +1055,15 @@ final class PathmindSettingsPopupController {
             /*if (nodeDelayField.keyPressed(keyCode, scanCode, modifiers)) {
                 *///?} else {
             if (nodeDelayField.keyPressed(input)) {
+                //?}
+                return true;
+            }
+        }
+        if (schematicPlacementSpeedField != null && schematicPlacementSpeedField.isFocused()) {
+            //? if MC_1_21_8 {
+            /*if (schematicPlacementSpeedField.keyPressed(keyCode, scanCode, modifiers)) {*/
+                //?} else {
+            if (schematicPlacementSpeedField.keyPressed(input)) {
                 //?}
                 return true;
             }
@@ -1028,6 +1118,13 @@ final class PathmindSettingsPopupController {
         /*if (nodeDelayField != null && nodeDelayField.isFocused() && nodeDelayField.charTyped(chr, modifiers)) {
             *///?} else {
         if (nodeDelayField != null && nodeDelayField.isFocused() && nodeDelayField.charTyped(input)) {
+            //?}
+            return true;
+        }
+        //? if MC_1_21_8 {
+        /*if (schematicPlacementSpeedField != null && schematicPlacementSpeedField.isFocused() && schematicPlacementSpeedField.charTyped(chr, modifiers)) {*/
+            //?} else {
+        if (schematicPlacementSpeedField != null && schematicPlacementSpeedField.isFocused() && schematicPlacementSpeedField.charTyped(input)) {
             //?}
             return true;
         }
@@ -1236,16 +1333,17 @@ final class PathmindSettingsPopupController {
         context.hLine(sectionDividerX, popupX + scaledWidth - 16, scaffoldDividerY, animation.getAnimatedPopupColor(UITheme.BORDER_SUBTLE));
         int scaffoldFieldCenterY = scaffoldDividerY + 16;
         renderScaffoldingBlocksRow(context, mouseX, mouseY, contentX, scaffoldFieldCenterY, popupX, scaledWidth);
-        context.hLine(sectionDividerX, popupX + scaledWidth - 16, scaffoldDividerY + 30, animation.getAnimatedPopupColor(UITheme.BORDER_SUBTLE));
-        int placementSpeedDividerY = scaffoldDividerY + 52;
-        int placementSpeedCenterY = (scaffoldDividerY + 30 + placementSpeedDividerY) / 2;
-        renderSliderRow(context, mouseX, mouseY, contentX, placementSpeedCenterY,
-            "Schematic placement speed", schematicPlacementSpeed,
+        int scaffoldingPickerBottomY = scaffoldDividerY + 142;
+        context.hLine(sectionDividerX, popupX + scaledWidth - 16, scaffoldingPickerBottomY, animation.getAnimatedPopupColor(UITheme.BORDER_SUBTLE));
+        int placementSpeedDividerY = scaffoldingPickerBottomY + 22;
+        int placementSpeedCenterY = (scaffoldingPickerBottomY + placementSpeedDividerY) / 2;
+        renderPlacementSpeedRow(context, mouseX, mouseY, contentX, placementSpeedCenterY,
+            schematicPlacementSpeed,
             SCHEMATIC_PLACEMENT_SPEED_MIN, SCHEMATIC_PLACEMENT_SPEED_MAX, popupX, scaledWidth);
         context.hLine(sectionDividerX, popupX + scaledWidth - 16, placementSpeedDividerY,
             animation.getAnimatedPopupColor(UITheme.BORDER_SUBTLE));
         int matchingReplaceDividerY = placementSpeedDividerY + 22;
-        renderToggleRow(context, mouseX, mouseY, contentX, (scaffoldDividerY + 30 + matchingReplaceDividerY) / 2,
+        renderToggleRow(context, mouseX, mouseY, contentX, (placementSpeedDividerY + matchingReplaceDividerY) / 2,
             "Repair matching block states", Boolean.TRUE.equals(settings.schematicReplaceMatchingBlocks), popupX, scaledWidth);
         context.hLine(sectionDividerX, popupX + scaledWidth - 16, matchingReplaceDividerY, animation.getAnimatedPopupColor(UITheme.BORDER_SUBTLE));
         int destructiveRebuildDividerY = matchingReplaceDividerY + 22;
@@ -1480,6 +1578,29 @@ final class PathmindSettingsPopupController {
         );
     }
 
+    /** Uses the same full-height number box and slider geometry as Node delay. */
+    void renderPlacementSpeedRow(GuiGraphics context, int mouseX, int mouseY, int labelX, int centerY,
+                                 int value, int min, int max, int popupX, int scaledWidth) {
+        int sliderX = popupX + scaledWidth - SETTINGS_SLIDER_WIDTH - 20;
+        int sliderY = centerY - SETTINGS_SLIDER_HEIGHT / 2;
+        String valueText = schematicPlacementSpeedField != null
+            ? schematicPlacementSpeedField.getValue() : Integer.toString(value);
+        int[] valueBox = getSchematicPlacementSpeedFieldBounds(popupX, scaledWidth, centerY, valueText);
+        boolean fieldHovered = host.isPointInRect(mouseX, mouseY, valueBox[0], valueBox[1], valueBox[2], valueBox[3]);
+        boolean focused = schematicPlacementSpeedField != null && schematicPlacementSpeedField.isFocused();
+        boolean hovered = host.isPointInRect(mouseX, mouseY, sliderX, sliderY - 4,
+            SETTINGS_SLIDER_WIDTH, SETTINGS_SLIDER_HEIGHT + 8);
+        PathmindSettingsRowRenderer.renderNumericField(context, host.font(), schematicPlacementSpeedField, mouseX, mouseY,
+            labelX, centerY, "Schematic placement speed", valueBox[0], valueBox[1], valueBox[2], valueBox[3],
+            valueText, Component.literal("blocks/s"), accentColor(), animation,
+            focused ? 1f : host.hoverProgress("settings-schematic-placement-speed-field", fieldHovered), focused,
+            TEXT_FIELD_VERTICAL_PADDING);
+        PathmindSettingsRowRenderer.renderNumericSlider(context, centerY, sliderX, sliderY,
+            SETTINGS_SLIDER_WIDTH, SETTINGS_SLIDER_HEIGHT, SETTINGS_SLIDER_HANDLE_WIDTH, SETTINGS_SLIDER_HANDLE_HEIGHT,
+            value, min, max, accentColor(), animation,
+            schematicPlacementSpeedDragging ? 1f : host.hoverProgress("settings-schematic-placement-speed", hovered));
+    }
+
     void renderNodeDelayRow(GuiGraphics context, int mouseX, int mouseY, int labelX, int centerY,
                                     int value, int min, int max, int popupX, int scaledWidth) {
         int sliderX = popupX + scaledWidth - SETTINGS_SLIDER_WIDTH - 20;
@@ -1533,15 +1654,102 @@ final class PathmindSettingsPopupController {
     }
 
     void renderScaffoldingBlocksRow(GuiGraphics context, int mouseX, int mouseY, int labelX, int centerY, int popupX, int scaledWidth) {
-        String value = settings.schematicScaffoldingBlocks == null ? "" : settings.schematicScaffoldingBlocks;
-        int width = Math.min(160, scaledWidth - 150);
-        int x = popupX + scaledWidth - width - 20;
+        int width = scaledWidth - 40;
+        int x = labelX;
         int y = centerY - 8;
         boolean focused = scaffoldingBlocksField != null && scaffoldingBlocksField.isFocused();
         boolean hovered = host.isPointInRect(mouseX, mouseY, x, y, width, 16);
         PathmindSettingsRowRenderer.renderNumericField(context, host.font(), scaffoldingBlocksField, mouseX, mouseY,
-            labelX, centerY, "Allowed scaffolding blocks", x, y, width, 16, value, Component.empty(), accentColor(), animation,
+            labelX, centerY, "Search allowed scaffolding blocks", x, y, width, 16,
+            scaffoldingBlocksField == null ? "" : scaffoldingBlocksField.getValue(), Component.empty(), accentColor(), animation,
             focused ? 1f : host.hoverProgress("settings-scaffolding-blocks", hovered), focused, TEXT_FIELD_VERTICAL_PADDING);
+        List<String> matches = matchingScaffoldingBlockIds();
+        int rowY = y + 20;
+        UIStyleHelper.ScrollContainerPalette palette = UIStyleHelper.getScrollContainerPalette(accentColor(), 0f, false, false);
+        PathmindDropdownRenderer.renderTextList(context, host.font(), PathmindDropdownRenderer.TextListSpec.builder()
+            .bounds(x, rowY, width)
+            .rows(15, 3, matches.size())
+            .scroll(0, 0, 22)
+            .animation(1f)
+            .hoverPoint(mouseX, mouseY)
+            .colors(accentColor(), animation.getAnimatedPopupColor(UITheme.TEXT_PRIMARY))
+            .textLayout(5, 3, false, true)
+            .labels("No matching blocks", matches::get)
+            .chrome(palette, palette.trackColor(), palette.thumbColor(), palette.borderColor())
+            .build());
+        for (int index = 0; index < matches.size(); index++) {
+            int buttonY = rowY + index * 15 + 1;
+            PathmindPopupRenderer.drawButton(context, host.font(), x + width - 20, buttonY, 18, 12,
+                Component.literal("+"), PathmindPopupRenderer.ButtonStyle.PRIMARY,
+                host.hoverProgress("settings-scaffold-add-" + matches.get(index),
+                    host.isPointInRect(mouseX, mouseY, x + width - 20, buttonY, 18, 12)), accentColor(), animation);
+        }
+        List<String> allowed = allowedScaffoldingBlockIds();
+        int selectedHeaderY = rowY + 50;
+        host.drawPopupTextWithEllipsis(context, allowed.isEmpty() ? "Allowed scaffolding blocks: none"
+            : "Allowed scaffolding blocks (click × to remove)", x, selectedHeaderY, width,
+            animation.getAnimatedPopupColor(UITheme.TEXT_SECONDARY));
+        if (!allowed.isEmpty()) {
+            int selectedRowY = selectedHeaderY + 12;
+            int visibleRows = Math.min(3, allowed.size());
+            PathmindDropdownRenderer.renderTextList(context, host.font(), PathmindDropdownRenderer.TextListSpec.builder()
+                .bounds(x, selectedRowY, width)
+                .rows(15, visibleRows, allowed.size())
+                .scroll(0, 0, 22)
+                .animation(1f)
+                .hoverPoint(mouseX, mouseY)
+                .colors(accentColor(), animation.getAnimatedPopupColor(UITheme.TEXT_PRIMARY))
+                .textLayout(5, 3, false, true)
+                .labels("No allowed blocks", allowed::get)
+                .chrome(palette, palette.trackColor(), palette.thumbColor(), palette.borderColor())
+                .build());
+            for (int index = 0; index < visibleRows; index++) {
+                String id = allowed.get(index);
+                int buttonY = selectedRowY + index * 15 + 1;
+                PathmindPopupRenderer.drawButton(context, host.font(), x + width - 20, buttonY, 18, 12,
+                    Component.literal("×"), PathmindPopupRenderer.ButtonStyle.DEFAULT,
+                    host.hoverProgress("settings-scaffold-remove-" + id,
+                        host.isPointInRect(mouseX, mouseY, x + width - 20, buttonY, 18, 12)), accentColor(), animation);
+            }
+        }
+    }
+
+    private List<String> matchingScaffoldingBlockIds() {
+        String query = scaffoldingBlocksField == null ? "" : scaffoldingBlocksField.getValue().trim().toLowerCase(Locale.ROOT);
+        List<String> matches = new ArrayList<>();
+        for (net.minecraft.world.level.block.Block block : BuiltInRegistries.BLOCK) {
+            if (block.asItem() == net.minecraft.world.item.Items.AIR) continue;
+            String id = String.valueOf(BuiltInRegistries.BLOCK.getKey(block));
+            if ((query.isBlank() || id.contains(query)) && !allowedScaffoldingBlockIds().contains(id)) {
+                matches.add(id);
+            }
+        }
+        matches.sort(String::compareTo);
+        return matches.size() > 3 ? List.copyOf(matches.subList(0, 3)) : List.copyOf(matches);
+    }
+
+    private List<String> allowedScaffoldingBlockIds() {
+        Set<String> ids = new LinkedHashSet<>();
+        String raw = settings.schematicScaffoldingBlocks;
+        if (raw != null) for (String part : raw.split(",")) if (!part.isBlank()) ids.add(part.trim());
+        return List.copyOf(ids);
+    }
+
+    private void addAllowedScaffoldingBlock(String id) {
+        Set<String> ids = new LinkedHashSet<>(allowedScaffoldingBlockIds());
+        if (ids.add(id)) {
+            settings.schematicScaffoldingBlocks = String.join(",", ids);
+            SettingsManager.save(settings);
+        }
+        if (scaffoldingBlocksField != null) scaffoldingBlocksField.setValue("");
+    }
+
+    private void removeAllowedScaffoldingBlock(String id) {
+        Set<String> ids = new LinkedHashSet<>(allowedScaffoldingBlockIds());
+        if (ids.remove(id)) {
+            settings.schematicScaffoldingBlocks = String.join(",", ids);
+            SettingsManager.save(settings);
+        }
     }
 
     void renderCreateListRadiusRow(GuiGraphics context, int mouseX, int mouseY, int labelX, int centerY,
@@ -1609,6 +1817,17 @@ final class PathmindSettingsPopupController {
         return new int[]{boxX, boxY, boxWidth, boxHeight};
     }
 
+    int[] getSchematicPlacementSpeedFieldBounds(int popupX, int scaledWidth, int centerY, String valueText) {
+        int sliderX = popupX + scaledWidth - SETTINGS_SLIDER_WIDTH - 20;
+        String text = valueText == null ? "" : valueText;
+        int boxWidth = Math.max(32, host.font().width(text) + 8);
+        int boxHeight = 16;
+        int unitGap = 6;
+        int unitWidth = host.font().width("blocks/s");
+        int boxX = sliderX - boxWidth - unitGap - unitWidth - 4;
+        return new int[]{boxX, centerY - boxHeight / 2, boxWidth, boxHeight};
+    }
+
     int[] getCreateListRadiusFieldBounds(int popupX, int scaledWidth, int centerY, String valueText) {
         int sliderX = popupX + scaledWidth - SETTINGS_SLIDER_WIDTH - 20;
         String text = valueText == null ? "" : valueText;
@@ -1642,6 +1861,9 @@ final class PathmindSettingsPopupController {
         if (value != schematicPlacementSpeed) {
             schematicPlacementSpeed = value;
             settings.schematicPlacementSpeed = value;
+            if (schematicPlacementSpeedField != null && !schematicPlacementSpeedField.isFocused()) {
+                schematicPlacementSpeedField.setValue(Integer.toString(value));
+            }
             SettingsManager.save(settings);
         }
     }

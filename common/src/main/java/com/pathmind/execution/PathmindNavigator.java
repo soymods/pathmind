@@ -68,6 +68,8 @@ public final class PathmindNavigator {
     private CompletableFuture<Void> activeFuture;
     private BlockPos targetPos;
     private String commandLabel;
+    /** Internal callers (such as schematic construction) keep navigator UI but not arrival toasts. */
+    private boolean suppressArrivalNotification;
     private State state = State.IDLE;
     private long startedAtMs;
     private WaterMode waterMode = WaterMode.NORMAL;
@@ -345,7 +347,15 @@ public final class PathmindNavigator {
         if (targetPos == null || future == null) {
             return false;
         }
-        return startGotoInternal(targetPos, commandLabel, future);
+        return startGotoInternal(targetPos, commandLabel, future, false);
+    }
+
+    /** Starts normal Pathmind navigation for an internal workflow without user-facing arrival notifications. */
+    public synchronized boolean startGotoSilently(BlockPos targetPos, String commandLabel, CompletableFuture<Void> future) {
+        if (targetPos == null || future == null) {
+            return false;
+        }
+        return startGotoInternal(targetPos, commandLabel, future, true);
     }
 
     public synchronized boolean startGotoNearBlock(BlockPos targetBlockPos, String commandLabel, CompletableFuture<Void> future) {
@@ -356,7 +366,7 @@ public final class PathmindNavigator {
         BlockPos navigationTarget = resolveReachableAdjacentStandableTarget(targetBlockPos)
             .or(() -> resolveAdjacentStandableTarget(targetBlockPos))
             .orElse(targetBlockPos);
-        return startGotoInternal(navigationTarget, commandLabel, future);
+        return startGotoInternal(navigationTarget, commandLabel, future, false);
     }
 
     public synchronized PreviewResult previewPathNearBlock(Minecraft client, BlockPos targetBlockPos, String commandLabel) {
@@ -369,7 +379,8 @@ public final class PathmindNavigator {
         return previewPath(client, navigationTarget, commandLabel);
     }
 
-    private boolean startGotoInternal(BlockPos targetPos, String commandLabel, CompletableFuture<Void> future) {
+    private boolean startGotoInternal(BlockPos targetPos, String commandLabel, CompletableFuture<Void> future,
+                                      boolean suppressArrivalNotification) {
         stopExternalNavigation(Minecraft.getInstance());
         stopInternal(false, "replaced");
         SettingsManager.Settings settings = SettingsManager.getCurrent();
@@ -381,6 +392,7 @@ public final class PathmindNavigator {
         NavigatorCameraController.begin(client != null ? client.player : null);
         this.targetPos = targetPos.immutable();
         this.commandLabel = commandLabel == null || commandLabel.isBlank() ? "Goto" : commandLabel.trim();
+        this.suppressArrivalNotification = suppressArrivalNotification;
         this.activeFuture = future;
         this.state = State.PATHING;
         this.startedAtMs = System.currentTimeMillis();
@@ -1604,6 +1616,7 @@ public final class PathmindNavigator {
         releaseMovementKeys(Minecraft.getInstance());
         state = State.FAILED;
         CompletableFuture<Void> future = activeFuture;
+        boolean suppressTerminalNotification = suppressArrivalNotification;
         String message = failureReason != null ? failureReason.message : FailureReason.NO_ROUTE.message;
         if (failureDetail != null && !failureDetail.isBlank()) {
             message = message + " " + failureDetail.trim();
@@ -1621,6 +1634,7 @@ public final class PathmindNavigator {
         activeFuture = null;
         targetPos = null;
         commandLabel = null;
+        suppressArrivalNotification = false;
         exactGoalSupportedSinceMs = 0L;
         navigationState.currentPath = List.of();
         navigationState.currentPlan = List.of();
@@ -1667,7 +1681,9 @@ public final class PathmindNavigator {
         navigationState.lastMovementAtMs = 0L;
         lastDistanceCheckpoint = Double.POSITIVE_INFINITY;
         navigationState.lastDistanceCheckpointAtMs = 0L;
-        NodeErrorNotificationOverlay.getInstance().show(message, UITheme.STATE_ERROR);
+        if (!suppressTerminalNotification) {
+            NodeErrorNotificationOverlay.getInstance().show(message, UITheme.STATE_ERROR);
+        }
         if (future != null && !future.isDone()) {
             future.completeExceptionally(new RuntimeException(message));
         }
@@ -1678,6 +1694,7 @@ public final class PathmindNavigator {
     private synchronized void complete(State terminalState) {
         state = terminalState;
         CompletableFuture<Void> future = activeFuture;
+        boolean suppressArrival = suppressArrivalNotification;
         Minecraft client = Minecraft.getInstance();
         NavigatorCameraController.end(client != null ? client.player : null);
         BlockPos playerFootPos = client != null && client.player != null ? resolvePlayerFootPos(client.player) : null;
@@ -1692,6 +1709,7 @@ public final class PathmindNavigator {
         activeFuture = null;
         targetPos = null;
         commandLabel = null;
+        suppressArrivalNotification = false;
         navigationState.currentPath = List.of();
         navigationState.currentPlan = List.of();
         navigationState.candidatePaths = List.of();
@@ -1737,7 +1755,7 @@ public final class PathmindNavigator {
         navigationState.lastMovementAtMs = 0L;
         lastDistanceCheckpoint = Double.POSITIVE_INFINITY;
         navigationState.lastDistanceCheckpointAtMs = 0L;
-        if (terminalState == State.ARRIVED) {
+        if (terminalState == State.ARRIVED && !suppressArrival) {
             String message = completedTarget == null
                 ? "Pathmind Nav: path complete."
                 : "Pathmind Nav: arrived at " + completedTarget.getX() + " " + completedTarget.getY() + " " + completedTarget.getZ() + ".";

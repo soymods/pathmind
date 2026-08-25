@@ -235,6 +235,14 @@ public final class SchematicPlacementPlanner {
             for (int y = target.getY() - 3; y <= target.getY() + 3; y++) {
                 for (int z = target.getZ() - 4; z <= target.getZ() + 4; z++) {
                     BlockPos standing = new BlockPos(x, y, z);
+                    // The destination cell and the cell at the player's head
+                    // must remain empty for the placed block. Treating either
+                    // as a valid approach makes the executor attempt to place
+                    // directly into its own collision box, which vanilla
+                    // rejects and eventually exhausts every fake approach.
+                    if (standing.equals(target) || standing.above().equals(target)) {
+                        continue;
+                    }
                     if (!isSafeStandingPosition(world, standing)) {
                         continue;
                     }

@@ -101,11 +101,26 @@ sourceSets {
                     else -> throw GradleException("Unknown Fabric use-item family '$fabricUseItemFamily' for Minecraft $requestedMinecraftVersion")
                 }
                 when (fabricRenderFamily) {
-                    "mc-1.21.0-1.21.1" -> srcDir("src/compat/api/world-render/mc-1.21.0-1.21.1/java")
-                    "mc-1.21.2-1.21.3" -> srcDir("src/compat/api/world-render/mc-1.21.2-1.21.3/java")
-                    "mc-1.21.4" -> srcDir("src/compat/api/world-render/mc-1.21.4/java")
-                    "mc-1.21.5" -> srcDir("src/compat/api/world-render/mc-1.21.5/java")
-                    "mc-1.21.6-1.21.8" -> srcDir("src/compat/api/world-render/mc-1.21.6-1.21.8/java")
+                    "mc-1.21.0-1.21.1" -> {
+                        srcDir("src/compat/api/world-render/mc-1.21.0-1.21.1/java")
+                        srcDir("src/compat/api/main-menu-button/mc-1.21.0-1.21.1/java")
+                    }
+                    "mc-1.21.2-1.21.3" -> {
+                        srcDir("src/compat/api/world-render/mc-1.21.2-1.21.3/java")
+                        srcDir("src/compat/api/main-menu-button/mc-1.21.2-1.21.8/java")
+                    }
+                    "mc-1.21.4" -> {
+                        srcDir("src/compat/api/world-render/mc-1.21.4/java")
+                        srcDir("src/compat/api/main-menu-button/mc-1.21.2-1.21.8/java")
+                    }
+                    "mc-1.21.5" -> {
+                        srcDir("src/compat/api/world-render/mc-1.21.5/java")
+                        srcDir("src/compat/api/main-menu-button/mc-1.21.2-1.21.8/java")
+                    }
+                    "mc-1.21.6-1.21.8" -> {
+                        srcDir("src/compat/api/world-render/mc-1.21.6-1.21.8/java")
+                        srcDir("src/compat/api/main-menu-button/mc-1.21.2-1.21.8/java")
+                    }
                     else -> throw GradleException("Unknown Fabric render family '$fabricRenderFamily' for Minecraft $requestedMinecraftVersion")
                 }
             } else if (fabricBaseFamily == "mc-1.21.9-1.21.10") {

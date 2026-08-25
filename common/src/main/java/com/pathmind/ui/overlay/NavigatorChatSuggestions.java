@@ -2,6 +2,7 @@ package com.pathmind.ui.overlay;
 
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.DrawContextBridge;
+import com.pathmind.schematic.SchematicFiles;
 import org.lwjgl.glfw.GLFW;
 
 import java.lang.reflect.Field;
@@ -19,7 +20,8 @@ import net.minecraft.client.gui.screens.ChatScreen;
  * This intentionally mirrors the command-list feel without depending on Minecraft's internal suggestor classes.
  */
 public final class NavigatorChatSuggestions {
-    private static final int WIDTH = 220;
+    private static final int PREFERRED_WIDTH = 280;
+    private static final int MIN_WIDTH = 160;
     private static final int ENTRY_HEIGHT = 14;
     private static final int PADDING = 4;
     private static final int BOTTOM_MARGIN = 2;
@@ -62,20 +64,24 @@ public final class NavigatorChatSuggestions {
         int totalHeight = suggestions.size() * ENTRY_HEIGHT + PADDING * 2;
         int x = Math.max(2, input.getX() + LEFT_MARGIN);
         int y = input.getY() - totalHeight - BOTTOM_MARGIN;
+        int width = Math.max(MIN_WIDTH, Math.min(PREFERRED_WIDTH, chatScreen.width - x - LEFT_MARGIN));
 
-        context.fill(x, y, x + WIDTH, y + totalHeight, PANEL_BACKGROUND);
-        drawPanelBorder(context, x, y, WIDTH, totalHeight, UITheme.BORDER_HIGHLIGHT);
+        context.fill(x, y, x + width, y + totalHeight, PANEL_BACKGROUND);
+        drawPanelBorder(context, x, y, width, totalHeight, UITheme.BORDER_HIGHLIGHT);
 
         for (int i = 0; i < suggestions.size(); i++) {
             SuggestionEntry entry = suggestions.get(i);
             int rowY = y + PADDING + i * ENTRY_HEIGHT;
             if (i == selectedIndex) {
-                context.fill(x + 1, rowY - 1, x + WIDTH - 1, rowY + ENTRY_HEIGHT - 1, 0x503A3A3A);
+                context.fill(x + 1, rowY - 1, x + width - 1, rowY + ENTRY_HEIGHT - 1, 0x503A3A3A);
             }
             int commandX = x + 6;
-            int hintX = Math.min(x + WIDTH - 8, commandX + textRenderer.width(entry.command()) + 12);
-            context.drawString(textRenderer, entry.command(), commandX, rowY, UITheme.TEXT_HEADER);
-            context.drawString(textRenderer, entry.hint(), hintX, rowY, UITheme.TEXT_SECONDARY);
+            int available = x + width - 6 - commandX;
+            String command = abbreviate(textRenderer, entry.command(), Math.max(0, available / 2));
+            int hintX = commandX + textRenderer.width(command) + 10;
+            String hint = abbreviate(textRenderer, entry.hint(), Math.max(0, x + width - 6 - hintX));
+            context.drawString(textRenderer, command, commandX, rowY, UITheme.TEXT_HEADER);
+            context.drawString(textRenderer, hint, hintX, rowY, UITheme.TEXT_SECONDARY);
         }
     }
 
@@ -201,14 +207,80 @@ public final class NavigatorChatSuggestions {
     }
 
     private List<SuggestionEntry> buildSuggestions(String[] parts, boolean endsWithSpace) {
-        if (parts == null || parts.length != 1 || !endsWithSpace) {
+        if (parts == null || parts.length == 0) {
             return List.of();
         }
-        return List.of(new SuggestionEntry(
-            "<schematic> <x> <y> <z>",
-            "files are loaded from the active profile's schematics folder",
-            "!build "
-        ));
+        List<SuggestionEntry> suggestions = new ArrayList<>();
+        if (parts.length == 1 && endsWithSpace) {
+            addSchematicSuggestions(suggestions, "");
+            if (suggestions.isEmpty()) {
+                suggestions.add(new SuggestionEntry("<schematic> <x> <y> <z>",
+                    "add .schem files to the profile's schematics folder", "!build "));
+            }
+            suggestions.add(new SuggestionEntry("status", "show live build progress", "!build status"));
+            suggestions.add(new SuggestionEntry("pause", "pause the active build", "!build pause"));
+            suggestions.add(new SuggestionEntry("resume", "resume a paused build", "!build resume"));
+            suggestions.add(new SuggestionEntry("cancel", "cancel the active build", "!build cancel"));
+            return suggestions;
+        }
+        if (parts.length == 2 && !endsWithSpace) {
+            String partial = parts[1];
+            addSchematicSuggestions(suggestions, partial);
+            addIfMatches(suggestions, "status", "show live build progress", "!build status", partial);
+            addIfMatches(suggestions, "pause", "pause the active build", "!build pause", partial);
+            addIfMatches(suggestions, "resume", "resume a paused build", "!build resume", partial);
+            addIfMatches(suggestions, "cancel", "cancel the active build", "!build cancel", partial);
+        }
+        if (parts.length == 2 && endsWithSpace && !isBuildControl(parts[1])) {
+            Minecraft client = Minecraft.getInstance();
+            if (client != null && client.player != null) {
+                int x = client.player.getBlockX();
+                int y = client.player.getBlockY();
+                int z = client.player.getBlockZ();
+                suggestions.add(new SuggestionEntry(x + " " + y + " " + z, "use current position", "!build " + parts[1] + " " + x + " " + y + " " + z));
+            }
+            suggestions.add(new SuggestionEntry("<x> <y> <z>", "build origin", "!build " + parts[1] + " "));
+        }
+        return suggestions;
+    }
+
+    private void addSchematicSuggestions(List<SuggestionEntry> suggestions, String partial) {
+        Minecraft client = Minecraft.getInstance();
+        if (client == null || client.gameDirectory == null) {
+            return;
+        }
+        String query = partial == null ? "" : partial.toLowerCase(Locale.ROOT);
+        for (String schematic : SchematicFiles.list(client.gameDirectory.toPath())) {
+            if (!query.isBlank() && !schematic.toLowerCase(Locale.ROOT).startsWith(query)) {
+                continue;
+            }
+            suggestions.add(new SuggestionEntry(schematic, "schematic", "!build " + schematic + " "));
+            if (suggestions.size() >= 8) {
+                return;
+            }
+        }
+    }
+
+    private boolean isBuildControl(String value) {
+        return "status".equals(value) || "pause".equals(value) || "resume".equals(value) || "cancel".equals(value);
+    }
+
+    private String abbreviate(Font font, String text, int maxWidth) {
+        if (text == null || text.isEmpty() || maxWidth <= 0) {
+            return "";
+        }
+        if (font.width(text) <= maxWidth) {
+            return text;
+        }
+        String ellipsis = "...";
+        if (font.width(ellipsis) > maxWidth) {
+            return "";
+        }
+        int end = text.length();
+        while (end > 0 && font.width(text.substring(0, end) + ellipsis) > maxWidth) {
+            end--;
+        }
+        return text.substring(0, end) + ellipsis;
     }
 
     private List<SuggestionEntry> movementSuggestions(String root, String[] parts, boolean endsWithSpace) {

@@ -151,7 +151,7 @@ public final class PathmindPopupLayout {
         int hudDividerY = overlayDividerY + 22;
         int profilerDividerY = hudDividerY + 22;
         int delayDividerY = profilerDividerY + 26;
-        return delayDividerY + 12;
+        return delayDividerY + 156;
     }
 
     public static int settingsNodeSectionBodyY(int contentPopupY, int optionHeight) {

@@ -4,6 +4,7 @@ import com.pathmind.data.SettingsManager;
 import com.pathmind.ui.overlay.ActiveNodeOverlay;
 import com.pathmind.ui.overlay.NavigatorDebugOverlay;
 import com.pathmind.ui.overlay.NodeErrorNotificationOverlay;
+import com.pathmind.ui.overlay.SchematicBuildOverlay;
 import com.pathmind.ui.overlay.VariablesOverlay;
 import com.pathmind.util.DrawContextBridge;
 import com.pathmind.util.MatrixStackBridge;
@@ -16,6 +17,7 @@ public final class PathmindHud {
     private static NavigatorDebugOverlay navigatorDebugOverlay;
     private static NodeErrorNotificationOverlay nodeErrorNotificationOverlay;
     private static VariablesOverlay variablesOverlay;
+    private static final SchematicBuildOverlay schematicBuildOverlay = new SchematicBuildOverlay();
 
     private PathmindHud() {}
 
@@ -54,6 +56,7 @@ public final class PathmindHud {
             if (navigatorDebugOverlay != null) {
                 navigatorDebugOverlay.render(drawContext, client.font, scaledWidth, scaledHeight);
             }
+            schematicBuildOverlay.render(drawContext, client.font, scaledWidth, scaledHeight);
         } finally {
             MatrixStackBridge.pop(matrices);
         }

@@ -3,6 +3,12 @@ package com.pathmind.nodes;
 import static com.pathmind.util.PathmindI18n.tr;
 
 import com.pathmind.execution.PreciseCompletionTracker;
+import com.pathmind.schematic.SchematicBuildPlan;
+import com.pathmind.schematic.SchematicFiles;
+import com.pathmind.schematic.SchematicLoadException;
+import com.pathmind.schematic.SchematicLoader;
+import com.pathmind.schematic.SchematicPlacementPlanner;
+import com.pathmind.schematic.SchematicBuildExecutor;
 import com.pathmind.util.BaritoneApiProxy;
 import com.pathmind.util.BlockSelection;
 import com.pathmind.util.HotbarSlotSynchronizer;
@@ -1382,6 +1388,24 @@ final class NodeWorldActionCommandExecutor {
     }
     
     void executeBuildCommand(CompletableFuture<Void> future) {
+        // The schematic executor owns an asynchronous build. Surface both its
+        // immediate validation failures and later runtime failures in the HUD,
+        // instead of only leaving an exception in latest.log.
+        future.whenComplete((ignored, throwable) -> {
+            if (throwable == null || throwable instanceof java.util.concurrent.CancellationException) {
+                return;
+            }
+            Throwable cause = throwable;
+            while ((cause instanceof java.util.concurrent.CompletionException
+                || cause instanceof java.util.concurrent.ExecutionException) && cause.getCause() != null) {
+                cause = cause.getCause();
+            }
+            String message = cause.getMessage();
+            if (message == null || message.isBlank()) {
+                message = "The schematic build stopped unexpectedly. See latest.log for details.";
+            }
+            owner.sendNodeErrorMessageToPlayer("Build Schematic: " + message);
+        });
         if (owner.preprocessAttachedParameter(EnumSet.of(Node.ParameterUsage.POSITION), future) == Node.ParameterHandlingResult.COMPLETE) {
             return;
         }
@@ -1400,32 +1424,29 @@ final class NodeWorldActionCommandExecutor {
             future.completeExceptionally(new RuntimeException("Unable to resolve build origin"));
             return;
         }
-
-        boolean usePlayerOriginCommand = owner.runtimeState().runtimeParameterData != null
-            ? owner.runtimeState().runtimeParameterData.targetVector == null && owner.getMode() == NodeMode.BUILD_PLAYER
-            : owner.getMode() == NodeMode.BUILD_PLAYER;
-        String command = usePlayerOriginCommand
-            ? String.format("#build %s", schematic)
-            : String.format("#build %s %d %d %d", schematic, buildOrigin.getX(), buildOrigin.getY(), buildOrigin.getZ());
-
-        if (!owner.isBaritoneApiAvailable() && owner.isBaritoneModAvailable()) {
-            owner.executeCommand(command);
-            future.complete(null);
+        net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
+        if (client == null || client.gameDirectory == null) {
+            future.completeExceptionally(new RuntimeException("Minecraft client is unavailable"));
             return;
         }
-
-        Object baritone = owner.getBaritone();
-        if (baritone == null) {
-            future.completeExceptionally(new RuntimeException("Baritone not available"));
+        java.util.Optional<java.nio.file.Path> schematicFile = SchematicFiles.resolve(client.gameDirectory.toPath(), schematic);
+        if (schematicFile.isEmpty()) {
+            future.completeExceptionally(new RuntimeException("Schematic not found in "
+                + client.gameDirectory.toPath().resolve("schematics") + ": " + schematic));
             return;
         }
-
-        PreciseCompletionTracker.getInstance().startTrackingTask(PreciseCompletionTracker.TASK_BUILD, future);
-        Object builderProcess = BaritoneApiProxy.getBuilderProcess(baritone);
-        if (builderProcess != null && BaritoneApiProxy.build(builderProcess, schematic, buildOrigin)) {
-            return;
+        try {
+            SchematicBuildPlan plan = SchematicLoader.load(schematicFile.get());
+            if (client.level == null) {
+                future.completeExceptionally(new RuntimeException("A world is required to create a schematic placement plan."));
+                return;
+            }
+            if (!SchematicBuildExecutor.getInstance().start(client, plan, buildOrigin, future)) {
+                future.completeExceptionally(new RuntimeException(SchematicBuildExecutor.getInstance().status()));
+            }
+        } catch (SchematicLoadException exception) {
+            future.completeExceptionally(new RuntimeException(exception.getMessage(), exception));
         }
-        owner.executeCommand(command);
     }
 
     private BlockPos resolveBuildOrigin() {

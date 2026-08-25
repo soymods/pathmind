@@ -47,6 +47,17 @@ public final class SettingsManager {
         public Integer nodeDelayMs = 150;
         public Boolean gotoAllowBreakWhileExecuting = false;
         public Boolean gotoAllowPlaceWhileExecuting = false;
+        /** Global native pathfinding permissions. */
+        public Boolean pathfindingAllowBlockBreaking = true;
+        public Boolean pathfindingAllowBlockPlacing = true;
+        /** Opt-in because temporary blocks may alter a survival world. */
+        public Boolean schematicAllowScaffolding = false;
+        /** Comma-separated block ids usable as temporary schematic support. */
+        public String schematicScaffoldingBlocks = "minecraft:dirt,minecraft:cobblestone";
+        /** Safely reconcile a wrong state only when it is already the same block type. */
+        public Boolean schematicReplaceMatchingBlocks = false;
+        /** Explicit permission to break an arbitrary conflicting block and rebuild it. */
+        public Boolean schematicAllowDestructiveRebuild = false;
         public Boolean keyPressedActivatesInGuis = true;
         public Boolean createListUseCustomRadius = false;
         public Integer createListRadius = 64;
@@ -249,6 +260,24 @@ public final class SettingsManager {
         }
         if (settings.gotoAllowPlaceWhileExecuting == null) {
             settings.gotoAllowPlaceWhileExecuting = false;
+        }
+        if (settings.pathfindingAllowBlockBreaking == null) {
+            settings.pathfindingAllowBlockBreaking = true;
+        }
+        if (settings.pathfindingAllowBlockPlacing == null) {
+            settings.pathfindingAllowBlockPlacing = true;
+        }
+        if (settings.schematicAllowScaffolding == null) {
+            settings.schematicAllowScaffolding = false;
+        }
+        if (settings.schematicScaffoldingBlocks == null || settings.schematicScaffoldingBlocks.isBlank()) {
+            settings.schematicScaffoldingBlocks = "minecraft:dirt,minecraft:cobblestone";
+        }
+        if (settings.schematicReplaceMatchingBlocks == null) {
+            settings.schematicReplaceMatchingBlocks = false;
+        }
+        if (settings.schematicAllowDestructiveRebuild == null) {
+            settings.schematicAllowDestructiveRebuild = false;
         }
         if (settings.keyPressedActivatesInGuis == null) {
             settings.keyPressedActivatesInGuis = true;

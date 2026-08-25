@@ -1,5 +1,6 @@
 package com.pathmind.execution;
 
+import com.pathmind.data.SettingsManager;
 import com.pathmind.ui.overlay.NodeErrorNotificationOverlay;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.LoaderMetadata;
@@ -362,6 +363,11 @@ public final class PathmindNavigator {
 
     private boolean startGotoInternal(BlockPos targetPos, String commandLabel, CompletableFuture<Void> future) {
         stopInternal(false, "replaced");
+        SettingsManager.Settings settings = SettingsManager.getCurrent();
+        // Global pathfinding permissions are the hard ceiling. Individual nodes
+        // can choose not to use an allowed capability, never enable a disabled one.
+        allowBlockBreaking = Boolean.TRUE.equals(settings.pathfindingAllowBlockBreaking);
+        allowBlockPlacing = Boolean.TRUE.equals(settings.pathfindingAllowBlockPlacing);
         Minecraft client = Minecraft.getInstance();
         NavigatorCameraController.begin(client != null ? client.player : null);
         this.targetPos = targetPos.immutable();
@@ -672,7 +678,8 @@ public final class PathmindNavigator {
     }
 
     public synchronized void setBlockBreakingAllowed(boolean allowBlockBreaking) {
-        this.allowBlockBreaking = allowBlockBreaking;
+        this.allowBlockBreaking = allowBlockBreaking
+            && Boolean.TRUE.equals(SettingsManager.getCurrent().pathfindingAllowBlockBreaking);
     }
 
     public synchronized boolean isBlockPlacingAllowed() {
@@ -680,7 +687,8 @@ public final class PathmindNavigator {
     }
 
     public synchronized void setBlockPlacingAllowed(boolean allowBlockPlacing) {
-        this.allowBlockPlacing = allowBlockPlacing;
+        this.allowBlockPlacing = allowBlockPlacing
+            && Boolean.TRUE.equals(SettingsManager.getCurrent().pathfindingAllowBlockPlacing);
     }
 
     public synchronized boolean isEventLoggingEnabled() {

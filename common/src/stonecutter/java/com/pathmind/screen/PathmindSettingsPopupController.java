@@ -113,6 +113,7 @@ final class PathmindSettingsPopupController {
     private boolean nodeDelayDragging;
     private boolean createListRadiusDragging;
     private EditBox nodeDelayField;
+    private EditBox scaffoldingBlocksField;
     private EditBox createListRadiusField;
     private EditBox settingsNodeSearchField;
     private boolean settingsNodeListView = true;
@@ -233,6 +234,17 @@ final class PathmindSettingsPopupController {
                 }
             });
             host.addWidget(nodeDelayField);
+        }
+        if (scaffoldingBlocksField == null) {
+            scaffoldingBlocksField = PathmindTextField.createInactive(host.font(), 0, 0, 160, 20, Component.literal("Block ids"), 96);
+            scaffoldingBlocksField.setTextColor(UITheme.TEXT_HEADER);
+            scaffoldingBlocksField.setTextColorUneditable(UITheme.TEXT_HEADER);
+            scaffoldingBlocksField.setResponder(value -> {
+                settings.schematicScaffoldingBlocks = value == null ? "" : value.trim();
+                SettingsManager.save(settings);
+            });
+            scaffoldingBlocksField.setValue(settings.schematicScaffoldingBlocks);
+            host.addWidget(scaffoldingBlocksField);
         }
         if (createListRadiusField == null) {
             createListRadiusField = PathmindTextField.createInactive(host.font(), 0, 0, 120, 20, Component.translatable("pathmind.field.radius"), 6);
@@ -661,6 +673,56 @@ final class PathmindSettingsPopupController {
             return true;
         }
 
+        int pathfindingLabelY = delayDividerY + 12;
+        int pathBreakDividerY = pathfindingLabelY + 28;
+        int pathBreakToggleY = ((pathfindingLabelY + 14 + pathBreakDividerY) / 2) - SETTINGS_TOGGLE_HEIGHT / 2;
+        if (bodyHovered && host.isPointInRect(mouseXi, mouseYi, gridToggleX, pathBreakToggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT)) {
+            settings.pathfindingAllowBlockBreaking = !Boolean.TRUE.equals(settings.pathfindingAllowBlockBreaking);
+            SettingsManager.save(settings);
+            return true;
+        }
+        int pathPlaceDividerY = pathBreakDividerY + 22;
+        int pathPlaceToggleY = ((pathBreakDividerY + pathPlaceDividerY) / 2) - SETTINGS_TOGGLE_HEIGHT / 2;
+        if (bodyHovered && host.isPointInRect(mouseXi, mouseYi, gridToggleX, pathPlaceToggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT)) {
+            settings.pathfindingAllowBlockPlacing = !Boolean.TRUE.equals(settings.pathfindingAllowBlockPlacing);
+            SettingsManager.save(settings);
+            return true;
+        }
+        int scaffoldDividerY = pathPlaceDividerY + 22;
+        int scaffoldToggleY = ((pathPlaceDividerY + scaffoldDividerY) / 2) - SETTINGS_TOGGLE_HEIGHT / 2;
+        if (bodyHovered && host.isPointInRect(mouseXi, mouseYi, gridToggleX, scaffoldToggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT)) {
+            settings.schematicAllowScaffolding = !Boolean.TRUE.equals(settings.schematicAllowScaffolding);
+            SettingsManager.save(settings);
+            return true;
+        }
+        int blocksWidth = Math.min(160, popupWidth - 150);
+        int blocksX = popupX + popupWidth - blocksWidth - 20;
+        int blocksY = scaffoldDividerY + 8;
+        if (scaffoldingBlocksField != null && bodyHovered && host.isPointInRect(mouseXi, mouseYi, blocksX, blocksY, blocksWidth, 16)) {
+            scaffoldingBlocksField.setEditable(true);
+            scaffoldingBlocksField.setFocused(true);
+            //? if MC_1_21_8 {
+            /*scaffoldingBlocksField.mouseClicked(mouseX, mouseY, button);*/
+            //?} else {
+            scaffoldingBlocksField.mouseClicked(click, inBounds);
+            //?}
+            return true;
+        }
+        int matchingReplaceDividerY = scaffoldDividerY + 52;
+        int matchingReplaceToggleY = ((scaffoldDividerY + 30 + matchingReplaceDividerY) / 2) - SETTINGS_TOGGLE_HEIGHT / 2;
+        if (bodyHovered && host.isPointInRect(mouseXi, mouseYi, gridToggleX, matchingReplaceToggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT)) {
+            settings.schematicReplaceMatchingBlocks = !Boolean.TRUE.equals(settings.schematicReplaceMatchingBlocks);
+            SettingsManager.save(settings);
+            return true;
+        }
+        int destructiveRebuildDividerY = matchingReplaceDividerY + 22;
+        int destructiveRebuildToggleY = ((matchingReplaceDividerY + destructiveRebuildDividerY) / 2) - SETTINGS_TOGGLE_HEIGHT / 2;
+        if (bodyHovered && host.isPointInRect(mouseXi, mouseYi, gridToggleX, destructiveRebuildToggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT)) {
+            settings.schematicAllowDestructiveRebuild = !Boolean.TRUE.equals(settings.schematicAllowDestructiveRebuild);
+            SettingsManager.save(settings);
+            return true;
+        }
+
         int nodeSettingsBodyY = getSettingsNodeSectionBodyY(contentPopupY);
         int selectorWidth = popupWidth - 40;
         int nodeSettingsContentY = getSettingsNodeSectionContentY(nodeSettingsBodyY, selectorWidth);
@@ -868,6 +930,13 @@ final class PathmindSettingsPopupController {
             nodeDelayField.mouseReleased(click);
             //?}
         }
+        if (scaffoldingBlocksField != null) {
+            //? if MC_1_21_8 {
+            /*scaffoldingBlocksField.mouseReleased(mouseX, mouseY, button);*/
+            //?} else {
+            scaffoldingBlocksField.mouseReleased(click);
+            //?}
+        }
     }
 
     //? if MC_1_21_8 {
@@ -884,6 +953,13 @@ final class PathmindSettingsPopupController {
                 //?}
                 return true;
             }
+        }
+        //? if MC_1_21_8 {
+        /*if (scaffoldingBlocksField != null && scaffoldingBlocksField.isFocused() && scaffoldingBlocksField.keyPressed(keyCode, scanCode, modifiers)) {
+            *///?} else {
+        if (scaffoldingBlocksField != null && scaffoldingBlocksField.isFocused() && scaffoldingBlocksField.keyPressed(input)) {
+            //?}
+            return true;
         }
         if (settingsNodeSearchField != null && settingsNodeSearchField.isFocused()) {
             //? if MC_1_21_8 {
@@ -928,6 +1004,13 @@ final class PathmindSettingsPopupController {
         /*if (nodeDelayField != null && nodeDelayField.isFocused() && nodeDelayField.charTyped(chr, modifiers)) {
             *///?} else {
         if (nodeDelayField != null && nodeDelayField.isFocused() && nodeDelayField.charTyped(input)) {
+            //?}
+            return true;
+        }
+        //? if MC_1_21_8 {
+        /*if (scaffoldingBlocksField != null && scaffoldingBlocksField.isFocused() && scaffoldingBlocksField.charTyped(chr, modifiers)) {
+            *///?} else {
+        if (scaffoldingBlocksField != null && scaffoldingBlocksField.isFocused() && scaffoldingBlocksField.charTyped(input)) {
             //?}
             return true;
         }
@@ -1111,6 +1194,33 @@ final class PathmindSettingsPopupController {
         renderNodeDelayRow(context, mouseX, mouseY, contentX, delayRowCenterY, nodeDelayMs, NODE_DELAY_MIN_MS, NODE_DELAY_MAX_MS, popupX, scaledWidth);
         context.hLine(sectionDividerX, popupX + scaledWidth - 16, delayDividerY,
             animation.getAnimatedPopupColor(UITheme.BORDER_SUBTLE));
+
+        int pathfindingLabelY = delayDividerY + 12;
+        host.drawPopupTextWithEllipsis(context, "Pathfinding", contentX, pathfindingLabelY, scaledWidth - 40,
+            animation.getAnimatedPopupColor(UITheme.TEXT_SECONDARY));
+        int pathBreakDividerY = pathfindingLabelY + 28;
+        renderToggleRow(context, mouseX, mouseY, contentX, (pathfindingLabelY + 14 + pathBreakDividerY) / 2,
+            "Allow block breaking", Boolean.TRUE.equals(settings.pathfindingAllowBlockBreaking), popupX, scaledWidth);
+        context.hLine(sectionDividerX, popupX + scaledWidth - 16, pathBreakDividerY, animation.getAnimatedPopupColor(UITheme.BORDER_SUBTLE));
+        int pathPlaceDividerY = pathBreakDividerY + 22;
+        renderToggleRow(context, mouseX, mouseY, contentX, (pathBreakDividerY + pathPlaceDividerY) / 2,
+            "Allow block placing", Boolean.TRUE.equals(settings.pathfindingAllowBlockPlacing), popupX, scaledWidth);
+        context.hLine(sectionDividerX, popupX + scaledWidth - 16, pathPlaceDividerY, animation.getAnimatedPopupColor(UITheme.BORDER_SUBTLE));
+        int scaffoldDividerY = pathPlaceDividerY + 22;
+        renderToggleRow(context, mouseX, mouseY, contentX, (pathPlaceDividerY + scaffoldDividerY) / 2,
+            "Allow scaffolding while building", Boolean.TRUE.equals(settings.schematicAllowScaffolding), popupX, scaledWidth);
+        context.hLine(sectionDividerX, popupX + scaledWidth - 16, scaffoldDividerY, animation.getAnimatedPopupColor(UITheme.BORDER_SUBTLE));
+        int scaffoldFieldCenterY = scaffoldDividerY + 16;
+        renderScaffoldingBlocksRow(context, mouseX, mouseY, contentX, scaffoldFieldCenterY, popupX, scaledWidth);
+        context.hLine(sectionDividerX, popupX + scaledWidth - 16, scaffoldDividerY + 30, animation.getAnimatedPopupColor(UITheme.BORDER_SUBTLE));
+        int matchingReplaceDividerY = scaffoldDividerY + 52;
+        renderToggleRow(context, mouseX, mouseY, contentX, (scaffoldDividerY + 30 + matchingReplaceDividerY) / 2,
+            "Repair matching block states", Boolean.TRUE.equals(settings.schematicReplaceMatchingBlocks), popupX, scaledWidth);
+        context.hLine(sectionDividerX, popupX + scaledWidth - 16, matchingReplaceDividerY, animation.getAnimatedPopupColor(UITheme.BORDER_SUBTLE));
+        int destructiveRebuildDividerY = matchingReplaceDividerY + 22;
+        renderToggleRow(context, mouseX, mouseY, contentX, (matchingReplaceDividerY + destructiveRebuildDividerY) / 2,
+            "Break and rebuild conflicts", Boolean.TRUE.equals(settings.schematicAllowDestructiveRebuild), popupX, scaledWidth);
+        context.hLine(sectionDividerX, popupX + scaledWidth - 16, destructiveRebuildDividerY, animation.getAnimatedPopupColor(UITheme.BORDER_SUBTLE));
 
         int nodeSettingsLabelY = getSettingsNodeSectionLabelY(contentPopupY);
         int nodeSettingsBodyY = nodeSettingsLabelY + 14;
@@ -1389,6 +1499,18 @@ final class PathmindSettingsPopupController {
             animation,
             sliderHoverProgress
         );
+    }
+
+    void renderScaffoldingBlocksRow(GuiGraphics context, int mouseX, int mouseY, int labelX, int centerY, int popupX, int scaledWidth) {
+        String value = settings.schematicScaffoldingBlocks == null ? "" : settings.schematicScaffoldingBlocks;
+        int width = Math.min(160, scaledWidth - 150);
+        int x = popupX + scaledWidth - width - 20;
+        int y = centerY - 8;
+        boolean focused = scaffoldingBlocksField != null && scaffoldingBlocksField.isFocused();
+        boolean hovered = host.isPointInRect(mouseX, mouseY, x, y, width, 16);
+        PathmindSettingsRowRenderer.renderNumericField(context, host.font(), scaffoldingBlocksField, mouseX, mouseY,
+            labelX, centerY, "Allowed scaffolding blocks", x, y, width, 16, value, Component.empty(), accentColor(), animation,
+            focused ? 1f : host.hoverProgress("settings-scaffolding-blocks", hovered), focused, TEXT_FIELD_VERTICAL_PADDING);
     }
 
     void renderCreateListRadiusRow(GuiGraphics context, int mouseX, int mouseY, int labelX, int centerY,

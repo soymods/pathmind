@@ -221,6 +221,10 @@ final class NodeNavigationCommandExecutor {
             failTravelNode(future, "Could not start Pathmind Nav");
             return;
         }
+        // startGoto refreshes global pathfinding defaults; reapply this node's
+        // stricter per-run permissions before the first navigator tick.
+        navigator.setBlockBreakingAllowed(isGotoAllowBreakWhileExecuting());
+        navigator.setBlockPlacingAllowed(isGotoAllowPlaceWhileExecuting());
 
         navFuture.whenComplete((result, throwable) -> {
             navigator.setBlockBreakingAllowed(previousBreakAllowed);

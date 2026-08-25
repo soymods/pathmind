@@ -116,8 +116,10 @@ public class PathmindNeoForge {
     private Object navigatorDebugOverlay;
     private Method navigatorDebugOverlayToggleMethod;
     private Object pathmindNavigator;
+    private Object schematicBuildExecutor;
     private Method pathmindNavigatorIsActiveMethod;
     private Method pathmindNavigatorTickMethod;
+    private Method schematicBuildExecutorTickMethod;
     private Method pathmindNavigatorResetMethod;
     private Method pathmindNavigatorStopMethod;
     private Method pathmindNavigatorStartGotoMethod;
@@ -259,6 +261,10 @@ public class PathmindNeoForge {
         pathmindNavigatorSetBlockPlacingAllowedMethod = navigatorClass.getMethod("setBlockPlacingAllowed", boolean.class);
         pathmindNavigatorSetEventLoggingEnabledMethod = navigatorClass.getMethod("setEventLoggingEnabled", boolean.class);
 
+        Class<?> schematicBuildExecutorClass = Class.forName("com.pathmind.schematic.SchematicBuildExecutor");
+        schematicBuildExecutor = schematicBuildExecutorClass.getMethod("getInstance").invoke(null);
+        schematicBuildExecutorTickMethod = schematicBuildExecutorClass.getMethod("tick", Minecraft.class);
+
         Class<?> waterModeClass = Class.forName("com.pathmind.execution.PathmindNavigator$WaterMode");
         pathmindNavigatorSetWaterModeMethod = navigatorClass.getMethod("setWaterMode", waterModeClass);
         Object[] waterModes = waterModeClass.getEnumConstants();
@@ -316,6 +322,8 @@ public class PathmindNeoForge {
         }
         invokeBridge("tick Pathmind systems", () -> {
             navigatorChatSuggestionsTickMethod.invoke(navigatorChatSuggestions, client);
+            pathmindNavigatorTickMethod.invoke(pathmindNavigator, client);
+            schematicBuildExecutorTickMethod.invoke(schematicBuildExecutor, client);
             serverJoinTrackerTickMethod.invoke(null, client);
         });
         handleRecipeCacheWarmup(client);

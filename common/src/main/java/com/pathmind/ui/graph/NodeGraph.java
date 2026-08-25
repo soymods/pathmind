@@ -2564,6 +2564,9 @@ public class NodeGraph {
         return node.getY() + 2;
     }
 
+    /** Set only for the click currently being handled; consumed by the screen host. */
+    private boolean buildSchematicPreviewStarted;
+
     private void renderBuildSchematicPreviewButton(GuiGraphics context, Font textRenderer, Node node,
                                                     boolean dimmed, int mouseX, int mouseY) {
         nodeControls.renderNodeHeaderTextButton(context, textRenderer, getBuildSchematicPreviewButtonWorldX(node),
@@ -2579,6 +2582,7 @@ public class NodeGraph {
 
     /** Opens a non-mutating in-world preview from the BUILD node's selected file and XYZ position. */
     public boolean handleBuildSchematicPreviewClick(Node node, int screenX, int screenY) {
+        buildSchematicPreviewStarted = false;
         if (!isPointInsideBuildSchematicPreviewButton(node, screenX, screenY)) {
             return false;
         }
@@ -2603,8 +2607,17 @@ public class NodeGraph {
             new BlockPos(x.getIntValue(), y.getIntValue(), z.getIntValue()));
         if (!result.success()) {
             node.sendNodeErrorMessageToPlayer("Build Schematic preview: " + result.message());
+        } else {
+            buildSchematicPreviewStarted = true;
         }
         return true;
+    }
+
+    /** Returns and clears whether the most recent preview-button click succeeded. */
+    public boolean consumeBuildSchematicPreviewStarted() {
+        boolean started = buildSchematicPreviewStarted;
+        buildSchematicPreviewStarted = false;
+        return started;
     }
 
 

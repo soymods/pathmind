@@ -823,11 +823,25 @@ public final class PathmindNavigator {
         // forever beside a route waypoint. Slow down near it, but keep moving
         // until the executor's own arrival radius can be reached.
         boolean atWaypoint = distance <= 0.35D;
-        client.options.keyUp.setDown(!atWaypoint && yawError <= 32.0F);
-        if (distance <= 1.35D) {
-            Vec3 velocity = client.player.getDeltaMovement();
-            client.player.setDeltaMovement(velocity.x * 0.65D, velocity.y, velocity.z * 0.65D);
-        }
+        Vec3 direction = distance <= 0.001D ? Vec3.ZERO : target.subtract(position).scale(1.0D / distance);
+        Vec3 velocity = client.player.getDeltaMovement();
+        double forwardSpeed = velocity.dot(direction);
+        Vec3 lateralVelocity = velocity.subtract(direction.scale(forwardSpeed));
+        // Cap velocity against the remaining distance on every flight tick,
+        // rather than merely releasing forward near the waypoint. This is an
+        // active counterbalance: it immediately damps drift and prevents a
+        // fast creative-flight leg from carrying through a one-block target.
+        // Keep the flight controller deliberately below vanilla's natural
+        // top speed. A build route changes target every few blocks, so a
+        // high cruise cap means there is rarely enough room to brake before
+        // the next turn. This lower distance-based cap causes continuous,
+        // visible counter-steering as each waypoint approaches.
+        double maxForwardSpeed = Mth.clamp(distance * 0.14D, 0.045D, 0.20D);
+        boolean braking = atWaypoint || forwardSpeed > maxForwardSpeed + 0.01D;
+        double restrainedForward = Mth.clamp(forwardSpeed, -maxForwardSpeed, maxForwardSpeed);
+        client.player.setDeltaMovement(direction.scale(restrainedForward).add(lateralVelocity.scale(0.30D)));
+        client.options.keyUp.setDown(!braking && yawError <= 32.0F);
+        client.options.keyDown.setDown(braking && yawError <= 32.0F);
         // Pitch guides the horizontal component, while jump/shift supplies
         // reliable vertical thrust. Keep that thrust for diagonal segments
         // too: when the player is beside a newly built wall, forward motion

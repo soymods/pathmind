@@ -43,13 +43,16 @@ import org.slf4j.LoggerFactory;
 public final class SchematicBuildExecutor {
     private static final Logger LOGGER = LoggerFactory.getLogger("Pathmind/SchematicBuild");
     private static final SchematicBuildExecutor INSTANCE = new SchematicBuildExecutor();
-    private static final long PLACE_RETRY_DELAY_MS = 180L;
+    private static final int MIN_SCHEMATIC_PLACEMENT_SPEED = 1;
+    private static final int MAX_SCHEMATIC_PLACEMENT_SPEED = 20;
     // A placement packet can take more than one client tick to be reflected in
     // the local world, especially on a remote server.  Do not issue another
     // click while the previous one is still awaiting authoritative state.
     private static final long PLACE_CONFIRM_TIMEOUT_MS = 1_500L;
     private static final long BREAK_TIMEOUT_MS = 12_000L;
     private static final long FLIGHT_TIMEOUT_MS = 30_000L;
+    private static final long FLIGHT_STALL_REPLAN_MS = 1_250L;
+    private static final double FLIGHT_PROGRESS_DISTANCE_SQ = 0.09D;
     private static final long MINED_DROP_PICKUP_WAIT_MS = 1_200L;
     private static final int MAX_PLACE_ATTEMPTS = 4;
 
@@ -71,12 +74,17 @@ public final class SchematicBuildExecutor {
     private final Map<BlockPos, BlockState> temporaryScaffolds = new LinkedHashMap<>();
     /** Approaches which received a click but never produced the desired state. */
     private final Map<BlockPos, Set<ApproachKey>> rejectedApproaches = new LinkedHashMap<>();
+    /** Targets this build has already clicked, used for safe state repair. */
+    private final Set<BlockPos> attemptedPlacementTargets = new HashSet<>();
     private State state = State.IDLE;
     private long actionStartedAtMs;
     private long nextPlaceAttemptAtMs;
     private long waitUntilMs;
     private int placementAttempts;
     private long lastLiveFlightLogAtMs;
+    private Vec3 lastFlightProgressPosition = Vec3.ZERO;
+    private long lastFlightProgressAtMs;
+    private int flightStallReplans;
     private String lastPlacementOutcome = "no interaction sent";
     private String status = "idle";
 
@@ -125,6 +133,7 @@ public final class SchematicBuildExecutor {
         placementAttempts = 0;
         lastPlacementOutcome = "no interaction sent";
         rejectedApproaches.clear();
+        attemptedPlacementTargets.clear();
         temporaryScaffolds.clear();
         activeScaffoldCleanup = false;
         actionStartedAtMs = System.currentTimeMillis();
@@ -267,8 +276,10 @@ public final class SchematicBuildExecutor {
         }
         SchematicPlacementPlanner.ConstructionStep next = constructionPlan.steps().stream()
             .filter(step -> (step.action() == SchematicPlacementPlanner.StepAction.PLACE
-                || step.action() == SchematicPlacementPlanner.StepAction.REPLACE)
+                || step.action() == SchematicPlacementPlanner.StepAction.REPLACE
+                || isRepairableOwnPlacement(client.level, step))
                 && dependenciesAreComplete(client.level, step))
+            .map(this::asRepairStepIfNeeded)
             .min(Comparator
                 .comparingDouble((SchematicPlacementPlanner.ConstructionStep step) -> step.worldPosition().distSqr(client.player.blockPosition()))
                 .thenComparingInt(step -> step.worldPosition().getY()))
@@ -380,7 +391,8 @@ public final class SchematicBuildExecutor {
     }
 
     private void tickFlight(Minecraft client) {
-        if (System.currentTimeMillis() - actionStartedAtMs > FLIGHT_TIMEOUT_MS) {
+        long now = System.currentTimeMillis();
+        if (now - actionStartedAtMs > FLIGHT_TIMEOUT_MS) {
             PathmindNavigator.getInstance().pauseExternalNavigation(client);
             if (!activeScaffold && !activeScaffoldCleanup) {
                 retryFromAlternateApproach("creative flight timed out before reaching the placement position");
@@ -399,10 +411,35 @@ public final class SchematicBuildExecutor {
         Vec3 position = client.player.position();
         if (position.distanceToSqr(target) <= 0.72D) {
             flightPathIndex++;
+            lastFlightProgressPosition = position;
+            lastFlightProgressAtMs = now;
+            return;
+        }
+        if (position.distanceToSqr(lastFlightProgressPosition) > FLIGHT_PROGRESS_DISTANCE_SQ) {
+            lastFlightProgressPosition = position;
+            lastFlightProgressAtMs = now;
+            flightStallReplans = 0;
+        } else if (now - lastFlightProgressAtMs >= FLIGHT_STALL_REPLAN_MS) {
+            List<BlockPos> replanned = SchematicFlightPlanner.findPath(
+                client.level, client.player.blockPosition(), activeApproach.standingPosition());
+            if (!replanned.isEmpty() && flightStallReplans++ < 2) {
+                flightPath = replanned;
+                flightPathIndex = flightPath.size() > 1 ? 1 : 0;
+                lastFlightProgressPosition = position;
+                lastFlightProgressAtMs = now;
+                liveLog("flight reroute reason=stalled target=" + format(activeApproach.standingPosition())
+                    + " route=" + flightPath.size() + " attempt=" + flightStallReplans);
+                return;
+            }
+            if (!activeScaffold && !activeScaffoldCleanup) {
+                retryFromAlternateApproach("creative flight stalled at " + format(client.player.blockPosition())
+                    + " while approaching " + format(waypoint));
+            } else {
+                pause("Creative flight stalled while reaching temporary support at " + format(activeStep.worldPosition()) + ".");
+            }
             return;
         }
         PathmindNavigator.getInstance().updateExternalNavigation(client, flightPath, flightPathIndex);
-        long now = System.currentTimeMillis();
         if (now - lastLiveFlightLogAtMs >= 1000L) {
             lastLiveFlightLogAtMs = now;
             liveLog("flight pos=" + format(client.player.blockPosition()) + " waypoint=" + format(waypoint)
@@ -419,15 +456,52 @@ public final class SchematicBuildExecutor {
         if (client == null || client.level == null || client.player == null || activeApproach == null) {
             return false;
         }
-        flightPath = SchematicFlightPlanner.findPath(client.level, client.player.blockPosition(), activeApproach.standingPosition());
+        // The nearest valid click face is not necessarily reachable once the
+        // build has enclosed part of its own volume. Evaluate the available
+        // air approaches by their actual 3D route rather than committing to
+        // the first geometric candidate and discovering the problem mid-flight.
+        List<SchematicPlacementPlanner.PlacementApproach> candidates = new ArrayList<>();
+        candidates.add(activeApproach);
+        if (activeStep != null) {
+            for (SchematicPlacementPlanner.PlacementApproach candidate
+                : SchematicPlacementPlanner.findCreativeFlightApproaches(client.level, activeStep, client.player.blockPosition())) {
+                if (!candidate.equals(activeApproach) && !isRejectedApproach(activeStep.worldPosition(), candidate)) {
+                    candidates.add(candidate);
+                }
+            }
+        }
+        List<BlockPos> bestRoute = List.of();
+        SchematicPlacementPlanner.PlacementApproach bestApproach = null;
+        double bestScore = Double.POSITIVE_INFINITY;
+        for (SchematicPlacementPlanner.PlacementApproach candidate : candidates) {
+            List<BlockPos> route = SchematicFlightPlanner.findPath(
+                client.level, client.player.blockPosition(), candidate.standingPosition());
+            if (route.isEmpty()) {
+                continue;
+            }
+            double score = placementApproachPriority(activeStep == null ? null : activeStep.desired().state(), candidate) * 10_000.0D
+                + route.size() * 10.0D + candidate.interactionDistanceSq();
+            if (score < bestScore) {
+                bestScore = score;
+                bestApproach = candidate;
+                bestRoute = route;
+            }
+        }
+        if (bestApproach == null) {
+            return false;
+        }
+        activeApproach = bestApproach;
+        flightPath = bestRoute;
         flightPathIndex = flightPath.size() > 1 ? 1 : 0;
-        if (flightPath.isEmpty()
-            || !PathmindNavigator.getInstance().beginExternalNavigation(client, activeApproach.standingPosition(), "Build Creative Flight")) {
+        if (!PathmindNavigator.getInstance().beginExternalNavigation(client, activeApproach.standingPosition(), "Build Creative Flight")) {
             flightPath = List.of();
             flightPathIndex = 0;
             return false;
         }
         actionStartedAtMs = System.currentTimeMillis();
+        lastFlightProgressPosition = client.player.position();
+        lastFlightProgressAtMs = actionStartedAtMs;
+        flightStallReplans = 0;
         status = flightStatus;
         state = State.FLYING;
         liveLog("flight start target=" + format(activeApproach.standingPosition()) + " route=" + flightPath.size()
@@ -542,14 +616,23 @@ public final class SchematicBuildExecutor {
             pause(missingMaterialMessage(client.player, activeStep.desired().state().getBlock().asItem()));
             return;
         }
-        orientForPlacement(client.player, activeStep.desired().state(), activeApproach.hitPosition());
+        // The face centre is not enough for stateful blocks.  In particular,
+        // stairs use the vertical point on a horizontal face to choose their
+        // half.  Clicking the centre always asks vanilla for the bottom half,
+        // then the reconciler tears it down and tries again forever when the
+        // schematic requests a top stair.  Preserve the chosen support face,
+        // but aim at the correct half of it before sending the actual use
+        // packet.
+        Vec3 placementHit = placementHitPosition(activeStep, activeApproach);
+        orientForPlacement(client.player, activeStep.desired().state(), placementHit);
         int previousSlot = selectedSlot(client.player.getInventory());
         if (!HotbarSlotSynchronizer.selectHotbarSlot(client, hotbarSlot)) {
             pause("Could not select the required block in the hotbar.");
             return;
         }
         InteractionResult result = client.gameMode.useItemOn(client.player, InteractionHand.MAIN_HAND,
-            new BlockHitResult(activeApproach.hitPosition(), activeApproach.face(), activeApproach.supportPosition(), false));
+            new BlockHitResult(placementHit, activeApproach.face(), activeApproach.supportPosition(), false));
+        attemptedPlacementTargets.add(activeStep.worldPosition().immutable());
         client.player.swing(InteractionHand.MAIN_HAND);
         if (previousSlot >= 0) {
             HotbarSlotSynchronizer.selectHotbarSlot(client, previousSlot);
@@ -557,9 +640,16 @@ public final class SchematicBuildExecutor {
         placementAttempts++;
         lastPlacementOutcome = result == null ? "interaction returned no result" : String.valueOf(result).toLowerCase(java.util.Locale.ROOT);
         actionStartedAtMs = now;
-        nextPlaceAttemptAtMs = now + PLACE_RETRY_DELAY_MS;
+        nextPlaceAttemptAtMs = now + placementRetryDelayMs();
         status = "placing " + activeStep.desired().stateId() + " at " + format(activeStep.worldPosition())
             + " (attempt " + placementAttempts + ")";
+        if (activeStep.desired().stateId().contains("_stairs")) {
+            liveLog("stair placement target=" + format(activeStep.worldPosition())
+                + " desired=" + activeStep.desired().state()
+                + " face=" + activeApproach.face().getSerializedName()
+                + " hit=" + String.format(java.util.Locale.ROOT, "%.2f,%.2f,%.2f", placementHit.x, placementHit.y, placementHit.z)
+                + " result=" + lastPlacementOutcome);
+        }
         if (result != null && result.consumesAction()) {
             state = State.WAITING_FOR_PLACE;
         } else if (placementAttempts >= MAX_PLACE_ATTEMPTS) {
@@ -609,6 +699,35 @@ public final class SchematicBuildExecutor {
             }
         }
         return true;
+    }
+
+    /**
+     * A valid placement click can produce the right block with the wrong
+     * directional state (notably stairs) before the server reconciles it. If
+     * that happened during this build, repair the same block type automatically
+     * while retaining the default promise never to overwrite user blocks.
+     */
+    private boolean isRepairableOwnPlacement(Level world, SchematicPlacementPlanner.ConstructionStep step) {
+        if (world == null || step == null || step.action() != SchematicPlacementPlanner.StepAction.CONFLICT
+            || !attemptedPlacementTargets.contains(step.worldPosition())) {
+            return false;
+        }
+        BlockState current = world.getBlockState(step.worldPosition());
+        BlockState desired = step.desired().state();
+        return current.getBlock() == desired.getBlock()
+            && !current.equals(desired)
+            && world.getBlockEntity(step.worldPosition()) == null
+            && current.getDestroySpeed(world, step.worldPosition()) >= 0.0F;
+    }
+
+    private SchematicPlacementPlanner.ConstructionStep asRepairStepIfNeeded(SchematicPlacementPlanner.ConstructionStep step) {
+        if (step == null || step.action() != SchematicPlacementPlanner.StepAction.CONFLICT) {
+            return step;
+        }
+        return new SchematicPlacementPlanner.ConstructionStep(
+            step.desired(), step.worldPosition(), SchematicPlacementPlanner.StepAction.REPLACE,
+            step.dependencies(), step.approaches(), null
+        );
     }
 
     private SchematicBuildPlan.Placement expectedAt(BlockPos worldPosition) {
@@ -1042,6 +1161,27 @@ public final class SchematicBuildExecutor {
         return Math.abs(dx) > Math.abs(dz) ? (dx > 0 ? Direction.WEST : Direction.EAST) : (dz > 0 ? Direction.NORTH : Direction.SOUTH);
     }
 
+    /**
+     * Produces the exact point sent in the block-use packet.  Horizontal faces
+     * accept any vertical point inside the block face.  Vanilla uses that
+     * point to determine the half for stairs and slabs, so a centre click is
+     * only correct for a bottom-half state.
+     */
+    private static Vec3 placementHitPosition(
+        SchematicPlacementPlanner.ConstructionStep step,
+        SchematicPlacementPlanner.PlacementApproach approach
+    ) {
+        Vec3 hit = approach.hitPosition();
+        String half = propertyValue(step.desired().state(), "half");
+        String slabType = propertyValue(step.desired().state(), "type");
+        boolean top = "top".equals(half) || "top".equals(slabType);
+        boolean bottom = "bottom".equals(half) || "bottom".equals(slabType);
+        if ((top || bottom) && approach.face().getAxis().isHorizontal()) {
+            return new Vec3(hit.x, step.worldPosition().getY() + (top ? 0.75D : 0.25D), hit.z);
+        }
+        return hit;
+    }
+
     private static void orientForPlacement(LocalPlayer player, BlockState desired, Vec3 target) {
         orientToward(player, target);
         if (player == null || desired == null) return;
@@ -1050,7 +1190,10 @@ public final class SchematicBuildExecutor {
         if (facing == null) facing = railDirection(desired);
         if (facing == null) return;
         if (facing.getAxis().isHorizontal()) {
-            player.setYRot((float) (Math.atan2(facing.getStepZ(), facing.getStepX()) * 180.0D / Math.PI) - 90.0F);
+            float yaw = (float) (Math.atan2(facing.getStepZ(), facing.getStepX()) * 180.0D / Math.PI) - 90.0F;
+            player.setYRot(yaw);
+            player.setYHeadRot(yaw);
+            player.setYBodyRot(yaw);
         } else {
             player.setXRot(facing == Direction.UP ? -90.0F : 90.0F);
         }
@@ -1190,6 +1333,13 @@ public final class SchematicBuildExecutor {
     private void liveLog(String event) {
         LOGGER.info("build live: {}", event);
         PathmindNavigator.getInstance().recordExternalEvent(event);
+    }
+
+    private static long placementRetryDelayMs() {
+        Integer configured = SettingsManager.getCurrent().schematicPlacementSpeed;
+        int placementsPerSecond = configured == null ? 5
+            : Math.max(MIN_SCHEMATIC_PLACEMENT_SPEED, Math.min(MAX_SCHEMATIC_PLACEMENT_SPEED, configured));
+        return Math.max(50L, 1_000L / placementsPerSecond);
     }
 
     private enum State {

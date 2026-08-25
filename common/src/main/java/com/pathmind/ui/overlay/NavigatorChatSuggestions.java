@@ -234,7 +234,11 @@ public final class NavigatorChatSuggestions {
             addIfMatches(suggestions, "cancel", "cancel the active build", "!build cancel", partial);
         }
         if (parts.length == 2 && endsWithSpace && "preview".equals(parts[1])) {
-            addSchematicSuggestions(suggestions, "");
+            addSchematicSuggestions(suggestions, "", "!build preview ");
+            return suggestions;
+        }
+        if (parts.length == 3 && !endsWithSpace && "preview".equals(parts[1])) {
+            addSchematicSuggestions(suggestions, parts[2], "!build preview ");
             return suggestions;
         }
         if (parts.length == 3 && endsWithSpace && "preview".equals(parts[1])) {
@@ -259,6 +263,10 @@ public final class NavigatorChatSuggestions {
     }
 
     private void addSchematicSuggestions(List<SuggestionEntry> suggestions, String partial) {
+        addSchematicSuggestions(suggestions, partial, "!build ");
+    }
+
+    private void addSchematicSuggestions(List<SuggestionEntry> suggestions, String partial, String commandPrefix) {
         Minecraft client = Minecraft.getInstance();
         if (client == null || client.gameDirectory == null) {
             return;
@@ -268,7 +276,7 @@ public final class NavigatorChatSuggestions {
             if (!query.isBlank() && !schematic.toLowerCase(Locale.ROOT).startsWith(query)) {
                 continue;
             }
-            suggestions.add(new SuggestionEntry(schematic, "schematic", "!build " + schematic + " "));
+            suggestions.add(new SuggestionEntry(schematic, "schematic", commandPrefix + schematic + " "));
             if (suggestions.size() >= 8) {
                 return;
             }

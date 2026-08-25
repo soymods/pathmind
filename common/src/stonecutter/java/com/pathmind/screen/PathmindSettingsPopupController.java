@@ -95,6 +95,8 @@ final class PathmindSettingsPopupController {
     };
     private static final int NODE_DELAY_MIN_MS = 1;
     private static final int NODE_DELAY_MAX_MS = 500;
+    private static final int SCHEMATIC_PLACEMENT_SPEED_MIN = 1;
+    private static final int SCHEMATIC_PLACEMENT_SPEED_MAX = 20;
     private static final int TEXT_FIELD_VERTICAL_PADDING = 3;
     private static final int NODE_SEARCH_FIELD_WIDTH = 180;
     private static final String[] SUPPORTED_LANGUAGES = {"en_us", "es_es", "pt_br", "ru_ru", "de_de", "fr_fr", "pl_pl"};
@@ -111,6 +113,8 @@ final class PathmindSettingsPopupController {
     private boolean skipPresetDeleteConfirm;
     private int nodeDelayMs;
     private boolean nodeDelayDragging;
+    private int schematicPlacementSpeed;
+    private boolean schematicPlacementSpeedDragging;
     private boolean createListRadiusDragging;
     private EditBox nodeDelayField;
     private EditBox scaffoldingBlocksField;
@@ -145,6 +149,12 @@ final class PathmindSettingsPopupController {
             NODE_DELAY_MAX_MS
         );
         settings.nodeDelayMs = nodeDelayMs;
+        this.schematicPlacementSpeed = Mth.clamp(
+            settings.schematicPlacementSpeed != null ? settings.schematicPlacementSpeed : 5,
+            SCHEMATIC_PLACEMENT_SPEED_MIN,
+            SCHEMATIC_PLACEMENT_SPEED_MAX
+        );
+        settings.schematicPlacementSpeed = schematicPlacementSpeed;
     }
 
     private enum AccentOption {
@@ -708,7 +718,17 @@ final class PathmindSettingsPopupController {
             //?}
             return true;
         }
-        int matchingReplaceDividerY = scaffoldDividerY + 52;
+        int placementSpeedDividerY = scaffoldDividerY + 52;
+        int placementSpeedCenterY = (scaffoldDividerY + 30 + placementSpeedDividerY) / 2;
+        int placementSpeedSliderX = popupX + popupWidth - SETTINGS_SLIDER_WIDTH - 20;
+        int placementSpeedSliderY = placementSpeedCenterY - SETTINGS_SLIDER_HEIGHT / 2;
+        if (bodyHovered && host.isPointInRect(mouseXi, mouseYi, placementSpeedSliderX, placementSpeedSliderY - 4,
+            SETTINGS_SLIDER_WIDTH, SETTINGS_SLIDER_HEIGHT + 8)) {
+            schematicPlacementSpeedDragging = true;
+            updateSchematicPlacementSpeedFromMouse(mouseXi, popupX, popupWidth);
+            return true;
+        }
+        int matchingReplaceDividerY = placementSpeedDividerY + 22;
         int matchingReplaceToggleY = ((scaffoldDividerY + 30 + matchingReplaceDividerY) / 2) - SETTINGS_TOGGLE_HEIGHT / 2;
         if (bodyHovered && host.isPointInRect(mouseXi, mouseYi, gridToggleX, matchingReplaceToggleY, SETTINGS_TOGGLE_WIDTH, SETTINGS_TOGGLE_HEIGHT)) {
             settings.schematicReplaceMatchingBlocks = !Boolean.TRUE.equals(settings.schematicReplaceMatchingBlocks);
@@ -1213,7 +1233,14 @@ final class PathmindSettingsPopupController {
         int scaffoldFieldCenterY = scaffoldDividerY + 16;
         renderScaffoldingBlocksRow(context, mouseX, mouseY, contentX, scaffoldFieldCenterY, popupX, scaledWidth);
         context.hLine(sectionDividerX, popupX + scaledWidth - 16, scaffoldDividerY + 30, animation.getAnimatedPopupColor(UITheme.BORDER_SUBTLE));
-        int matchingReplaceDividerY = scaffoldDividerY + 52;
+        int placementSpeedDividerY = scaffoldDividerY + 52;
+        int placementSpeedCenterY = (scaffoldDividerY + 30 + placementSpeedDividerY) / 2;
+        renderSliderRow(context, mouseX, mouseY, contentX, placementSpeedCenterY,
+            "Schematic placement speed", schematicPlacementSpeed,
+            SCHEMATIC_PLACEMENT_SPEED_MIN, SCHEMATIC_PLACEMENT_SPEED_MAX, popupX, scaledWidth);
+        context.hLine(sectionDividerX, popupX + scaledWidth - 16, placementSpeedDividerY,
+            animation.getAnimatedPopupColor(UITheme.BORDER_SUBTLE));
+        int matchingReplaceDividerY = placementSpeedDividerY + 22;
         renderToggleRow(context, mouseX, mouseY, contentX, (scaffoldDividerY + 30 + matchingReplaceDividerY) / 2,
             "Repair matching block states", Boolean.TRUE.equals(settings.schematicReplaceMatchingBlocks), popupX, scaledWidth);
         context.hLine(sectionDividerX, popupX + scaledWidth - 16, matchingReplaceDividerY, animation.getAnimatedPopupColor(UITheme.BORDER_SUBTLE));

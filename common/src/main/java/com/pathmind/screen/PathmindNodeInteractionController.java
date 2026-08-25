@@ -27,6 +27,7 @@ final class PathmindNodeInteractionController {
         void switchPreset(String presetName);
         void openBookTextEditor(Node node);
         void openParameterOverlay(Node node);
+        void closeEditorForWorldPreview();
         boolean executeFromNodeOnDoubleClick(Node node);
     }
 
@@ -148,6 +149,9 @@ final class PathmindNodeInteractionController {
         }
 
         if (nodeGraph.handleBuildSchematicPreviewClick(clickedNode, clickX, clickY)) {
+            if (nodeGraph.consumeBuildSchematicPreviewStarted()) {
+                host.closeEditorForWorldPreview();
+            }
             return true;
         }
 

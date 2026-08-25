@@ -1530,6 +1530,11 @@ public class PathmindVisualEditorScreen extends Screen {
         }
 
         @Override
+        public void closeEditorForWorldPreview() {
+            PathmindVisualEditorScreen.this.onClose();
+        }
+
+        @Override
         public boolean executeFromNodeOnDoubleClick(Node node) {
             return handleNodeDoubleClickExecution(node);
         }

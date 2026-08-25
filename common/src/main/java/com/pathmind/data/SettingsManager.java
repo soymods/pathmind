@@ -21,6 +21,8 @@ public final class SettingsManager {
     private static final String SETTINGS_FILE_NAME = "settings.json";
     private static final int NODE_DELAY_MIN_MS = 1;
     private static final int NODE_DELAY_MAX_MS = 500;
+    private static final int SCHEMATIC_PLACEMENT_SPEED_MIN = 1;
+    private static final int SCHEMATIC_PLACEMENT_SPEED_MAX = 20;
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static volatile Settings cachedSettings;
 
@@ -58,6 +60,8 @@ public final class SettingsManager {
         public Boolean schematicReplaceMatchingBlocks = false;
         /** Explicit permission to break an arbitrary conflicting block and rebuild it. */
         public Boolean schematicAllowDestructiveRebuild = false;
+        /** Maximum schematic placement interactions per second. */
+        public Integer schematicPlacementSpeed = 5;
         public Boolean keyPressedActivatesInGuis = true;
         public Boolean createListUseCustomRadius = false;
         public Integer createListRadius = 64;
@@ -278,6 +282,13 @@ public final class SettingsManager {
         }
         if (settings.schematicAllowDestructiveRebuild == null) {
             settings.schematicAllowDestructiveRebuild = false;
+        }
+        if (settings.schematicPlacementSpeed == null) {
+            settings.schematicPlacementSpeed = 5;
+        } else if (settings.schematicPlacementSpeed < SCHEMATIC_PLACEMENT_SPEED_MIN) {
+            settings.schematicPlacementSpeed = SCHEMATIC_PLACEMENT_SPEED_MIN;
+        } else if (settings.schematicPlacementSpeed > SCHEMATIC_PLACEMENT_SPEED_MAX) {
+            settings.schematicPlacementSpeed = SCHEMATIC_PLACEMENT_SPEED_MAX;
         }
         if (settings.keyPressedActivatesInGuis == null) {
             settings.keyPressedActivatesInGuis = true;

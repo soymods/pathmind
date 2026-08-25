@@ -5,6 +5,7 @@ import com.pathmind.execution.BackgroundStartRunner;
 import com.pathmind.execution.ExecutionManager;
 import com.pathmind.nodes.NodeType;
 import com.pathmind.nodes.StartLaunchMode;
+import com.pathmind.schematic.SchematicFiles;
 import com.pathmind.ui.overlay.NodeErrorNotificationOverlay;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.ChatMessageTracker;
@@ -747,7 +748,7 @@ public class PathmindNeoForge {
         }
         String command = rawCommand == null ? "" : rawCommand.trim();
         if (command.isEmpty() || command.equalsIgnoreCase("help")) {
-            showNavigatorMessage("Pathmind Nav: !travel, !path, !nav debug, !stop");
+            showNavigatorMessage("Pathmind Nav: !build <schematic> <x> <y> <z>, !travel, !path, !nav debug, !stop");
             return true;
         }
 
@@ -763,6 +764,10 @@ public class PathmindNeoForge {
         }
         if (parts[0].equalsIgnoreCase("travel")) {
             handleNavigatorGoto(client, parts);
+            return true;
+        }
+        if (parts[0].equalsIgnoreCase("build")) {
+            handleSchematicBuildCommand(client, parts);
             return true;
         }
         if (parts[0].equalsIgnoreCase("path")) {
@@ -787,8 +792,32 @@ public class PathmindNeoForge {
             return true;
         }
 
-        showNavigatorMessage("Unknown Pathmind Nav command. Use !travel, !path, !nav water, !nav logs, !flag, or !stop.");
+        showNavigatorMessage("Unknown Pathmind Nav command. Use !build, !travel, !path, !nav water, !nav logs, !flag, or !stop.");
         return true;
+    }
+
+    private void handleSchematicBuildCommand(Minecraft client, String[] parts) {
+        if (client == null || client.gameDirectory == null || parts.length != 5) {
+            showNavigatorMessage("Usage: !build <schematic> <x> <y> <z>");
+            return;
+        }
+        int x;
+        int y;
+        int z;
+        try {
+            x = Integer.parseInt(parts[2]);
+            y = Integer.parseInt(parts[3]);
+            z = Integer.parseInt(parts[4]);
+        } catch (NumberFormatException ignored) {
+            showNavigatorMessage("Build coordinates must be whole numbers.");
+            return;
+        }
+        Optional<java.nio.file.Path> schematic = SchematicFiles.resolve(client.gameDirectory.toPath(), parts[1]);
+        if (schematic.isEmpty()) {
+            showNavigatorMessage("Schematic not found in " + client.gameDirectory.toPath().resolve("schematics") + ": " + parts[1]);
+            return;
+        }
+        showNavigatorMessage("Schematic selected: " + parts[1] + " at " + x + " " + y + " " + z + ". Client-side building is coming next.");
     }
 
     private void handleNavigatorGoto(Minecraft client, String[] parts) {

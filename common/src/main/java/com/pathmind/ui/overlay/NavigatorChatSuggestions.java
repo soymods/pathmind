@@ -136,7 +136,7 @@ public final class NavigatorChatSuggestions {
         }
         String current = currentText == null ? "" : currentText;
         String normalized = current.stripTrailing().stripLeading().toLowerCase(Locale.ROOT);
-        for (String rootCommand : List.of("!travel", "!path", "!nav", "!flag", "!stop")) {
+        for (String rootCommand : List.of("!build", "!travel", "!path", "!nav", "!flag", "!stop")) {
             if (rootCommand.equals(completion) && normalized.startsWith(rootCommand)) {
                 return rootCommand;
             }
@@ -177,6 +177,9 @@ public final class NavigatorChatSuggestions {
         if ("travel".equals(root) || "path".equals(root)) {
             return movementSuggestions(root, parts, endsWithSpace);
         }
+        if ("build".equals(root)) {
+            return buildSuggestions(parts, endsWithSpace);
+        }
         if ("flag".equals(root)) {
             return flagSuggestions(parts, endsWithSpace);
         }
@@ -188,12 +191,24 @@ public final class NavigatorChatSuggestions {
 
     private List<SuggestionEntry> rootSuggestions(String partialRoot) {
         List<SuggestionEntry> suggestions = new ArrayList<>();
+        addIfMatches(suggestions, "!build", "select a schematic and origin", "!build", partialRoot);
         addIfMatches(suggestions, "!travel", "go somewhere", "!travel", partialRoot);
         addIfMatches(suggestions, "!path", "preview route", "!path", partialRoot);
         addIfMatches(suggestions, "!nav", "navigator tools", "!nav", partialRoot);
         addIfMatches(suggestions, "!flag", "toggle flags", "!flag", partialRoot);
         addIfMatches(suggestions, "!stop", "cancel navigator", "!stop", partialRoot);
         return suggestions;
+    }
+
+    private List<SuggestionEntry> buildSuggestions(String[] parts, boolean endsWithSpace) {
+        if (parts == null || parts.length != 1 || !endsWithSpace) {
+            return List.of();
+        }
+        return List.of(new SuggestionEntry(
+            "<schematic> <x> <y> <z>",
+            "files are loaded from the active profile's schematics folder",
+            "!build "
+        ));
     }
 
     private List<SuggestionEntry> movementSuggestions(String root, String[] parts, boolean endsWithSpace) {

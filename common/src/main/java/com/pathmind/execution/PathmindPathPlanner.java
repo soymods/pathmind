@@ -887,7 +887,7 @@ final class PathmindPathPlanner {
             && dz == 0
             && dy > 0
             && (primitive == null
-                || (!primitive.isClimb() && !primitive.isPillar()))) {
+                || (!primitive.isClimb() && !primitive.isPillar() && !primitive.isMineAscent()))) {
             return false;
         }
         if (dx == 0
@@ -971,9 +971,33 @@ final class PathmindPathPlanner {
         addClimbNeighbors(world, current, start, goal, neighbors, now);
         addSafeDropNeighbors(world, current, start, goal, neighbors, now);
         if (worldModificationAllowed(world)) {
+            addVerticalMineAscentNeighbor(world, current, start, goal, neighbors, now);
             addPillarNeighbors(world, current, start, goal, neighbors, now, arrivalPrimitive != null && arrivalPrimitive.isPillar());
         }
         return neighbors;
+    }
+
+    /**
+     * A column cannot be climbed by only considering horizontal step-ups: once a
+     * player stands in a cleared pillar cell, the next obstruction is directly
+     * overhead.  Model that as an ordered MINE_ASCEND transition so the planner
+     * can clear the next layer and then jump onto the newly opened step.
+     */
+    void addVerticalMineAscentNeighbor(
+        Level world,
+        BlockPos current,
+        BlockPos start,
+        BlockPos goal,
+        List<Neighbor> neighbors,
+        long now
+    ) {
+        BlockPos candidate = current == null ? null : current.above();
+        Neighbor neighbor = buildPrimitiveNeighbor(
+            world, current, candidate, SearchPrimitiveType.MINE_ASCEND, start, goal, now
+        );
+        if (neighbor != null) {
+            neighbors.add(neighbor);
+        }
     }
 
     void addDirectedPrimitiveNeighbors(
@@ -1115,7 +1139,8 @@ final class PathmindPathPlanner {
         int dx = Math.abs(candidate.getX() - from.getX());
         int dz = Math.abs(candidate.getZ() - from.getZ());
         int dy = candidate.getY() - from.getY();
-        if (dx > 1 || dz > 1 || (dx == 0 && dz == 0) || (dx == 1 && dz == 1 && dy != 0)) {
+        boolean verticalMineAscent = family == SearchPrimitiveType.MINE_ASCEND && dx == 0 && dz == 0 && dy == 1;
+        if (dx > 1 || dz > 1 || (!verticalMineAscent && dx == 0 && dz == 0) || (dx == 1 && dz == 1 && dy != 0)) {
             return null;
         }
 
@@ -2914,6 +2939,7 @@ NavigatorPathCostPolicy.MoveType classifyMoveType(Level world, BlockPos from, Bl
         int horizontal = (int) Math.ceil(Math.sqrt(horizontalDistanceSq(start, target)));
         return Math.max(SEARCH_RADIUS, Math.min(MAX_SEARCH_RADIUS, horizontal + 8));
     }
+
 
     int getSearchHeight(BlockPos start, BlockPos target) {
         if (start == null || target == null) {

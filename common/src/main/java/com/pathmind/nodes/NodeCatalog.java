@@ -318,7 +318,6 @@ public final class NodeCatalog {
             NodeType.COME,
             NodeType.SURFACE,
             NodeType.COLLECT,
-            NodeType.BUILD,
             NodeType.TUNNEL,
             NodeType.FARM,
             NodeType.EXPLORE,

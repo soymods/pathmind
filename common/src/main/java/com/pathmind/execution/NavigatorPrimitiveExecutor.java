@@ -269,7 +269,9 @@ final class NavigatorPrimitiveExecutor {
         if (miningProgress.completed()) {
             synchronized (host.lock()) {
                 boolean terminalMinedAscent = miningProgress.minedAscent()
-                    && miningProgress.resumeIndex() >= navigationState.currentPath.size() - 1;
+                    // Only the absence of a next step is terminal.  Advancing to
+                    // the final index still has to execute that final primitive.
+                    && miningProgress.resumeIndex() == navigationState.pathIndex;
                 if (terminalMinedAscent) {
                     // A partial excavation route can legitimately end at the last
                     // newly opened stair.  Do not leave its completed MINE_ASCEND
@@ -647,7 +649,12 @@ final class NavigatorPrimitiveExecutor {
                     currentIndex = waypointIndex;
                 }
             }
-            if (resumeIndex <= currentIndex) {
+            // Reaching the final mined step has no next index.  It is still a
+            // completed primitive when the player is physically on that step so
+            // the caller can discard this partial route and plan the continuation.
+            boolean standingOnTerminalMinedStep = resumeIndex == currentIndex
+                && playerFootPos.equals(waypoint);
+            if (resumeIndex <= currentIndex && !standingOnTerminalMinedStep) {
                 return MiningProgress.incomplete();
             }
         }

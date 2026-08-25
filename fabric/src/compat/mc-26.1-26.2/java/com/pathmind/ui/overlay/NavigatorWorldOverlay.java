@@ -22,7 +22,12 @@ public final class NavigatorWorldOverlay {
     private static final int STEP_COLOR = 0xFF7FD36B;
     private static final int BREAK_COLOR = 0xFFFF5A4F;
     private static final int PLACE_COLOR = 0xFFC47BFF;
-    private static final int SCHEMATIC_PREVIEW_COLOR = 0xAA64E6FF;
+    /** Exact desired state is already present in the world. */
+    private static final int SCHEMATIC_CORRECT_COLOR = 0xCC54D870;
+    /** Target is absent (or occupied by a different block) and still needs placement. */
+    private static final int SCHEMATIC_MISSING_COLOR = 0xCCFF5A5A;
+    /** The target block exists but its properties, e.g. stair orientation, differ. */
+    private static final int SCHEMATIC_WRONG_STATE_COLOR = 0xCC5AB8FF;
     private static final float PATH_LINE_WIDTH = 2.5F;
     private static final float STEP_STROKE_WIDTH = 1.4F;
     private static final float BREAK_STROKE_WIDTH = 1.8F;
@@ -68,13 +73,21 @@ public final class NavigatorWorldOverlay {
         if (preview == null || preview.plan() == null || preview.origin() == null) {
             return;
         }
+        Minecraft client = Minecraft.getInstance();
+        if (client == null || client.level == null) {
+            return;
+        }
         // The requested build origin is the occupied footprint's bottom-centre.
         // Sponge's stored Offset is export metadata and must not move preview
         // separately from the executor's real placement coordinates.
         BlockPos base = preview.origin().subtract(preview.plan().placementAnchor());
         for (com.pathmind.schematic.SchematicBuildPlan.Placement placement : preview.plan().placements()) {
             BlockPos position = base.offset(placement.relativePosition());
-            Gizmos.cuboid(new AABB(position), GizmoStyle.stroke(SCHEMATIC_PREVIEW_COLOR, 1.15F))
+            net.minecraft.world.level.block.state.BlockState current = client.level.getBlockState(position);
+            int color = current.equals(placement.state()) ? SCHEMATIC_CORRECT_COLOR
+                : current.getBlock() == placement.state().getBlock() ? SCHEMATIC_WRONG_STATE_COLOR
+                : SCHEMATIC_MISSING_COLOR;
+            Gizmos.cuboid(new AABB(position), GizmoStyle.stroke(color, 1.35F))
                 .setAlwaysOnTop()
                 .persistForMillis(1);
         }

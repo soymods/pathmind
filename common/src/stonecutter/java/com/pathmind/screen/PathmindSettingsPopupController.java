@@ -929,6 +929,9 @@ final class PathmindSettingsPopupController {
         if (nodeDelayDragging) {
             updateNodeDelayFromMouse((int) mouseX, getPopupX(), getPopupWidth());
         }
+        if (schematicPlacementSpeedDragging) {
+            updateSchematicPlacementSpeedFromMouse((int) mouseX, getPopupX(), getPopupWidth());
+        }
         if (createListRadiusDragging) {
             updateCreateListRadiusFromMouse(getEffectiveSettingsTargetNode(), (int) mouseX, getPopupX(), getPopupWidth());
         }
@@ -940,6 +943,7 @@ final class PathmindSettingsPopupController {
     void mouseReleased(MouseButtonEvent click) {
         //?}
         nodeDelayDragging = false;
+        schematicPlacementSpeedDragging = false;
         createListRadiusDragging = false;
         settingsNodeSelectorScrollDragging = false;
         settingsPopupScrollDragging = false;
@@ -1471,8 +1475,8 @@ final class PathmindSettingsPopupController {
             SETTINGS_SLIDER_HANDLE_HEIGHT,
             accentColor(),
             animation,
-            tr("pathmind.unit.millisecondsShort"),
-            nodeDelayDragging
+            "blocks/s",
+            schematicPlacementSpeedDragging
         );
     }
 
@@ -1626,6 +1630,18 @@ final class PathmindSettingsPopupController {
         if (value != nodeDelayMs) {
             nodeDelayMs = value;
             settings.nodeDelayMs = nodeDelayMs;
+            SettingsManager.save(settings);
+        }
+    }
+
+    void updateSchematicPlacementSpeedFromMouse(int mouseX, int popupX, int popupWidth) {
+        int sliderX = popupX + popupWidth - SETTINGS_SLIDER_WIDTH - 20;
+        int localX = Mth.clamp(mouseX - sliderX, 0, SETTINGS_SLIDER_WIDTH);
+        float t = SETTINGS_SLIDER_WIDTH <= 0 ? 0f : localX / (float) SETTINGS_SLIDER_WIDTH;
+        int value = SCHEMATIC_PLACEMENT_SPEED_MIN + Math.round(t * (SCHEMATIC_PLACEMENT_SPEED_MAX - SCHEMATIC_PLACEMENT_SPEED_MIN));
+        if (value != schematicPlacementSpeed) {
+            schematicPlacementSpeed = value;
+            settings.schematicPlacementSpeed = value;
             SettingsManager.save(settings);
         }
     }

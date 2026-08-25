@@ -67,7 +67,7 @@ final class SchematicFlightPlanner {
         int minX = Math.min(start.getX(), goal.getX()) - radius;
         int maxX = Math.max(start.getX(), goal.getX()) + radius;
         int minY = Math.max(world.getMinY(), Math.min(start.getY(), goal.getY()) - 8);
-        int maxY = Math.min(world.getMinY() + world.getHeight() - 2, Math.max(start.getY(), goal.getY()) + 16);
+        int maxY = Math.min(world.getMinY() + world.getHeight() - 3, Math.max(start.getY(), goal.getY()) + 16);
         int minZ = Math.min(start.getZ(), goal.getZ()) - radius;
         int maxZ = Math.max(start.getZ(), goal.getZ()) + radius;
 
@@ -117,13 +117,20 @@ final class SchematicFlightPlanner {
     }
 
     static boolean isFlyable(Level world, BlockPos feet) {
-        if (world == null || feet == null || !world.hasChunkAt(feet) || !world.hasChunkAt(feet.above())) {
+        if (world == null || feet == null || !world.hasChunkAt(feet) || !world.hasChunkAt(feet.above())
+            || !world.hasChunkAt(feet.above(2))) {
             return false;
         }
         BlockState feetState = world.getBlockState(feet);
         BlockState headState = world.getBlockState(feet.above());
+        BlockState clearanceState = world.getBlockState(feet.above(2));
+        // A flight cell needs a full block of extra headroom. The player's
+        // actual Y position can float within the feet cell; two nominally
+        // empty cells alone still let the head graze the block above during
+        // an ascent or a route turn.
         return feetState.getFluidState().isEmpty() && headState.getFluidState().isEmpty()
-            && !hasCollision(feetState) && !hasCollision(headState);
+            && clearanceState.getFluidState().isEmpty()
+            && !hasCollision(feetState) && !hasCollision(headState) && !hasCollision(clearanceState);
     }
 
     private static boolean hasCollision(BlockState state) {

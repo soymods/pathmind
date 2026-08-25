@@ -771,6 +771,12 @@ public final class PathmindNavigator {
             return;
         }
         releaseMovementKeys(client);
+        // Arrival is the only point at which flight momentum is cancelled.
+        // This prevents coasting out of placement range without slowing or
+        // jerking around intermediate route waypoints.
+        if (client != null && client.player != null) {
+            client.player.setDeltaMovement(Vec3.ZERO);
+        }
         renderSnapshot = null;
     }
 
@@ -817,31 +823,11 @@ public final class PathmindNavigator {
         // around close waypoints. Native route following waits for alignment;
         // creative flight follows the same rule.
         double distance = position.distanceTo(target);
-        // Do not stop based solely on horizontal distance: a waypoint can be
-        // nearby on X/Z while still being almost a block above or below the
-        // player. That former dead zone is what left creative builds hovering
-        // forever beside a route waypoint. Slow down near it, but keep moving
-        // until the executor's own arrival radius can be reached.
-        boolean atWaypoint = distance <= 0.35D;
-        Vec3 direction = distance <= 0.001D ? Vec3.ZERO : target.subtract(position).scale(1.0D / distance);
-        Vec3 velocity = client.player.getDeltaMovement();
-        double forwardSpeed = velocity.dot(direction);
-        Vec3 lateralVelocity = velocity.subtract(direction.scale(forwardSpeed));
-        // Cap velocity against the remaining distance on every flight tick,
-        // rather than merely releasing forward near the waypoint. This is an
-        // active counterbalance: it immediately damps drift and prevents a
-        // fast creative-flight leg from carrying through a one-block target.
-        // Keep the flight controller deliberately below vanilla's natural
-        // top speed. A build route changes target every few blocks, so a
-        // high cruise cap means there is rarely enough room to brake before
-        // the next turn. This lower distance-based cap causes continuous,
-        // visible counter-steering as each waypoint approaches.
-        double maxForwardSpeed = Mth.clamp(distance * 0.14D, 0.045D, 0.20D);
-        boolean braking = atWaypoint || forwardSpeed > maxForwardSpeed + 0.01D;
-        double restrainedForward = Mth.clamp(forwardSpeed, -maxForwardSpeed, maxForwardSpeed);
-        client.player.setDeltaMovement(direction.scale(restrainedForward).add(lateralVelocity.scale(0.30D)));
-        client.options.keyUp.setDown(!braking && yawError <= 32.0F);
-        client.options.keyDown.setDown(braking && yawError <= 32.0F);
+        // Intermediate route nodes steer the flight rather than stop it.
+        // The executor cancels velocity only after it accepts the final
+        // placement approach via pauseExternalNavigation.
+        client.options.keyUp.setDown(distance > 0.02D && yawError <= 32.0F);
+        client.options.keyDown.setDown(false);
         // Pitch guides the horizontal component, while jump/shift supplies
         // reliable vertical thrust. Keep that thrust for diagonal segments
         // too: when the player is beside a newly built wall, forward motion

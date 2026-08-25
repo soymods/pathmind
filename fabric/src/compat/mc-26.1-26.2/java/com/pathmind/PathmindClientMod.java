@@ -676,6 +676,12 @@ public class PathmindClientMod implements ClientModInitializer {
         }
 
         if (parts[0].equalsIgnoreCase("stop")) {
+            // !stop is the global Pathmind cancellation command. A schematic
+            // build owns a persistent world preview, so cancel that lifecycle
+            // too instead of leaving a stale ghost after navigation stops.
+            if (SchematicBuildExecutor.getInstance().snapshot() != null) {
+                SchematicBuildExecutor.getInstance().stop("cancelled from chat stop");
+            }
             PathmindNavigator.getInstance().stop("chat stop");
             showNavigatorMessage("Pathmind Nav stopped.");
             return true;

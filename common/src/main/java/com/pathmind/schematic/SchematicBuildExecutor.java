@@ -65,6 +65,8 @@ public final class SchematicBuildExecutor {
     private CompletableFuture<Void> navigationFuture;
     private List<BlockPos> flightPath = List.of();
     private int flightPathIndex;
+    /** Startup route used to leave the construction volume before placement. */
+    private BlockPos evacuationTarget;
     private boolean creativeFlight;
     private boolean activeScaffold;
     private boolean activeScaffoldCleanup;
@@ -129,6 +131,7 @@ public final class SchematicBuildExecutor {
         }
         activeStep = null;
         activeApproach = null;
+        evacuationTarget = null;
         navigationFuture = null;
         placementAttempts = 0;
         lastPlacementOutcome = "no interaction sent";
@@ -137,8 +140,14 @@ public final class SchematicBuildExecutor {
         temporaryScaffolds.clear();
         activeScaffoldCleanup = false;
         actionStartedAtMs = System.currentTimeMillis();
-        status = "planning";
-        state = State.PLANNING;
+        evacuationTarget = findEvacuationTarget(client);
+        if (evacuationTarget != null && beginEvacuation(client)) {
+            status = "leaving schematic bounds before building";
+        } else {
+            evacuationTarget = null;
+            status = "planning";
+            state = State.PLANNING;
+        }
         LOGGER.info("build started source={} origin={} creative={}", plan.source(), format(origin), creativeFlight);
         liveLog("start source=" + plan.source().getFileName() + " origin=" + format(origin)
             + " creative=" + creativeFlight + " steps=" + constructionPlan.steps().size());
@@ -230,9 +239,11 @@ public final class SchematicBuildExecutor {
         }
         activeStep = null;
         activeApproach = null;
+        evacuationTarget = null;
         navigationFuture = null;
         flightPath = List.of();
         flightPathIndex = 0;
+        SchematicPreview.showBuild(schematic, origin);
         status = "replanning after resume";
         state = State.PLANNING;
         return true;
@@ -248,6 +259,7 @@ public final class SchematicBuildExecutor {
                 return;
             }
             switch (state) {
+                case EVACUATING -> tickEvacuation(client);
                 case PLANNING -> selectNextStep(client);
                 case TRAVELING -> tickTravel(client);
                 case FLYING -> tickFlight(client);
@@ -260,6 +272,117 @@ public final class SchematicBuildExecutor {
                 }
             }
         }
+    }
+
+    /**
+     * Starting inside the future structure makes the first placement targets
+     * overlap the player camera and collision box.  Find an actually flyable
+     * point just outside the occupied footprint before any construction
+     * planning can select a step.
+     */
+    private BlockPos findEvacuationTarget(Minecraft client) {
+        if (client == null || client.level == null || client.player == null || schematic == null || origin == null) {
+            return null;
+        }
+        int minX = Integer.MAX_VALUE;
+        int minY = Integer.MAX_VALUE;
+        int minZ = Integer.MAX_VALUE;
+        int maxX = Integer.MIN_VALUE;
+        int maxY = Integer.MIN_VALUE;
+        int maxZ = Integer.MIN_VALUE;
+        BlockPos anchor = schematic.placementAnchor();
+        for (SchematicBuildPlan.Placement placement : schematic.placements()) {
+            BlockPos world = origin.offset(placement.relativePosition().subtract(anchor));
+            minX = Math.min(minX, world.getX());
+            minY = Math.min(minY, world.getY());
+            minZ = Math.min(minZ, world.getZ());
+            maxX = Math.max(maxX, world.getX());
+            maxY = Math.max(maxY, world.getY());
+            maxZ = Math.max(maxZ, world.getZ());
+        }
+        if (minX == Integer.MAX_VALUE) return null;
+        BlockPos player = client.player.blockPosition();
+        if (player.getX() < minX || player.getX() > maxX || player.getY() < minY || player.getY() > maxY + 1
+            || player.getZ() < minZ || player.getZ() > maxZ) {
+            return null;
+        }
+        List<BlockPos> candidates = List.of(
+            new BlockPos(minX - 2, Math.max(player.getY(), minY), player.getZ()),
+            new BlockPos(maxX + 2, Math.max(player.getY(), minY), player.getZ()),
+            new BlockPos(player.getX(), Math.max(player.getY(), minY), minZ - 2),
+            new BlockPos(player.getX(), Math.max(player.getY(), minY), maxZ + 2),
+            new BlockPos(minX - 2, maxY + 2, minZ - 2),
+            new BlockPos(maxX + 2, maxY + 2, maxZ + 2)
+        );
+        BlockPos best = null;
+        double bestDistance = Double.POSITIVE_INFINITY;
+        for (BlockPos candidate : candidates) {
+            if (creativeFlight && !SchematicFlightPlanner.isFlyable(client.level, candidate)) continue;
+            double distance = candidate.distSqr(player);
+            if (distance < bestDistance) {
+                best = candidate;
+                bestDistance = distance;
+            }
+        }
+        return best;
+    }
+
+    private boolean beginEvacuation(Minecraft client) {
+        if (evacuationTarget == null || client == null || client.player == null) return false;
+        if (!creativeFlight) {
+            navigationFuture = new CompletableFuture<>();
+            if (!PathmindNavigator.getInstance().startGoto(evacuationTarget, "Leave schematic bounds", navigationFuture)) {
+                return false;
+            }
+            state = State.EVACUATING;
+            return true;
+        }
+        flightPath = SchematicFlightPlanner.findPath(client.level, client.player.blockPosition(), evacuationTarget);
+        if (flightPath.isEmpty() || !PathmindNavigator.getInstance().beginExternalNavigation(client, evacuationTarget, "Leave schematic bounds")) {
+            flightPath = List.of();
+            return false;
+        }
+        flightPathIndex = flightPath.size() > 1 ? 1 : 0;
+        actionStartedAtMs = System.currentTimeMillis();
+        lastFlightProgressPosition = client.player.position();
+        lastFlightProgressAtMs = actionStartedAtMs;
+        state = State.EVACUATING;
+        liveLog("evacuating schematic bounds to=" + format(evacuationTarget) + " route=" + flightPath.size());
+        return true;
+    }
+
+    private void tickEvacuation(Minecraft client) {
+        if (evacuationTarget == null) {
+            state = State.PLANNING;
+            return;
+        }
+        if (!creativeFlight) {
+            if (navigationFuture != null && navigationFuture.isDone()) {
+                if (navigationFuture.isCompletedExceptionally()) {
+                    pause("Could not leave the schematic bounds before building.");
+                    return;
+                }
+                evacuationTarget = null;
+                state = State.PLANNING;
+            }
+            return;
+        }
+        if (flightPathIndex >= flightPath.size()
+            || client.player.position().distanceToSqr(Vec3.atCenterOf(evacuationTarget).add(0.0D, -0.35D, 0.0D)) <= 0.45D) {
+            PathmindNavigator.getInstance().pauseExternalNavigation(client);
+            evacuationTarget = null;
+            flightPath = List.of();
+            flightPathIndex = 0;
+            state = State.PLANNING;
+            return;
+        }
+        BlockPos waypoint = flightPath.get(flightPathIndex);
+        Vec3 waypointCenter = Vec3.atCenterOf(waypoint).add(0.0D, -0.35D, 0.0D);
+        if (client.player.position().distanceToSqr(waypointCenter) <= 0.45D) {
+            flightPathIndex++;
+            return;
+        }
+        PathmindNavigator.getInstance().updateExternalNavigation(client, flightPath, flightPathIndex);
     }
 
     private void selectNextStep(Minecraft client) {
@@ -465,7 +588,9 @@ public final class SchematicBuildExecutor {
         if (activeStep != null) {
             for (SchematicPlacementPlanner.PlacementApproach candidate
                 : SchematicPlacementPlanner.findCreativeFlightApproaches(client.level, activeStep, client.player.blockPosition())) {
-                if (!candidate.equals(activeApproach) && !isRejectedApproach(activeStep.worldPosition(), candidate)) {
+                if (!candidate.equals(activeApproach)
+                    && !isInsideSchematicInterior(candidate.standingPosition())
+                    && !isRejectedApproach(activeStep.worldPosition(), candidate)) {
                     candidates.add(candidate);
                 }
             }
@@ -764,7 +889,15 @@ public final class SchematicBuildExecutor {
         Minecraft client, SchematicPlacementPlanner.ConstructionStep step
     ) {
         if (creativeFlight) {
-            return SchematicPlacementPlanner.findCreativeFlightApproaches(client.level, step, client.player.blockPosition()).stream()
+            List<SchematicPlacementPlanner.PlacementApproach> candidates = SchematicPlacementPlanner
+                .findCreativeFlightApproaches(client.level, step, client.player.blockPosition());
+            // Build from outside whenever an exterior click position exists.
+            // Flying into a hollow shell is a dead end once the shell closes
+            // around the player, even though the immediate approach is valid.
+            List<SchematicPlacementPlanner.PlacementApproach> exterior = candidates.stream()
+                .filter(approach -> !isInsideSchematicInterior(approach.standingPosition()))
+                .toList();
+            return (exterior.isEmpty() ? candidates : exterior).stream()
                 .filter(approach -> !isRejectedApproach(step.worldPosition(), approach))
                 .sorted(Comparator.comparingInt(approach -> placementApproachPriority(step.desired().state(), approach)))
                 .findFirst().orElse(null);
@@ -774,6 +907,27 @@ public final class SchematicBuildExecutor {
             .filter(approach -> !isRejectedApproach(step.worldPosition(), approach))
             .sorted(Comparator.comparingInt(approach -> placementApproachPriority(step.desired().state(), approach)))
             .findFirst().orElse(null);
+    }
+
+    private boolean isInsideSchematicInterior(BlockPos position) {
+        if (position == null || schematic == null || origin == null || schematic.placements().isEmpty()) {
+            return false;
+        }
+        BlockPos base = origin.subtract(schematic.placementAnchor());
+        int minX = Integer.MAX_VALUE, minY = Integer.MAX_VALUE, minZ = Integer.MAX_VALUE;
+        int maxX = Integer.MIN_VALUE, maxY = Integer.MIN_VALUE, maxZ = Integer.MIN_VALUE;
+        for (SchematicBuildPlan.Placement placement : schematic.placements()) {
+            BlockPos world = base.offset(placement.relativePosition());
+            minX = Math.min(minX, world.getX());
+            minY = Math.min(minY, world.getY());
+            minZ = Math.min(minZ, world.getZ());
+            maxX = Math.max(maxX, world.getX());
+            maxY = Math.max(maxY, world.getY());
+            maxZ = Math.max(maxZ, world.getZ());
+        }
+        return position.getX() >= minX && position.getX() <= maxX
+            && position.getY() >= minY && position.getY() <= maxY
+            && position.getZ() >= minZ && position.getZ() <= maxZ;
     }
 
     /** Prefer a click face that produces the target block state's axis/half. */
@@ -1255,6 +1409,10 @@ public final class SchematicBuildExecutor {
         liveLog("paused reason=" + message);
         PathmindNavigator.getInstance().stop("schematic build paused");
         PathmindNavigator.getInstance().stopExternalNavigation(Minecraft.getInstance());
+        // A paused build has relinquished world control. Hide its persistent
+        // preview until an explicit resume rather than leaving a misleading
+        // ghost after an automatic safety cancellation.
+        SchematicPreview.clearBuild();
         if (completion != null && !completion.isDone()) {
             completion.completeExceptionally(new IllegalStateException(message));
         }
@@ -1316,6 +1474,7 @@ public final class SchematicBuildExecutor {
         constructionPlan = null;
         activeStep = null;
         activeApproach = null;
+        evacuationTarget = null;
         navigationFuture = null;
         flightPath = List.of();
         flightPathIndex = 0;
@@ -1344,6 +1503,7 @@ public final class SchematicBuildExecutor {
 
     private enum State {
         IDLE,
+        EVACUATING,
         PLANNING,
         TRAVELING,
         FLYING,

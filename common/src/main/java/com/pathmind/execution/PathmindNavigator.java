@@ -26,8 +26,8 @@ import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
@@ -51,6 +51,8 @@ public final class PathmindNavigator {
     static final long ROUTE_COMMIT_MS = 8000L;
     static final long PATH_DECISION_VISIBILITY_MS = 1400L;
     private static final long WAYPOINT_ACQUIRE_SETTLE_MS = 300L;
+    private static final long EXACT_GOAL_SETTLE_MS = 500L;
+    private static final long MINED_DROP_PICKUP_WINDOW_MS = 1200L;
     private static final double MOVEMENT_EPSILON_SQ = 0.0025D;
     static final int MAX_DROP_DOWN = 3;
     static final int MAX_GOAL_PATH_ATTEMPTS = 8;
@@ -87,6 +89,13 @@ public final class PathmindNavigator {
     private String previousStuckReason = "none";
     private final Deque<String> debugEvents = new LinkedList<>();
     private long lastDebugHeartbeatAtMs;
+    private long exactGoalSupportedSinceMs;
+
+    private enum ExactGoalArrival {
+        NOT_REACHED,
+        SETTLING,
+        ARRIVED
+    }
 
     public enum State {
         IDLE,
@@ -360,6 +369,7 @@ public final class PathmindNavigator {
         this.activeFuture = future;
         this.state = State.PATHING;
         this.startedAtMs = System.currentTimeMillis();
+        this.exactGoalSupportedSinceMs = 0L;
         navigationState.lastProgressAtMs = this.startedAtMs;
         navigationState.lastPlanAtMs = 0L;
         executionState.lastJumpAtMs = 0L;
@@ -383,6 +393,7 @@ public final class PathmindNavigator {
         executionState.repeatedJumpAttempts = 0;
         executionState.lastInteractAtMs = 0L;
         executionState.activeBreakTarget = null;
+        executionState.lastMinedBlockAtMs = 0L;
         executionState.plannedBreakTargets = List.of();
         executionState.committedEscapeTarget = null;
         executionState.committedEscapeUntilMs = 0L;
@@ -879,6 +890,7 @@ public final class PathmindNavigator {
                         + " stuck=" + stuck
                         + " placeResult=" + (executionState.lastPlaceResult == null ? "none" : executionState.lastPlaceResult)
                         + " " + playerState
+                        + " " + formatDebugEnvironment(client, footForDebug(client), navigationState.activeWaypoint)
                 );
                 lastDebugHeartbeatAtMs = now;
             } else if (changed) {
@@ -938,6 +950,63 @@ public final class PathmindNavigator {
         return pos.getX() + "," + pos.getY() + "," + pos.getZ();
     }
 
+    private BlockPos footForDebug(Minecraft client) {
+        return client != null && client.player != null ? resolvePlayerFootPos(client.player) : null;
+    }
+
+    /** A compact world/inventory snapshot for diagnosing a live stuck route. */
+    private String formatDebugEnvironment(Minecraft client, BlockPos foot, BlockPos waypoint) {
+        if (client == null || client.level == null || client.player == null || foot == null) {
+            return "env=unavailable";
+        }
+        ClientLevel world = client.level;
+        List<BlockPos> positions = new ArrayList<>();
+        positions.add(foot.below());
+        positions.add(foot);
+        positions.add(foot.above());
+        for (Direction direction : Direction.Plane.HORIZONTAL) {
+            positions.add(foot.relative(direction));
+        }
+        if (waypoint != null) {
+            positions.add(waypoint);
+            positions.add(waypoint.below());
+        }
+        if (executionState.activeBreakTarget != null) {
+            positions.add(executionState.activeBreakTarget);
+        }
+        if (executionState.lastPlaceTarget != null) {
+            positions.add(executionState.lastPlaceTarget);
+        }
+        List<String> blocks = new ArrayList<>();
+        Set<BlockPos> seen = new HashSet<>();
+        for (BlockPos pos : positions) {
+            if (pos == null || !seen.add(pos.immutable())) {
+                continue;
+            }
+            BlockState block = world.getBlockState(pos);
+            String id = block.getBlock().getDescriptionId().replace("block.minecraft.", "");
+            String traits = (pathPlanner.hasCollision(world, pos) ? "C" : "open")
+                + (block.canBeReplaced() ? ",replaceable" : "")
+                + (!world.getFluidState(pos).isEmpty() ? ",fluid" : "");
+            blocks.add(formatDebugPos(pos) + "=" + id + "[" + traits + "]");
+        }
+        List<String> supports = new ArrayList<>();
+        int supportCount = 0;
+        for (int slot = 0; slot < net.minecraft.world.entity.player.Inventory.INVENTORY_SIZE; slot++) {
+            ItemStack stack = client.player.getInventory().getItem(slot);
+            if (!NavigatorPlacementPolicy.isSolidSupportBlock(stack)) {
+                continue;
+            }
+            supportCount += stack.getCount();
+            if (supports.size() < 4) {
+                supports.add(slot + ":" + stack.getItem().getDescriptionId().replace("item.minecraft.", "") + "x" + stack.getCount());
+            }
+        }
+        return "env{blocks=" + String.join(";", blocks)
+            + " supports=" + supportCount + "(" + String.join(",", supports) + ")"
+            + " flags=break:" + allowBlockBreaking + ",place:" + allowBlockPlacing + "}";
+    }
+
     private void recordPlanningDiagnostics(NavigatorPlanningCache cache, PathComputation result, long elapsedMs) {
         if (cache == null) {
             return;
@@ -978,6 +1047,7 @@ public final class PathmindNavigator {
         this.commandLabel = commandLabel == null || commandLabel.isBlank() ? "Path Preview" : commandLabel.trim();
         this.state = State.PREVIEW;
         this.startedAtMs = System.currentTimeMillis();
+        this.exactGoalSupportedSinceMs = 0L;
         navigationState.lastProgressAtMs = this.startedAtMs;
         navigationState.lastPlanAtMs = this.startedAtMs;
         executionState.lastJumpAtMs = 0L;
@@ -1103,7 +1173,12 @@ public final class PathmindNavigator {
         }
 
         ClientLevel world = client.level;
-        if (pathPlanner.hasReachedExactGoal(playerFootPos, target)) {
+        ExactGoalArrival goalArrival = assessExactGoalArrival(world, player, playerFootPos, target, now);
+        if (goalArrival == ExactGoalArrival.SETTLING) {
+            releaseMovementKeys(client);
+            return;
+        }
+        if (goalArrival == ExactGoalArrival.ARRIVED) {
             releaseMovementKeys(client);
             complete(State.ARRIVED);
             return;
@@ -1113,6 +1188,11 @@ public final class PathmindNavigator {
         if (routeCoordinator.shouldReplan(world, playerFootPos, target, now)) {
             PathComputation computation = findPath(world, playerFootPos, target);
             if (computation.path().isEmpty()) {
+                if (shouldAwaitMinedDrops(now)) {
+                    releaseMovementKeys(client);
+                    continueAfterMinedDropWait(now);
+                    return;
+                }
                 if (computation.failureReason() == FailureReason.SEARCH_LIMIT
                     && routeCoordinator.deferPlanningAfterBudgetExhaustion(now, computation.failureDetail())) {
                     releaseMovementKeys(client);
@@ -1173,7 +1253,12 @@ public final class PathmindNavigator {
                     return;
                 }
             }
-            if (pathPlanner.hasReachedExactGoal(playerFootPos, target)) {
+            goalArrival = assessExactGoalArrival(world, player, playerFootPos, target, now);
+            if (goalArrival == ExactGoalArrival.SETTLING) {
+                releaseMovementKeys(client);
+                return;
+            }
+            if (goalArrival == ExactGoalArrival.ARRIVED) {
                 releaseMovementKeys(client);
                 complete(State.ARRIVED);
                 return;
@@ -1227,6 +1312,10 @@ public final class PathmindNavigator {
                     }
                 }
                 waypoint = routeCoordinator.chooseActiveWaypoint(world, player, playerFootPos);
+            } else if (shouldAwaitMinedDrops(now)) {
+                releaseMovementKeys(client);
+                continueAfterMinedDropWait(now);
+                return;
             }
         }
 
@@ -1238,26 +1327,6 @@ public final class PathmindNavigator {
             }
             fail(FailureReason.NO_ROUTE, "No active waypoint remained after replanning.");
             return;
-        }
-
-        if (primitiveExecutor.shouldForceFinalApproach(world, playerFootPos, target)) {
-            waypoint = target.immutable();
-            synchronized (this) {
-                navigationState.activeWaypoint = waypoint;
-                List<BlockPos> breakTargets = pathPlanner.getRequiredBreakTargets(world, playerFootPos, waypoint);
-                if (breakTargets == null) {
-                    breakTargets = List.of();
-                } else {
-                    breakTargets = breakTargets.stream()
-                        .filter(pos -> pos != null && pathPlanner.isBreakableForNavigator(world, pos))
-                        .map(BlockPos::immutable)
-                        .toList();
-                }
-                BlockPos placeTarget = pathPlanner.needsPlacedSupport(world, waypoint) && pathPlanner.canPlaceSupportAt(world, waypoint.below())
-                    ? waypoint.below().immutable()
-                    : null;
-                executionState.activePlannedPrimitive = routeCoordinator.createPlannedPrimitive(world, playerFootPos, waypoint, breakTargets, placeTarget);
-            }
         }
 
         if (primitiveExecutor.handleDirectFinalApproach(client, world, player, playerFootPos, target, now)) {
@@ -1329,25 +1398,6 @@ public final class PathmindNavigator {
                 fail(FailureReason.NO_ROUTE, "Recovery replanning did not produce a usable route.");
                 return;
             }
-            if (primitiveExecutor.shouldForceFinalApproach(world, playerFootPos, target)) {
-                waypoint = target.immutable();
-                synchronized (this) {
-                    navigationState.activeWaypoint = waypoint;
-                    List<BlockPos> breakTargets = pathPlanner.getRequiredBreakTargets(world, playerFootPos, waypoint);
-                    if (breakTargets == null) {
-                        breakTargets = List.of();
-                    } else {
-                        breakTargets = breakTargets.stream()
-                            .filter(pos -> pos != null && pathPlanner.isBreakableForNavigator(world, pos))
-                            .map(BlockPos::immutable)
-                            .toList();
-                    }
-                    BlockPos placeTarget = pathPlanner.needsPlacedSupport(world, waypoint) && pathPlanner.canPlaceSupportAt(world, waypoint.below())
-                        ? waypoint.below().immutable()
-                        : null;
-                    executionState.activePlannedPrimitive = routeCoordinator.createPlannedPrimitive(world, playerFootPos, waypoint, breakTargets, placeTarget);
-                }
-            }
         }
 
         controllerDistanceSq = routeCoordinator.distanceToControllerTargetSq(world, player, waypoint);
@@ -1361,12 +1411,52 @@ public final class PathmindNavigator {
         }
     }
 
+    private ExactGoalArrival assessExactGoalArrival(
+        ClientLevel world,
+        LocalPlayer player,
+        BlockPos playerFootPos,
+        BlockPos target,
+        long now
+    ) {
+        if (world == null
+            || player == null
+            || !pathPlanner.hasReachedExactGoal(playerFootPos, target)
+            || !player.onGround()
+            || !pathPlanner.isStandable(world, target)) {
+            exactGoalSupportedSinceMs = 0L;
+            return ExactGoalArrival.NOT_REACHED;
+        }
+        if (exactGoalSupportedSinceMs == 0L) {
+            exactGoalSupportedSinceMs = now;
+            synchronized (this) {
+                navigationState.lastReplanReason = "goal support settling";
+                navigationState.lastStuckReason = "holding supported goal";
+            }
+            return ExactGoalArrival.SETTLING;
+        }
+        return now - exactGoalSupportedSinceMs >= EXACT_GOAL_SETTLE_MS
+            ? ExactGoalArrival.ARRIVED
+            : ExactGoalArrival.SETTLING;
+    }
+
     public synchronized void stop(String reason) {
         stopInternal(true, reason);
     }
 
     public synchronized void reset() {
         stopInternal(false, "reset");
+    }
+
+    private synchronized boolean shouldAwaitMinedDrops(long now) {
+        return executionState.lastMinedBlockAtMs > 0L
+            && now - executionState.lastMinedBlockAtMs < MINED_DROP_PICKUP_WINDOW_MS;
+    }
+
+    private synchronized void continueAfterMinedDropWait(long now) {
+        navigationState.lastPlanAtMs = now;
+        navigationState.lastReplanReason = "waiting for mined drops";
+        navigationState.lastStuckReason = "collecting excavated blocks";
+        appendDebugEventLocked("awaiting mined drops before replanning");
     }
 
     private synchronized void fail(FailureReason failureReason) {
@@ -1394,6 +1484,7 @@ public final class PathmindNavigator {
         activeFuture = null;
         targetPos = null;
         commandLabel = null;
+        exactGoalSupportedSinceMs = 0L;
         navigationState.currentPath = List.of();
         navigationState.currentPlan = List.of();
         navigationState.candidatePaths = List.of();
@@ -1680,7 +1771,7 @@ public final class PathmindNavigator {
         int available = 0;
         for (int slot = 0; slot < net.minecraft.world.entity.player.Inventory.INVENTORY_SIZE; slot++) {
             ItemStack stack = player.getInventory().getItem(slot);
-            if (stack != null && !stack.isEmpty() && stack.getItem() instanceof BlockItem) {
+            if (NavigatorPlacementPolicy.isSolidSupportBlock(stack)) {
                 available += stack.getCount();
             }
         }

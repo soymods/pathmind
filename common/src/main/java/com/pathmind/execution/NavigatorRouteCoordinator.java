@@ -696,6 +696,13 @@ final class NavigatorRouteCoordinator {
         if (world == null || player == null || playerFootPos == null || waypoint == null) {
             return ControllerMode.FOLLOW_PATH;
         }
+        boolean committedEscape = primitiveExecutor.isCommittedEscapeState(now);
+        if (isRecoveryState(world, playerFootPos, now)) {
+            return executionState.controllerMode;
+        }
+        if (isCommittedPillarState(world, playerFootPos, now) && (primitiveExecutor.isPillarPrimitive(plannedPrimitive) || committedEscape)) {
+            return ControllerMode.PILLAR;
+        }
         if (primitiveExecutor.shouldPreferFinalApproachController(world, playerFootPos)) {
             if (executionState.committedJumpWaypoint != null && executionState.committedJumpUntilMs > now) {
                 return ControllerMode.COMMIT_JUMP;
@@ -705,13 +712,6 @@ final class NavigatorRouteCoordinator {
                 return ControllerMode.BREAK_BLOCK;
             }
             return ControllerMode.FOLLOW_PATH;
-        }
-        boolean committedEscape = primitiveExecutor.isCommittedEscapeState(now);
-        if (isRecoveryState(world, playerFootPos, now)) {
-            return executionState.controllerMode;
-        }
-        if (isCommittedPillarState(world, playerFootPos, now) && (primitiveExecutor.isPillarPrimitive(plannedPrimitive) || committedEscape)) {
-            return ControllerMode.PILLAR;
         }
         if (primitiveExecutor.isPillarPrimitive(plannedPrimitive)
             || shouldUsePillarStep(world, playerFootPos, waypoint, plannedPrimitive, now)) {
@@ -762,6 +762,9 @@ final class NavigatorRouteCoordinator {
             }
             BlockPos pillarTarget = executionState.controllerTarget;
             BlockPos pillarBase = pillarTarget.below();
+            if (executionState.pendingPlaceTarget != null && executionState.pendingPlaceTarget.equals(pillarBase)) {
+                return true;
+            }
             if (playerFootPos == null
                 || pillarBase.getX() != playerFootPos.getX()
                 || pillarBase.getZ() != playerFootPos.getZ()
@@ -1271,7 +1274,8 @@ final class NavigatorRouteCoordinator {
             }
             if (executionState.controllerMode == ControllerMode.PILLAR
                 && executionState.controllerTarget != null
-                && (primitiveExecutor.isPillarPrimitive(executionState.activePlannedPrimitive) || !executionState.committedEscape.isEmpty())) {
+                && (primitiveExecutor.isPillarPrimitive(executionState.activePlannedPrimitive)
+                || !executionState.committedEscape.isEmpty())) {
                 navigationState.activeWaypoint = executionState.controllerTarget.immutable();
                 if (executionState.plannedBreakTargets.isEmpty()) {
                     executionState.plannedBreakTargets = buildPathBreakPlan(world, navigationState.currentPath, Math.max(0, navigationState.pathIndex));
@@ -1282,7 +1286,7 @@ final class NavigatorRouteCoordinator {
                 return navigationState.activeWaypoint;
             }
         }
-        BlockPos current = advanceWaypointIfNeeded(player, playerFootPos);
+        BlockPos current = advanceWaypointIfNeeded(world, player, playerFootPos);
         if (current == null) {
             return null;
         }
@@ -1348,8 +1352,8 @@ final class NavigatorRouteCoordinator {
         return createPlannedPrimitive(world, playerFootPos, waypoint, breakTargets, placeTarget);
     }
     
-    BlockPos advanceWaypointIfNeeded(LocalPlayer player, BlockPos playerFootPos) {
-        if (player == null || playerFootPos == null) {
+    BlockPos advanceWaypointIfNeeded(Level world, LocalPlayer player, BlockPos playerFootPos) {
+        if (world == null || player == null || playerFootPos == null) {
             host.setAdvanceDecision("hold:missing_player");
             return null;
         }
@@ -1357,6 +1361,7 @@ final class NavigatorRouteCoordinator {
         synchronized (host.lock()) {
             long now = System.currentTimeMillis();
             int reachedIndex = findReachedPathIndexLocked(playerFootPos, playerPos);
+            reachedIndex = capReachedIndexAtUnfinishedPlacementLocked(world, playerFootPos, reachedIndex);
             if (reachedIndex >= 0) {
                 if (reachedIndex > navigationState.pathIndex) {
                     navigationState.lastProgressAtMs = now;
@@ -1377,6 +1382,14 @@ final class NavigatorRouteCoordinator {
                     navigationState.routeCommitUntilMs = Math.max(navigationState.routeCommitUntilMs, now + ROUTE_COMMIT_MS / 2L);
                     navigationState.lastAdvanceDecision = "advance:null_waypoint";
                     continue;
+                }
+                PlannedPrimitive primitive = getPlannedPrimitiveAtIndexLocked(navigationState.pathIndex);
+                if (primitive != null
+                    && primitive.requiresPlace()
+                    && (primitive.placeTarget() == null || !pathPlanner.hasCollision(world, primitive.placeTarget()))) {
+                    navigationState.activeWaypoint = waypoint;
+                    navigationState.lastAdvanceDecision = "hold:await_placement=" + host.formatDebugPos(primitive.placeTarget());
+                    return waypoint;
                 }
                 if (waypoint.getY() > playerFootPos.getY() && navigationState.pathIndex + 1 < navigationState.currentPath.size()) {
                     BlockPos next = navigationState.currentPath.get(navigationState.pathIndex + 1);
@@ -1410,6 +1423,33 @@ final class NavigatorRouteCoordinator {
             navigationState.lastAdvanceDecision = "hold:no_active_waypoint";
             return null;
         }
+    }
+
+    int capReachedIndexAtUnfinishedPlacementLocked(Level world, BlockPos playerFootPos, int reachedIndex) {
+        if (world == null || reachedIndex < navigationState.pathIndex) {
+            return reachedIndex;
+        }
+        int start = Math.max(0, navigationState.pathIndex);
+        int end = Math.min(reachedIndex, navigationState.currentPath.size() - 1);
+        for (int i = start; i <= end; i++) {
+            PlannedPrimitive primitive = getPlannedPrimitiveAtIndexLocked(i);
+            // A mined ascent is an ordered staircase: clearing its headroom is not
+            // enough to have reached the step.  The generic one-block vertical
+            // tolerance is useful for ordinary walking, but it allowed the route
+            // coordinator to skip directly to a later mined step while the player
+            // was still below the first one.
+            if (primitive != null
+                && primitive.isMineAscent()
+                && !playerFootPos.equals(navigationState.currentPath.get(i))) {
+                return i - 1;
+            }
+            if (primitive != null
+                && primitive.requiresPlace()
+                && (primitive.placeTarget() == null || !pathPlanner.hasCollision(world, primitive.placeTarget()))) {
+                return i - 1;
+            }
+        }
+        return reachedIndex;
     }
     
     int findReachedPathIndexLocked(BlockPos playerFootPos, Vec3 playerPos) {

@@ -46,6 +46,7 @@ final class PathmindPathPlanner {
     private static final double FAILED_MOVE_PENALTY = 8.0D;
     private static final int MAX_STEP_UP = 1;
     private static final int MAX_SAFE_FALL_DISTANCE = 3;
+    private static final int MAX_PLANNED_PILLAR_STEPS = 8;
     private static final int SEARCH_RADIUS = 56;
     private static final int MAX_SEARCH_RADIUS = 72;
     private static final int SEARCH_HEIGHT = 18;
@@ -225,7 +226,11 @@ final class PathmindPathPlanner {
         long deadlineMs
     ) {
         boolean planningExactRequestedBlock = planningTarget.equals(exactTarget);
+        boolean exactGoalNeedsUnavailableSupport = planningExactRequestedBlock
+            && needsPlacedSupport(world, exactTarget)
+            && (!host.allowBlockPlacing() || host.availablePlacementBlocks() <= 0);
         List<BlockPos> goalCandidates = planningExactRequestedBlock
+            && !exactGoalNeedsUnavailableSupport
             && isWithinSearchBounds(start, exactTarget, exactTarget)
             && isChunkLoaded(world, exactTarget)
             && isGoalNodeReachable(world, exactTarget)
@@ -241,7 +246,9 @@ final class PathmindPathPlanner {
             }
         }
         if (goalCandidates.isEmpty()) {
-            String detail = planningExactRequestedBlock
+            String detail = exactGoalNeedsUnavailableSupport
+                ? "The exact target block " + host.formatDebugPos(exactTarget) + " needs a solid placement block for support, but none is available."
+                : planningExactRequestedBlock
                 ? "The exact target block " + host.formatDebugPos(exactTarget) + " is not a safe occupiable endpoint."
                 : "No walkable endpoint was found near " + host.formatDebugPos(planningTarget) + ".";
             return new GoalSearchOutcome(List.of(), FailureReason.NO_GOAL_SPACE, detail);
@@ -825,7 +832,7 @@ final class PathmindPathPlanner {
         return false;
     }
 
-    int requiredPlacementBlocks(List<PlannedPrimitive> plannedPrimitives) {
+    static int requiredPlacementBlocks(List<PlannedPrimitive> plannedPrimitives) {
         if (plannedPrimitives == null || plannedPrimitives.isEmpty()) {
             return 0;
         }
@@ -1845,6 +1852,17 @@ final class PathmindPathPlanner {
         if (isNavigableNode(world, pos)) {
             return true;
         }
+        // An exact air target can be a valid endpoint when the navigator can create
+        // its support. This includes a short chained pillar after mining the top of
+        // an obstructing column; the search accounts for each placement and rejects
+        // the route if the inventory cannot fund it.
+        if (host.allowBlockPlacing()
+            && needsPlacedSupport(world, pos)
+            && canOccupy(world, pos)
+            && canOccupy(world, pos.above())
+            && hasPillarSupportPath(world, pos)) {
+            return true;
+        }
         if (getRequiredBreakTargets(world, pos) == null) {
             return false;
         }
@@ -1852,6 +1870,29 @@ final class PathmindPathPlanner {
             return false;
         }
         return resolveSupportSurfaceY(world, pos).isPresent() || isWaterNode(world, pos);
+    }
+
+    boolean hasPillarSupportPath(Level world, BlockPos target) {
+        if (world == null || target == null || !host.allowBlockPlacing()) {
+            return false;
+        }
+        for (int steps = 1; steps <= MAX_PLANNED_PILLAR_STEPS; steps++) {
+            BlockPos firstPillarTarget = target.below(steps);
+            if (!canOccupy(world, firstPillarTarget) || !canOccupy(world, firstPillarTarget.above())) {
+                continue;
+            }
+            boolean clearColumn = true;
+            for (BlockPos columnPos = firstPillarTarget.above(); columnPos.getY() <= target.above().getY(); columnPos = columnPos.above()) {
+                if (!canOccupy(world, columnPos)) {
+                    clearColumn = false;
+                    break;
+                }
+            }
+            if (clearColumn && canPlaceSupportAt(world, firstPillarTarget.below(), true)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     Neighbor resolveNeighborAccess(Level world, BlockPos from, BlockPos candidate) {
@@ -2106,7 +2147,10 @@ final class PathmindPathPlanner {
             return false;
         }
         BlockPos activeTarget = host.targetPos();
-        if (activeTarget == null || !isStandable(world, activeTarget)) {
+        if (activeTarget == null) {
+            return false;
+        }
+        if (!isStandable(world, activeTarget)) {
             return false;
         }
         if (candidate.equals(activeTarget)) {
@@ -3426,7 +3470,7 @@ NavigatorPathCostPolicy.MoveType classifyMoveType(Level world, BlockPos from, Bl
             return false;
         }
         BlockState state = cachedBlockState(world, pos);
-        if (state == null || state.isAir() || isPathOpenable(state) || isClimbableBlock(state)) {
+        if (state == null || state.isAir() || state.canBeReplaced() || isPathOpenable(state) || isClimbableBlock(state)) {
             return false;
         }
         if (state.is(Blocks.BEDROCK)

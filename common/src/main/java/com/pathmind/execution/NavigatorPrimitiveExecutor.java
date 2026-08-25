@@ -198,6 +198,7 @@ final class NavigatorPrimitiveExecutor {
         synchronized (host.lock()) {
             if (executionState.activeBreakTarget != null && pathPlanner.canOccupy(world, executionState.activeBreakTarget)) {
                 executionState.activeBreakTarget = null;
+                executionState.lastMinedBlockAtMs = now;
                 navigationState.lastProgressAtMs = now;
                 navigationState.lastReplanReason = "obstruction cleared";
             }
@@ -223,6 +224,12 @@ final class NavigatorPrimitiveExecutor {
             boolean placed = tryPlaceSupportBlock(client, world, player, placeTarget, now, committedWaterPlace);
             if (placed) {
                 host.noteControllerActivity(now);
+            } else if (hasTerminalPlacementFailure(placeTarget)) {
+                pathPlanner.rememberFailedPlace(playerFootPos, placeTarget, now);
+                synchronized (host.lock()) {
+                    navigationState.lastReplanReason = "place action failed";
+                    navigationState.lastStuckReason = executionState.lastPlaceResult + " at " + host.formatDebugPos(placeTarget);
+                }
             }
             return placed;
         }
@@ -261,7 +268,27 @@ final class NavigatorPrimitiveExecutor {
         MiningProgress miningProgress = resolveCommittedMiningProgress(world, playerFootPos, waypoint, plannedPrimitive);
         if (miningProgress.completed()) {
             synchronized (host.lock()) {
-                if (commitPathIndexLocked(world, miningProgress.resumeIndex(), false, now, "advance:mining_complete")) {
+                boolean terminalMinedAscent = miningProgress.minedAscent()
+                    && miningProgress.resumeIndex() >= navigationState.currentPath.size() - 1;
+                if (terminalMinedAscent) {
+                    // A partial excavation route can legitimately end at the last
+                    // newly opened stair.  Do not leave its completed MINE_ASCEND
+                    // primitive active forever just because there is no next path
+                    // index; the next tick must plan from the player's real position.
+                    navigationState.currentPath = List.of();
+                    navigationState.currentPlan = List.of();
+                    navigationState.candidatePaths = List.of();
+                    navigationState.candidatePathsVisibleUntilMs = 0L;
+                    navigationState.activeWaypoint = null;
+                    navigationState.routeCommitUntilMs = 0L;
+                    navigationState.lastReplanReason = "terminal mined ascent cleared";
+                    navigationState.lastStuckReason = "replanning from opened stair";
+                    navigationState.lastAdvanceDecision = "replan:terminal_mined_ascent";
+                    executionState.activePlannedPrimitive = null;
+                    executionState.controllerTarget = null;
+                    executionState.controllerUntilMs = 0L;
+                    host.appendDebugEventLocked("terminal mined ascent cleared at " + host.formatDebugPos(playerFootPos));
+                } else if (commitPathIndexLocked(world, miningProgress.resumeIndex(), false, now, "advance:mining_complete")) {
                     navigationState.lastReplanReason = miningProgress.minedAscent()
                         ? "mined ascent cleared"
                         : "break route step cleared";
@@ -327,6 +354,22 @@ final class NavigatorPrimitiveExecutor {
             : plannedPrimitive != null && plannedPrimitive.isMineAscent()
             ? isMiningAscentPhaseSatisfied(world, playerFootPos, waypoint, plannedPrimitive, fallbackTarget)
             : pathPlanner.canOccupy(world, fallbackTarget);
+        boolean placementFailed = requiresCommittedPlacement && hasTerminalPlacementFailure(fallbackTarget);
+        if (placementFailed) {
+            pathPlanner.rememberFailedPlace(playerFootPos, fallbackTarget, now);
+            host.recoverFromStuck(
+                client,
+                world,
+                playerFootPos,
+                waypoint,
+                target,
+                currentPos,
+                now,
+                "place verification failed",
+                "placement " + executionState.lastPlaceResult
+            );
+            return true;
+        }
         if (!timedOut && !targetGone) {
             host.noteControllerActivity(now);
             return false;
@@ -1654,6 +1697,34 @@ final class NavigatorPrimitiveExecutor {
             }
         }
         BlockPos pillarBase = pillarTarget.below();
+        NavigatorPlacementPolicy.Verification pendingPlacement = verifyPendingPlacement(world, pillarBase, now);
+        if (pendingPlacement == NavigatorPlacementPolicy.Verification.WAITING) {
+            releaseMovementKeys(client);
+            applySneakState(client, true);
+            synchronized (host.lock()) {
+                executionState.activePillarPhase = PillarPhase.PLACE;
+                navigationState.lastReplanReason = "pillar placement verifying";
+                navigationState.lastStuckReason = "waiting for placed support";
+            }
+            host.noteControllerActivity(now);
+            return true;
+        }
+        if (pendingPlacement == NavigatorPlacementPolicy.Verification.CONFIRMED) {
+            synchronized (host.lock()) {
+                executionState.activePillarPhase = PillarPhase.SUPPORT_READY;
+                navigationState.lastReplanReason = "pillar support confirmed";
+                navigationState.lastStuckReason = "advance on placed support";
+            }
+            return false;
+        }
+        if (pendingPlacement == NavigatorPlacementPolicy.Verification.EXHAUSTED) {
+            pathPlanner.rememberFailedPillar(playerFootPos, pillarTarget, now);
+            synchronized (host.lock()) {
+                navigationState.lastReplanReason = "pillar placement failed";
+                navigationState.lastStuckReason = "confirmation timeout at " + host.formatDebugPos(pillarBase);
+            }
+            return false;
+        }
         if (pillarBase.getX() != playerFootPos.getX()
             || pillarBase.getZ() != playerFootPos.getZ()
             || pillarBase.getY() < playerFootPos.getY() - 1
@@ -1750,7 +1821,14 @@ final class NavigatorPrimitiveExecutor {
                 host.noteControllerActivity(now);
                 return true;
             }
-            pathPlanner.rememberFailedPillar(playerFootPos, pillarTarget, now);
+            if (hasTerminalPlacementFailure(pillarBase)) {
+                pathPlanner.rememberFailedPillar(playerFootPos, pillarTarget, now);
+                synchronized (host.lock()) {
+                    navigationState.lastReplanReason = "pillar placement failed";
+                    navigationState.lastStuckReason = executionState.lastPlaceResult + " at " + host.formatDebugPos(pillarBase);
+                }
+                return false;
+            }
         }
         if (pillarPhase == PillarPhase.ASCEND && player.onGround()) {
             synchronized (host.lock()) {
@@ -1789,6 +1867,93 @@ final class NavigatorPrimitiveExecutor {
         }
         return PillarPhase.CENTER;
     }
+
+    NavigatorPlacementPolicy.Verification verifyPendingPlacement(ClientLevel world, BlockPos placePos, long now) {
+        if (world == null || placePos == null) {
+            return NavigatorPlacementPolicy.Verification.EXHAUSTED;
+        }
+        synchronized (host.lock()) {
+            NavigatorPlacementPolicy.Verification verification = NavigatorPlacementPolicy.verify(
+                executionState.pendingPlaceTarget,
+                placePos,
+                pathPlanner.hasCollision(world, placePos),
+                executionState.pendingPlaceAttempts,
+                now,
+                executionState.pendingPlaceUntilMs
+            );
+            if (verification == NavigatorPlacementPolicy.Verification.CONFIRMED) {
+                executionState.pendingPlaceTarget = null;
+                executionState.pendingPlaceUntilMs = 0L;
+                executionState.pendingPlaceAttempts = 0;
+                executionState.lastPlaceTarget = placePos.immutable();
+                executionState.lastPlaceResult = "placed";
+                return verification;
+            }
+            if (verification == NavigatorPlacementPolicy.Verification.WAITING) {
+                executionState.lastPlaceTarget = placePos.immutable();
+                executionState.lastPlaceResult = "verifying";
+                return verification;
+            }
+            if (verification == NavigatorPlacementPolicy.Verification.EXHAUSTED) {
+                executionState.pendingPlaceTarget = null;
+                executionState.pendingPlaceUntilMs = 0L;
+                executionState.pendingPlaceAttempts = 0;
+                executionState.lastPlaceTarget = placePos.immutable();
+                executionState.lastPlaceResult = "confirmation timeout";
+                return verification;
+            }
+            return verification;
+        }
+    }
+
+    boolean recordPlacementAttempt(ClientLevel world, BlockPos placePos, boolean accepted, long now) {
+        boolean placedNow = pathPlanner.hasCollision(world, placePos);
+        synchronized (host.lock()) {
+            executionState.lastPlaceTarget = placePos.immutable();
+            if (placedNow) {
+                executionState.pendingPlaceTarget = null;
+                executionState.pendingPlaceUntilMs = 0L;
+                executionState.pendingPlaceAttempts = 0;
+                executionState.lastPlaceResult = "placed";
+                return true;
+            }
+            if (executionState.pendingPlaceTarget == null || !executionState.pendingPlaceTarget.equals(placePos)) {
+                executionState.pendingPlaceTarget = placePos.immutable();
+                executionState.pendingPlaceAttempts = 0;
+            }
+            executionState.pendingPlaceAttempts = NavigatorPlacementPolicy.nextAttemptCount(executionState.pendingPlaceAttempts);
+            executionState.lastInteractAtMs = now;
+            if (!accepted) {
+                executionState.pendingPlaceUntilMs = now + 250L;
+                executionState.lastPlaceResult = executionState.pendingPlaceAttempts >= NavigatorPlacementPolicy.MAX_ATTEMPTS
+                    ? "rejected"
+                    : "retrying alternate face";
+                return executionState.pendingPlaceAttempts < NavigatorPlacementPolicy.MAX_ATTEMPTS;
+            }
+            executionState.pendingPlaceUntilMs = now + NavigatorPlacementPolicy.CONFIRM_WINDOW_MS;
+            executionState.lastPlaceResult = "verifying";
+            return true;
+        }
+    }
+
+    int placementAttemptIndex(BlockPos placePos) {
+        synchronized (host.lock()) {
+            return placePos != null && placePos.equals(executionState.pendingPlaceTarget)
+                ? executionState.pendingPlaceAttempts
+                : 0;
+        }
+    }
+
+    boolean hasTerminalPlacementFailure(BlockPos placePos) {
+        synchronized (host.lock()) {
+            return placePos != null
+                && placePos.equals(executionState.lastPlaceTarget)
+                && ("confirmation timeout".equals(executionState.lastPlaceResult)
+                || "rejected".equals(executionState.lastPlaceResult)
+                || "no support face".equals(executionState.lastPlaceResult)
+                || "no placeable block".equals(executionState.lastPlaceResult));
+        }
+    }
     
     boolean tryPlacePillarBlock(
         Minecraft client,
@@ -1803,6 +1968,16 @@ final class NavigatorPrimitiveExecutor {
                 executionState.lastPlaceResult = "client unavailable";
             }
             return false;
+        }
+        NavigatorPlacementPolicy.Verification verification = verifyPendingPlacement(world, placePos, now);
+        if (verification == NavigatorPlacementPolicy.Verification.CONFIRMED || verification == NavigatorPlacementPolicy.Verification.WAITING) {
+            return true;
+        }
+        if (verification == NavigatorPlacementPolicy.Verification.EXHAUSTED) {
+            return false;
+        }
+        if (clearReplaceablePlacementTarget(client, world, player, placePos, now, false)) {
+            return true;
         }
         if (now - executionState.lastInteractAtMs < 250L) {
             synchronized (host.lock()) {
@@ -1838,15 +2013,15 @@ final class NavigatorPrimitiveExecutor {
         }
         applySneakState(client, true);
     
-        BlockHitResult hit = raycastBlockFromOrientation(client, player.getYRot(), player.getXRot(), 4.5D);
-        if (hit == null || !supportPos.equals(hit.getBlockPos())) {
-            Vec3 hitPos = new Vec3(
-                supportPos.getX() + 0.5D,
-                supportPos.getY() + 0.999D,
-                supportPos.getZ() + 0.5D
-            );
-            hit = new BlockHitResult(hitPos, Direction.UP, supportPos, false);
-        }
+        // Pillaring always places onto the top face of the block below the player.
+        // Using the incidental camera ray could select a side face of that same block,
+        // which asks Minecraft to place beside the column instead and is rejected.
+        Vec3 hitPos = new Vec3(
+            supportPos.getX() + 0.5D,
+            supportPos.getY() + 0.999D,
+            supportPos.getZ() + 0.5D
+        );
+        BlockHitResult hit = new BlockHitResult(hitPos, Direction.UP, supportPos, false);
         InteractionResult result = client.gameMode.useItemOn(player, InteractionHand.MAIN_HAND, hit);
         boolean accepted = result != null && result.consumesAction();
         if (!accepted) {
@@ -1856,28 +2031,20 @@ final class NavigatorPrimitiveExecutor {
         if (accepted) {
             player.swing(InteractionHand.MAIN_HAND);
         }
-    
+        synchronized (host.lock()) {
+            ItemStack selectedStack = player.getInventory().getItem(hotbarSlot);
+            host.appendDebugEventLocked(
+                "pillarPlace item=" + selectedStack.getItem().getDescriptionId()
+                    + " slot=" + hotbarSlot
+                    + " support=" + host.formatDebugPos(supportPos)
+                    + " result=" + (result == null ? "null" : result)
+            );
+        }
+
         HotbarSlotSynchronizer.selectHotbarSlot(client, previousSlot);
         applySneakState(client, true);
     
-        boolean placedNow = pathPlanner.hasCollision(world, placePos);
-        synchronized (host.lock()) {
-            executionState.lastPlaceTarget = placePos.immutable();
-            if (!accepted) {
-                executionState.lastPlaceResult = "rejected";
-            } else if (placedNow) {
-                executionState.lastPlaceResult = "placed";
-            } else {
-                executionState.lastPlaceResult = "accepted no block";
-            }
-        }
-        if (!accepted || !placedNow) {
-            return false;
-        }
-        synchronized (host.lock()) {
-            executionState.lastInteractAtMs = now;
-        }
-        return true;
+        return recordPlacementAttempt(world, placePos, accepted, now);
     }
     
     boolean handleCommittedJumpMovement(
@@ -2860,9 +3027,16 @@ final class NavigatorPrimitiveExecutor {
             }
         }
     
+        // A pillar target is a virtual position until the client has actually observed the
+        // placed support.  Planning a continuation from that virtual position lets the
+        // normal search legally "drop" to the real block below and pillar back up, which
+        // produced the stacked green markers and the PILLAR -> DESCEND -> PILLAR loop.
+        // Keep the committed route to this single atomic action until the support exists.
+        BlockPos pillarBase = pillarTarget.below();
+        boolean supportConfirmed = pathPlanner.hasCollision(world, pillarBase);
         List<BlockPos> syncedPath = List.of(pillarTarget.immutable());
         PathComputation continuation = null;
-        if (navTarget != null) {
+        if (supportConfirmed && navTarget != null) {
             continuation = host.findPath(world, pillarTarget, navTarget);
             if (continuation != null && !continuation.path().isEmpty()) {
                 List<BlockPos> continuationPath = continuation.path();
@@ -2890,7 +3064,12 @@ final class NavigatorPrimitiveExecutor {
             }
             navigationState.lastPlanAtMs = now;
             navigationState.routeCommitUntilMs = Math.max(navigationState.routeCommitUntilMs, now + 1400L);
-            navigationState.lastReplanReason = "pillar sync";
+            navigationState.lastReplanReason = supportConfirmed ? "pillar continuation sync" : "pillar atomic sync";
+            host.appendDebugEventLocked(
+                "pillarSync target=" + host.formatDebugPos(pillarTarget)
+                    + " support=" + supportConfirmed
+                    + " continuation=" + (continuation != null && !continuation.path().isEmpty())
+            );
             if (continuation != null && !continuation.path().isEmpty()) {
                 navigationState.candidatePaths = continuation.candidatePaths();
                 navigationState.candidatePathsVisibleUntilMs = now + PATH_DECISION_VISIBILITY_MS;
@@ -2965,15 +3144,6 @@ final class NavigatorPrimitiveExecutor {
             return false;
         }
         return pathPlanner.hasReachedExactGoal(playerFootPos, activeTarget);
-    }
-    
-    boolean shouldForceFinalApproach(Level world, BlockPos playerFootPos, BlockPos target) {
-        if (world == null || playerFootPos == null || target == null) {
-            return false;
-        }
-        return pathPlanner.isStandable(world, target)
-            && pathPlanner.horizontalDistanceSq(playerFootPos, target) <= 4.0D
-            && Math.abs(playerFootPos.getY() - target.getY()) <= 1;
     }
     
     boolean shouldBreakForWaypoint(BlockPos playerFootPos, BlockPos waypoint, BlockPos breakTarget) {
@@ -3402,6 +3572,16 @@ final class NavigatorPrimitiveExecutor {
             }
             return false;
         }
+        NavigatorPlacementPolicy.Verification verification = verifyPendingPlacement(world, placePos, now);
+        if (verification == NavigatorPlacementPolicy.Verification.CONFIRMED || verification == NavigatorPlacementPolicy.Verification.WAITING) {
+            return true;
+        }
+        if (verification == NavigatorPlacementPolicy.Verification.EXHAUSTED) {
+            return false;
+        }
+        if (clearReplaceablePlacementTarget(client, world, player, placePos, now, preserveMovementState)) {
+            return true;
+        }
         if (now - executionState.lastInteractAtMs < 250L) {
             synchronized (host.lock()) {
                 executionState.lastPlaceTarget = placePos.immutable();
@@ -3409,7 +3589,7 @@ final class NavigatorPrimitiveExecutor {
             }
             return false;
         }
-        PlacementTarget placementTarget = findPlacementTarget(world, placePos);
+        PlacementTarget placementTarget = findPlacementTarget(world, placePos, placementAttemptIndex(placePos));
         if (placementTarget == null) {
             synchronized (host.lock()) {
                 executionState.lastPlaceTarget = placePos.immutable();
@@ -3445,23 +3625,62 @@ final class NavigatorPrimitiveExecutor {
             player.swing(InteractionHand.MAIN_HAND);
         }
         HotbarSlotSynchronizer.selectHotbarSlot(client, previousSlot);
-        boolean placedNow = pathPlanner.hasCollision(world, placePos);
-        synchronized (host.lock()) {
-            executionState.lastPlaceTarget = placePos.immutable();
-            if (!accepted) {
-                executionState.lastPlaceResult = "rejected";
-            } else if (placedNow) {
-                executionState.lastPlaceResult = "placed";
-            } else {
-                executionState.lastPlaceResult = "accepted no block";
-            }
-        }
-        if (!accepted || !placedNow) {
+        return recordPlacementAttempt(world, placePos, accepted, now);
+    }
+
+    /**
+     * Plants do not obstruct a player's collision path, but a client-side place
+     * interaction is not guaranteed to replace every such block.  Clear only the
+     * exact planned support cell before attempting the placement; do not make
+     * plants into ordinary route-mining targets.
+     */
+    boolean clearReplaceablePlacementTarget(
+        Minecraft client,
+        ClientLevel world,
+        LocalPlayer player,
+        BlockPos placePos,
+        long now,
+        boolean preserveMovementState
+    ) {
+        BlockState state = world.getBlockState(placePos);
+        if (state == null || state.isAir() || !state.canBeReplaced() || !world.getFluidState(placePos).isEmpty()) {
             return false;
         }
-        synchronized (host.lock()) {
-            executionState.lastInteractAtMs = now;
+        if (!host.allowBlockBreaking()) {
+            synchronized (host.lock()) {
+                executionState.lastPlaceTarget = placePos.immutable();
+                executionState.lastPlaceResult = "replaceable target requires breaking";
+            }
+            return false;
         }
+        BreakTargeting targeting = resolveBreakTargeting(world, player, placePos);
+        if (targeting == null) {
+            synchronized (host.lock()) {
+                executionState.lastPlaceTarget = placePos.immutable();
+                executionState.lastPlaceResult = "cannot target replaceable block";
+            }
+            return false;
+        }
+        if (!preserveMovementState) {
+            releaseMovementKeys(client);
+        }
+        lookAtPosition(player, targeting.hitPos());
+        boolean startingNewTarget;
+        synchronized (host.lock()) {
+            startingNewTarget = executionState.activeBreakTarget == null || !executionState.activeBreakTarget.equals(placePos);
+            executionState.activeBreakTarget = placePos.immutable();
+            executionState.lastPlaceTarget = placePos.immutable();
+            executionState.lastPlaceResult = "clearing replaceable placement target";
+            if (startingNewTarget) {
+                executionState.lastInteractAtMs = now;
+            }
+        }
+        if (startingNewTarget) {
+            client.gameMode.startDestroyBlock(placePos, targeting.face());
+        }
+        client.gameMode.continueDestroyBlock(placePos, targeting.face());
+        player.swing(InteractionHand.MAIN_HAND);
+        host.noteControllerActivity(now);
         return true;
     }
     
@@ -3526,7 +3745,7 @@ final class NavigatorPrimitiveExecutor {
         int hotbarSize = net.minecraft.world.entity.player.Inventory.getSelectionSize();
         for (int slot = 0; slot < hotbarSize; slot++) {
             ItemStack stack = player.getInventory().getItem(slot);
-            if (!stack.isEmpty() && stack.getItem() instanceof BlockItem) {
+            if (NavigatorPlacementPolicy.isSolidSupportBlock(stack)) {
                 return slot;
             }
         }
@@ -3540,7 +3759,7 @@ final class NavigatorPrimitiveExecutor {
         int hotbarSize = net.minecraft.world.entity.player.Inventory.getSelectionSize();
         for (int slot = hotbarSize; slot < net.minecraft.world.entity.player.Inventory.INVENTORY_SIZE; slot++) {
             ItemStack stack = player.getInventory().getItem(slot);
-            if (!stack.isEmpty() && stack.getItem() instanceof BlockItem) {
+            if (NavigatorPlacementPolicy.isSolidSupportBlock(stack)) {
                 return slot;
             }
         }
@@ -3598,7 +3817,7 @@ final class NavigatorPrimitiveExecutor {
         }
         client.gameMode.handleInventoryMouseClick(handler.containerId, handlerSlot, targetHotbarSlot, ClickType.SWAP, player);
         ItemStack hotbarStack = inventory.getItem(targetHotbarSlot);
-        return !hotbarStack.isEmpty() && hotbarStack.getItem() instanceof BlockItem ? targetHotbarSlot : -1;
+        return NavigatorPlacementPolicy.isSolidSupportBlock(hotbarStack) ? targetHotbarSlot : -1;
     }
     
     int mapPlayerInventorySlot(AbstractContainerMenu handler, int inventorySlot) {
@@ -3616,6 +3835,10 @@ final class NavigatorPrimitiveExecutor {
     }
     
     PlacementTarget findPlacementTarget(Level world, BlockPos placePos) {
+        return findPlacementTarget(world, placePos, 0);
+    }
+
+    PlacementTarget findPlacementTarget(Level world, BlockPos placePos, int attemptIndex) {
         if (world == null || placePos == null) {
             return null;
         }
@@ -3627,6 +3850,7 @@ final class NavigatorPrimitiveExecutor {
             Direction.EAST,
             Direction.UP
         };
+        List<PlacementTarget> candidates = new ArrayList<>(preferredOrder.length);
         for (Direction direction : preferredOrder) {
             BlockPos support = placePos.relative(direction);
             if (!pathPlanner.hasCollision(world, support)) {
@@ -3638,9 +3862,9 @@ final class NavigatorPrimitiveExecutor {
                 face.getStepY() * 0.5D,
                 face.getStepZ() * 0.5D
             );
-            return new PlacementTarget(support, face, hitPos);
+            candidates.add(new PlacementTarget(support, face, hitPos));
         }
-        return null;
+        return candidates.isEmpty() ? null : candidates.get(Math.floorMod(attemptIndex, candidates.size()));
     }
     
     boolean primitiveRequiresBreak(PlannedPrimitive primitive) {
@@ -3671,12 +3895,19 @@ final class NavigatorPrimitiveExecutor {
         }
         synchronized (host.lock()) {
             if ("placed".equals(executionState.lastPlaceResult)
-                || "accepted no block".equals(executionState.lastPlaceResult)
                 || "ready".equals(executionState.lastPlaceResult)
                 || "centering".equals(executionState.lastPlaceResult)
                 || "waiting apex".equals(executionState.lastPlaceResult)) {
                 executionState.lastPlaceTarget = null;
                 executionState.lastPlaceResult = "none";
+            }
+            if (executionState.pendingPlaceTarget != null
+                && (primitive == null
+                || primitive.placeTarget() == null
+                || pathPlanner.hasCollision(world, executionState.pendingPlaceTarget))) {
+                executionState.pendingPlaceTarget = null;
+                executionState.pendingPlaceUntilMs = 0L;
+                executionState.pendingPlaceAttempts = 0;
             }
         }
     }

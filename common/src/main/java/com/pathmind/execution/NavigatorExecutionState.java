@@ -13,6 +13,7 @@ final class NavigatorExecutionState {
     int repeatedJumpAttempts;
     long lastInteractAtMs;
     BlockPos activeBreakTarget;
+    long lastMinedBlockAtMs;
     MiningAscentPhase activeMiningAscentPhase = MiningAscentPhase.CLEARANCE;
     PillarPhase activePillarPhase = PillarPhase.CENTER;
     List<BlockPos> plannedBreakTargets = List.of();
@@ -28,6 +29,9 @@ final class NavigatorExecutionState {
     double controllerBestDistanceSq = Double.POSITIVE_INFINITY;
     BlockPos lastPlaceTarget;
     String lastPlaceResult = "none";
+    BlockPos pendingPlaceTarget;
+    long pendingPlaceUntilMs;
+    int pendingPlaceAttempts;
     FollowSegmentType activeFollowSegment = FollowSegmentType.GROUND;
     BlockPos activeFollowSegmentTarget;
     PlannedPrimitive activePlannedPrimitive;

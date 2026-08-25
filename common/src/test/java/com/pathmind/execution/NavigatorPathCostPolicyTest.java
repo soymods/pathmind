@@ -49,4 +49,26 @@ class NavigatorPathCostPolicyTest {
             new BlockPos(4, 90, 6)
         ));
     }
+
+    @Test
+    void placementBudgetCountsPillarsAndSupportPlacements() {
+        BlockPos origin = BlockPos.ZERO;
+        PlannedPrimitive pillar = new PlannedPrimitive(
+            origin.above(), SearchPrimitiveType.PILLAR, PlannedPrimitiveType.PILLAR,
+            PrimitiveTraversal.VERTICAL_ASCENT, PrimitiveExecution.PLACE_THEN_MOVE,
+            1, 0, true, List.of(), origin
+        );
+        PlannedPrimitive support = new PlannedPrimitive(
+            origin.east(), SearchPrimitiveType.PLACE_FORWARD, PlannedPrimitiveType.WALK,
+            PrimitiveTraversal.GROUND, PrimitiveExecution.PLACE_THEN_MOVE,
+            0, 1, false, List.of(), origin.east().below()
+        );
+        PlannedPrimitive walk = new PlannedPrimitive(
+            origin.south(), SearchPrimitiveType.WALK, PlannedPrimitiveType.WALK,
+            PrimitiveTraversal.GROUND, PrimitiveExecution.CONTINUOUS_MOVEMENT,
+            0, 1, false, List.of(), null
+        );
+
+        assertEquals(2, PathmindPathPlanner.requiredPlacementBlocks(List.of(pillar, support, walk)));
+    }
 }

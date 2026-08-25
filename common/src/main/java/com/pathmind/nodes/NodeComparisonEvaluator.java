@@ -11,7 +11,13 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
+import net.minecraft.util.Mth;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.Vec3;
 
 final class NodeComparisonEvaluator {
     private final Node owner;
@@ -198,6 +204,10 @@ final class NodeComparisonEvaluator {
         }
         Map<String, String> leftValues = left.exportParameterValues();
         Map<String, String> rightValues = right.exportParameterValues();
+        Optional<Boolean> targetedBlockFaceComparison = compareTargetedBlockFaceValues(left, right);
+        if (targetedBlockFaceComparison.isPresent()) {
+            return targetedBlockFaceComparison;
+        }
         Optional<Boolean> emptyTargetedBlockComparison = compareEmptyTargetedBlockValues(left, leftValues, right, rightValues);
         if (emptyTargetedBlockComparison.isPresent()) {
             return emptyTargetedBlockComparison;
@@ -250,6 +260,77 @@ final class NodeComparisonEvaluator {
             return Optional.empty();
         }
         return Optional.of(canonicalizeValueMap(leftValues).equals(canonicalizeValueMap(rightValues)));
+    }
+
+    /**
+     * A Block Face parameter can carry a target block/coordinate.  When it is
+     * compared to Targeted Block Face, that target qualifies the hit as well as
+     * the face direction.  Previously the comparison only considered "up",
+     * "north", etc., so a top face on any block matched a selected wheat block.
+     */
+    private Optional<Boolean> compareTargetedBlockFaceValues(Node left, Node right) {
+        Node faceParameter;
+        if (left.getType() == NodeType.SENSOR_TARGETED_BLOCK_FACE
+            && right.getType() == NodeType.PARAM_BLOCK_FACE) {
+            faceParameter = right;
+        } else if (right.getType() == NodeType.SENSOR_TARGETED_BLOCK_FACE
+            && left.getType() == NodeType.PARAM_BLOCK_FACE) {
+            faceParameter = left;
+        } else {
+            return Optional.empty();
+        }
+
+        Optional<BlockHitResult> hit = owner.getCurrentBlockHitResult();
+        if (hit.isEmpty() || hit.get().getDirection() == null) {
+            return Optional.of(false);
+        }
+        String expectedFace = Node.getParameterString(faceParameter, "Face");
+        if (expectedFace == null || expectedFace.isBlank()) {
+            expectedFace = Node.getParameterString(faceParameter, "Side");
+        }
+        if (expectedFace == null || !expectedFace.trim().equalsIgnoreCase(
+            hit.get().getDirection().toString())) {
+            return Optional.of(false);
+        }
+
+        Node target = faceParameter.getAttachedParameter(0);
+        if (target == null) {
+            return Optional.of(true);
+        }
+        Minecraft client = Minecraft.getInstance();
+        if (client == null || client.level == null || hit.get().getBlockPos() == null) {
+            return Optional.of(false);
+        }
+        return Optional.of(targetedBlockFaceTargetMatches(
+            faceParameter, hit.get(), client.level.getBlockState(hit.get().getBlockPos())));
+    }
+
+    boolean targetedBlockFaceTargetMatches(Node faceParameter, BlockHitResult hit, BlockState hitState) {
+        if (faceParameter == null || hit == null || hit.getBlockPos() == null) {
+            return false;
+        }
+        Node target = faceParameter.getAttachedParameter(0);
+        if (target == null) {
+            return true;
+        }
+        if (owner.providesTrait(target, NodeValueTrait.BLOCK)) {
+            List<BlockSelection> selections = owner.resolveBlocksFromParameter(target);
+            if (selections.isEmpty() || hitState == null) {
+                return false;
+            }
+            return owner.matchesAnyBlock(selections, hitState);
+        }
+        if (owner.providesTrait(target, NodeValueTrait.COORDINATE)) {
+            Optional<Vec3> targetPosition = owner.resolvePositionTarget(target, null, null);
+            if (targetPosition.isEmpty()) {
+                return false;
+            }
+            Vec3 position = targetPosition.get();
+            BlockPos targetBlockPos = new BlockPos(
+                Mth.floor(position.x), Mth.floor(position.y), Mth.floor(position.z));
+            return targetBlockPos.equals(hit.getBlockPos());
+        }
+        return false;
     }
 
     Optional<Boolean> comparePositionCoordinateValues(Node left, Map<String, String> leftValues,

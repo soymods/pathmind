@@ -5,6 +5,7 @@ import com.pathmind.util.TextCompatibilityBridge;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Tooltip;
+import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
@@ -53,7 +54,7 @@ public class PathmindMainMenuButton extends Button {
         }
         int color = (alphaComponent << 24) | rgb;
 
-        GuiTextureRenderer.drawIcon(context, ICON_TEXTURE, iconX, iconY, iconSize, color);
+        context.blit(RenderType::guiTextured, ICON_TEXTURE, iconX, iconY, 0.0F, 0.0F, iconSize, iconSize, 16, 16);
     }
 
     private void drawButtonBackground(GuiGraphics context) {

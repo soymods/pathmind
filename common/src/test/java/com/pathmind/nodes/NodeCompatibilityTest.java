@@ -5,6 +5,10 @@ import com.pathmind.execution.ExecutionManager;
 import com.pathmind.routines.RoutineBuilderModel;
 import com.pathmind.routines.RoutineValueKind;
 import com.pathmind.util.RecipeCompatibilityBridge;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.Vec3;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
@@ -22,6 +26,23 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NodeCompatibilityTest {
+
+    @Test
+    void targetedBlockFaceComparisonHonorsAttachedCoordinateTarget() {
+        Node owner = new Node(NodeType.OPERATOR_EQUALS, 0, 0);
+        Node blockFace = new Node(NodeType.PARAM_BLOCK_FACE, 0, 0);
+        Node target = new Node(NodeType.PARAM_COORDINATE, 0, 0);
+        target.getParameter("X").setStringValue("4");
+        target.getParameter("Y").setStringValue("65");
+        target.getParameter("Z").setStringValue("-2");
+        assertTrue(blockFace.attachParameter(target, 0));
+
+        NodeComparisonEvaluator evaluator = new NodeComparisonEvaluator(owner);
+        assertTrue(evaluator.targetedBlockFaceTargetMatches(
+            blockFace, new BlockHitResult(Vec3.ZERO, Direction.UP, new BlockPos(4, 65, -2), false), null));
+        assertFalse(evaluator.targetedBlockFaceTargetMatches(
+            blockFace, new BlockHitResult(Vec3.ZERO, Direction.UP, BlockPos.ZERO, false), null));
+    }
 
     @Test
     void wholeCoordinateComparisonUsesOccupiedBlockPosition() {

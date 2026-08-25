@@ -26,6 +26,8 @@ import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
@@ -167,6 +169,11 @@ public final class PathmindNavigator {
         @Override
         public boolean allowBlockPlacing() {
             return allowBlockPlacing;
+        }
+
+        @Override
+        public int availablePlacementBlocks() {
+            return PathmindNavigator.this.availablePlacementBlocks();
         }
 
         @Override
@@ -1662,6 +1669,22 @@ public final class PathmindNavigator {
 
     private BlockPos resolvePlayerFootPos(LocalPlayer player) {
         return player == null ? null : player.blockPosition().immutable();
+    }
+
+    private int availablePlacementBlocks() {
+        Minecraft client = Minecraft.getInstance();
+        LocalPlayer player = client != null ? client.player : null;
+        if (player == null || player.getInventory() == null) {
+            return 0;
+        }
+        int available = 0;
+        for (int slot = 0; slot < net.minecraft.world.entity.player.Inventory.INVENTORY_SIZE; slot++) {
+            ItemStack stack = player.getInventory().getItem(slot);
+            if (stack != null && !stack.isEmpty() && stack.getItem() instanceof BlockItem) {
+                available += stack.getCount();
+            }
+        }
+        return available;
     }
 
     static void releaseMovementKeys(Minecraft client) {

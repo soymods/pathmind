@@ -109,6 +109,7 @@ final class PathmindPathPlanner {
     interface Host {
         boolean allowBlockBreaking();
         boolean allowBlockPlacing();
+        int availablePlacementBlocks();
         PathmindNavigator.WaterMode waterMode();
         BlockPos targetPos();
         boolean isProtectedNavigationGoal(BlockPos pos);
@@ -303,6 +304,14 @@ final class PathmindPathPlanner {
                 if (!isViablePlannedPath(world, candidatePath, candidatePlan)) {
                     lastFailure = FailureReason.NO_ROUTE;
                     lastFailureDetail = "The planner produced an invalid movement sequence toward " + host.formatDebugPos(candidateGoal) + ".";
+                    continue;
+                }
+                int requiredPlacementBlocks = requiredPlacementBlocks(candidatePlan);
+                int availablePlacementBlocks = host.availablePlacementBlocks();
+                if (requiredPlacementBlocks > availablePlacementBlocks) {
+                    lastFailure = FailureReason.NO_ROUTE;
+                    lastFailureDetail = "The route to " + host.formatDebugPos(candidateGoal)
+                        + " needs " + requiredPlacementBlocks + " placement blocks, but only " + availablePlacementBlocks + " are available.";
                     continue;
                 }
                 double scoredCost = result.cost()
@@ -571,7 +580,7 @@ final class PathmindPathPlanner {
             closed.add(current.pos());
             expansions++;
 
-            for (Neighbor neighbor : getNeighbors(world, current.pos(), start, goal)) {
+            for (Neighbor neighbor : getNeighbors(world, current.pos(), start, goal, cameByPrimitive.get(current.pos()))) {
                 if (closed.contains(neighbor.pos())) {
                     continue;
                 }
@@ -816,16 +825,30 @@ final class PathmindPathPlanner {
         return false;
     }
 
+    int requiredPlacementBlocks(List<PlannedPrimitive> plannedPrimitives) {
+        if (plannedPrimitives == null || plannedPrimitives.isEmpty()) {
+            return 0;
+        }
+        int required = 0;
+        for (PlannedPrimitive primitive : plannedPrimitives) {
+            if (primitive != null && primitive.requiresPlace()) {
+                required++;
+            }
+        }
+        return required;
+    }
+
     boolean isViablePlannedPath(Level world, List<BlockPos> path, List<PlannedPrimitive> plannedPrimitives) {
         if (world == null || path == null || path.isEmpty()) {
             return false;
         }
         for (int i = 0; i < path.size(); i++) {
             BlockPos step = path.get(i);
-            if (step == null || !host.isWaypointActionable(world, step)) {
+            PlannedPrimitive primitive = plannedPrimitives != null && i < plannedPrimitives.size() ? plannedPrimitives.get(i) : null;
+            if (step == null || (!host.isWaypointActionable(world, step)
+                && (primitive == null || !primitive.isPillar()))) {
                 return false;
             }
-            PlannedPrimitive primitive = plannedPrimitives != null && i < plannedPrimitives.size() ? plannedPrimitives.get(i) : null;
             if (primitive != null && primitive.target() != null && !primitive.target().equals(step)) {
                 return false;
             }
@@ -870,6 +893,14 @@ final class PathmindPathPlanner {
         if (dx == 1 && dz == 1 && dy != 0) {
             return false;
         }
+        if (primitive != null && primitive.isPillar()) {
+            return dy == 1
+                && primitive.requiresPlace()
+                && canOccupy(world, to)
+                && canOccupy(world, to.above())
+                && !isHardDanger(world, to)
+                && !isWaterNode(world, to);
+        }
         if (!isPlannerTraversableMove(world, from, to)) {
             return false;
         }
@@ -879,9 +910,6 @@ final class PathmindPathPlanner {
             }
         }
         if (dy < 0 && !canSafelyDropTo(world, from, to)) {
-            return false;
-        }
-        if (primitive != null && primitive.isPillar() && !primitive.requiresPlace()) {
             return false;
         }
         return true;
@@ -899,6 +927,16 @@ final class PathmindPathPlanner {
     }
 
     List<Neighbor> getNeighbors(Level world, BlockPos current, BlockPos start, BlockPos goal) {
+        return getNeighbors(world, current, start, goal, null);
+    }
+
+    List<Neighbor> getNeighbors(
+        Level world,
+        BlockPos current,
+        BlockPos start,
+        BlockPos goal,
+        PlannedPrimitive arrivalPrimitive
+    ) {
         List<Neighbor> neighbors = new ArrayList<>(MOVES.length + 8);
         NavigatorPlanningCache cache = planningCacheFor(world);
         if (cache != null) {
@@ -926,7 +964,7 @@ final class PathmindPathPlanner {
         addClimbNeighbors(world, current, start, goal, neighbors, now);
         addSafeDropNeighbors(world, current, start, goal, neighbors, now);
         if (worldModificationAllowed(world)) {
-            addPillarNeighbors(world, current, start, goal, neighbors, now);
+            addPillarNeighbors(world, current, start, goal, neighbors, now, arrivalPrimitive != null && arrivalPrimitive.isPillar());
         }
         return neighbors;
     }
@@ -1566,9 +1604,44 @@ final class PathmindPathPlanner {
     }
 
     void addPillarNeighbors(Level world, BlockPos current, BlockPos start, BlockPos goal, List<Neighbor> neighbors, long now) {
-        // Generic A* pillar moves are disabled.
-        // Pillaring is handled by the dedicated local escape / committed pillar controller instead,
-        // which prevents the planner from scattering micro-pillars into ordinary walking routes.
+        addPillarNeighbors(world, current, start, goal, neighbors, now, false);
+    }
+
+    void addPillarNeighbors(
+        Level world,
+        BlockPos current,
+        BlockPos start,
+        BlockPos goal,
+        List<Neighbor> neighbors,
+        long now,
+        boolean standsOnPlannedPillar
+    ) {
+        if (world == null
+            || current == null
+            || neighbors == null
+            || host.availablePlacementBlocks() <= 0) {
+            return;
+        }
+        BlockPos candidate = current.above();
+        if (!isWithinSearchBounds(start, candidate, goal)
+            || !isChunkLoaded(world, candidate)
+            || isHardDanger(world, candidate)
+            || isFailedNode(candidate, now)
+            || isFailedEdge(current, candidate, now)
+            || isFailedPillar(current, candidate, now)) {
+            return;
+        }
+        boolean physicallySupported = canPillarTo(world, current, candidate);
+        boolean virtuallySupported = standsOnPlannedPillar && canExtendPlannedPillarTo(world, current, candidate);
+        if (!physicallySupported && !virtuallySupported) {
+            return;
+        }
+        PlannedPrimitive primitive = host.createPlannedPrimitive(world, current, candidate, List.of(), candidate.below());
+        neighbors.add(new Neighbor(
+            searchPosition(candidate),
+            primitiveStepBaseCost(current, candidate) + primitiveSearchPenalty(world, current, candidate, primitive),
+            primitive
+        ));
     }
 
     Neighbor findNeighbor(Level world, BlockPos current, int dx, int dz, BlockPos start, BlockPos goal, boolean allowRelaxedBounds) {
@@ -1914,6 +1987,19 @@ final class PathmindPathPlanner {
             return false;
         }
         return canPlaceSupportAt(world, candidate.below(), true);
+    }
+
+    boolean canExtendPlannedPillarTo(Level world, BlockPos from, BlockPos candidate) {
+        if (!host.allowBlockPlacing() || world == null || from == null || candidate == null) {
+            return false;
+        }
+        if (candidate.getX() != from.getX() || candidate.getZ() != from.getZ() || candidate.getY() != from.getY() + 1) {
+            return false;
+        }
+        return canOccupy(world, candidate)
+            && canOccupy(world, candidate.above())
+            && !isHardDanger(world, candidate)
+            && !isWaterNode(world, candidate);
     }
 
     boolean canContinuePillarTo(Level world, BlockPos pillarBase, BlockPos pillarTarget) {

@@ -236,12 +236,16 @@ final class NavigatorRouteCoordinator {
     
     boolean isExcavatingState(long now) {
         synchronized (host.lock()) {
+            boolean activeRouteMining = executionState.controllerMode == ControllerMode.BREAK_BLOCK
+                && executionState.activeBreakTarget != null
+                && executionState.controllerUntilMs > now;
             boolean activeEscapeController = executionState.controllerMode == ControllerMode.ESCAPE_HOLE
                 || executionState.controllerMode == ControllerMode.RECOVER_ESCAPE
                 || executionState.controllerMode == ControllerMode.PILLAR
                 || executionState.controllerMode == ControllerMode.RECOVER_PILLAR;
-            return activeEscapeController
-                && (hasCommittedEscapeWorkLocked(now) || isActiveEscapeBreakTargetLocked());
+            return activeRouteMining
+                || (activeEscapeController
+                && (hasCommittedEscapeWorkLocked(now) || isActiveEscapeBreakTargetLocked()));
         }
     }
     
@@ -1623,9 +1627,17 @@ final class NavigatorRouteCoordinator {
                     .map(BlockPos::immutable)
                     .toList();
             }
-            BlockPos placeTarget = pathPlanner.needsPlacedSupport(world, target) && pathPlanner.canPlaceSupportAt(world, target.below())
+            boolean pillarTransition = host.allowBlockPlacing()
+                && previous.getX() == target.getX()
+                && previous.getZ() == target.getZ()
+                && target.getY() == previous.getY() + 1
+                && !pathPlanner.isClimbTransition(world, previous, target)
+                && pathPlanner.needsPlacedSupport(world, target);
+            BlockPos placeTarget = pillarTransition
                 ? target.below().immutable()
-                : null;
+                : pathPlanner.needsPlacedSupport(world, target) && pathPlanner.canPlaceSupportAt(world, target.below())
+                    ? target.below().immutable()
+                    : null;
             plan.add(createPlannedPrimitive(world, previous, target, breakTargets, placeTarget));
         }
         return List.copyOf(plan);

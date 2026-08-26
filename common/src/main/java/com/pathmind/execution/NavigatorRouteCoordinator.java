@@ -321,6 +321,19 @@ final class NavigatorRouteCoordinator {
                 navigationState.lastReplaceDecision = "keep:candidate_not_viable";
                 return true;
             }
+            PlannedPrimitive activePrimitive = executionState.activePlannedPrimitive;
+            boolean completedPlacementStall = activePrimitive != null
+                && activePrimitive.requiresPlace()
+                && !primitiveExecutor.primitiveStillRequiresPlace(world, activePrimitive)
+                && "ground".equals(navigationState.lastStuckReason);
+            // A support has been confirmed but the player did not transition
+            // onto its following WALK segment. Its old route is no longer a
+            // useful prefix: retain it and recovery repeatedly chooses the
+            // same impossible step from the wrong feet cell.
+            if (completedPlacementStall) {
+                navigationState.lastReplaceDecision = "replace:completed_placement_stalled";
+                return false;
+            }
             if (hasEquivalentOpeningPrefix(navigationState.currentPath, navigationState.pathIndex, candidatePath, playerFootPos, 4)) {
                 navigationState.lastReplaceDecision = "keep:equivalent_opening_prefix";
                 return true;

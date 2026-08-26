@@ -265,8 +265,36 @@ final class NavigatorPrimitiveExecutor {
         boolean requiresCommittedMining = plannedPrimitive != null
             && (plannedPrimitive.requiresBreak() || plannedPrimitive.isMineAscent());
         boolean requiresCommittedPlacement = plannedPrimitive != null && plannedPrimitive.requiresPlace();
+        // A mined-ascent edge is only executable from the immediately lower
+        // step. If the player falls away from it, holding the old committed
+        // route turns the controller into an endless jump attempt toward an
+        // unreachable waypoint. Invalidate that edge and let the planner find
+        // a fresh route, including a normal pillar sequence when needed.
+        if (plannedPrimitive != null
+            && plannedPrimitive.isMineAscent()
+            && !primitiveStillRequiresBreak(world, plannedPrimitive)
+            && playerFootPos.getY() < waypoint.getY() - 1) {
+            pathPlanner.rememberFailedJump(playerFootPos, waypoint, now);
+            // This is not a recoverable detour: the route's vertical state is
+            // invalid. Do not hand it to generic recovery, which may retain
+            // an equivalent prefix and thereby resurrect this ascent.
+            host.redirectCurrentPath(
+                playerFootPos,
+                waypoint,
+                currentPos,
+                now,
+                "mined ascent lost footing",
+                "discarded stale ascent after fall"
+            );
+            return true;
+        }
         MiningProgress miningProgress = resolveCommittedMiningProgress(world, playerFootPos, waypoint, plannedPrimitive);
-        if (miningProgress.completed()) {
+        // A combined break-and-place primitive must not advance/return after
+        // its excavation half completes.  Its support target is still air at
+        // that point, so recommitting the same path index forever starves the
+        // placement interaction and leaves the player beneath the goal.
+        // Fall through to the placement phase for those primitives instead.
+        if (miningProgress.completed() && !requiresCommittedPlacement) {
             synchronized (host.lock()) {
                 boolean terminalMinedAscent = miningProgress.minedAscent()
                     // Only the absence of a next step is terminal.  Advancing to

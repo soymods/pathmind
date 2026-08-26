@@ -72,6 +72,8 @@ public final class SchematicBuildExecutor {
     private int flightPathIndex;
     /** Startup route used to leave the construction volume before placement. */
     private BlockPos evacuationTarget;
+    /** Target whose rejected approaches are retried after an emergency egress. */
+    private BlockPos recoveryTarget;
     private boolean creativeFlight;
     private boolean activeScaffold;
     private boolean activeScaffoldCleanup;
@@ -140,6 +142,7 @@ public final class SchematicBuildExecutor {
         activeStep = null;
         activeApproach = null;
         evacuationTarget = null;
+        recoveryTarget = null;
         navigationFuture = null;
         placementAttempts = 0;
         lastPlacementOutcome = "no interaction sent";
@@ -251,6 +254,7 @@ public final class SchematicBuildExecutor {
         activeStep = null;
         activeApproach = null;
         evacuationTarget = null;
+        recoveryTarget = null;
         navigationFuture = null;
         flightPath = List.of();
         flightPathIndex = 0;
@@ -362,6 +366,41 @@ public final class SchematicBuildExecutor {
         return true;
     }
 
+    /**
+     * If a rejected click sequence leaves the player inside the shell, escape
+     * first and retry from a fresh outside-in plan. Rejected faces are only
+     * meaningful from the old body position, so retaining them would convert
+     * a recoverable trap into a permanent pause.
+     */
+    private boolean beginRecoveryEvacuation(Minecraft client, BlockPos rejectedTarget) {
+        evacuationTarget = findEvacuationTarget(client);
+        if (evacuationTarget == null) {
+            return false;
+        }
+        recoveryTarget = rejectedTarget == null ? null : rejectedTarget.immutable();
+        activeStep = null;
+        activeApproach = null;
+        if (!beginEvacuation(client)) {
+            recoveryTarget = null;
+            evacuationTarget = null;
+            return false;
+        }
+        status = "leaving schematic bounds after rejected placement";
+        liveLog("recovery evacuation target=" + format(recoveryTarget) + " exit=" + format(evacuationTarget));
+        return true;
+    }
+
+    private void finishEvacuation() {
+        evacuationTarget = null;
+        if (recoveryTarget != null) {
+            rejectedApproaches.remove(recoveryTarget);
+            liveLog("recovery evacuation complete; retrying target=" + format(recoveryTarget));
+            recoveryTarget = null;
+            status = "outside schematic bounds; retrying placement";
+        }
+        state = State.PLANNING;
+    }
+
     private void tickEvacuation(Minecraft client) {
         if (evacuationTarget == null) {
             state = State.PLANNING;
@@ -373,18 +412,16 @@ public final class SchematicBuildExecutor {
                     pause("Could not leave the schematic bounds before building.");
                     return;
                 }
-                evacuationTarget = null;
-                state = State.PLANNING;
+                finishEvacuation();
             }
             return;
         }
         if (flightPathIndex >= flightPath.size()
             || client.player.position().distanceToSqr(Vec3.atCenterOf(evacuationTarget).add(0.0D, -0.35D, 0.0D)) <= 0.45D) {
             PathmindNavigator.getInstance().pauseExternalNavigation(client);
-            evacuationTarget = null;
             flightPath = List.of();
             flightPathIndex = 0;
-            state = State.PLANNING;
+            finishEvacuation();
             return;
         }
         BlockPos waypoint = flightPath.get(flightPathIndex);
@@ -463,6 +500,9 @@ public final class SchematicBuildExecutor {
         activeApproach = selectApproach(client, next);
         if (activeApproach == null) {
             int rejected = rejectedApproaches.getOrDefault(next.worldPosition(), Set.of()).size();
+            if (rejected > 0 && beginRecoveryEvacuation(client, next.worldPosition())) {
+                return;
+            }
             pause(rejected == 0
                 ? "Build paused at " + format(next.worldPosition()) + ": no safe placement approach is currently available."
                 : "Build paused at " + format(next.worldPosition()) + ": " + rejected
@@ -512,7 +552,15 @@ public final class SchematicBuildExecutor {
             }
             return;
         }
-        if (!isNear(client.player.blockPosition(), activeApproach.standingPosition())) {
+        if (!isWithinPlacementReach(client.player, activeApproach)) {
+            // The navigator reached the requested feet cell, but that cell is
+            // not actually close enough to use the planned support face. Do
+            // not start the identical zero-distance route again; discard this
+            // geometric approach and select another face/standing cell.
+            if (isAtPlannedStandingCell(client.player, activeApproach)) {
+                retryFromAlternateApproach("the planned standing cell is outside interaction reach");
+                return;
+            }
             state = State.PLANNING;
             status = "replanning placement approach";
             return;
@@ -1401,22 +1449,24 @@ public final class SchematicBuildExecutor {
         return state != null && !state.isAir() && !state.getCollisionShape(net.minecraft.world.level.EmptyBlockGetter.INSTANCE, BlockPos.ZERO).isEmpty();
     }
 
-    private static boolean isNear(BlockPos current, BlockPos target) {
-        return current != null && target != null && current.distSqr(target) <= 1.0D;
-    }
-
     /**
-     * A planned standing position is only a fallback for navigation.  Before
-     * issuing a navigator job, always use the player's real eye position: a
-     * nearby support face can already be placed from several different feet
-     * positions.  Routing to one arbitrarily selected candidate was causing
-     * redundant navigation (and, in dense builds, unnecessary pillar plans).
+     * Direct placement is valid only from the planner's actual standing cell.
+     * Eye range alone permits clicks through a freshly built shell and can
+     * cause the player to fill the cell they occupy. The selected approach
+     * carries both requirements: an unoccupied feet cell and a legal hit face.
      */
     private static boolean isWithinPlacementReach(
         LocalPlayer player, SchematicPlacementPlanner.PlacementApproach approach
     ) {
-        return player != null && approach != null
+        return isAtPlannedStandingCell(player, approach)
             && player.getEyePosition().distanceToSqr(approach.hitPosition()) <= SURVIVAL_INTERACTION_RANGE_SQ;
+    }
+
+    private static boolean isAtPlannedStandingCell(
+        LocalPlayer player, SchematicPlacementPlanner.PlacementApproach approach
+    ) {
+        return player != null && approach != null
+            && player.blockPosition().equals(approach.standingPosition());
     }
 
     private static Direction faceToward(Vec3 from, BlockPos target) {
@@ -1597,6 +1647,7 @@ public final class SchematicBuildExecutor {
         activeStep = null;
         activeApproach = null;
         evacuationTarget = null;
+        recoveryTarget = null;
         navigationFuture = null;
         flightPath = List.of();
         flightPathIndex = 0;

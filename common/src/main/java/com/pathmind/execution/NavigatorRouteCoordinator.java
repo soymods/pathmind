@@ -758,14 +758,18 @@ final class NavigatorRouteCoordinator {
             if (plannedPrimitive.isPillar()) {
                 return ControllerMode.RECOVER_PILLAR;
             }
-            if (plannedPrimitive.requiresBreak()) {
+            // A recovery controller must only own movement while its world-change
+            // action is still pending.  Retaining RECOVER_BREAK for an ordinary
+            // WALK primitive (or after its break completed) prevents the normal
+            // path follower from consuming an otherwise-valid replanned route.
+            if (primitiveExecutor.primitiveStillRequiresBreak(world, plannedPrimitive)) {
                 return ControllerMode.RECOVER_BREAK;
             }
             if (plannedPrimitive.isJump()) {
                 return ControllerMode.RECOVER_JUMP;
             }
         }
-        return ControllerMode.RECOVER_BREAK;
+        return ControllerMode.FOLLOW_PATH;
     }
     
     boolean isCommittedPillarState(Level world, BlockPos playerFootPos, long now) {

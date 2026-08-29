@@ -8,6 +8,10 @@ import net.minecraft.network.chat.Component;
  * Each mode corresponds to a specific behavior within a generalized node type.
  */
 public enum NodeMode {
+    // WALK modes
+    WALK_FOR("Walk For", "Walk for a duration or distance, then continue"),
+    WALK_START("Start Walking", "Hold forward and continue immediately"),
+    WALK_STOP("Stop Walking", "Release a walk started by Start Walking"),
     // ALERT modes
     ALERT_SOUND("Play Sound", "Play a sound so you notice while tabbed out or AFK"),
     ALERT_WEBHOOK("Send Webhook", "POST the text to the webhook URL set in Pathmind settings"),
@@ -182,6 +186,9 @@ public enum NodeMode {
 				case ALERT -> new NodeMode[]{
 						ALERT_SOUND, ALERT_WEBHOOK
 				};
+				case WALK -> new NodeMode[]{
+						WALK_FOR, WALK_START, WALK_STOP
+				};
 				default -> new NodeMode[0];
 			};
     }
@@ -207,6 +214,7 @@ public enum NodeMode {
 				case SENSOR_POSITION_OF -> SENSOR_POSITION_XYZ;
 				case SENSOR_LOOK_DIRECTION -> SENSOR_LOOK_ROTATION;
 				case ALERT -> ALERT_SOUND;
+				case WALK -> WALK_FOR;
 				default -> null;
 			};
     }

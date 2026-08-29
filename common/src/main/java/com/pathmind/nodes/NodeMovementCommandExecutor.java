@@ -49,6 +49,22 @@ final class NodeMovementCommandExecutor {
             return;
         }
 
+        NodeMode mode = owner.getMode();
+        if (mode == NodeMode.WALK_STOP) {
+            WalkHold.stopSustained(client);
+            future.complete(null);
+            return;
+        }
+        if (mode == NodeMode.WALK_START) {
+            client.execute(() ->
+                owner.orientPlayerTowardsRuntimeTarget(client, owner.runtimeState().runtimeParameterData));
+            WalkHold.startSustained(client);
+            // The point of this mode is that walking outlives the node, so it completes at once
+            // and the graph moves on to whatever decides when to stop.
+            future.complete(null);
+            return;
+        }
+
         double durationSeconds = Math.max(0.0, owner.getDoubleParameter("Duration", 1.0));
         double distance = Math.max(0.0, owner.getDoubleParameter("Distance", 0.0));
         boolean useDistance = distance > 0.0;
@@ -73,11 +89,10 @@ final class NodeMovementCommandExecutor {
         new Thread(() -> {
             boolean interrupted = false;
             try {
+                // Acquired first so the finally below always has a matching hold to release.
+                WalkHold.acquire(client);
                 NodeClientRuntimeSupport.runOnClientThread(client, () -> {
                     owner.orientPlayerTowardsRuntimeTarget(client, owner.runtimeState().runtimeParameterData);
-                    if (client.options != null && client.options.keyUp != null) {
-                        client.options.keyUp.setDown(true);
-                    }
                 });
 
                 if (useDistance) {
@@ -143,16 +158,7 @@ final class NodeMovementCommandExecutor {
                 Thread.currentThread().interrupt();
                 interrupted = true;
             } finally {
-                try {
-                    NodeClientRuntimeSupport.runOnClientThread(client, () -> {
-                        if (client.options != null && client.options.keyUp != null) {
-                            client.options.keyUp.setDown(false);
-                        }
-                    });
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    interrupted = true;
-                }
+                WalkHold.release(client);
                 if (interrupted) {
                     future.completeExceptionally(new InterruptedException());
                 } else {

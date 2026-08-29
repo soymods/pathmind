@@ -1056,6 +1056,8 @@ public class ExecutionManager {
      */
     public void requestStopAll() {
         cancelAllNavigationCommands();
+        // A sustained Walk outlives the node that started it, so stop has to end it explicitly.
+        com.pathmind.nodes.WalkHold.releaseAll(Minecraft.getInstance());
 
         if (!sessionState.isActivelyExecuting() && sessionState.getActiveNode() == null && activeChains.isEmpty()) {
             runtimeValues.clear();

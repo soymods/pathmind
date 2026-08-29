@@ -732,8 +732,10 @@ public final class NodeCatalog {
         provided(NodeType.VARIABLE, NodeValueTrait.VARIABLE, NodeValueTrait.ANY);
         provided(NodeType.ROUTINE_INPUT, NodeValueTrait.ANY);
 
+        // Both slots are optional: Look already aims the player, and Start Walking has no
+        // duration at all. A required slot fails the node outright at execution time.
         parameterHost(NodeType.WALK,
-            slot("Direction", true,
+            slot("Direction", false,
                 NodeValueTrait.DIRECTION,
                 NodeValueTrait.ROTATION,
                 NodeValueTrait.COORDINATE,
@@ -742,7 +744,7 @@ public final class NodeCatalog {
                 NodeValueTrait.ENTITY,
                 NodeValueTrait.PLAYER,
                 NodeValueTrait.LIST_ITEM),
-            slot("Duration/Distance", true, NodeValueTrait.DURATION, NodeValueTrait.DISTANCE));
+            slot("Duration/Distance", false, NodeValueTrait.DURATION, NodeValueTrait.DISTANCE));
         parameterHost(NodeType.LOOK,
             NodeValueTrait.ROTATION,
             NodeValueTrait.DIRECTION,
@@ -909,6 +911,10 @@ public final class NodeCatalog {
         modeParameters(NodeMode.FARM_WAYPOINT,
             of("Waypoint", ParameterType.STRING, "farm"),
             of("Range", ParameterType.INTEGER, "10"));
+        // WALK_START and WALK_STOP deliberately declare no parameters.
+        modeParameters(NodeMode.WALK_FOR,
+            of("Duration", ParameterType.DOUBLE, "1.0"),
+            of("Distance", ParameterType.DOUBLE, "0.0"));
         modeParameters(NodeMode.ALERT_SOUND,
             of("Sound", ParameterType.STRING, "minecraft:block.note_block.pling"),
             of("Volume", ParameterType.DOUBLE, "1.0"));

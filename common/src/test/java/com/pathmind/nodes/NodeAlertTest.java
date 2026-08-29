@@ -70,6 +70,6 @@ class NodeAlertTest {
         assertTrue(NodeCatalog.hasExecutionRoute(NodeType.ALERT));
         assertEquals(NodeCategory.INTERFACE, NodeCatalog.category(NodeType.ALERT));
         assertEquals(NodeMode.ALERT_SOUND, NodeMode.getDefaultModeForNodeType(NodeType.ALERT));
-        assertEquals(2, NodeMode.getAvailableModesForNodeType(NodeType.ALERT).length);
+        assertEquals(2, NodeMode.getModesForNodeType(NodeType.ALERT).length);
     }
 }

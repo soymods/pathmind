@@ -51,6 +51,7 @@ final class NodeCommandDispatcher {
             case UI_UTILS -> new NodeGuiCommandExecutor(node).executeUiUtilsCommand(future);
             case WAIT -> new NodeFlowCommandExecutor(node).executeWaitCommand(future);
             case MESSAGE -> new NodeTextIoCommandExecutor(node).executeMessageCommand(future);
+            case ALERT -> new NodeAlertCommandExecutor(node).executeAlertCommand(future);
             case HOTBAR -> new NodeInventoryCommandExecutor(node).executeHotbarCommand(future);
             case DROP_ITEM -> new NodeInventoryCommandExecutor(node).executeDropItemCommand(future);
             case DROP_SLOT -> new NodeInventoryCommandExecutor(node).executeDropSlotCommand(future);

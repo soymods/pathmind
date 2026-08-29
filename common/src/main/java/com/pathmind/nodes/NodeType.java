@@ -150,6 +150,7 @@ public enum NodeType {
     WAIT,
     STICKY_NOTE,
     MESSAGE,
+    ALERT,
     TEMPLATE,
     STOP_CHAIN,
     STOP_ALL,

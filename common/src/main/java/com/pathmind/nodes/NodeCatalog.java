@@ -145,6 +145,7 @@ public final class NodeCatalog {
             NodeType.EQUIP_HAND,
             NodeType.UI_UTILS,
             NodeType.MESSAGE,
+            NodeType.ALERT,
             NodeType.STICKY_NOTE);
 
         define(NodeCategory.DATA,
@@ -555,6 +556,7 @@ public final class NodeCatalog {
             NodeType.UI_UTILS);
         sidebar(NodeCategory.INTERFACE, "pathmind.sidebar.group.writingOutput",
             NodeType.MESSAGE,
+            NodeType.ALERT,
             NodeType.WRITE_BOOK,
             NodeType.WRITE_SIGN);
 
@@ -903,6 +905,9 @@ public final class NodeCatalog {
         modeParameters(NodeMode.FARM_WAYPOINT,
             of("Waypoint", ParameterType.STRING, "farm"),
             of("Range", ParameterType.INTEGER, "10"));
+        modeParameters(NodeMode.ALERT_SOUND,
+            of("Sound", ParameterType.STRING, "minecraft:block.note_block.pling"),
+            of("Volume", ParameterType.DOUBLE, "1.0"));
         modeParameters(NodeMode.WAIT_SECONDS, of("Duration", ParameterType.DOUBLE, ""));
         modeParameters(NodeMode.WAIT_TICKS, of("Duration", ParameterType.DOUBLE, ""));
         modeParameters(NodeMode.WAIT_MINUTES, of("Duration", ParameterType.DOUBLE, ""));
@@ -1156,6 +1161,7 @@ public final class NodeCatalog {
         route(ExecutionRoute.UI_UTILS, NodeType.UI_UTILS);
         route(ExecutionRoute.WAIT, NodeType.WAIT);
         route(ExecutionRoute.MESSAGE, NodeType.MESSAGE);
+        route(ExecutionRoute.ALERT, NodeType.ALERT);
         route(ExecutionRoute.HOTBAR, NodeType.HOTBAR);
         route(ExecutionRoute.DROP_ITEM, NodeType.DROP_ITEM);
         route(ExecutionRoute.DROP_SLOT, NodeType.DROP_SLOT);
@@ -1571,6 +1577,7 @@ public final class NodeCatalog {
             case WAIT -> "pathmind.node.type.wait";
             case STICKY_NOTE -> "pathmind.node.type.stickyNote";
             case MESSAGE -> "pathmind.node.type.message";
+            case ALERT -> "pathmind.node.type.alert";
             case TEMPLATE -> "pathmind.node.type.template";
             case STOP_CHAIN -> "pathmind.node.type.stopChain";
             case STOP_ALL -> "pathmind.node.type.stopAll";
@@ -1722,6 +1729,7 @@ public final class NodeCatalog {
             case WAIT -> "pathmind.node.type.wait.desc";
             case STICKY_NOTE -> "pathmind.node.type.stickyNote.desc";
             case MESSAGE -> "pathmind.node.type.message.desc";
+            case ALERT -> "pathmind.node.type.alert.desc";
             case TEMPLATE -> "pathmind.node.type.template.desc";
             case STOP_CHAIN -> "pathmind.node.type.stopChain.desc";
             case STOP_ALL -> "pathmind.node.type.stopAll.desc";
@@ -1871,6 +1879,7 @@ public final class NodeCatalog {
             case WAIT -> 0xFF607D8B;
             case STICKY_NOTE -> 0xFFEBCB5B;
             case MESSAGE -> 0xFF9E9E9E;
+            case ALERT -> 0xFFFF8F00;
             case TEMPLATE -> 0xFF26A69A;
             case STOP_CHAIN -> 0xFFE53935;
             case STOP_ALL -> 0xFFE53935;
@@ -2100,7 +2109,8 @@ public final class NodeCatalog {
         INVERT,
         COME,
         SURFACE,
-        TUNNEL
+        TUNNEL,
+        ALERT
     }
 
     private record SidebarGroupDefinition(

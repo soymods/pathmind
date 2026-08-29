@@ -48,6 +48,7 @@ public final class SettingsManager {
         public Boolean gotoAllowBreakWhileExecuting = false;
         public Boolean gotoAllowPlaceWhileExecuting = false;
         public Boolean keyPressedActivatesInGuis = true;
+        public String alertWebhookUrl = "";
         public Boolean createListUseCustomRadius = false;
         public Integer createListRadius = 64;
         public Map<String, String> presetGroupColors = new LinkedHashMap<>();
@@ -143,6 +144,35 @@ public final class SettingsManager {
     public static boolean shouldShowChatErrors() {
         Settings settings = getCurrent();
         return settings.showChatErrors == null || settings.showChatErrors;
+    }
+
+    /**
+     * The configured Alert webhook endpoint, or null when unset or not a usable https URL.
+     * Validated here rather than at the call site so every caller gets the same trust boundary.
+     */
+    public static String getAlertWebhookUrl() {
+        return sanitizeWebhookUrl(getCurrent().alertWebhookUrl);
+    }
+
+    /**
+     * Returns the URL only when it is a usable https endpoint, otherwise null. Plain http and
+     * every other scheme are rejected: this string comes from the user and drives an outbound
+     * request, so it is checked once here rather than at each call site.
+     */
+    public static String sanitizeWebhookUrl(String candidate) {
+        String raw = candidate == null ? "" : candidate.trim();
+        if (raw.isEmpty()) {
+            return null;
+        }
+        try {
+            java.net.URI uri = java.net.URI.create(raw);
+            boolean usable = "https".equalsIgnoreCase(uri.getScheme())
+                && uri.getHost() != null
+                && !uri.getHost().isBlank();
+            return usable ? raw : null;
+        } catch (IllegalArgumentException invalid) {
+            return null;
+        }
     }
 
     public static long getNodeDelayMs() {

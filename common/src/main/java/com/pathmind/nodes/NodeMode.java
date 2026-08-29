@@ -8,6 +8,9 @@ import net.minecraft.network.chat.Component;
  * Each mode corresponds to a specific behavior within a generalized node type.
  */
 public enum NodeMode {
+    // ALERT modes
+    ALERT_SOUND("Play Sound", "Play a sound so you notice while tabbed out or AFK"),
+    ALERT_WEBHOOK("Send Webhook", "POST the text to the webhook URL set in Pathmind settings"),
     // GOTO modes
     GOTO_XYZ("Go to XYZ", "Go to specific X, Y, Z coordinates"),
     GOTO_XZ("Go to XZ", "Go to X, Z coordinates (Y defaults to surface)"),
@@ -176,6 +179,9 @@ public enum NodeMode {
 				case SENSOR_LOOK_DIRECTION -> new NodeMode[]{
 						SENSOR_LOOK_YAW, SENSOR_LOOK_PITCH, SENSOR_LOOK_ROTATION
 				};
+				case ALERT -> new NodeMode[]{
+						ALERT_SOUND, ALERT_WEBHOOK
+				};
 				default -> new NodeMode[0];
 			};
     }
@@ -200,6 +206,7 @@ public enum NodeMode {
 				case WAIT, PARAM_DURATION -> WAIT_SECONDS;
 				case SENSOR_POSITION_OF -> SENSOR_POSITION_XYZ;
 				case SENSOR_LOOK_DIRECTION -> SENSOR_LOOK_ROTATION;
+				case ALERT -> ALERT_SOUND;
 				default -> null;
 			};
     }

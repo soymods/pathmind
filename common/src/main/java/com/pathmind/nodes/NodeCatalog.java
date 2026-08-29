@@ -445,6 +445,7 @@ public final class NodeCatalog {
         // inside that strip (NodeRenderer.renderInlineParameterContent). A node with modes but
         // without this tag has no way to reach them in the editor.
         tag(NodeFlag.RENDER_INLINE_PARAMETERS,
+            NodeType.WALK,
             NodeType.ALERT,
             NodeType.UI_UTILS,
             NodeType.SENSOR_FABRIC_EVENT,
@@ -732,18 +733,11 @@ public final class NodeCatalog {
         provided(NodeType.VARIABLE, NodeValueTrait.VARIABLE, NodeValueTrait.ANY);
         provided(NodeType.ROUTINE_INPUT, NodeValueTrait.ANY);
 
-        // Both slots are optional: Look already aims the player, and Start Walking has no
-        // duration at all. A required slot fails the node outright at execution time.
+        // Walk has no Direction slot: Look already aims the player, and carrying a second way
+        // to do it made the node reject runs that had only one of the two filled in. The slot
+        // is optional because Start Walking has no duration at all, and a required slot fails
+        // the node outright at execution time.
         parameterHost(NodeType.WALK,
-            slot("Direction", false,
-                NodeValueTrait.DIRECTION,
-                NodeValueTrait.ROTATION,
-                NodeValueTrait.COORDINATE,
-                NodeValueTrait.BLOCK,
-                NodeValueTrait.ITEM,
-                NodeValueTrait.ENTITY,
-                NodeValueTrait.PLAYER,
-                NodeValueTrait.LIST_ITEM),
             slot("Duration/Distance", false, NodeValueTrait.DURATION, NodeValueTrait.DISTANCE));
         parameterHost(NodeType.LOOK,
             NodeValueTrait.ROTATION,

@@ -64,8 +64,9 @@ class WalkHoldTest {
     void walkModesAreRegisteredWithTimedAsTheDefault() {
         assertEquals(NodeMode.WALK_FOR, NodeMode.getDefaultModeForNodeType(NodeType.WALK));
         assertEquals(3, NodeMode.getModesForNodeType(NodeType.WALK).length);
-        // Both slots optional: Look already aims, and Start Walking has no duration.
+        // One slot, and it is optional: Look already aims the player, and Start Walking has
+        // no duration. A required slot fails the node outright before it runs.
+        assertEquals(1, NodeTraitRegistry.getParameterSlotCount(NodeType.WALK));
         assertFalse(NodeCatalog.isParameterSlotAlwaysRequired(NodeType.WALK, 0));
-        assertFalse(NodeCatalog.isParameterSlotAlwaysRequired(NodeType.WALK, 1));
     }
 }

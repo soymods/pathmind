@@ -40,7 +40,7 @@ final class NodeMovementCommandExecutor {
     }
 
     void executeWalkCommand(CompletableFuture<Void> future) {
-        if (owner.preprocessAttachedParameter(EnumSet.of(Node.ParameterUsage.LOOK_ORIENTATION), future) == Node.ParameterHandlingResult.COMPLETE) {
+        if (owner.preprocessAttachedParameter(EnumSet.noneOf(Node.ParameterUsage.class), future) == Node.ParameterHandlingResult.COMPLETE) {
             return;
         }
         net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
@@ -56,8 +56,6 @@ final class NodeMovementCommandExecutor {
             return;
         }
         if (mode == NodeMode.WALK_START) {
-            client.execute(() ->
-                owner.orientPlayerTowardsRuntimeTarget(client, owner.runtimeState().runtimeParameterData));
             WalkHold.startSustained(client);
             // The point of this mode is that walking outlives the node, so it completes at once
             // and the graph moves on to whatever decides when to stop.
@@ -71,9 +69,9 @@ final class NodeMovementCommandExecutor {
         NodeParameter durationParameter = owner.getParameter("Duration");
         boolean durationExplicitlyEdited = durationParameter != null && durationParameter.isUserEdited();
 
-        Node slotOneParameter = owner.getAttachedParameter(1);
+        Node slotOneParameter = owner.getAttachedParameter(0);
         if (slotOneParameter != null && slotOneParameter.getType() == NodeType.VARIABLE) {
-            Node resolved = owner.resolveVariableValueNode(slotOneParameter, 1, null);
+            Node resolved = owner.resolveVariableValueNode(slotOneParameter, 0, null);
             if (resolved != null) {
                 slotOneParameter = resolved;
             }
@@ -91,9 +89,6 @@ final class NodeMovementCommandExecutor {
             try {
                 // Acquired first so the finally below always has a matching hold to release.
                 WalkHold.acquire(client);
-                NodeClientRuntimeSupport.runOnClientThread(client, () -> {
-                    owner.orientPlayerTowardsRuntimeTarget(client, owner.runtimeState().runtimeParameterData);
-                });
 
                 if (useDistance) {
                     net.minecraft.core.BlockPos startBlockPos = NodeClientRuntimeSupport.supplyFromClient(client,

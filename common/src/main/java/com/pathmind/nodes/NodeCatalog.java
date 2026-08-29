@@ -441,7 +441,11 @@ public final class NodeCatalog {
             NodeType.OPEN_INVENTORY,
             NodeType.CLOSE_GUI);
 
+        // This flag is what makes a node draw its parameter strip, and the mode selector lives
+        // inside that strip (NodeRenderer.renderInlineParameterContent). A node with modes but
+        // without this tag has no way to reach them in the editor.
         tag(NodeFlag.RENDER_INLINE_PARAMETERS,
+            NodeType.ALERT,
             NodeType.UI_UTILS,
             NodeType.SENSOR_FABRIC_EVENT,
             NodeType.SENSOR_ATTRIBUTE_DETECTION,

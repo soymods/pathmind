@@ -31,6 +31,8 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 
 final class NodeInventoryCommandExecutor {
+    private static final int OFFHAND_SWAP_BUTTON = 40;
+
     private final Node owner;
     private final NodeType type;
     private final NodeRuntimeState runtimeState;
@@ -188,7 +190,7 @@ final class NodeInventoryCommandExecutor {
         }
 
         Inventory inventory = client.player.getInventory();
-        int slotValue = getIntParameter("Slot", 0);
+        int slotValue = resolveClickSlotIndex();
         SlotSelectionType selectionType = resolveInventorySlotSelectionType(0);
         SlotResolution resolution = resolveInventorySlot(handler, inventory, slotValue, selectionType);
         if (resolution == null || resolution.slot == null) {
@@ -197,17 +199,48 @@ final class NodeInventoryCommandExecutor {
             return;
         }
 
+        NodeMode mode = owner.getMode();
         interactionManager.handleInventoryMouseClick(
             handler.containerId,
             resolution.handlerSlotIndex,
-            0,
-            ClickType.PICKUP,
+            clickSlotButton(mode),
+            clickSlotClickType(mode),
             client.player
         );
 
         inventory.setChanged();
         client.player.inventoryMenu.broadcastChanges();
         future.complete(null);
+    }
+
+    // Click Slot has no slot parameter of its own, so the index comes straight off the attached
+    // Slot node. The parameter slot is required, so execution cannot reach here without one; the
+    // zero fallbacks cover a node that resolves to nothing rather than a node that is missing.
+    private int resolveClickSlotIndex() {
+        Node selection = resolveVariableSelectionParameterNode(getAttachedParameter(0));
+        if (selection == null) {
+            return 0;
+        }
+        Integer parsed = Node.parseIntOrNull(selection.exportParameterValues().get("Slot"));
+        return parsed != null ? parsed : 0;
+    }
+
+    // The three Click Slot modes send exactly what the vanilla screen sends for the same input:
+    // a plain left click is PICKUP, shift-click is QUICK_MOVE, and F is SWAP on button 40, which
+    // is the offhand's button index in AbstractContainerScreen. A node saved before the modes
+    // existed loads with the default CLICK_SLOT_LEFT, and a null mode is the same plain click.
+    static ClickType clickSlotClickType(NodeMode mode) {
+        if (mode == NodeMode.CLICK_SLOT_SHIFT) {
+            return ClickType.QUICK_MOVE;
+        }
+        if (mode == NodeMode.CLICK_SLOT_SWAP_OFFHAND) {
+            return ClickType.SWAP;
+        }
+        return ClickType.PICKUP;
+    }
+
+    static int clickSlotButton(NodeMode mode) {
+        return mode == NodeMode.CLICK_SLOT_SWAP_OFFHAND ? OFFHAND_SWAP_BUTTON : 0;
     }
 
     void executeClickScreenCommand(CompletableFuture<Void> future) {

@@ -246,6 +246,14 @@ final class NodeRuntimeParameterResolver {
                 return Node.ParameterHandlingResult.COMPLETE;
             }
         }
+        if (!handled
+            && owner.getType() == NodeType.CLICK_SLOT
+            && owner.providesTrait(parameterNode, NodeValueTrait.INVENTORY_SLOT)) {
+            // Click Slot keeps no parameter of its own; the executor reads the index straight off
+            // this attachment. So applyParameterValuesFromMap has nothing to write into and cannot
+            // mark the slot handled, which would otherwise fall through as an incompatible parameter.
+            handled = true;
+        }
         // Special case: block parameters in slot 0 of PLACE/PLACE_HAND nodes are valid
         // even when usages is empty (they provide block type, not position)
         if (!handled

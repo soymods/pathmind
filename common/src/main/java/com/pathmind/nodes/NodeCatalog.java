@@ -440,7 +440,11 @@ public final class NodeCatalog {
             NodeType.OPEN_INVENTORY,
             NodeType.CLOSE_GUI);
 
+        // This flag is what makes a node draw its parameter strip, and the mode selector lives
+        // inside that strip (NodeRenderer.renderInlineParameterContent). A node with modes but
+        // without this tag has no way to reach them in the editor.
         tag(NodeFlag.RENDER_INLINE_PARAMETERS,
+            NodeType.CLICK_SLOT,
             NodeType.UI_UTILS,
             NodeType.SENSOR_FABRIC_EVENT,
             NodeType.SENSOR_ATTRIBUTE_DETECTION,
@@ -903,6 +907,12 @@ public final class NodeCatalog {
         modeParameters(NodeMode.FARM_WAYPOINT,
             of("Waypoint", ParameterType.STRING, "farm"),
             of("Range", ParameterType.INTEGER, "10"));
+        // Click Slot's three modes take the same Slot number; they differ only in the click the
+        // node sends. Keeping the id and label identical to the old type parameter is what lets
+        // presets saved before the modes existed restore their slot unchanged.
+        modeParameters(NodeMode.CLICK_SLOT_LEFT, of("click_slot_index", "Slot", ParameterType.INTEGER, "0"));
+        modeParameters(NodeMode.CLICK_SLOT_SHIFT, of("click_slot_index", "Slot", ParameterType.INTEGER, "0"));
+        modeParameters(NodeMode.CLICK_SLOT_SWAP_OFFHAND, of("click_slot_index", "Slot", ParameterType.INTEGER, "0"));
         modeParameters(NodeMode.WAIT_SECONDS, of("Duration", ParameterType.DOUBLE, ""));
         modeParameters(NodeMode.WAIT_TICKS, of("Duration", ParameterType.DOUBLE, ""));
         modeParameters(NodeMode.WAIT_MINUTES, of("Duration", ParameterType.DOUBLE, ""));
@@ -948,7 +958,6 @@ public final class NodeCatalog {
             of("drop_slot_index", "Slot", ParameterType.INTEGER, "0"),
             of("Count", ParameterType.INTEGER, "0"),
             of("EntireStack", ParameterType.BOOLEAN, "true"));
-        typeParameters(NodeType.CLICK_SLOT, of("click_slot_index", "Slot", ParameterType.INTEGER, "0"));
         typeParameters(NodeType.CLICK_SCREEN,
             of("X", ParameterType.INTEGER, "0"),
             of("Y", ParameterType.INTEGER, "0"));

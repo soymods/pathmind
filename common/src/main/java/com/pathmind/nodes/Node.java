@@ -659,7 +659,12 @@ public class Node {
     }
 
     boolean isComparisonOperator() {
-        return NodeCatalog.isBooleanSensor(type) && NodeCatalog.category(type) == NodeCategory.DATA;
+        // A comparison layout has two operands shown side by side.  Boolean Not is a
+        // unary operator, so treating it as a comparison gives it a phantom second
+        // slot and causes its width to grow as though it had two child nodes.
+        return NodeCatalog.isBooleanSensor(type)
+            && NodeCatalog.category(type) == NodeCategory.DATA
+            && getParameterSlotCount() > 1;
     }
 
     private static boolean isExpandableBooleanOperatorType(NodeType type) {

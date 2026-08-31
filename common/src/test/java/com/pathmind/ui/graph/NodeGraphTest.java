@@ -43,6 +43,23 @@ class NodeGraphTest {
     }
 
     @Test
+    void autosaveDoesNotReenterWhenSaveHandlerCommitsEdits() {
+        NodeGraph graph = new NodeGraph();
+        AtomicInteger saves = new AtomicInteger();
+        graph.setWorkspaceSaveHandler(() -> {
+            saves.incrementAndGet();
+            graph.commitPendingEdits();
+            graph.markWorkspaceDirty();
+            return true;
+        });
+
+        graph.markWorkspaceDirty();
+
+        assertEquals(1, saves.get());
+        assertFalse(graph.isWorkspaceDirty());
+    }
+
+    @Test
     void applyingRootSnapshotKeepsNewRoutineOnImmediateResave() {
         NodeGraph graph = new NodeGraph();
         NodeGraphData root = new NodeGraphData();

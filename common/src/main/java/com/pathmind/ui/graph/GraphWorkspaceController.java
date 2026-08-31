@@ -35,6 +35,8 @@ final class GraphWorkspaceController {
     private String activePreset = PresetManager.getActivePreset();
     private BooleanSupplier workspaceSaveHandler;
     private boolean workspaceDirty = false;
+    /** Prevent edit finalization performed by a save handler from re-entering save(). */
+    private boolean saving = false;
     private boolean validationDirty = true;
     private GraphValidationResult cachedValidationResult = GraphValidationResult.empty();
 
@@ -43,17 +45,25 @@ final class GraphWorkspaceController {
     }
 
     boolean save() {
-        host.cancelDeferredStickySave();
-        host.commitPendingStickyEdit();
-        boolean saved = workspaceSaveHandler != null
-            ? workspaceSaveHandler.getAsBoolean()
-            : NodeGraphPersistence.saveNodeGraphForPreset(
-                activePreset, host.nodes(), host.connections(), host.routineRegistry());
-        if (saved) {
-            workspaceDirty = false;
-            invalidateTemplatePreviewCachesForPreset(activePreset);
+        if (saving) {
+            return false;
         }
-        return saved;
+        saving = true;
+        try {
+            host.cancelDeferredStickySave();
+            host.commitPendingStickyEdit();
+            boolean saved = workspaceSaveHandler != null
+                ? workspaceSaveHandler.getAsBoolean()
+                : NodeGraphPersistence.saveNodeGraphForPreset(
+                    activePreset, host.nodes(), host.connections(), host.routineRegistry());
+            if (saved) {
+                workspaceDirty = false;
+                invalidateTemplatePreviewCachesForPreset(activePreset);
+            }
+            return saved;
+        } finally {
+            saving = false;
+        }
     }
 
     void setWorkspaceSaveHandler(BooleanSupplier workspaceSaveHandler) {

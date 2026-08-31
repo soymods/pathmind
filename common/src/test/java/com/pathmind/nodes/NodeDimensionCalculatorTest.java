@@ -77,4 +77,19 @@ class NodeDimensionCalculatorTest {
         assertTrue(look.getWidth() >= initialWidth);
         assertTrue(look.getHeight() >= look.getParameterSlotHeight(0) + Node.HEADER_HEIGHT);
     }
+
+    @Test
+    void booleanNotUsesSingleOperandLayout() {
+        Node booleanNot = new Node(NodeType.OPERATOR_BOOLEAN_NOT, 0, 0);
+        Node value = new Node(NodeType.PARAM_BOOLEAN, 0, 0);
+        Node notEquals = new Node(NodeType.OPERATOR_NOT, 0, 0);
+
+        assertTrue(booleanNot.attachParameter(value));
+        booleanNot.recalculateDimensions();
+        notEquals.recalculateDimensions();
+
+        assertEquals(1, booleanNot.getParameterSlotCount());
+        assertEquals("Value", booleanNot.getParameterSlotLabel(0));
+        assertTrue(booleanNot.getWidth() < notEquals.getWidth());
+    }
 }

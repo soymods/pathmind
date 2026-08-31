@@ -1170,6 +1170,8 @@ public class Node {
             return Math.max(2, dynamicBooleanOperatorSlotCount);
         }
         if (type == NodeType.ROUTINE_CALL) return routineMetadata.getRoutineArgumentCount();
+        // Start/Stop Walking have nothing to time, so they show no slot at all.
+        if (type == NodeType.WALK && mode != NodeMode.WALK_FOR) return 0;
         return NodeTraitRegistry.getParameterSlotCount(type);
     }
 

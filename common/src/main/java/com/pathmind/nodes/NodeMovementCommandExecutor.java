@@ -40,12 +40,26 @@ final class NodeMovementCommandExecutor {
     }
 
     void executeWalkCommand(CompletableFuture<Void> future) {
-        if (owner.preprocessAttachedParameter(EnumSet.of(Node.ParameterUsage.LOOK_ORIENTATION), future) == Node.ParameterHandlingResult.COMPLETE) {
+        if (owner.preprocessAttachedParameter(EnumSet.noneOf(Node.ParameterUsage.class), future) == Node.ParameterHandlingResult.COMPLETE) {
             return;
         }
         net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
         if (client == null || client.player == null) {
             future.completeExceptionally(new RuntimeException("Minecraft client not available"));
+            return;
+        }
+
+        NodeMode mode = owner.getMode();
+        if (mode == NodeMode.WALK_STOP) {
+            WalkHold.stopSustained(client);
+            future.complete(null);
+            return;
+        }
+        if (mode == NodeMode.WALK_START) {
+            WalkHold.startSustained(client);
+            // The point of this mode is that walking outlives the node, so it completes at once
+            // and the graph moves on to whatever decides when to stop.
+            future.complete(null);
             return;
         }
 
@@ -55,9 +69,9 @@ final class NodeMovementCommandExecutor {
         NodeParameter durationParameter = owner.getParameter("Duration");
         boolean durationExplicitlyEdited = durationParameter != null && durationParameter.isUserEdited();
 
-        Node slotOneParameter = owner.getAttachedParameter(1);
+        Node slotOneParameter = owner.getAttachedParameter(0);
         if (slotOneParameter != null && slotOneParameter.getType() == NodeType.VARIABLE) {
-            Node resolved = owner.resolveVariableValueNode(slotOneParameter, 1, null);
+            Node resolved = owner.resolveVariableValueNode(slotOneParameter, 0, null);
             if (resolved != null) {
                 slotOneParameter = resolved;
             }
@@ -73,12 +87,8 @@ final class NodeMovementCommandExecutor {
         new Thread(() -> {
             boolean interrupted = false;
             try {
-                NodeClientRuntimeSupport.runOnClientThread(client, () -> {
-                    owner.orientPlayerTowardsRuntimeTarget(client, owner.runtimeState().runtimeParameterData);
-                    if (client.options != null && client.options.keyUp != null) {
-                        client.options.keyUp.setDown(true);
-                    }
-                });
+                // Acquired first so the finally below always has a matching hold to release.
+                WalkHold.acquire(client);
 
                 if (useDistance) {
                     net.minecraft.core.BlockPos startBlockPos = NodeClientRuntimeSupport.supplyFromClient(client,
@@ -143,16 +153,7 @@ final class NodeMovementCommandExecutor {
                 Thread.currentThread().interrupt();
                 interrupted = true;
             } finally {
-                try {
-                    NodeClientRuntimeSupport.runOnClientThread(client, () -> {
-                        if (client.options != null && client.options.keyUp != null) {
-                            client.options.keyUp.setDown(false);
-                        }
-                    });
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    interrupted = true;
-                }
+                WalkHold.release(client);
                 if (interrupted) {
                     future.completeExceptionally(new InterruptedException());
                 } else {

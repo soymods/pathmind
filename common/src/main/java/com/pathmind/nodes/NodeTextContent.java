@@ -19,7 +19,7 @@ final class NodeTextContent {
         this.type = type;
         this.host = host;
         this.messageLines = new ArrayList<>();
-        if (type == NodeType.MESSAGE || type == NodeType.CALCULATE) {
+        if (type == NodeType.MESSAGE || type == NodeType.CALCULATE || type == NodeType.ALERT) {
             this.messageLines.add(getDefaultMessageLineValue());
         }
         this.messageClientSide = false;
@@ -129,7 +129,7 @@ final class NodeTextContent {
     }
 
     boolean hasMessageInputFields() {
-        return type == NodeType.MESSAGE || type == NodeType.CALCULATE;
+        return type == NodeType.MESSAGE || type == NodeType.CALCULATE || type == NodeType.ALERT;
     }
 
     boolean hasBookTextInput() {

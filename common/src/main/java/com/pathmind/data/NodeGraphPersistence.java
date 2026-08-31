@@ -436,6 +436,12 @@ public class NodeGraphPersistence {
                         if (parameter != null) {
                             int slot = host.getType() == NodeType.ROUTINE_CALL && !isBlank(attachment.getRoutineInputId())
                                 ? host.getRoutineSlotForInputId(attachment.getRoutineInputId()) : attachment.getSlotIndex();
+                            if (host.getType() == NodeType.WALK) {
+                                // Walk dropped its Direction slot, so duration/distance moved from
+                                // slot 1 to slot 0. Anything that was in the old slot 0 aimed the
+                                // player and has nowhere to go.
+                                slot = slot == 1 ? 0 : -1;
+                            }
                             if (slot >= 0) host.attachParameter(parameter, slot);
                         }
                     }

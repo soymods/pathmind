@@ -724,6 +724,8 @@
   "pathmind.routine.library.inspector": "%s inputs • drag into workspace",
   "pathmind.routine.tooltip": "%s • Entrées : %s",
   "pathmind.routine.inspector": "This preset • %s inputs • %s usages", "pathmind.routine.broken": "Broken definition",
+  "pathmind.routine.input": "Entrée",
+  "pathmind.routine.addInput": "Ajouter une entrée",
   "pathmind.validation.missingRoutineDefinition": "Routine %s no longer exists.", "pathmind.validation.missingRoutineEntry": "This routine has no entry node.",
   "pathmind.validation.missingRoutineEntryNamed": "Routine %s has no entry node.", "pathmind.validation.invalidRoutineReporter": "This input does not belong to the open routine.",
   "pathmind.validation.duplicateRoutineId": "Routine %s has a duplicate internal ID.", "pathmind.validation.recursiveRoutine": "Routine %s calls itself; runtime depth is limited.",

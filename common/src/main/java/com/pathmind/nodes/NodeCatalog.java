@@ -693,10 +693,14 @@ public final class NodeCatalog {
         provided(NodeType.SENSOR_LOOK_DIRECTION, NodeValueTrait.ROTATION);
         provided(NodeType.SENSOR_CURRENT_HAND, NodeValueTrait.INVENTORY_SLOT);
         provided(NodeType.SENSOR_CURRENT_GUI, NodeValueTrait.GUI);
-        provided(NodeType.SENSOR_IS_ON_GROUND, NodeValueTrait.DISTANCE);
+        provided(NodeType.SENSOR_IS_ON_GROUND, NodeValueTrait.BOOLEAN);
         provided(NodeType.OPERATOR_RANDOM, NodeValueTrait.NUMBER);
         provided(NodeType.OPERATOR_MOD, NodeValueTrait.NUMBER);
         provided(NodeType.CALCULATE, NodeValueTrait.NUMBER);
+        provided(NodeType.OPERATOR_EQUALS, NodeValueTrait.BOOLEAN);
+        provided(NodeType.OPERATOR_NOT, NodeValueTrait.BOOLEAN);
+        provided(NodeType.OPERATOR_GREATER, NodeValueTrait.BOOLEAN);
+        provided(NodeType.OPERATOR_LESS, NodeValueTrait.BOOLEAN);
         provided(NodeType.OPERATOR_BOOLEAN_OR, NodeValueTrait.BOOLEAN);
         provided(NodeType.OPERATOR_BOOLEAN_AND, NodeValueTrait.BOOLEAN);
         provided(NodeType.OPERATOR_BOOLEAN_XOR, NodeValueTrait.BOOLEAN);

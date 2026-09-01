@@ -375,6 +375,7 @@ final class NodeControlController {
         }
         NodeType type = node.getType();
         return type == NodeType.CONTROL_IF
+            || type == NodeType.CONTROL_IF_DO
             || type == NodeType.CONTROL_IF_ELSE
             || type == NodeType.CONTROL_REPEAT_UNTIL
             || type == NodeType.CONTROL_WAIT_UNTIL;
@@ -385,7 +386,8 @@ final class NodeControlController {
             return false;
         }
         NodeType type = node.getType();
-        return type == NodeType.CONTROL_REPEAT
+        return type == NodeType.CONTROL_IF_DO
+            || type == NodeType.CONTROL_REPEAT
             || type == NodeType.CONTROL_REPEAT_UNTIL
             || type == NodeType.CONTROL_FOREVER;
     }
@@ -395,6 +397,9 @@ final class NodeControlController {
     }
 
     String getLogicActionSlotTitle(Node node) {
+        if (node != null && node.getType() == NodeType.CONTROL_IF_DO) {
+            return host.translate("pathmind.node.slot.action");
+        }
         if (node != null && node.getType() == NodeType.CONTROL_REPEAT) {
             return host.translate("pathmind.node.slot.repeatBody");
         }

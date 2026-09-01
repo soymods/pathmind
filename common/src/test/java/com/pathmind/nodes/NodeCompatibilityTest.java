@@ -80,6 +80,53 @@ class NodeCompatibilityTest {
     }
 
     @Test
+    void comparisonEvaluationDistinguishesInvalidTypesFromFalse() {
+        Node equals = new Node(NodeType.OPERATOR_EQUALS, 0, 0);
+        Node distance = new Node(NodeType.SENSOR_DISTANCE_BETWEEN, 0, 0);
+        Node and = new Node(NodeType.OPERATOR_BOOLEAN_AND, 0, 0);
+
+        NodeComparisonEvaluator.ComparisonEvaluation evaluation =
+            new NodeComparisonEvaluator(equals).evaluateComparisonOperands(distance, and);
+
+        assertTrue(evaluation.isInvalid());
+        assertTrue(evaluation.value().isEmpty());
+    }
+
+    @Test
+    void runtimeDiagnosticIsRetainedOnItsNodeUntilResolved() {
+        Node equals = new Node(NodeType.OPERATOR_EQUALS, 0, 0);
+
+        equals.reportRuntimeDiagnostic("comparison:type", "Cannot compare a number with a boolean.");
+
+        assertTrue(equals.hasRuntimeDiagnostic());
+        assertEquals("Cannot compare a number with a boolean.", equals.getRuntimeDiagnosticMessage());
+
+        equals.clearRuntimeDiagnostic();
+
+        assertFalse(equals.hasRuntimeDiagnostic());
+    }
+
+    @Test
+    void itemDataAcceptsAnItemOrInventorySlotTarget() {
+        Node itemData = new Node(NodeType.PARAM_ITEM_DATA, 0, 0);
+        Node item = new Node(NodeType.PARAM_ITEM, 0, 0);
+        Node slot = new Node(NodeType.PARAM_INVENTORY_SLOT, 0, 0);
+
+        assertTrue(itemData.canAcceptParameterNode(item, 0));
+        assertTrue(itemData.canAcceptParameterNode(slot, 0));
+    }
+
+    @Test
+    void itemDataBooleanFieldIsRecognizedAsABooleanComparisonValue() {
+        Node equals = new Node(NodeType.OPERATOR_EQUALS, 0, 0);
+        Node itemData = new Node(NodeType.PARAM_ITEM_DATA, 0, 0);
+        itemData.getParameter("Field").setStringValue(ItemDataParameterDefinition.FIELD_HAS_CUSTOM_NAME);
+
+        assertTrue(itemData.getProvidedTraits().contains(NodeValueTrait.BOOLEAN));
+        assertTrue(new NodeComparisonEvaluator(equals).resolveBooleanFromNode(itemData).isEmpty());
+    }
+
+    @Test
     void lessOperatorAcceptsDistanceBetweenSensor() {
         Node operator = new Node(NodeType.OPERATOR_LESS, 0, 0);
         Node sensor = new Node(NodeType.SENSOR_DISTANCE_BETWEEN, 0, 0);

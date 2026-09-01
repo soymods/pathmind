@@ -52,6 +52,7 @@ public final class NodeCatalog {
             NodeType.CONTROL_WAIT_UNTIL,
             NodeType.CONTROL_FOREVER,
             NodeType.CONTROL_IF,
+            NodeType.CONTROL_IF_DO,
             NodeType.CONTROL_IF_ELSE,
             NodeType.CONTROL_FORK,
             NodeType.CONTROL_JOIN_ANY,
@@ -176,6 +177,7 @@ public final class NodeCatalog {
             NodeType.PARAM_COORDINATE,
             NodeType.PARAM_BLOCK,
             NodeType.PARAM_ITEM,
+            NodeType.PARAM_ITEM_DATA,
             NodeType.PARAM_VILLAGER_TRADE,
             NodeType.PARAM_ENTITY,
             NodeType.PARAM_PLAYER,
@@ -236,6 +238,7 @@ public final class NodeCatalog {
             NodeType.CONTROL_REPEAT,
             NodeType.CONTROL_REPEAT_UNTIL,
             NodeType.CONTROL_WAIT_UNTIL,
+            NodeType.CONTROL_IF_DO,
             NodeType.CONTROL_IF_ELSE,
             NodeType.SENSOR_TOUCHING_BLOCK,
             NodeType.SENSOR_TOUCHING_ENTITY,
@@ -476,6 +479,7 @@ public final class NodeCatalog {
 
         sidebar(NodeCategory.CONTROL, "pathmind.sidebar.group.branchingLoops",
             NodeType.CONTROL_IF,
+            NodeType.CONTROL_IF_DO,
             NodeType.CONTROL_IF_ELSE,
             NodeType.CONTROL_REPEAT,
             NodeType.CONTROL_REPEAT_UNTIL,
@@ -600,6 +604,7 @@ public final class NodeCatalog {
             NodeType.PARAM_SCHEMATIC);
         sidebar(NodeCategory.PARAMETERS, "pathmind.sidebar.group.inventoryGui",
             NodeType.PARAM_INVENTORY_SLOT,
+            NodeType.PARAM_ITEM_DATA,
             NodeType.PARAM_VILLAGER_TRADE,
             NodeType.PARAM_HAND,
             NodeType.PARAM_GUI);
@@ -619,8 +624,7 @@ public final class NodeCatalog {
             NodeType.SENSOR_IS_ON_GROUND,
             NodeType.SENSOR_IS_FALLING,
             NodeType.SENSOR_HEALTH_BELOW,
-            NodeType.SENSOR_HUNGER_BELOW,
-            NodeType.SENSOR_CURRENT_HAND);
+            NodeType.SENSOR_HUNGER_BELOW);
         sidebar(NodeCategory.SENSORS, "pathmind.sidebar.group.eventsInput",
             NodeType.SENSOR_KEY_PRESSED,
             NodeType.SENSOR_CHAT_MESSAGE,
@@ -645,6 +649,7 @@ public final class NodeCatalog {
             NodeType.SENSOR_ITEM_IN_SLOT,
             NodeType.SENSOR_SLOT_ITEM_COUNT,
             NodeType.SENSOR_DURABILITY_OF,
+            NodeType.SENSOR_CURRENT_HAND,
             NodeType.SENSOR_GUI_FILLED,
             NodeType.SENSOR_CURRENT_GUI);
         sidebar(NodeCategory.SENSORS, "pathmind.sidebar.group.trading",
@@ -671,6 +676,7 @@ public final class NodeCatalog {
         provided(NodeType.PARAM_MESSAGE, NodeValueTrait.MESSAGE);
         provided(NodeType.PARAM_BLOCK, NodeValueTrait.BLOCK);
         provided(NodeType.PARAM_ITEM, NodeValueTrait.ITEM);
+        provided(NodeType.PARAM_ITEM_DATA, NodeValueTrait.ANY);
         provided(NodeType.PARAM_ENTITY, NodeValueTrait.ENTITY);
         provided(NodeType.PARAM_PLAYER, NodeValueTrait.PLAYER);
         provided(NodeType.PARAM_INVENTORY_SLOT, NodeValueTrait.INVENTORY_SLOT);
@@ -775,6 +781,7 @@ public final class NodeCatalog {
                 NodeValueTrait.ENTITY,
                 NodeValueTrait.PLAYER));
         parameterHost(NodeType.SENSOR_TOUCHING_BLOCK, NodeValueTrait.BLOCK);
+        parameterHost(NodeType.PARAM_ITEM_DATA, "Target", NodeValueTrait.ITEM, NodeValueTrait.INVENTORY_SLOT);
         parameterHost(NodeType.SENSOR_TOUCHING_ENTITY, NodeValueTrait.ENTITY);
         parameterHost(NodeType.SENSOR_AT_COORDINATES, NodeValueTrait.COORDINATE);
         parameterHost(NodeType.SENSOR_ITEM_IN_INVENTORY, NodeValueTrait.ITEM, NodeValueTrait.NUMBER);
@@ -1068,6 +1075,7 @@ public final class NodeCatalog {
             of("Block", ParameterType.STRING, ""),
             of("State", ParameterType.STRING, ""));
         typeParameters(NodeType.PARAM_ITEM, of("Item", ParameterType.STRING, ""));
+        typeParameters(NodeType.PARAM_ITEM_DATA, of("Field", ParameterType.STRING, ItemDataParameterDefinition.FIELD_ITEM_ID));
         typeParameters(NodeType.PARAM_VILLAGER_TRADE,
             of("Profession", ParameterType.STRING, "librarian"),
             of("Item", ParameterType.STRING, "book"),
@@ -1136,6 +1144,7 @@ public final class NodeCatalog {
         route(ExecutionRoute.CONTROL_WAIT_UNTIL, NodeType.CONTROL_WAIT_UNTIL);
         route(ExecutionRoute.CONTROL_FOREVER, NodeType.CONTROL_FOREVER);
         route(ExecutionRoute.CONTROL_IF, NodeType.CONTROL_IF);
+        route(ExecutionRoute.CONTROL_IF_DO, NodeType.CONTROL_IF_DO);
         route(ExecutionRoute.CONTROL_IF_ELSE, NodeType.CONTROL_IF_ELSE);
         route(ExecutionRoute.CONTROL_FORK, NodeType.CONTROL_FORK);
         route(ExecutionRoute.CONTROL_JOIN_ANY, NodeType.CONTROL_JOIN_ANY);
@@ -1499,6 +1508,7 @@ public final class NodeCatalog {
             case CONTROL_WAIT_UNTIL -> "pathmind.node.type.controlWaitUntil";
             case CONTROL_FOREVER -> "pathmind.node.type.controlForever";
             case CONTROL_IF -> "pathmind.node.type.controlIf";
+            case CONTROL_IF_DO -> "pathmind.node.type.controlIfDo";
             case CONTROL_IF_ELSE -> "pathmind.node.type.controlIfElse";
             case CONTROL_FORK -> "pathmind.node.type.controlFork";
             case CONTROL_JOIN_ANY -> "pathmind.node.type.controlJoinAny";
@@ -1576,6 +1586,7 @@ public final class NodeCatalog {
             case PARAM_COORDINATE -> "pathmind.node.type.paramCoordinate";
             case PARAM_BLOCK -> "pathmind.node.type.paramBlock";
             case PARAM_ITEM -> "pathmind.node.type.paramItem";
+            case PARAM_ITEM_DATA -> "pathmind.node.type.paramItemData";
             case PARAM_VILLAGER_TRADE -> "pathmind.node.type.paramVillagerTrade";
             case PARAM_ENTITY -> "pathmind.node.type.paramEntity";
             case PARAM_PLAYER -> "pathmind.node.type.paramPlayer";
@@ -1650,6 +1661,7 @@ public final class NodeCatalog {
             case CONTROL_WAIT_UNTIL -> "pathmind.node.type.controlWaitUntil.desc";
             case CONTROL_FOREVER -> "pathmind.node.type.controlForever.desc";
             case CONTROL_IF -> "pathmind.node.type.controlIf.desc";
+            case CONTROL_IF_DO -> "pathmind.node.type.controlIfDo.desc";
             case CONTROL_IF_ELSE -> "pathmind.node.type.controlIfElse.desc";
             case CONTROL_FORK -> "pathmind.node.type.controlFork.desc";
             case CONTROL_JOIN_ANY -> "pathmind.node.type.controlJoinAny.desc";
@@ -1727,6 +1739,7 @@ public final class NodeCatalog {
             case PARAM_COORDINATE -> "pathmind.node.type.paramCoordinate.desc";
             case PARAM_BLOCK -> "pathmind.node.type.paramBlock.desc";
             case PARAM_ITEM -> "pathmind.node.type.paramItem.desc";
+            case PARAM_ITEM_DATA -> "pathmind.node.type.paramItemData.desc";
             case PARAM_VILLAGER_TRADE -> "pathmind.node.type.paramVillagerTrade.desc";
             case PARAM_ENTITY -> "pathmind.node.type.paramEntity.desc";
             case PARAM_PLAYER -> "pathmind.node.type.paramPlayer.desc";
@@ -1799,6 +1812,7 @@ public final class NodeCatalog {
             case CONTROL_WAIT_UNTIL -> 0xFFFFC107;
             case CONTROL_FOREVER -> 0xFFFFC107;
             case CONTROL_IF -> 0xFFFFC107;
+            case CONTROL_IF_DO -> 0xFFFFC107;
             case CONTROL_IF_ELSE -> 0xFFFFC107;
             case CONTROL_FORK -> 0xFFFFC107;
             case CONTROL_JOIN_ANY -> 0xFFFFC107;
@@ -1876,6 +1890,8 @@ public final class NodeCatalog {
             case PARAM_COORDINATE -> 0xFF8BC34A;
             case PARAM_BLOCK -> 0xFF8BC34A;
             case PARAM_ITEM -> 0xFF8BC34A;
+            // Item Data reads a live value from its target, so present it like the other blue value sensors.
+            case PARAM_ITEM_DATA -> 0xFF64B5F6;
             case PARAM_VILLAGER_TRADE -> 0xFF8BC34A;
             case PARAM_ENTITY -> 0xFF8BC34A;
             case PARAM_PLAYER -> 0xFF8BC34A;
@@ -2047,6 +2063,7 @@ public final class NodeCatalog {
         CONTROL_WAIT_UNTIL,
         CONTROL_FOREVER,
         CONTROL_IF,
+        CONTROL_IF_DO,
         CONTROL_IF_ELSE,
         CONTROL_FORK,
         CONTROL_JOIN_ANY,

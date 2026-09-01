@@ -24,6 +24,8 @@ final class NodeRuntimeState {
     StartLaunchMode startLaunchMode = StartLaunchMode.MANUAL;
     StartScreenTarget startScreenTarget = StartScreenTarget.ANY;
     String runtimeSourceNodeId;
+    String lastRuntimeDiagnosticKey;
+    String runtimeDiagnosticMessage;
     Random randomGenerator;
     String randomSeedCache;
 
@@ -35,6 +37,8 @@ final class NodeRuntimeState {
         hasSensorResult = false;
         lastSensorUpdatedAt = 0L;
         lastJoinedServerRawResult = false;
+        lastRuntimeDiagnosticKey = null;
+        runtimeDiagnosticMessage = null;
         nextOutputSocket = 0;
     }
 }

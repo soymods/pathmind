@@ -1429,6 +1429,10 @@ final class NodeRuntimeParameterResolver {
         if (value == null || value.isEmpty()) {
             return defaultValue;
         }
+        Double relativeCoordinate = resolveRelativeCoordinateDoubleValue(node, name, value);
+        if (relativeCoordinate != null) {
+            return relativeCoordinate;
+        }
         Double evaluated = evaluateNumericExpression(value);
         if (evaluated != null) {
             return evaluated;
@@ -1699,14 +1703,19 @@ final class NodeRuntimeParameterResolver {
     private static Integer resolveRelativeCoordinateValue(
         Node node, String name, String value
     ) {
+        Double resolved = resolveRelativeCoordinateDoubleValue(node, name, value);
+        return resolved != null ? (int) Math.round(resolved) : null;
+    }
+
+    private static Double resolveRelativeCoordinateDoubleValue(
+        Node node, String name, String value
+    ) {
         if (!RelativeInputSupport.supportsRelativeCoordinate(node, name)
             || !RelativeInputSupport.isRelativeExpression(value)) {
             return null;
         }
-        Double resolved =
-            RelativeInputSupport.resolveRelativeExpression(
-                value, getCurrentCoordinateAxisValue(name));
-        return resolved != null ? (int) Math.round(resolved) : null;
+        return RelativeInputSupport.resolveRelativeExpression(
+            value, getCurrentCoordinateAxisValue(name));
     }
 
     private static Float resolveRelativeLookValue(Node node, String name, String value) {

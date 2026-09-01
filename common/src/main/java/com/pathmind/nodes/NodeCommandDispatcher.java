@@ -32,6 +32,7 @@ final class NodeCommandDispatcher {
             case CONTROL_WAIT_UNTIL -> new NodeFlowCommandExecutor(node).executeControlWaitUntil(future);
             case CONTROL_FOREVER -> new NodeFlowCommandExecutor(node).executeControlForever(future);
             case CONTROL_IF -> new NodeFlowCommandExecutor(node).executeControlIf(future);
+            case CONTROL_IF_DO -> new NodeFlowCommandExecutor(node).executeControlIfDo(future);
             case CONTROL_IF_ELSE -> new NodeFlowCommandExecutor(node).executeControlIfElse(future);
             case CONTROL_FORK -> new NodeFlowCommandExecutor(node).executeControlFork(future);
             case CONTROL_JOIN_ANY -> new NodeFlowCommandExecutor(node).executeControlJoinAny(future);

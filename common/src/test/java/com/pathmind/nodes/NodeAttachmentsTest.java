@@ -74,4 +74,16 @@ class NodeAttachmentsTest {
         assertNull(control.getAttachedSensor());
         assertNull(sensor.getParentControl());
     }
+
+    @Test
+    void ifDoOwnsConditionAndActionAttachments() {
+        Node control = new Node(NodeType.CONTROL_IF_DO, 0, 0);
+        Node sensor = new Node(NodeType.SENSOR_IS_DAYTIME, 0, 0);
+        Node action = new Node(NodeType.SPRINT, 0, 0);
+
+        assertTrue(control.attachSensor(sensor));
+        assertTrue(control.attachActionNode(action));
+        assertSame(sensor, control.getAttachedSensor());
+        assertSame(action, control.getAttachedActionNode());
+    }
 }

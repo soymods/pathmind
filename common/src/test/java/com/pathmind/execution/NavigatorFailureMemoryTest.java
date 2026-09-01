@@ -47,6 +47,20 @@ class NavigatorFailureMemoryTest {
     }
 
     @Test
+    void failedPillarDoesNotBlockASeparateHigherPillarStep() {
+        NavigatorFailureMemory memory = new NavigatorFailureMemory();
+        BlockPos base = new BlockPos(1, 64, 1);
+        BlockPos firstPillarTarget = base.above();
+        BlockPos secondPillarTarget = firstPillarTarget.above();
+
+        memory.rememberAction(NavigatorFailureMemory.Action.PILLAR, base, firstPillarTarget, 100L, 75L);
+
+        assertTrue(memory.isFailedAction(NavigatorFailureMemory.Action.PILLAR, base, firstPillarTarget, 174L));
+        assertFalse(memory.isFailedAction(NavigatorFailureMemory.Action.PILLAR, firstPillarTarget, secondPillarTarget, 174L));
+        assertFalse(memory.isFailedAction(NavigatorFailureMemory.Action.PILLAR, base, firstPillarTarget, 175L));
+    }
+
+    @Test
     void pruneAndClearRemoveRecordedFailures() {
         NavigatorFailureMemory memory = new NavigatorFailureMemory();
         BlockPos from = BlockPos.ZERO;

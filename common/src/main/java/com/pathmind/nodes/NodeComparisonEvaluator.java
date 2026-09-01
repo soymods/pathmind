@@ -27,14 +27,12 @@ final class NodeComparisonEvaluator {
     }
 
     Optional<Boolean> compareComparisonOperands(Node left, Node right) {
+        return evaluateComparisonOperands(left, right).value();
+    }
+
+    ComparisonEvaluation evaluateComparisonOperands(Node left, Node right) {
         if (left == null || right == null) {
-            return Optional.empty();
-        }
-        if (isComparisonGroupOperator(left)) {
-            return compareGroupOperand(left, right);
-        }
-        if (isComparisonGroupOperator(right)) {
-            return compareGroupOperand(right, left);
+            return ComparisonEvaluation.unresolved();
         }
         if (left.getType() == NodeType.VARIABLE) {
             left = owner.resolveVariableValueNode(left, 0, null);
@@ -43,9 +41,114 @@ final class NodeComparisonEvaluator {
             right = owner.resolveVariableValueNode(right, 1, null);
         }
         if (left == null || right == null) {
-            return Optional.empty();
+            return ComparisonEvaluation.unresolved();
         }
-        return compareParameterNodes(left, right);
+        String typeError = comparisonTypeError(left, right);
+        if (typeError != null) {
+            return ComparisonEvaluation.invalid(typeError);
+        }
+        if (isComparisonGroupOperator(left)) {
+            return ComparisonEvaluation.resolved(compareGroupOperand(left, right));
+        }
+        if (isComparisonGroupOperator(right)) {
+            return ComparisonEvaluation.resolved(compareGroupOperand(right, left));
+        }
+        return ComparisonEvaluation.resolved(compareParameterNodes(left, right));
+    }
+
+    ComparisonEvaluation evaluateOrderingOperands(Node left, Node right, boolean greater, boolean inclusive) {
+        if (left == null || right == null) {
+            return ComparisonEvaluation.unresolved();
+        }
+        if (left.getType() == NodeType.VARIABLE) {
+            left = owner.resolveVariableValueNode(left, 0, null);
+        }
+        if (right.getType() == NodeType.VARIABLE) {
+            right = owner.resolveVariableValueNode(right, 1, null);
+        }
+        if (left == null || right == null) {
+            return ComparisonEvaluation.unresolved();
+        }
+        String typeError = orderingTypeError(left, right);
+        if (typeError != null) {
+            return ComparisonEvaluation.invalid(typeError);
+        }
+        Optional<Double> leftNumber = resolveComparableNumber(left);
+        Optional<Double> rightNumber = resolveComparableNumber(right);
+        if (leftNumber.isEmpty() || rightNumber.isEmpty()) {
+            return ComparisonEvaluation.unresolved();
+        }
+        double leftValue = leftNumber.get();
+        double rightValue = rightNumber.get();
+        boolean result = greater
+            ? (inclusive ? leftValue >= rightValue : leftValue > rightValue)
+            : (inclusive ? leftValue <= rightValue : leftValue < rightValue);
+        return ComparisonEvaluation.resolved(Optional.of(result));
+    }
+
+    private String comparisonTypeError(Node left, Node right) {
+        if (isComparisonGroupOperator(left) || isComparisonGroupOperator(right)) {
+            return null;
+        }
+        boolean leftBoolean = hasBooleanType(left);
+        boolean rightBoolean = hasBooleanType(right);
+        if (leftBoolean == rightBoolean || (!isDefinitelyNonBoolean(left) && !isDefinitelyNonBoolean(right))) {
+            return null;
+        }
+        return Node.tr("pathmind.error.comparisonBooleanTypeMismatch",
+            left.getType().getDisplayName(), right.getType().getDisplayName());
+    }
+
+    private String orderingTypeError(Node left, Node right) {
+        Node invalid = isDefinitelyNonNumeric(left) ? left : (isDefinitelyNonNumeric(right) ? right : null);
+        return invalid == null ? null : Node.tr("pathmind.error.orderingNonNumericOperand",
+            owner.getType().getDisplayName(), invalid.getType().getDisplayName());
+    }
+
+    private boolean hasBooleanType(Node node) {
+        return node != null && (NodeCatalog.isBooleanSensor(node.getType())
+            || node.getProvidedTraits().contains(NodeValueTrait.BOOLEAN));
+    }
+
+    private boolean isDefinitelyNonBoolean(Node node) {
+        return node != null && !hasBooleanType(node) && hasKnownStaticType(node);
+    }
+
+    private boolean isDefinitelyNonNumeric(Node node) {
+        if (node == null) {
+            return false;
+        }
+        Set<NodeValueTrait> traits = node.getProvidedTraits();
+        boolean numeric = traits.contains(NodeValueTrait.NUMBER)
+            || traits.contains(NodeValueTrait.DISTANCE)
+            || traits.contains(NodeValueTrait.DURATION);
+        return !numeric && hasKnownStaticType(node);
+    }
+
+    private boolean hasKnownStaticType(Node node) {
+        if (node == null || node.getType() == NodeType.VARIABLE || node.getType() == NodeType.ROUTINE_INPUT) {
+            return false;
+        }
+        Set<NodeValueTrait> traits = node.getProvidedTraits();
+        return !traits.isEmpty() && !traits.contains(NodeValueTrait.ANY);
+    }
+
+    record ComparisonEvaluation(Optional<Boolean> value, String errorMessage) {
+        static ComparisonEvaluation resolved(Optional<Boolean> value) {
+            return new ComparisonEvaluation(value == null ? Optional.empty() : value, null);
+        }
+
+        static ComparisonEvaluation unresolved() {
+            return resolved(Optional.empty());
+        }
+
+        static ComparisonEvaluation invalid(String errorMessage) {
+            return new ComparisonEvaluation(Optional.empty(), errorMessage);
+        }
+
+        boolean isInvalid() {
+            return errorMessage != null && !errorMessage.isBlank();
+        }
     }
 
     private Optional<Boolean> compareGroupOperand(Node groupNode, Node comparisonNode) {
@@ -82,8 +185,15 @@ final class NodeComparisonEvaluator {
         if (node == null) {
             return false;
         }
-        return node.getType() == NodeType.OPERATOR_BOOLEAN_OR
-            || node.getType() == NodeType.OPERATOR_BOOLEAN_AND;
+        if (node.getType() != NodeType.OPERATOR_BOOLEAN_OR && node.getType() != NodeType.OPERATOR_BOOLEAN_AND) {
+            return false;
+        }
+        for (int slotIndex = 0; slotIndex < node.getParameterSlotCount(); slotIndex++) {
+            if (node.getAttachedParameter(slotIndex) != null) {
+                return true;
+            }
+        }
+        return false;
     }
 
     Optional<Boolean> resolveBooleanOperandWithVariables(Node operand, int slotIndex) {
@@ -120,6 +230,16 @@ final class NodeComparisonEvaluator {
                 value = parameter.getDefaultValue();
             }
             return node.resolveBooleanValueFromRaw(value, false);
+        }
+        if (node.getType() == NodeType.PARAM_ITEM_DATA
+            && node.getProvidedTraits().contains(NodeValueTrait.BOOLEAN)) {
+            String value = owner.getRuntimeValue(node.exportParameterValues(), "Value");
+            if ("true".equalsIgnoreCase(value)) {
+                return Optional.of(true);
+            }
+            if ("false".equalsIgnoreCase(value)) {
+                return Optional.of(false);
+            }
         }
         return Optional.empty();
     }

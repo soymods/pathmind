@@ -2251,27 +2251,28 @@ NavigatorPathCostPolicy.MoveType classifyMoveType(Level world, BlockPos from, Bl
     }
 
     void rememberFailedBreak(BlockPos from, BlockPos to, long now) {
-        rememberFailedMove(from, to, now);
+        // An action failure does not prove the physical edge is impassable.
+        // Keep alternatives (walk, pillar, another placement face) available.
         failureMemory.rememberAction(NavigatorFailureMemory.Action.BREAK, from, to, now, FAILED_BREAK_MEMORY_MS);
     }
 
     void rememberFailedJump(BlockPos from, BlockPos to, long now) {
-        rememberFailedMove(from, to, now);
+        // A jump can fail because the player has not reached the right launch
+        // position yet.  That must not blacklist the destination for a pillar
+        // or mined-ascent alternative: those primitives can legitimately reach
+        // the same block without making the failed jump.
         failureMemory.rememberAction(NavigatorFailureMemory.Action.JUMP, from, to, now, FAILED_JUMP_MEMORY_MS);
     }
 
     void rememberFailedDrop(BlockPos from, BlockPos to, long now) {
-        rememberFailedMove(from, to, now);
         failureMemory.rememberAction(NavigatorFailureMemory.Action.DROP, from, to, now, FAILED_DROP_MEMORY_MS);
     }
 
     void rememberFailedPlace(BlockPos from, BlockPos to, long now) {
-        rememberFailedMove(from, to, now);
         failureMemory.rememberAction(NavigatorFailureMemory.Action.PLACE, from, to, now, FAILED_PLACE_MEMORY_MS);
     }
 
     void rememberFailedPillar(BlockPos from, BlockPos to, long now) {
-        rememberFailedMove(from, to, now);
         failureMemory.rememberAction(NavigatorFailureMemory.Action.PILLAR, from, to, now, FAILED_PILLAR_MEMORY_MS);
     }
 

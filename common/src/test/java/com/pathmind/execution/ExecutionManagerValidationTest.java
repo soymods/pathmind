@@ -1001,6 +1001,27 @@ class ExecutionManagerValidationTest {
     }
 
     @Test
+    void ifDoRunsAttachedActionOnlyForTrueAndAlwaysContinues() throws Exception {
+        CountingNode ifDo = new CountingNode(NodeType.CONTROL_IF_DO);
+        CountingNode action = new CountingNode(NodeType.MESSAGE);
+        CountingNode continuation = new CountingNode(NodeType.MESSAGE);
+        assertTrue(ifDo.attachActionNode(action));
+        NodeConnection output = new NodeConnection(ifDo, continuation, 0, 0);
+
+        ifDo.setNextOutputSocket(0);
+        invokeContinueFromNode(ifDo, List.of(ifDo, action, continuation), List.of(output))
+            .get(1, TimeUnit.SECONDS);
+        assertEquals(1, action.executionCount());
+        assertEquals(1, continuation.executionCount());
+
+        ifDo.setNextOutputSocket(Node.NO_OUTPUT);
+        invokeContinueFromNode(ifDo, List.of(ifDo, action, continuation), List.of(output))
+            .get(1, TimeUnit.SECONDS);
+        assertEquals(1, action.executionCount());
+        assertEquals(2, continuation.executionCount());
+    }
+
+    @Test
     void repeatUntilLoopRepeatsAttachedActionWithoutReEnteringControlNode() throws Exception {
         AtomicInteger actionCount = new AtomicInteger();
         RepeatUntilCountingNode repeatUntil = new RepeatUntilCountingNode(() -> actionCount.get() >= 3);

@@ -116,6 +116,40 @@ class GraphValidatorTest {
     }
 
     @Test
+    void validateReportsBooleanAndNumberComparison() {
+        Node start = new Node(NodeType.START, 0, 0);
+        Node equals = new Node(NodeType.OPERATOR_EQUALS, 100, 0);
+        Node distance = new Node(NodeType.SENSOR_DISTANCE_BETWEEN, 120, 40);
+        Node and = new Node(NodeType.OPERATOR_BOOLEAN_AND, 120, 100);
+        assertTrue(equals.attachParameter(distance, 0));
+        assertTrue(equals.attachParameter(and, 1));
+
+        GraphValidationResult result = GraphValidator.validate(
+            List.of(start, equals, distance, and),
+            List.of(new NodeConnection(start, equals, 0, 0)),
+            PresetManager.getDefaultPresetName(), true, true);
+
+        assertTrue(hasIssueCode(result, "comparison_boolean_type_mismatch"));
+    }
+
+    @Test
+    void validateReportsNonBooleanBooleanOperatorOperand() {
+        Node start = new Node(NodeType.START, 0, 0);
+        Node and = new Node(NodeType.OPERATOR_BOOLEAN_AND, 100, 0);
+        Node amount = new Node(NodeType.PARAM_AMOUNT, 120, 100);
+        Node booleanValue = new Node(NodeType.PARAM_BOOLEAN, 120, 40);
+        assertTrue(and.attachParameter(amount, 0));
+        assertTrue(and.attachParameter(booleanValue, 1));
+
+        GraphValidationResult result = GraphValidator.validate(
+            List.of(start, and, booleanValue, amount),
+            List.of(new NodeConnection(start, and, 0, 0)),
+            PresetManager.getDefaultPresetName(), true, true);
+
+        assertTrue(hasIssueCode(result, "boolean_operator_non_boolean_operand"));
+    }
+
+    @Test
     void validateAcceptsStandaloneCalculateWithoutVariableAttachment() {
         Node start = new Node(NodeType.START, 0, 0);
         Node calculate = new Node(NodeType.CALCULATE, 100, 0);

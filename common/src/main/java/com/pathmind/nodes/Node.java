@@ -376,6 +376,33 @@ public class Node {
         client.execute(() -> sendNodeErrorMessageOnClientThread(client, message));
     }
 
+    /** Reports a persistent runtime configuration error once until it is resolved. */
+    void reportRuntimeDiagnostic(String key, String message) {
+        if (key == null || key.isBlank() || message == null || message.isBlank()) {
+            return;
+        }
+        if (key.equals(runtimeState.lastRuntimeDiagnosticKey)) {
+            return;
+        }
+        runtimeState.lastRuntimeDiagnosticKey = key;
+        runtimeState.runtimeDiagnosticMessage = message;
+        sendNodeErrorMessageToPlayer(message);
+    }
+
+    void clearRuntimeDiagnostic() {
+        runtimeState.lastRuntimeDiagnosticKey = null;
+        runtimeState.runtimeDiagnosticMessage = null;
+    }
+
+    /** Returns the active runtime-only diagnostic, if this node currently has one. */
+    public String getRuntimeDiagnosticMessage() {
+        return runtimeState.runtimeDiagnosticMessage;
+    }
+
+    public boolean hasRuntimeDiagnostic() {
+        return runtimeState.runtimeDiagnosticMessage != null && !runtimeState.runtimeDiagnosticMessage.isBlank();
+    }
+
     private void sendNodeErrorMessageOnClientThread(net.minecraft.client.Minecraft client, String message) {
         if (client == null || message == null || message.isEmpty()) {
             return;
@@ -467,6 +494,9 @@ public class Node {
                 return EnumSet.of(NodeValueTrait.NUMBER);
             }
             return EnumSet.of(NodeValueTrait.COORDINATE);
+        }
+        if (type == NodeType.PARAM_ITEM_DATA) {
+            return ItemDataParameterDefinition.providedTraits(this);
         }
         return traits;
     }
@@ -728,9 +758,10 @@ public class Node {
                 || !NodeTraitRegistry.canHostParameter(type)) {
             return false;
         }
-			return !isParameterNode()
+		return !isParameterNode()
 					|| type == NodeType.OPERATOR_MOD
 					|| type == NodeType.PARAM_BLOCK_FACE
+					|| type == NodeType.PARAM_ITEM_DATA
 					|| type == NodeType.SENSOR_POSITION_OF
 					|| type == NodeType.SENSOR_DISTANCE_BETWEEN
 					|| type == NodeType.SENSOR_SLOT_ITEM_COUNT
@@ -2481,13 +2512,15 @@ public class Node {
 
     boolean showsSensorSlotHeader() {
         return type == NodeType.CONTROL_IF
+            || type == NodeType.CONTROL_IF_DO
             || type == NodeType.CONTROL_IF_ELSE
             || type == NodeType.CONTROL_REPEAT_UNTIL
             || type == NodeType.CONTROL_WAIT_UNTIL;
     }
 
     boolean showsActionSlotHeader() {
-        return type == NodeType.CONTROL_REPEAT
+        return type == NodeType.CONTROL_IF_DO
+            || type == NodeType.CONTROL_REPEAT
             || type == NodeType.CONTROL_REPEAT_UNTIL
             || type == NodeType.CONTROL_FOREVER;
     }

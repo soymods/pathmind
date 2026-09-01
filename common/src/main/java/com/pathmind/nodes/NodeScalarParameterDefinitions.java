@@ -14,6 +14,7 @@ final class NodeScalarParameterDefinitions {
             case PARAM_HAND -> Optional.of(HandParameterDefinition.create());
             case PARAM_MESSAGE -> Optional.of(MessageParameterDefinition.create());
             case PARAM_INVENTORY_SLOT -> Optional.of(InventorySlotParameterDefinition.create());
+            case PARAM_ITEM_DATA -> Optional.of(ItemDataParameterDefinition.create());
             case PARAM_VILLAGER_TRADE -> Optional.of(VillagerTradeParameterDefinition.create());
             case PARAM_WAYPOINT -> Optional.of(WaypointParameterDefinition.create());
             case PARAM_GUI -> Optional.of(GuiParameterDefinition.create());

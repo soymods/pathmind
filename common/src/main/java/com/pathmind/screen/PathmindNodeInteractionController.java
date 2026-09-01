@@ -232,6 +232,16 @@ final class PathmindNodeInteractionController {
             return true;
         }
 
+        // Inventory Slot keeps its compact inline fields visible, but its Edit button can
+        // sit in the same vertical space as the final field.  Prefer the explicit button
+        // so it always opens the slot selector instead of starting inline text editing.
+        if (clickedNode.isParameterNode() && nodeGraph.isPointInsidePopupEditButton(clickedNode, clickX, clickY)) {
+            stopInlineFieldEditing(true);
+            nodeGraph.focusSelectedNode(clickedNode);
+            host.openParameterOverlay(clickedNode);
+            return true;
+        }
+
         int parameterIndex = nodeGraph.getParameterFieldIndexAt(clickedNode, clickX, clickY);
         if (parameterIndex != -1) {
             nodeGraph.focusSelectedNode(clickedNode);
@@ -249,12 +259,6 @@ final class PathmindNodeInteractionController {
         // Check if clicking on Edit Text button for WRITE_BOOK nodes
         if (clickedNode.hasBookTextInput() && nodeGraph.isPointInsideBookTextButton(clickedNode, clickX, clickY)) {
             host.openBookTextEditor(clickedNode);
-            return true;
-        }
-
-        if (clickedNode.isParameterNode() && nodeGraph.isPointInsidePopupEditButton(clickedNode, clickX, clickY)) {
-            nodeGraph.focusSelectedNode(clickedNode);
-            host.openParameterOverlay(clickedNode);
             return true;
         }
 

@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RelativeInputSupportTest {
@@ -22,6 +23,9 @@ class RelativeInputSupportTest {
         assertEquals(66.0, RelativeInputSupport.resolveRelativeExpression("~+2", 64.0));
         assertEquals(61.0, RelativeInputSupport.resolveRelativeExpression("~-3", 64.0));
         assertEquals(67.0, RelativeInputSupport.resolveRelativeExpression("~1+2", 64.0));
+        assertEquals(66.5, RelativeInputSupport.resolveRelativeExpression("~ + 2.5", 64.0));
+        assertNull(RelativeInputSupport.resolveRelativeExpression("~(1 + 2)", 64.0));
+        assertNull(RelativeInputSupport.resolveRelativeExpression("~not-a-number", 64.0));
     }
 
     @Test

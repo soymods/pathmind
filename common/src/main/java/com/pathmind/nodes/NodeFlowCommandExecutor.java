@@ -299,6 +299,14 @@ final class NodeFlowCommandExecutor {
         future.complete(null);
     }
 
+    void executeControlIfDo(CompletableFuture<Void> future) {
+        if (owner.preprocessAttachedParameter(EnumSet.noneOf(Node.ParameterUsage.class), future) == Node.ParameterHandlingResult.COMPLETE) {
+            return;
+        }
+        owner.setNextOutputSocket(owner.evaluateConditionFromParameters() ? 0 : Node.NO_OUTPUT);
+        future.complete(null);
+    }
+
     void executeControlIfElse(CompletableFuture<Void> future) {
         if (owner.preprocessAttachedParameter(EnumSet.noneOf(Node.ParameterUsage.class), future) == Node.ParameterHandlingResult.COMPLETE) {
             return;

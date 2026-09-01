@@ -25,6 +25,62 @@ enum FollowSegmentType {
     DROP
 }
 
+/** Why recovery was entered. Debug labels are separate from this policy value. */
+enum RecoveryCause {
+    GENERIC(false),
+    BLOCKED_JUMP(true),
+    JUMP_RETRY_LIMIT(true),
+    PASSIVE_PATH_STALL(false);
+
+    private final boolean requiresFreshRoute;
+
+    RecoveryCause(boolean requiresFreshRoute) {
+        this.requiresFreshRoute = requiresFreshRoute;
+    }
+
+    boolean requiresFreshRoute() {
+        return requiresFreshRoute;
+    }
+
+    boolean invalidatesPassivePrimitive() {
+        return this == PASSIVE_PATH_STALL;
+    }
+
+    static RecoveryCause fromLegacyLabels(String replanReason, String stuckReason) {
+        if ("blocked jump".equals(replanReason)) return BLOCKED_JUMP;
+        if ("jump retry limit".equals(replanReason)) return JUMP_RETRY_LIMIT;
+        if ("front blocked".equals(stuckReason)
+            || "ground".equals(stuckReason)
+            || "no progress".equals(stuckReason)) return PASSIVE_PATH_STALL;
+        return GENERIC;
+    }
+}
+
+/**
+ * Passive compatibility model for one planned route step.  Pass one populates
+ * this from the existing state; later passes will make executors own it.
+ */
+enum RouteStepLifecycle {
+    IDLE,
+    PENDING,
+    EXECUTING,
+    WAITING_FOR_CONFIRMATION,
+    COMPLETE,
+    FAILED
+}
+
+record RouteStepExecution(
+    PlannedPrimitive primitive,
+    BlockPos waypoint,
+    BlockPos expectedWorldChange,
+    RouteStepLifecycle lifecycle,
+    long activatedAtMs
+) {
+    static RouteStepExecution idle() {
+        return new RouteStepExecution(null, null, null, RouteStepLifecycle.IDLE, 0L);
+    }
+}
+
 record MiningProgress(boolean completed, int resumeIndex, boolean minedAscent) {
     static MiningProgress incomplete() {
         return new MiningProgress(false, -1, false);

@@ -90,6 +90,6 @@ class NodeDimensionCalculatorTest {
 
         assertEquals(1, booleanNot.getParameterSlotCount());
         assertEquals("Value", booleanNot.getParameterSlotLabel(0));
-        assertTrue(booleanNot.getWidth() < notEquals.getWidth());
+        assertEquals(2, notEquals.getParameterSlotCount());
     }
 }

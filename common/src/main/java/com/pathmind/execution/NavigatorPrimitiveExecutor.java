@@ -90,6 +90,11 @@ final class NavigatorPrimitiveExecutor {
                                               PlannedPrimitive plannedPrimitive, long now);
         void recoverFromStuck(Minecraft client, ClientLevel world, BlockPos playerFootPos, BlockPos waypoint,
                               BlockPos target, Vec3 currentPos, long now, String replanReason, String stuckReason);
+        default void recoverFromStuck(Minecraft client, ClientLevel world, BlockPos playerFootPos, BlockPos waypoint,
+                                      BlockPos target, Vec3 currentPos, long now, RecoveryCause cause,
+                                      String replanReason, String stuckReason) {
+            recoverFromStuck(client, world, playerFootPos, waypoint, target, currentPos, now, replanReason, stuckReason);
+        }
         void rewindCurrentPathIndex(BlockPos playerFootPos, BlockPos preferredWaypoint);
         void redirectCurrentPath(BlockPos playerFootPos, BlockPos waypoint, Vec3 currentPos, long now,
                                  String replanReason, String stuckReason);
@@ -199,6 +204,7 @@ final class NavigatorPrimitiveExecutor {
             if (executionState.activeBreakTarget != null && pathPlanner.canOccupy(world, executionState.activeBreakTarget)) {
                 executionState.activeBreakTarget = null;
                 executionState.lastMinedBlockAtMs = now;
+                updateRouteStepLifecycleLocked(null, RouteStepLifecycle.EXECUTING, now);
                 navigationState.lastProgressAtMs = now;
                 navigationState.lastReplanReason = "obstruction cleared";
             }
@@ -1458,7 +1464,8 @@ final class NavigatorPrimitiveExecutor {
             if (jumpAttemptsAtWaypoint >= 3) {
                 releaseMovementKeys(client);
                 pathPlanner.rememberFailedJump(playerFootPos, waypoint, now);
-                host.recoverFromStuck(client, world, playerFootPos, waypoint, target, currentPos, now, "jump retry limit", "repeated jump failure");
+                host.recoverFromStuck(client, world, playerFootPos, waypoint, target, currentPos, now,
+                    RecoveryCause.JUMP_RETRY_LIMIT, "jump retry limit", "repeated jump failure");
                 synchronized (host.lock()) {
                     executionState.lastJumpAtMs = now;
                     executionState.repeatedJumpAttempts = 0;
@@ -1497,7 +1504,8 @@ final class NavigatorPrimitiveExecutor {
                 } else {
                     pathPlanner.rememberFailedJump(playerFootPos, waypoint, now);
                 }
-                host.recoverFromStuck(client, world, playerFootPos, waypoint, target, currentPos, now, "blocked jump", "ceiling blocked");
+                host.recoverFromStuck(client, world, playerFootPos, waypoint, target, currentPos, now,
+                    RecoveryCause.BLOCKED_JUMP, "blocked jump", "ceiling blocked");
                 synchronized (host.lock()) {
                     executionState.lastJumpAtMs = now;
                     executionState.lastJumpAttemptWaypoint = waypoint.immutable();
@@ -1745,6 +1753,13 @@ final class NavigatorPrimitiveExecutor {
             return true;
         }
         if (pendingPlacement == NavigatorPlacementPolicy.Verification.CONFIRMED) {
+            // The first planning pass treats the pillar target as virtual, so it
+            // deliberately cannot search beyond it until the support block is
+            // observed in the world.  Once it is confirmed, immediately rebuild
+            // the continuation from that higher position.  This is what lets a
+            // route chain another pillar instead of stopping one block below an
+            // elevated approach or goal.
+            syncPathToPillarTarget(world, pillarTarget, now);
             synchronized (host.lock()) {
                 executionState.activePillarPhase = PillarPhase.SUPPORT_READY;
                 navigationState.lastReplanReason = "pillar support confirmed";
@@ -1922,11 +1937,13 @@ final class NavigatorPrimitiveExecutor {
                 executionState.pendingPlaceAttempts = 0;
                 executionState.lastPlaceTarget = placePos.immutable();
                 executionState.lastPlaceResult = "placed";
+                updateRouteStepLifecycleLocked(placePos, RouteStepLifecycle.COMPLETE, now);
                 return verification;
             }
             if (verification == NavigatorPlacementPolicy.Verification.WAITING) {
                 executionState.lastPlaceTarget = placePos.immutable();
                 executionState.lastPlaceResult = "verifying";
+                updateRouteStepLifecycleLocked(placePos, RouteStepLifecycle.WAITING_FOR_CONFIRMATION, now);
                 return verification;
             }
             if (verification == NavigatorPlacementPolicy.Verification.EXHAUSTED) {
@@ -1935,6 +1952,7 @@ final class NavigatorPrimitiveExecutor {
                 executionState.pendingPlaceAttempts = 0;
                 executionState.lastPlaceTarget = placePos.immutable();
                 executionState.lastPlaceResult = "confirmation timeout";
+                updateRouteStepLifecycleLocked(placePos, RouteStepLifecycle.FAILED, now);
                 return verification;
             }
             return verification;
@@ -1950,6 +1968,7 @@ final class NavigatorPrimitiveExecutor {
                 executionState.pendingPlaceUntilMs = 0L;
                 executionState.pendingPlaceAttempts = 0;
                 executionState.lastPlaceResult = "placed";
+                updateRouteStepLifecycleLocked(placePos, RouteStepLifecycle.COMPLETE, now);
                 return true;
             }
             if (executionState.pendingPlaceTarget == null || !executionState.pendingPlaceTarget.equals(placePos)) {
@@ -1957,6 +1976,7 @@ final class NavigatorPrimitiveExecutor {
                 executionState.pendingPlaceAttempts = 0;
             }
             executionState.pendingPlaceAttempts = NavigatorPlacementPolicy.nextAttemptCount(executionState.pendingPlaceAttempts);
+            updateRouteStepLifecycleLocked(placePos, RouteStepLifecycle.WAITING_FOR_CONFIRMATION, now);
             executionState.lastInteractAtMs = now;
             if (!accepted) {
                 executionState.pendingPlaceUntilMs = now + 250L;
@@ -1969,6 +1989,16 @@ final class NavigatorPrimitiveExecutor {
             executionState.lastPlaceResult = "verifying";
             return true;
         }
+    }
+
+    private void updateRouteStepLifecycleLocked(BlockPos expectedWorldChange, RouteStepLifecycle lifecycle, long now) {
+        RouteStepExecution current = executionState.activeRouteStep;
+        if (current == null || current.lifecycle() == RouteStepLifecycle.IDLE) return;
+        BlockPos expected = expectedWorldChange != null ? expectedWorldChange.immutable() : current.expectedWorldChange();
+        executionState.activeRouteStep = new RouteStepExecution(
+            current.primitive(), current.waypoint(), expected, lifecycle,
+            current.activatedAtMs() > 0L ? current.activatedAtMs() : now
+        );
     }
 
     int placementAttemptIndex(BlockPos placePos) {
@@ -2114,11 +2144,15 @@ final class NavigatorPrimitiveExecutor {
                     navigationState.lastReplanReason = "jump landed";
                     navigationState.lastStuckReason = "jump complete";
                     navigationState.lastProgressAtMs = now;
+                    updateRouteStepLifecycleLocked(jumpTarget, RouteStepLifecycle.COMPLETE, now);
                     return false;
                 }
             }
             if (now > jumpUntilMs) {
                 pathPlanner.rememberFailedJump(playerFootPos, jumpTarget, now);
+                synchronized (host.lock()) {
+                    updateRouteStepLifecycleLocked(jumpTarget, RouteStepLifecycle.FAILED, now);
+                }
                 host.rewindCurrentPathIndex(playerFootPos, jumpTarget);
                 host.recoverFromStuck(client, world, playerFootPos, jumpTarget, host.targetPos(), Vec3.atCenterOf(playerFootPos), now, "jump redirect", "missed jump");
                 return true;
@@ -2193,6 +2227,7 @@ final class NavigatorPrimitiveExecutor {
                     navigationState.lastReplanReason = "drop landed";
                     navigationState.lastStuckReason = "drop complete";
                     navigationState.lastProgressAtMs = now;
+                    updateRouteStepLifecycleLocked(dropTarget, RouteStepLifecycle.COMPLETE, now);
                     return false;
                 }
             }
@@ -2234,11 +2269,17 @@ final class NavigatorPrimitiveExecutor {
     
         if (player.onGround() && blocked) {
             pathPlanner.rememberFailedDrop(playerFootPos, dropTarget, now);
+            synchronized (host.lock()) {
+                updateRouteStepLifecycleLocked(dropTarget, RouteStepLifecycle.FAILED, now);
+            }
             host.recoverFromStuck(client, world, playerFootPos, dropTarget, target, currentPos, now, "drop blocked", "drop blocked");
             return true;
         }
         if (player.onGround() && now > dropUntilMs) {
             pathPlanner.rememberFailedDrop(playerFootPos, dropTarget, now);
+            synchronized (host.lock()) {
+                updateRouteStepLifecycleLocked(dropTarget, RouteStepLifecycle.FAILED, now);
+            }
             host.recoverFromStuck(client, world, playerFootPos, dropTarget, target, currentPos, now, "drop redirect", "missed drop");
             return true;
         }

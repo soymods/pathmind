@@ -35,6 +35,7 @@ final class NavigatorExecutionState {
     FollowSegmentType activeFollowSegment = FollowSegmentType.GROUND;
     BlockPos activeFollowSegmentTarget;
     PlannedPrimitive activePlannedPrimitive;
+    RouteStepExecution activeRouteStep = RouteStepExecution.idle();
     long activeFollowSegmentEnteredAtMs;
     long activeFollowSegmentProgressAtMs;
     double activeFollowSegmentBestDistanceSq = Double.POSITIVE_INFINITY;

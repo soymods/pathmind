@@ -716,6 +716,13 @@ final class NavigatorRouteCoordinator {
         if (isCommittedPillarState(world, playerFootPos, now) && (primitiveExecutor.isPillarPrimitive(plannedPrimitive) || committedEscape)) {
             return ControllerMode.PILLAR;
         }
+        // A pillar primitive has an unplaced support block below its waypoint.
+        // Do not let the nearby-goal shortcut take over before that atomic
+        // placement finishes, or the route is held forever at await_placement.
+        if (primitiveExecutor.isPillarPrimitive(plannedPrimitive)
+            || shouldUsePillarStep(world, playerFootPos, waypoint, plannedPrimitive, now)) {
+            return ControllerMode.PILLAR;
+        }
         if (primitiveExecutor.shouldPreferFinalApproachController(world, playerFootPos)) {
             if (executionState.committedJumpWaypoint != null && executionState.committedJumpUntilMs > now) {
                 return ControllerMode.COMMIT_JUMP;
@@ -725,10 +732,6 @@ final class NavigatorRouteCoordinator {
                 return ControllerMode.BREAK_BLOCK;
             }
             return ControllerMode.FOLLOW_PATH;
-        }
-        if (primitiveExecutor.isPillarPrimitive(plannedPrimitive)
-            || shouldUsePillarStep(world, playerFootPos, waypoint, plannedPrimitive, now)) {
-            return ControllerMode.PILLAR;
         }
         if (plannedPrimitive != null && plannedPrimitive.shouldCommitDrop(waypoint, playerFootPos)) {
             return ControllerMode.DROP;
@@ -911,17 +914,15 @@ final class NavigatorRouteCoordinator {
         BlockPos waypoint,
         PlannedPrimitive plannedPrimitive,
         long now,
-        String stuckReason
+        RecoveryCause cause
     ) {
-        if (world == null || playerFootPos == null || waypoint == null || plannedPrimitive == null || stuckReason == null) {
+        if (world == null || playerFootPos == null || waypoint == null || plannedPrimitive == null || cause == null) {
             return false;
         }
         if (plannedPrimitive.requiresCommittedAction()) {
             return false;
         }
-        if (!"front blocked".equals(stuckReason)
-            && !"ground".equals(stuckReason)
-            && !"no progress".equals(stuckReason)) {
+        if (cause == null || !cause.invalidatesPassivePrimitive()) {
             return false;
         }
         if (primitiveExecutor.isInteractablePrimitive(plannedPrimitive)
@@ -944,6 +945,14 @@ final class NavigatorRouteCoordinator {
         long now,
         String replanReason,
         String stuckReason
+    ) {
+        recoverFromStuck(client, world, playerFootPos, waypoint, target, currentPos, now,
+            RecoveryCause.fromLegacyLabels(replanReason, stuckReason), replanReason, stuckReason);
+    }
+
+    void recoverFromStuck(
+        Minecraft client, ClientLevel world, BlockPos playerFootPos, BlockPos waypoint, BlockPos target,
+        Vec3 currentPos, long now, RecoveryCause cause, String replanReason, String stuckReason
     ) {
         boolean alreadyRecovering;
         PlannedPrimitive activePrimitive;
@@ -970,11 +979,20 @@ final class NavigatorRouteCoordinator {
             }
             return;
         }
+
+        // A blocked jump has already been remembered as a jump-specific failure.
+        // Do not retain or globally blacklist the old path here, because that
+        // suppresses a valid PILLAR/MINE alternative to the exact same upward
+        // destination and produces the ceiling-blocked retry loop.
+        if (cause.requiresFreshRoute()) {
+            discardCurrentPath(playerFootPos, currentPos, now, replanReason, stuckReason);
+            return;
+        }
     
         if (world != null
             && playerFootPos != null
             && waypoint != null
-            && shouldInvalidateCommittedPrimitive(world, playerFootPos, waypoint, activePrimitive, now, stuckReason)) {
+            && shouldInvalidateCommittedPrimitive(world, playerFootPos, waypoint, activePrimitive, now, cause)) {
             redirectCurrentPath(playerFootPos, waypoint, currentPos, now, replanReason, stuckReason);
             return;
         }
@@ -1227,6 +1245,10 @@ final class NavigatorRouteCoordinator {
     
     void redirectCurrentPath(BlockPos playerFootPos, BlockPos waypoint, Vec3 currentPos, long now, String replanReason, String stuckReason) {
         rememberFailedRedirectWindow(playerFootPos, waypoint, now);
+        discardCurrentPath(playerFootPos, currentPos, now, replanReason, stuckReason);
+    }
+
+    private void discardCurrentPath(BlockPos playerFootPos, Vec3 currentPos, long now, String replanReason, String stuckReason) {
         synchronized (host.lock()) {
             navigationState.currentPath = List.of();
             navigationState.currentPlan = List.of();
@@ -1256,25 +1278,12 @@ final class NavigatorRouteCoordinator {
     }
     
     void rememberFailedRedirectWindow(BlockPos playerFootPos, BlockPos waypoint, long now) {
-        pathPlanner.rememberFailedMove(playerFootPos, waypoint, now);
-        synchronized (host.lock()) {
-            if (navigationState.currentPath.isEmpty()) {
-                return;
-            }
-            int startIndex = navigationState.pathIndex;
-            if (waypoint != null) {
-                int waypointIndex = navigationState.currentPath.indexOf(waypoint);
-                if (waypointIndex >= 0) {
-                    startIndex = waypointIndex;
-                }
-            }
-            startIndex = Math.max(0, Math.min(startIndex, navigationState.currentPath.size() - 1));
-            BlockPos previous = playerFootPos;
-            for (int i = startIndex; i < Math.min(navigationState.currentPath.size(), startIndex + 7); i++) {
-                BlockPos step = navigationState.currentPath.get(i);
-                pathPlanner.rememberFailedMove(previous, step, now);
-                previous = step;
-            }
+        // A redirect proves only the current physical transition failed.  The
+        // old implementation invalidated a seven-edge lookahead window, which
+        // could erase a valid pillar, mine, or alternate placement route before
+        // the planner got a chance to evaluate it.
+        if (playerFootPos != null && waypoint != null && !playerFootPos.equals(waypoint)) {
+            pathPlanner.rememberFailedMove(playerFootPos, waypoint, now);
         }
     }
     

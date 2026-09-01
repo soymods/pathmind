@@ -1,7 +1,6 @@
 package com.pathmind.nodes;
 
 import com.pathmind.util.BlockSelection;
-import com.pathmind.util.EntityCompatibilityBridge;
 import com.pathmind.util.EntityStateOptions;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -112,7 +111,10 @@ final class NodeProximitySensorEvaluator {
         if (client == null || client.player == null) {
             return false;
         }
-        net.minecraft.world.level.Level world = EntityCompatibilityBridge.getWorld(client.player);
+        // Minecraft owns the client-side level directly. Do not resolve it through the
+        // entity compatibility bridge here: on 26.2 that bridge can miss the renamed
+        // entity-level accessor and make every proximity sensor return false.
+        net.minecraft.world.level.Level world = client.level;
         if (world == null) {
             return false;
         }
@@ -174,7 +176,7 @@ final class NodeProximitySensorEvaluator {
         if (client == null || client.player == null || entityId == null || entityId.isEmpty()) {
             return false;
         }
-        net.minecraft.world.level.Level world = EntityCompatibilityBridge.getWorld(client.player);
+        net.minecraft.world.level.Level world = client.level;
         if (world == null) {
             return false;
         }
@@ -221,7 +223,7 @@ final class NodeProximitySensorEvaluator {
         if (client == null || client.player == null) {
             return false;
         }
-        net.minecraft.world.level.Level world = EntityCompatibilityBridge.getWorld(client.player);
+        net.minecraft.world.level.Level world = client.level;
         if (world == null) {
             return false;
         }
@@ -243,7 +245,7 @@ final class NodeProximitySensorEvaluator {
         if (client == null || client.player == null) {
             return false;
         }
-        net.minecraft.world.level.Level world = EntityCompatibilityBridge.getWorld(client.player);
+        net.minecraft.world.level.Level world = client.level;
         if (world == null) {
             return false;
         }

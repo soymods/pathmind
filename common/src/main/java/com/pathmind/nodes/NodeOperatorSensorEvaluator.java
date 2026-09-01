@@ -13,13 +13,11 @@ final class NodeOperatorSensorEvaluator {
     }
 
     boolean evaluateOperatorEquals() {
-        Optional<Boolean> result = evaluateOperatorComparison();
-        return result.orElse(false);
+        return resolveComparisonEvaluation(evaluateOperatorComparison(), false);
     }
 
     boolean evaluateOperatorNot() {
-        Optional<Boolean> result = evaluateOperatorComparison();
-        return result.map(value -> !value).orElse(false);
+        return resolveComparisonEvaluation(evaluateOperatorComparison(), true);
     }
 
     boolean evaluateOperatorBooleanNot() {
@@ -73,39 +71,36 @@ final class NodeOperatorSensorEvaluator {
     }
 
     boolean evaluateOperatorGreater() {
-        Optional<Boolean> result = evaluateOperatorOrdering(true);
-        return result.orElse(false);
+        return resolveComparisonEvaluation(evaluateOperatorOrdering(true), false);
     }
 
     boolean evaluateOperatorLess() {
-        Optional<Boolean> result = evaluateOperatorOrdering(false);
-        return result.orElse(false);
+        return resolveComparisonEvaluation(evaluateOperatorOrdering(false), false);
     }
 
-    private Optional<Boolean> evaluateOperatorComparison() {
+    private NodeComparisonEvaluator.ComparisonEvaluation evaluateOperatorComparison() {
         Node left = owner.getAttachedParameter(0);
         Node right = owner.getAttachedParameter(1);
-        return compareComparisonOperands(left, right);
+        return comparisonEvaluator().evaluateComparisonOperands(left, right);
     }
 
-    private Optional<Boolean> evaluateOperatorOrdering(boolean greater) {
+    private NodeComparisonEvaluator.ComparisonEvaluation evaluateOperatorOrdering(boolean greater) {
         Node left = owner.getAttachedParameter(0);
         Node right = owner.getAttachedParameter(1);
-        if (left == null || right == null) {
-            return Optional.empty();
+        return comparisonEvaluator().evaluateOrderingOperands(
+            left, right, greater, owner.getBooleanParameter("Inclusive", false));
+    }
+
+    private boolean resolveComparisonEvaluation(NodeComparisonEvaluator.ComparisonEvaluation evaluation, boolean invert) {
+        if (evaluation == null) {
+            return false;
         }
-        Optional<Double> leftNumber = resolveComparableNumberWithVariables(left, 0);
-        Optional<Double> rightNumber = resolveComparableNumberWithVariables(right, 1);
-        if (leftNumber.isEmpty() || rightNumber.isEmpty()) {
-            return Optional.empty();
+        if (evaluation.isInvalid()) {
+            owner.reportRuntimeDiagnostic("comparison:" + evaluation.errorMessage(), evaluation.errorMessage());
+            return false;
         }
-        boolean inclusive = owner.getBooleanParameter("Inclusive", false);
-        double l = leftNumber.get();
-        double r = rightNumber.get();
-        if (greater) {
-            return Optional.of(inclusive ? l >= r : l > r);
-        }
-        return Optional.of(inclusive ? l <= r : l < r);
+        owner.clearRuntimeDiagnostic();
+        return evaluation.value().map(value -> invert ? !value : value).orElse(false);
     }
 
     private Optional<Boolean> evaluateOperatorBooleanOperand() {

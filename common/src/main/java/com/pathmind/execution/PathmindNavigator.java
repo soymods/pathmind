@@ -314,6 +314,7 @@ public final class PathmindNavigator {
         @Override public boolean shouldUsePillarStep(Level world, BlockPos playerFootPos, BlockPos waypoint, PlannedPrimitive primitive, long now) { return routeCoordinator.shouldUsePillarStep(world, playerFootPos, waypoint, primitive, now); }
         @Override public void clearStaleEscapeRecoveryIfNeeded(Level world, BlockPos playerFootPos, BlockPos waypoint, PlannedPrimitive primitive, long now) { routeCoordinator.clearStaleEscapeRecoveryIfNeeded(world, playerFootPos, waypoint, primitive, now); }
         @Override public void recoverFromStuck(Minecraft client, ClientLevel world, BlockPos playerFootPos, BlockPos waypoint, BlockPos target, Vec3 currentPos, long now, String replanReason, String stuckReason) { routeCoordinator.recoverFromStuck(client, world, playerFootPos, waypoint, target, currentPos, now, replanReason, stuckReason); }
+        @Override public void recoverFromStuck(Minecraft client, ClientLevel world, BlockPos playerFootPos, BlockPos waypoint, BlockPos target, Vec3 currentPos, long now, RecoveryCause cause, String replanReason, String stuckReason) { routeCoordinator.recoverFromStuck(client, world, playerFootPos, waypoint, target, currentPos, now, cause, replanReason, stuckReason); }
         @Override public void rewindCurrentPathIndex(BlockPos playerFootPos, BlockPos preferredWaypoint) { routeCoordinator.rewindCurrentPathIndex(playerFootPos, preferredWaypoint); }
         @Override public void redirectCurrentPath(BlockPos playerFootPos, BlockPos waypoint, Vec3 currentPos, long now, String replanReason, String stuckReason) { routeCoordinator.redirectCurrentPath(playerFootPos, waypoint, currentPos, now, replanReason, stuckReason); }
         @Override public void rememberFailedRedirectWindow(BlockPos playerFootPos, BlockPos waypoint, long now) { routeCoordinator.rememberFailedRedirectWindow(playerFootPos, waypoint, now); }
@@ -1488,6 +1489,7 @@ public final class PathmindNavigator {
         PlannedPrimitive plannedPrimitive;
         synchronized (this) {
             plannedPrimitive = executionState.activePlannedPrimitive;
+            synchronizeActiveRouteStepLocked(waypoint, now);
         }
         routeCoordinator.clearStaleEscapeRecoveryIfNeeded(world, playerFootPos, waypoint, plannedPrimitive, now);
         synchronized (this) {
@@ -1558,6 +1560,30 @@ public final class PathmindNavigator {
         if (primitiveExecutor.handleFollowPathSegment(client, world, player, playerFootPos, waypoint, plannedPrimitive, target, currentPos, distanceSq, now)) {
             return;
         }
+    }
+
+    private void synchronizeActiveRouteStepLocked(BlockPos waypoint, long now) {
+        PlannedPrimitive primitive = executionState.activePlannedPrimitive;
+        BlockPos expectedChange = executionState.pendingPlaceTarget != null
+            ? executionState.pendingPlaceTarget
+            : primitive != null ? primitive.placeTarget() : null;
+        RouteStepLifecycle lifecycle = primitive == null || waypoint == null
+            ? RouteStepLifecycle.IDLE
+            : executionState.pendingPlaceTarget != null
+            ? RouteStepLifecycle.WAITING_FOR_CONFIRMATION
+            : executionState.controllerMode == ControllerMode.FOLLOW_PATH
+            ? RouteStepLifecycle.PENDING
+            : RouteStepLifecycle.EXECUTING;
+        RouteStepExecution previous = executionState.activeRouteStep;
+        long activatedAt = previous != null
+            && java.util.Objects.equals(previous.primitive(), primitive)
+            && java.util.Objects.equals(previous.waypoint(), waypoint)
+            ? previous.activatedAtMs()
+            : now;
+        executionState.activeRouteStep = new RouteStepExecution(
+            primitive, waypoint != null ? waypoint.immutable() : null,
+            expectedChange != null ? expectedChange.immutable() : null, lifecycle, activatedAt
+        );
     }
 
     private ExactGoalArrival assessExactGoalArrival(

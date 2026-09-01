@@ -331,8 +331,17 @@ final class NodeRenderer {
         }
         if (isOverSidebar && node.getType() != NodeType.START && !node.isDragging()) {
             borderColor = UITheme.BORDER_SUBTLE; // Darker grey border when over sidebar (for regular nodes)
+        } else if (node.hasRuntimeDiagnostic()) {
+            borderColor = UITheme.STATE_ERROR;
         }
         DrawContextBridge.drawBorderInLayer(context, x, y, width, height, borderColor);
+        if (node.hasRuntimeDiagnostic() && !lowDetail) {
+            int markerSize = 7;
+            int markerX = x + width - markerSize - 3;
+            int markerY = y + 3;
+            context.fill(markerX, markerY, markerX + markerSize, markerY + markerSize, UITheme.STATE_ERROR);
+            context.drawString(textRenderer, "!", markerX + 2, markerY, UITheme.TEXT_PRIMARY);
+        }
 
         // Node header (only for non-START/event function nodes)
         if (simpleStyle) {

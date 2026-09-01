@@ -267,6 +267,12 @@ class PathmindNodeInteractionControllerTest {
         }
 
         @Override
+        public void closeEditorForWorldPreview() {
+            // The interaction tests do not own a screen; this callback only
+            // closes the real editor after a preview starts successfully.
+        }
+
+        @Override
         public boolean executeFromNodeOnDoubleClick(Node node) {
             doubleClickExecutions.add(node);
             return false;

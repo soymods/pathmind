@@ -200,7 +200,17 @@ final class ParameterTypeClassifier {
             return false;
         }
         return isBooleanLiteralParameter(node, index)
-            || isAttributeDetectionDropdownParameter(node, index);
+            || isAttributeDetectionDropdownParameter(node, index)
+            || isItemDataFieldParameter(node, index);
+    }
+
+    private static boolean isItemDataFieldParameter(Node node, int index) {
+        if (node == null || node.getType() != NodeType.PARAM_ITEM_DATA
+            || index < 0 || index >= node.getParameters().size()) {
+            return false;
+        }
+        NodeParameter parameter = node.getParameters().get(index);
+        return parameter != null && "Field".equalsIgnoreCase(parameter.getName());
     }
 
     static boolean isBlockFaceParameter(Node node, int index) {

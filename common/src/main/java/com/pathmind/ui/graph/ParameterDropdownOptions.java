@@ -62,6 +62,19 @@ final class ParameterDropdownOptions {
 
     static List<ParameterDropdownOption> getParameterDropdownOptions(Node node, int index, String query) {
         String lowered = query == null ? "" : query.toLowerCase(Locale.ROOT);
+        if (node != null && node.getType() == NodeType.PARAM_ITEM_DATA && index == 0) {
+            List<ParameterDropdownOption> result = new ArrayList<>();
+            result.add(new ParameterDropdownOption(tr("pathmind.itemData.field.itemId"), "item_id"));
+            result.add(new ParameterDropdownOption(tr("pathmind.itemData.field.customName"), "custom_name"));
+            result.add(new ParameterDropdownOption(tr("pathmind.itemData.field.hasCustomName"), "has_custom_name"));
+            result.add(new ParameterDropdownOption(tr("pathmind.itemData.field.lore"), "lore"));
+            result.add(new ParameterDropdownOption(tr("pathmind.itemData.field.count"), "count"));
+            result.add(new ParameterDropdownOption(tr("pathmind.itemData.field.damage"), "damage"));
+            result.add(new ParameterDropdownOption(tr("pathmind.itemData.field.maxDamage"), "max_damage"));
+            result.add(new ParameterDropdownOption(tr("pathmind.itemData.field.enchantments"), "enchantments"));
+            result.add(new ParameterDropdownOption(tr("pathmind.itemData.field.customData"), "custom_data"));
+            return filterDropdownOptions(result, lowered);
+        }
         if (isAttributeDetectionAttributeParameter(node, index)) {
             List<ParameterDropdownOption> result = new ArrayList<>();
             for (AttributeDetectionConfig.AttributeOption option : AttributeDetectionConfig.getAttributesForTarget(getAttributeDetectionTargetKind(node))) {
@@ -411,7 +424,7 @@ final class ParameterDropdownOptions {
             if (item == null || item == Items.AIR) {
                 return ItemStack.EMPTY;
             }
-            return new ItemStack(item);
+            return createDropdownIcon(item);
         }
         if (isItemParameter(node, index)
             || isVillagerTradeParameter(node, index)
@@ -420,7 +433,7 @@ final class ParameterDropdownOptions {
             if (item == null || item == Items.AIR) {
                 return ItemStack.EMPTY;
             }
-            return new ItemStack(item);
+            return createDropdownIcon(item);
         }
         if (isEntityParameter(node, index)) {
             var entityType = BuiltInRegistries.ENTITY_TYPE.getOptional(id).orElse(null);
@@ -432,12 +445,25 @@ final class ParameterDropdownOptions {
                 if (spawnEgg == null || spawnEgg == Items.AIR) {
                     return ItemStack.EMPTY;
                 }
-                return new ItemStack(spawnEgg);
+                return createDropdownIcon(spawnEgg);
             } catch (RuntimeException e) {
                 return ItemStack.EMPTY;
             }
         }
         return ItemStack.EMPTY;
+    }
+
+    /**
+     * Use the registry holder rather than Item's intrusive holder. On 26.2 the latter can
+     * still be unbound while the editor is rendering immediately after a resource reload.
+     */
+    private static ItemStack createDropdownIcon(Item item) {
+        try {
+            return new ItemStack(BuiltInRegistries.ITEM.wrapAsHolder(item));
+        } catch (RuntimeException ignored) {
+            // An icon must never prevent the editor from opening. The text option remains usable.
+            return ItemStack.EMPTY;
+        }
     }
 
     private static List<ParameterDropdownOption> getVillagerProfessionDropdownOptions(String loweredQuery) {

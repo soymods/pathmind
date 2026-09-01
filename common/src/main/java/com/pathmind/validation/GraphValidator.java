@@ -12,6 +12,7 @@ import com.pathmind.nodes.NodeParameter;
 import com.pathmind.nodes.NodeCatalog;
 import com.pathmind.nodes.NodeTraitRegistry;
 import com.pathmind.nodes.NodeType;
+import com.pathmind.nodes.NodeValueTrait;
 import com.pathmind.nodes.RuntimeValueScope;
 
 import java.util.ArrayDeque;
@@ -52,6 +53,7 @@ public final class GraphValidator {
         List<Node> startNodes = new ArrayList<>();
         Map<String, List<Node>> functionNodesByName = new LinkedHashMap<>();
         Map<String, Set<NodeType>> inferredVariableTypes = new LinkedHashMap<>();
+        Set<Node> comparisonGroups = new HashSet<>();
         List<String> availablePresets = PresetManager.getAvailablePresets();
 
         for (Node node : safeNodes) {
@@ -70,6 +72,10 @@ public final class GraphValidator {
                 }
             }
             collectVariableAssignments(node, inferredVariableTypes);
+            if (node.getType() == NodeType.OPERATOR_EQUALS || node.getType() == NodeType.OPERATOR_NOT) {
+                collectComparisonGroup(node.getAttachedParameter(0), comparisonGroups);
+                collectComparisonGroup(node.getAttachedParameter(1), comparisonGroups);
+            }
         }
 
         for (NodeConnection connection : safeConnections) {
@@ -121,6 +127,7 @@ public final class GraphValidator {
 
             validateInputConnections(node, inputOccupancy, issues);
             validateRequiredParameterSlots(node, issues);
+            validateOperatorSemantics(node, comparisonGroups, issues);
             validateNamedNodes(node, functionNodesByName, availablePresets, activePreset, issues);
             validateVariableParameterWarnings(node, inferredVariableTypes, issues);
             validateRoutineNode(node, safeRoutines, activeRoutine, issues);
@@ -263,6 +270,111 @@ public final class GraphValidator {
                 }
             }
         }
+    }
+
+    /**
+     * Reports expression errors that are knowable from the saved graph. Values from
+     * variables, routine inputs, and list entries remain dynamic and are deliberately
+     * not rejected here.
+     */
+    private static void validateOperatorSemantics(Node node, Set<Node> comparisonGroups,
+                                                  List<GraphValidationIssue> issues) {
+        if (node == null) {
+            return;
+        }
+        NodeType type = node.getType();
+        if (type == NodeType.OPERATOR_EQUALS || type == NodeType.OPERATOR_NOT) {
+            Node left = node.getAttachedParameter(0);
+            Node right = node.getAttachedParameter(1);
+            if (left != null && right != null && !isComparisonGroup(left) && !isComparisonGroup(right)
+                && hasBooleanType(left) != hasBooleanType(right)
+                && (isDefinitelyNonBoolean(left) || isDefinitelyNonBoolean(right))) {
+                issues.add(issue(GraphValidationSeverity.ERROR, "comparison_boolean_type_mismatch",
+                    tr("pathmind.validation.comparisonBooleanTypeMismatch",
+                        left.getType().getDisplayName(), right.getType().getDisplayName()), node));
+            }
+            return;
+        }
+        if (type == NodeType.OPERATOR_GREATER || type == NodeType.OPERATOR_LESS) {
+            for (int slotIndex = 0; slotIndex < 2; slotIndex++) {
+                Node operand = node.getAttachedParameter(slotIndex);
+                if (operand != null && isDefinitelyNonNumeric(operand)) {
+                    issues.add(issue(GraphValidationSeverity.ERROR, "ordering_non_numeric_operand",
+                        tr("pathmind.validation.orderingNonNumericOperand",
+                            type.getDisplayName(), operand.getType().getDisplayName()), node));
+                }
+            }
+            return;
+        }
+        if (type == NodeType.OPERATOR_BOOLEAN_NOT
+            || type == NodeType.OPERATOR_BOOLEAN_OR
+            || type == NodeType.OPERATOR_BOOLEAN_AND
+            || type == NodeType.OPERATOR_BOOLEAN_XOR) {
+            if (comparisonGroups.contains(node)) {
+                return;
+            }
+            for (int slotIndex = 0; slotIndex < node.getParameterSlotCount(); slotIndex++) {
+                Node operand = node.getAttachedParameter(slotIndex);
+                if (operand != null && isDefinitelyNonBoolean(operand)) {
+                    issues.add(issue(GraphValidationSeverity.ERROR, "boolean_operator_non_boolean_operand",
+                        tr("pathmind.validation.booleanOperatorNonBooleanOperand",
+                            type.getDisplayName(), operand.getType().getDisplayName()), node));
+                }
+            }
+        }
+    }
+
+    private static void collectComparisonGroup(Node node, Set<Node> comparisonGroups) {
+        if (isComparisonGroup(node)) {
+            comparisonGroups.add(node);
+        }
+    }
+
+    private static boolean isComparisonGroup(Node node) {
+        if (node == null || (node.getType() != NodeType.OPERATOR_BOOLEAN_OR
+            && node.getType() != NodeType.OPERATOR_BOOLEAN_AND)) {
+            return false;
+        }
+        for (int slotIndex = 0; slotIndex < node.getParameterSlotCount(); slotIndex++) {
+            if (node.getAttachedParameter(slotIndex) != null) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean hasBooleanType(Node node) {
+        return node != null && (NodeCatalog.isBooleanSensor(node.getType())
+            || node.getProvidedTraits().contains(NodeValueTrait.BOOLEAN));
+    }
+
+    private static boolean isDefinitelyNonBoolean(Node node) {
+        return node != null && !hasBooleanType(node) && hasKnownStaticType(node);
+    }
+
+    private static boolean isDefinitelyNonNumeric(Node node) {
+        if (node == null || isNumericType(node)) {
+            return false;
+        }
+        return hasKnownStaticType(node);
+    }
+
+    private static boolean isNumericType(Node node) {
+        if (node == null) {
+            return false;
+        }
+        Set<NodeValueTrait> traits = node.getProvidedTraits();
+        return traits.contains(NodeValueTrait.NUMBER)
+            || traits.contains(NodeValueTrait.DISTANCE)
+            || traits.contains(NodeValueTrait.DURATION);
+    }
+
+    private static boolean hasKnownStaticType(Node node) {
+        if (node == null || node.getType() == NodeType.VARIABLE || node.getType() == NodeType.ROUTINE_INPUT) {
+            return false;
+        }
+        Set<NodeValueTrait> traits = node.getProvidedTraits();
+        return !traits.isEmpty() && !traits.contains(NodeValueTrait.ANY);
     }
 
     private static void validateNamedNodes(Node node, Map<String, List<Node>> functionNodesByName, List<String> availablePresets,

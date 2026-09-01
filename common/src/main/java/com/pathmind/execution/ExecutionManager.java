@@ -1870,6 +1870,18 @@ public class ExecutionManager {
 
         int nextSocket = currentNode.consumeNextOutputSocket();
 
+        if (currentType == NodeType.CONTROL_IF_DO) {
+            Node attachedAction = currentNode.getAttachedActionNode();
+            if (nextSocket == 0 && attachedAction != null) {
+                return runChain(attachedAction, controller, executionId, repeatUntilGuard)
+                    .thenCompose(ignored -> continueFromOutputSocket(
+                        currentNode, controller, executionId, repeatUntilGuard, 0));
+            }
+            // If Do is a conditional modifier. A false condition (or an unfinished action
+            // slot) bypasses the action and preserves the single main execution path.
+            return continueFromOutputSocket(currentNode, controller, executionId, repeatUntilGuard, 0);
+        }
+
         if (currentNode.hasAttachedActionNode()) {
             Node attachedAction = currentNode.getAttachedActionNode();
             NodeType type = currentType;

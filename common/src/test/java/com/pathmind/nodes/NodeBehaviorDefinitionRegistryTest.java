@@ -165,6 +165,26 @@ class NodeBehaviorDefinitionRegistryTest {
     }
 
     @Test
+    void cardinalDirectionModePersistsItsDisplayedNorthDefault() {
+        Node direction = new Node(NodeType.PARAM_DIRECTION, 0, 0);
+
+        direction.setDirectionModeExact(false);
+
+        assertEquals("north", direction.getParameter("Direction").getStringValue());
+        assertFalse(direction.getParameter("Direction").isUserEdited());
+    }
+
+    @Test
+    void cardinalDirectionModeRepairsLegacyEmptyDirectionValues() {
+        Node direction = new Node(NodeType.PARAM_DIRECTION, 0, 0);
+        direction.getParameter("Mode").setStringValue("cardinal");
+        direction.getParameter("Direction").setStringValue("");
+
+        assertTrue(direction.isDirectionModeCardinal());
+        assertEquals("north", direction.getParameter("Direction").getStringValue());
+    }
+
+    @Test
     void namedDirectionMappingPreservesExpectedOrientation() {
         NodeBehaviorDefinitionRegistry.Orientation up =
             NodeBehaviorDefinitionRegistry.applyDirection("up", 42.0F, 10.0F);

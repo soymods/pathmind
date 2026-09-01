@@ -213,6 +213,7 @@ public class PathmindClientMod implements ClientModInitializer {
 
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             pendingWorldJoinLaunch = false;
+            ExecutionManager.getInstance().requestStopInGameRuntimeChains();
             PathmindNavigator.getInstance().reset();
             ChatMessageTracker.clear();
             FabricEventTracker.clear();

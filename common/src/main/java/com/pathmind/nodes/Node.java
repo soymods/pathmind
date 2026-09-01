@@ -709,6 +709,10 @@ public class Node {
         return NodeCatalog.isParameterNode(type);
     }
 
+    public boolean requiresInGameRuntime() {
+        return NodeExecutionCoordinator.requiresInGameRuntime(type);
+    }
+
     public boolean shouldRenderInlineParameters() {
         return NodeCatalog.shouldRenderInlineParameters(type);
     }

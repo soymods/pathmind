@@ -105,19 +105,26 @@ final class NodeControlController {
     NodeHeaderButtonVisual renderNodeHeaderButtonFrame(GuiGraphics context, int worldLeft, int worldTop,
                                                                 int size, boolean dimmed, boolean enabled,
                                                                 int hoverBorder, int mouseX, int mouseY) {
+        return renderNodeButtonFrame(context, worldLeft, worldTop, size, size, dimmed, enabled,
+            hoverBorder, mouseX, mouseY);
+    }
+
+    NodeHeaderButtonVisual renderNodeButtonFrame(GuiGraphics context, int worldLeft, int worldTop,
+                                                  int width, int height, boolean dimmed, boolean enabled,
+                                                  int hoverBorder, int mouseX, int mouseY) {
         // Node bodies are batched on modern versions, so header controls render in a later root layer.
         DrawContextBridge.startNewRootLayer(context);
         int left = worldLeft - host.cameraX();
         int top = worldTop - host.cameraY();
         boolean hovered = enabled && !dimmed
-            && isPointInsideNodeHeaderButton(worldLeft, worldTop, size, mouseX, mouseY);
+            && isPointInsideNodeButton(worldLeft, worldTop, width, height, mouseX, mouseY);
         int baseFill = dimmed ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_PRIMARY;
         int fill = hovered ? adjustColorBrightness(baseFill, 1.15f) : baseFill;
         int border = hovered ? hoverBorder : dimmed ? UITheme.BORDER_SUBTLE : UITheme.BORDER_DEFAULT;
         int iconColor = !enabled ? UITheme.NODE_LABEL_DIMMED
             : dimmed ? UITheme.TEXT_TERTIARY : UITheme.TEXT_PRIMARY;
-        context.fill(left, top, left + size, top + size, fill);
-        DrawContextBridge.drawBorderInLayer(context, left, top, size, size, border);
+        context.fill(left, top, left + width, top + height, fill);
+        DrawContextBridge.drawBorderInLayer(context, left, top, width, height, border);
         return new NodeHeaderButtonVisual(left, top, iconColor);
     }
 
@@ -134,14 +141,24 @@ final class NodeControlController {
 
     boolean isPointInsideNodeHeaderButton(int worldLeft, int worldTop, int size,
                                                    int screenX, int screenY) {
-        return isPointInsideNodeHeaderButtonWorld(worldLeft, worldTop, size,
+        return isPointInsideNodeButton(worldLeft, worldTop, size, size, screenX, screenY);
+    }
+
+    boolean isPointInsideNodeButton(int worldLeft, int worldTop, int width, int height,
+                                    int screenX, int screenY) {
+        return isPointInsideNodeButtonWorld(worldLeft, worldTop, width, height,
             host.screenToWorldX(screenX), host.screenToWorldY(screenY));
     }
 
     static boolean isPointInsideNodeHeaderButtonWorld(int worldLeft, int worldTop, int size,
                                                               int worldX, int worldY) {
-        return worldX >= worldLeft && worldX < worldLeft + size
-            && worldY >= worldTop && worldY < worldTop + size;
+        return isPointInsideNodeButtonWorld(worldLeft, worldTop, size, size, worldX, worldY);
+    }
+
+    static boolean isPointInsideNodeButtonWorld(int worldLeft, int worldTop, int width, int height,
+                                                 int worldX, int worldY) {
+        return worldX >= worldLeft && worldX < worldLeft + width
+            && worldY >= worldTop && worldY < worldTop + height;
     }
 
     record NodeHeaderButtonVisual(int left, int top, int iconColor) {}
@@ -587,7 +604,8 @@ final class NodeControlController {
         return (a << 24) | (gray << 16) | (gray << 8) | gray;
     }
 
-    void renderParameterSlot(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar, int slotIndex) {
+    void renderParameterSlot(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar,
+                             int slotIndex, int mouseX, int mouseY) {
         int slotX = node.getParameterSlotLeft(slotIndex) - host.cameraX();
         int slotY = node.getParameterSlotTop(slotIndex) - host.cameraY();
         int slotWidth = node.getParameterSlotWidth(slotIndex);
@@ -616,15 +634,20 @@ final class NodeControlController {
         int headerY = slotY - textRenderer.lineHeight - 2;
         if (headerY > node.getY() - host.cameraY() + 14) {
             if (node.getType() == NodeType.WALK && slotIndex == 1) {
-                int buttonWidth = textRenderer.width(headerText) + 8;
+                int buttonWidth = slotWidth;
                 int buttonHeight = textRenderer.lineHeight + 4;
-                int buttonTop = headerY - 2;
-                context.fill(slotX, buttonTop, slotX + buttonWidth, buttonTop + buttonHeight,
-                    isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_TERTIARY);
-                DrawContextBridge.drawBorderInLayer(context, slotX, buttonTop, buttonWidth, buttonHeight,
-                    isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BORDER_DEFAULT);
+                int buttonWorldTop = node.getParameterSlotTop(slotIndex) - textRenderer.lineHeight - 4;
+                NodeHeaderButtonVisual visual = renderNodeButtonFrame(context,
+                    node.getParameterSlotLeft(slotIndex), buttonWorldTop, buttonWidth, buttonHeight,
+                    isOverSidebar, true, getSelectedNodeAccentColor(), mouseX, mouseY);
+                String buttonLabel = host.trimTextToWidth(headerText, textRenderer, buttonWidth - 8);
+                int buttonTextX = visual.left() + (buttonWidth - textRenderer.width(buttonLabel)) / 2;
+                int buttonTextY = visual.top() + (buttonHeight - textRenderer.lineHeight) / 2 + 1;
+                host.drawNodeText(context, textRenderer, Component.literal(buttonLabel), buttonTextX, buttonTextY,
+                    visual.iconColor());
+            } else {
+                host.drawNodeText(context, textRenderer, Component.literal(headerText), slotX + 2, headerY, headerColor);
             }
-            host.drawNodeText(context, textRenderer, Component.literal(headerText), slotX + 2, headerY, headerColor);
         }
 
         if (!occupied && isDropTarget) {

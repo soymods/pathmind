@@ -36,7 +36,7 @@ final class NodeExecutionCoordinator {
             return future;
         }
 
-        if (requiresInGameRuntime() && (client == null || client.player == null || client.level == null)) {
+        if (requiresInGameRuntime(owner.getType()) && (client == null || client.player == null || client.level == null)) {
             NodeExecutionCompletion.fail(owner, client, future,
                 owner.getType().getDisplayName() + " requires an in-game world before it can run.");
             return future;
@@ -70,8 +70,7 @@ final class NodeExecutionCoordinator {
         return future;
     }
 
-    private boolean requiresInGameRuntime() {
-        NodeType type = owner.getType();
+    static boolean requiresInGameRuntime(NodeType type) {
         if (type == null) {
             return false;
         }

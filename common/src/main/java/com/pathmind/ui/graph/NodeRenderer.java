@@ -134,7 +134,7 @@ final class NodeRenderer {
         void renderAmountInputField(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar,
                                     int mouseX, int mouseY);
         void renderParameterSlot(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar,
-                                 int slotIndex);
+                                 int slotIndex, int mouseX, int mouseY);
         String getOperatorSymbol(Node node, boolean negated);
         boolean rendersInlineParameters(Node node);
         void renderTemplateNode(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar,
@@ -437,7 +437,7 @@ final class NodeRenderer {
             renderVariableContent(context, textRenderer, node, isOverSidebar,
                 x, y, width, height, lowDetail);
         } else if (!simpleStyle && host.isComparisonOperator(node) && !node.isExpandableBooleanOperator()) {
-            renderComparisonContent(context, textRenderer, node, isOverSidebar,
+            renderComparisonContent(context, textRenderer, node, isOverSidebar, mouseX, mouseY,
                 x, y, width, height, lowDetail);
         } else if (node.getType() == NodeType.EVENT_CALL) {
             renderEventCallContent(context, textRenderer, node, isOverSidebar, mouseX, mouseY,
@@ -464,7 +464,7 @@ final class NodeRenderer {
                 if (node.hasParameterSlot()) {
                     int slotCount = node.getParameterSlotCount();
                     for (int slotIndex = 0; slotIndex < slotCount; slotIndex++) {
-                        host.renderParameterSlot(context, textRenderer, node, isOverSidebar, slotIndex);
+                        host.renderParameterSlot(context, textRenderer, node, isOverSidebar, slotIndex, mouseX, mouseY);
                     }
                     if (node.hasCoordinateInputFields()) {
                         host.renderCoordinateInputFields(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
@@ -1153,7 +1153,7 @@ final class NodeRenderer {
             if (node.hasParameterSlot()) {
                 int slotCount = node.getParameterSlotCount();
                 for (int slotIndex = 0; slotIndex < slotCount; slotIndex++) {
-                    host.renderParameterSlot(context, textRenderer, node, isOverSidebar, slotIndex);
+                    host.renderParameterSlot(context, textRenderer, node, isOverSidebar, slotIndex, mouseX, mouseY);
                 }
             }
             if (node.hasAmountInputField()) {
@@ -1166,7 +1166,7 @@ final class NodeRenderer {
     }
 
     void renderComparisonContent(GuiGraphics context, Font textRenderer, Node node, boolean isOverSidebar,
-                                 int x, int y, int width, int height, boolean lowDetail) {
+                                 int mouseX, int mouseY, int x, int y, int width, int height, boolean lowDetail) {
         int accentColor = node.getColor();
         int baseColor = lowDetail ? (isOverSidebar ? UITheme.NODE_DIMMED_BG : UITheme.BACKGROUND_SECTION)
             : (isOverSidebar ? host.toGrayscale(accentColor, 0.7f) : host.adjustColorBrightness(accentColor, 0.55f));
@@ -1177,8 +1177,8 @@ final class NodeRenderer {
             // Intentionally skip title text for operator nodes to keep the symbol clean.
         }
 
-        host.renderParameterSlot(context, textRenderer, node, isOverSidebar, 0);
-        host.renderParameterSlot(context, textRenderer, node, isOverSidebar, 1);
+        host.renderParameterSlot(context, textRenderer, node, isOverSidebar, 0, mouseX, mouseY);
+        host.renderParameterSlot(context, textRenderer, node, isOverSidebar, 1, mouseX, mouseY);
 
         int leftSlotX = node.getParameterSlotLeft(0) - host.cameraX();
         int rightSlotX = node.getParameterSlotLeft(1) - host.cameraX();

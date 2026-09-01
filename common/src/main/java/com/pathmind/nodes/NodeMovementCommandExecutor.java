@@ -3,6 +3,7 @@ package com.pathmind.nodes;
 import static com.pathmind.util.PathmindI18n.tr;
 
 import com.mojang.blaze3d.platform.InputConstants;
+import com.pathmind.execution.ExecutionManager;
 import com.pathmind.util.EntityCompatibilityBridge;
 import com.pathmind.util.InputCompatibilityBridge;
 import java.util.EnumSet;
@@ -179,6 +180,9 @@ final class NodeMovementCommandExecutor {
     }
 
     private void executeWalkUntil(net.minecraft.client.Minecraft client, CompletableFuture<Void> future) {
+        ExecutionManager manager = ExecutionManager.getInstance();
+        Integer executionId = manager.getCurrentExecutionId();
+        String nodeId = owner.getId();
         new Thread(() -> {
             boolean interrupted = false;
             try {
@@ -191,6 +195,7 @@ final class NodeMovementCommandExecutor {
 
                 while (true) {
                     if (owner.shouldAbortForRepeatUntilGuard()
+                        || !manager.isExecutionActiveOnNode(executionId, nodeId)
                         || NodeClientRuntimeSupport.supplyFromClient(client, owner::isWalkUntilConditionMet)) {
                         break;
                     }

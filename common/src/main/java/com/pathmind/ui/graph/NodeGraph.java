@@ -979,8 +979,8 @@ public class NodeGraph {
             NodeGraph.this.renderAmountInputField(context, textRenderer, node, isOverSidebar, mouseX, mouseY);
         }
         @Override public void renderParameterSlot(GuiGraphics context, Font textRenderer, Node node,
-                                                  boolean isOverSidebar, int slotIndex) {
-            nodeControls.renderParameterSlot(context, textRenderer, node, isOverSidebar, slotIndex);
+                                                  boolean isOverSidebar, int slotIndex, int mouseX, int mouseY) {
+            nodeControls.renderParameterSlot(context, textRenderer, node, isOverSidebar, slotIndex, mouseX, mouseY);
         }
         @Override public String getOperatorSymbol(Node node, boolean negated) {
             return nodeControls.getOperatorSymbol(node, negated);
@@ -3460,9 +3460,9 @@ public class NodeGraph {
         int worldY = screenToWorldY(screenY);
         int left = node.getParameterSlotLeft(1);
         int top = node.getParameterSlotTop(1) - getClientTextRenderer().lineHeight - 4;
-        int width = getClientTextRenderer().width(node.getParameterSlotLabel(1)) + 8;
+        int width = node.getParameterSlotWidth(1);
         int height = getClientTextRenderer().lineHeight + 4;
-        if (worldX < left || worldX > left + width || worldY < top || worldY > top + height) {
+        if (worldX < left || worldX >= left + width || worldY < top || worldY >= top + height) {
             return false;
         }
         node.detachParameter(1);

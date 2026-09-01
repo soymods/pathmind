@@ -13,6 +13,7 @@ import java.util.Set;
 import java.util.TreeMap;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.item.ItemStack;
@@ -314,6 +315,13 @@ final class NodeComparisonEvaluator {
         if (left == null || right == null) {
             return Optional.empty();
         }
+        // Look Direction is classified as a boolean sensor so it can be used directly in
+        // control nodes. When it is an operand, however, it represents a live rotation and
+        // must be compared before the generic boolean-sensor shortcut below.
+        Optional<Boolean> lookDirectionComparison = compareLiveLookDirection(left, right);
+        if (lookDirectionComparison.isPresent()) {
+            return lookDirectionComparison;
+        }
         Optional<Boolean> leftBoolean = resolveComparableBoolean(left);
         Optional<Boolean> rightBoolean = resolveComparableBoolean(right);
         if (leftBoolean.isPresent() && rightBoolean.isPresent()) {
@@ -380,6 +388,50 @@ final class NodeComparisonEvaluator {
             return Optional.empty();
         }
         return Optional.of(canonicalizeValueMap(leftValues).equals(canonicalizeValueMap(rightValues)));
+    }
+
+    private Optional<Boolean> compareLiveLookDirection(Node left, Node right) {
+        Node lookSensor;
+        Node directionParameter;
+        if (left.getType() == NodeType.SENSOR_LOOK_DIRECTION
+            && isRotationParameter(right)) {
+            lookSensor = left;
+            directionParameter = right;
+        } else if (right.getType() == NodeType.SENSOR_LOOK_DIRECTION
+            && isRotationParameter(left)) {
+            lookSensor = right;
+            directionParameter = left;
+        } else {
+            return Optional.empty();
+        }
+        if (lookSensor.isSensorLookSingleAxisMode()) {
+            return Optional.empty();
+        }
+        Minecraft client = Minecraft.getInstance();
+        if (client == null || client.player == null) {
+            return Optional.empty();
+        }
+        if (directionParameter.getType() == NodeType.PARAM_DIRECTION && directionParameter.isDirectionModeCardinal()) {
+            String expected = Node.getParameterString(directionParameter, "Direction");
+            if (expected == null || expected.isBlank()) {
+                return Optional.empty();
+            }
+            Vec3 look = client.player.getViewVector(1.0F);
+            Direction actual = Direction.getApproximateNearest(look.x, look.y, look.z);
+            return Optional.of(actual.toString().equalsIgnoreCase(expected.trim()));
+        }
+        Double expectedYaw = Node.parseDoubleOrNull(Node.getParameterString(directionParameter, "Yaw"));
+        Double expectedPitch = Node.parseDoubleOrNull(Node.getParameterString(directionParameter, "Pitch"));
+        if (expectedYaw == null || expectedPitch == null) {
+            return Optional.empty();
+        }
+        double yawDifference = Math.abs(Mth.wrapDegrees(client.player.getYRot() - expectedYaw.floatValue()));
+        double pitchDifference = Math.abs(client.player.getXRot() - expectedPitch);
+        return Optional.of(yawDifference <= 1.0 && pitchDifference <= 1.0);
+    }
+
+    private boolean isRotationParameter(Node node) {
+        return node.getType() == NodeType.PARAM_DIRECTION || node.getType() == NodeType.PARAM_ROTATION;
     }
 
     /**

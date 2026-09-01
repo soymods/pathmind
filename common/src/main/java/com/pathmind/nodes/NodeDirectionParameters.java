@@ -14,6 +14,7 @@ final class NodeDirectionParameters {
         NodeParameter modeParameter = node.getParameter("Mode");
         String rawMode = modeParameter != null ? modeParameter.getStringValue() : null;
         if (rawMode != null && !rawMode.trim().isEmpty()) {
+            ensureCardinalDirection(node, rawMode, cardinalModeValue);
             return !cardinalModeValue.equalsIgnoreCase(rawMode.trim());
         }
         NodeParameter directionParameter = node.getParameter("Direction");
@@ -31,6 +32,9 @@ final class NodeDirectionParameters {
         NodeParameter modeParameter = node.getParameter("Mode");
         if (modeParameter != null) {
             modeParameter.setUserEdited(true);
+        }
+        if (!exact) {
+            ensureCardinalDirection(node, cardinalModeValue, cardinalModeValue);
         }
     }
 
@@ -50,6 +54,19 @@ final class NodeDirectionParameters {
         removeDirectionParameter(node, "YawOffset");
         removeDirectionParameter(node, "PitchOffset");
         ensureDirectionParameter(node, "direction_distance", "Distance", ParameterType.DOUBLE, Double.toString(defaultDirectionDistance), 4);
+    }
+
+    private static void ensureCardinalDirection(Node node, String modeValue, String cardinalModeValue) {
+        if (!cardinalModeValue.equalsIgnoreCase(modeValue == null ? "" : modeValue.trim())) {
+            return;
+        }
+        NodeParameter directionParameter = node.getParameter("Direction");
+        if (directionParameter == null || (directionParameter.getStringValue() != null
+            && !directionParameter.getStringValue().trim().isEmpty())) {
+            return;
+        }
+        directionParameter.setStringValue("north");
+        directionParameter.setUserEdited(false);
     }
 
     private static void ensureDirectionParameter(Node node, String id, String name, ParameterType parameterType, String defaultValue, int targetIndex) {

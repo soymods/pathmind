@@ -108,6 +108,7 @@ public class PathmindNeoForge {
     private Object executionManager;
     private Method setSingleplayerPausedMethod;
     private Method requestStopAllMethod;
+    private Method requestStopInGameRuntimeChainsMethod;
     private Method playAllGraphsWithResultMethod;
     private Method openVisualEditorOrWarnMethod;
     private Method isVisualEditorScreenMethod;
@@ -241,6 +242,7 @@ public class PathmindNeoForge {
         executionManager = executionManagerClass.getMethod("getInstance").invoke(null);
         setSingleplayerPausedMethod = executionManagerClass.getMethod("setSingleplayerPaused", boolean.class);
         requestStopAllMethod = executionManagerClass.getMethod("requestStopAll");
+        requestStopInGameRuntimeChainsMethod = executionManagerClass.getMethod("requestStopInGameRuntimeChains");
         playAllGraphsWithResultMethod = executionManagerClass.getMethod("playAllGraphsWithResult");
 
         Class<?> suggestionsClass = Class.forName("com.pathmind.ui.overlay.NavigatorChatSuggestions");
@@ -1354,11 +1356,16 @@ public class PathmindNeoForge {
             return;
         }
         worldShutdownHandled = true;
-        requestStopAll();
+        requestStopInGameRuntimeChains();
     }
 
     private void requestStopAll() {
         invokeBridge("stop Pathmind graphs", () -> requestStopAllMethod.invoke(executionManager));
+    }
+
+    private void requestStopInGameRuntimeChains() {
+        invokeBridge("stop in-game Pathmind graphs", () ->
+            requestStopInGameRuntimeChainsMethod.invoke(executionManager));
     }
 
     private void resetRecipeCacheWarmup() {

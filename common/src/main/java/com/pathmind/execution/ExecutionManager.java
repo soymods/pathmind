@@ -1081,6 +1081,39 @@ public class ExecutionManager {
         this.routineCallFrames.clear();
     }
 
+    /**
+     * Stop only chains that cannot continue after the client leaves an in-game world.
+     * Event and background-only chains are deliberately kept alive across disconnects.
+     */
+    public void requestStopInGameRuntimeChains() {
+        int stoppedChains = 0;
+        for (ChainController controller : activeChains.values()) {
+            if (controller == null || controller.cancelRequested || !chainRequiresInGameRuntime(controller)) {
+                continue;
+            }
+            controller.cancelRequested = true;
+            stoppedChains++;
+        }
+        if (stoppedChains > 0) {
+            cancelAllNavigationCommands();
+            LOGGER.debug("Stopped {} in-game Pathmind chain(s) after leaving the world", stoppedChains);
+        }
+    }
+
+    private boolean chainRequiresInGameRuntime(ChainController controller) {
+        if (controller == null) {
+            return false;
+        }
+        synchronized (controller.graphNodes) {
+            for (Node node : controller.graphNodes) {
+                if (node != null && node.requiresInGameRuntime()) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     private void cancelAllBaritoneCommands() {
         PreciseCompletionTracker.getInstance().cancelAllTasks();
 
@@ -1133,7 +1166,13 @@ public class ExecutionManager {
     }
 
     public boolean isExecutionActiveOnNode(Integer executionId, String nodeId) {
-        return sessionState.isExecutionActiveOnNode(executionId, nodeId);
+        if (!sessionState.isExecutionActiveOnNode(executionId, nodeId)) {
+            return false;
+        }
+        Node activeNode = sessionState.getActiveExecutionNode(executionId);
+        ChainController controller = activeNode == null ? null
+            : findChainControllerForStart(activeNode.getOwningStartNode());
+        return controller != null && !controller.cancelRequested;
     }
 
     public long getExecutionNodeDuration(Integer executionId) {

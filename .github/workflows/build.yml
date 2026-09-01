@@ -234,6 +234,7 @@ jobs:
           if [ -z "${COMMIT_MESSAGE:-}" ] || [ "${COMMIT_MESSAGE}" = "null" ]; then
             COMMIT_MESSAGE="No commit message available"
           fi
+          COMMIT_MESSAGE="${COMMIT_MESSAGE:0:500}"
           BUILD_TIMESTAMP="$(date -u +%s)"
 
           mapfile -t jars < <(find build/release-assets -maxdepth 1 -type f -name '*.jar' | sort)
@@ -302,32 +303,54 @@ jobs:
           ACTIONS_LINK="$(printf '[View GitHub Actions run](<https://github.com/%s/actions/runs/%s>)' \
             "${GITHUB_REPOSITORY}" \
             "${GITHUB_RUN_ID}")"
-          DESCRIPTION="$(printf '%s\n\n**Downloads**\n%s\n\n%s' \
+          post_embed() {
+            local title="$1"
+            local description="$2"
+            local payload
+            payload="$(jq -cn \
+              --arg title "$title" \
+              --arg url "https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+              --arg description "$description" \
+              '{
+                embeds: [
+                  {
+                    title: $title,
+                    url: $url,
+                    description: $description,
+                    color: 5763719
+                  }
+                ]
+              }')"
+
+            curl --fail-with-body -sS \
+              -X POST \
+              "https://discord.com/api/v10/channels/${DISCORD_CHANNEL_ID}/messages" \
+              -H "Authorization: Bot ${DISCORD_BOT_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d "$payload"
+          }
+
+          # Discord permits at most 4,096 characters in an embed description.
+          # Leave headroom because Bash counts Unicode code points differently from
+          # Discord's UTF-16 length accounting.
+          MAX_DESCRIPTION_LENGTH=3800
+          DESCRIPTION="$(printf '%s\n\n%s\n\n**Downloads**' \
             "${SUMMARY_LINE}" \
-            "${DOWNLOADS}" \
             "${ACTIONS_LINK}")"
+          EMBED_TITLE="Pathmind test builds"
 
-          PAYLOAD="$(jq -cn \
-            --arg title "Pathmind test builds" \
-            --arg url "https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
-            --arg description "$DESCRIPTION" \
-            '{
-              embeds: [
-                {
-                  title: $title,
-                  url: $url,
-                  description: $description,
-                  color: 5763719
-                }
-              ]
-            }')"
+          while IFS= read -r download; do
+            candidate="${DESCRIPTION}"$'\n'"${download}"
+            if [ "${#candidate}" -gt "${MAX_DESCRIPTION_LENGTH}" ]; then
+              post_embed "${EMBED_TITLE}" "${DESCRIPTION}"
+              EMBED_TITLE="Pathmind test builds (continued)"
+              DESCRIPTION="$(printf '**Downloads (continued)**\n%s' "${download}")"
+            else
+              DESCRIPTION="${candidate}"
+            fi
+          done <<< "${DOWNLOADS}"
 
-          curl --fail-with-body -sS \
-            -X POST \
-            "https://discord.com/api/v10/channels/${DISCORD_CHANNEL_ID}/messages" \
-            -H "Authorization: Bot ${DISCORD_BOT_TOKEN}" \
-            -H "Content-Type: application/json" \
-            -d "$PAYLOAD"
+          post_embed "${EMBED_TITLE}" "${DESCRIPTION}"
 
   publish-prerelease:
     if: ${{ github.event_name == 'push' && github.ref_name == github.event.repository.default_branch }}

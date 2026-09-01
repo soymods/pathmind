@@ -442,7 +442,11 @@ public final class NodeCatalog {
             NodeType.OPEN_INVENTORY,
             NodeType.CLOSE_GUI);
 
+        // This flag is what makes a node draw its parameter strip, and the mode selector lives
+        // inside that strip (NodeRenderer.renderInlineParameterContent). A node with modes but
+        // without this tag has no way to reach them in the editor.
         tag(NodeFlag.RENDER_INLINE_PARAMETERS,
+            NodeType.CLICK_SLOT,
             NodeType.UI_UTILS,
             NodeType.SENSOR_FABRIC_EVENT,
             NodeType.SENSOR_ATTRIBUTE_DETECTION,
@@ -860,7 +864,7 @@ public final class NodeCatalog {
         parameterHost(NodeType.HOTBAR, NodeValueTrait.INVENTORY_SLOT, NodeValueTrait.ITEM);
         parameterHost(NodeType.DROP_ITEM, "Target", NodeValueTrait.ITEM, NodeValueTrait.INVENTORY_SLOT, NodeValueTrait.NUMBER);
         parameterHost(NodeType.DROP_SLOT, "Target", NodeValueTrait.ITEM, NodeValueTrait.INVENTORY_SLOT, NodeValueTrait.NUMBER);
-        parameterHost(NodeType.CLICK_SLOT, "Selection", NodeValueTrait.INVENTORY_SLOT);
+        parameterHost(NodeType.CLICK_SLOT, "Slot", NodeValueTrait.INVENTORY_SLOT);
         parameterHost(NodeType.EQUIP_ARMOR, NodeValueTrait.INVENTORY_SLOT);
         parameterHost(NodeType.EQUIP_HAND, NodeValueTrait.INVENTORY_SLOT);
         parameterHost(NodeType.SET_VARIABLE, slot("Variable", true, NodeValueTrait.VARIABLE), slot("Value", true, NodeValueTrait.ANY));
@@ -913,6 +917,9 @@ public final class NodeCatalog {
         modeParameters(NodeMode.FARM_WAYPOINT,
             of("Waypoint", ParameterType.STRING, "farm"),
             of("Range", ParameterType.INTEGER, "10"));
+        // Click Slot's three modes declare no parameters. The Slot node attached to the node's
+        // required parameter slot is the only source for the index; a write-in field beside it
+        // was redundant, because the attachment overwrote whatever it held on every run.
         modeParameters(NodeMode.WAIT_SECONDS, of("Duration", ParameterType.DOUBLE, ""));
         modeParameters(NodeMode.WAIT_TICKS, of("Duration", ParameterType.DOUBLE, ""));
         modeParameters(NodeMode.WAIT_MINUTES, of("Duration", ParameterType.DOUBLE, ""));
@@ -958,7 +965,6 @@ public final class NodeCatalog {
             of("drop_slot_index", "Slot", ParameterType.INTEGER, "0"),
             of("Count", ParameterType.INTEGER, "0"),
             of("EntireStack", ParameterType.BOOLEAN, "true"));
-        typeParameters(NodeType.CLICK_SLOT, of("click_slot_index", "Slot", ParameterType.INTEGER, "0"));
         typeParameters(NodeType.CLICK_SCREEN,
             of("X", ParameterType.INTEGER, "0"),
             of("Y", ParameterType.INTEGER, "0"));

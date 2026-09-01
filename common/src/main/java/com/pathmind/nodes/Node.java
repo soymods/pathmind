@@ -1225,12 +1225,31 @@ public class Node {
         if (isComparisonOperator() && !isExpandableBooleanOperator()) {
             return "";
         }
+        if (type == NodeType.WALK && slotIndex == 1) {
+            return mode == NodeMode.WALK_UNTIL ? "Until" : "Duration / Distance";
+        }
         if (type == NodeType.ROUTINE_CALL && slotIndex >= 0 && slotIndex < routineMetadata.getRoutineArgumentCount()) {
             NodeGraphData.RoutineArgumentData argument = routineMetadata.getRoutineArgument(slotIndex);
             String label = argument.getLabel() == null || argument.getLabel().isBlank() ? "Input" : argument.getLabel();
             return Boolean.TRUE.equals(argument.getOrphaned()) ? "Removed: " + label : label;
         }
         return NodeTraitRegistry.getParameterSlotLabel(type, slotIndex);
+    }
+
+    public boolean isWalkUntilMode() {
+        return type == NodeType.WALK && mode == NodeMode.WALK_UNTIL;
+    }
+
+    boolean isWalkUntilConditionMet() {
+        if (!isWalkUntilMode()) {
+            return false;
+        }
+        Node condition = getAttachedParameter(1);
+        return condition != null
+            && condition.isSensorNode()
+            && (NodeCatalog.isBooleanSensor(condition.getType())
+                || condition.getProvidedTraits().contains(NodeValueTrait.BOOLEAN))
+            && condition.evaluateSensor();
     }
 
     public int getParameterSlotWidth() {
@@ -2558,6 +2577,11 @@ public class Node {
 
     ParameterHandlingResult preprocessAttachedParameter(EnumSet<ParameterUsage> usages, CompletableFuture<Void> future) {
         return runtimeParameterResolver.preprocessAttachedParameter(usages, future);
+    }
+
+    ParameterHandlingResult preprocessAttachedParameterSlot(int slotIndex, EnumSet<ParameterUsage> usages,
+                                                             CompletableFuture<Void> future) {
+        return runtimeParameterResolver.preprocessParameterSlot(slotIndex, usages, future, true);
     }
 
     ParameterHandlingResult preprocessParameterSlot(int slotIndex, EnumSet<ParameterUsage> usages, CompletableFuture<Void> future, boolean resetRuntimeData) {

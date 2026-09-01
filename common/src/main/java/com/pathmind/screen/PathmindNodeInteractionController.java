@@ -210,6 +210,7 @@ final class PathmindNodeInteractionController {
         if (nodeGraph.handleRandomRoundingToggleClick(clickedNode, clickX, clickY)
             || nodeGraph.handleRandomRoundingDropdownClick(clickedNode, clickX, clickY)
             || nodeGraph.handleAmountToggleClick(clickedNode, clickX, clickY)
+            || nodeGraph.handleWalkUntilToggleClick(clickedNode, clickX, clickY)
             || nodeGraph.handleDirectionModeTabClick(clickedNode, clickX, clickY)
             || nodeGraph.handleBooleanModeTabClick(clickedNode, clickX, clickY)
             || nodeGraph.handleMessageScopeToggleClick(clickedNode, clickX, clickY)

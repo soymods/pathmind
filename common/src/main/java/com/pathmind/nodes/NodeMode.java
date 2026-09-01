@@ -14,6 +14,10 @@ public enum NodeMode {
     CLICK_SLOT_SHIFT("Shift Click", "Move the stack to the other container, as shift-clicking does"),
     CLICK_SLOT_SWAP_OFFHAND("Offhand", "Swap the stack with the offhand"),
 
+    // WALK modes
+    WALK_FOR("Duration / Distance", "Walk for a duration or distance, then continue"),
+    WALK_UNTIL("Until", "Walk until the attached condition becomes true"),
+
     // GOTO modes
     GOTO_XYZ("Go to XYZ", "Go to specific X, Y, Z coordinates"),
     GOTO_XZ("Go to XZ", "Go to X, Z coordinates (Y defaults to surface)"),
@@ -185,6 +189,7 @@ public enum NodeMode {
 				case CLICK_SLOT -> new NodeMode[]{
 						CLICK_SLOT_LEFT, CLICK_SLOT_RIGHT, CLICK_SLOT_SHIFT, CLICK_SLOT_SWAP_OFFHAND
 				};
+				case WALK -> new NodeMode[]{WALK_FOR, WALK_UNTIL};
 				default -> new NodeMode[0];
 			};
     }
@@ -210,6 +215,7 @@ public enum NodeMode {
 				case SENSOR_POSITION_OF -> SENSOR_POSITION_XYZ;
 				case SENSOR_LOOK_DIRECTION -> SENSOR_LOOK_ROTATION;
 				case CLICK_SLOT -> CLICK_SLOT_LEFT;
+				case WALK -> WALK_FOR;
 				default -> null;
 			};
     }

@@ -40,12 +40,28 @@ final class NodeMovementCommandExecutor {
     }
 
     void executeWalkCommand(CompletableFuture<Void> future) {
-        if (owner.preprocessAttachedParameter(EnumSet.of(Node.ParameterUsage.LOOK_ORIENTATION), future) == Node.ParameterHandlingResult.COMPLETE) {
+        Node.ParameterHandlingResult parameterResult = owner.isWalkUntilMode()
+            ? owner.preprocessAttachedParameterSlot(0, EnumSet.of(Node.ParameterUsage.LOOK_ORIENTATION), future)
+            : owner.preprocessAttachedParameter(EnumSet.of(Node.ParameterUsage.LOOK_ORIENTATION), future);
+        if (parameterResult == Node.ParameterHandlingResult.COMPLETE) {
             return;
         }
         net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
         if (client == null || client.player == null) {
             future.completeExceptionally(new RuntimeException("Minecraft client not available"));
+            return;
+        }
+
+        if (owner.isWalkUntilMode()) {
+            Node condition = owner.getAttachedParameter(1);
+            if (condition == null
+                || !condition.isSensorNode()
+                || !(NodeCatalog.isBooleanSensor(condition.getType())
+                    || condition.getProvidedTraits().contains(NodeValueTrait.BOOLEAN))) {
+                future.completeExceptionally(new IllegalStateException("Walk Until requires a boolean sensor condition"));
+                return;
+            }
+            executeWalkUntil(client, future);
             return;
         }
 
@@ -160,6 +176,47 @@ final class NodeMovementCommandExecutor {
                 }
             }
         }, "Pathmind-Walk").start();
+    }
+
+    private void executeWalkUntil(net.minecraft.client.Minecraft client, CompletableFuture<Void> future) {
+        new Thread(() -> {
+            boolean interrupted = false;
+            try {
+                NodeClientRuntimeSupport.runOnClientThread(client, () -> {
+                    owner.orientPlayerTowardsRuntimeTarget(client, owner.runtimeState().runtimeParameterData);
+                    if (client.options != null && client.options.keyUp != null) {
+                        client.options.keyUp.setDown(true);
+                    }
+                });
+
+                while (true) {
+                    if (owner.shouldAbortForRepeatUntilGuard()
+                        || NodeClientRuntimeSupport.supplyFromClient(client, owner::isWalkUntilConditionMet)) {
+                        break;
+                    }
+                    Thread.sleep(Node.CONTROL_POLL_INTERVAL_MS);
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                interrupted = true;
+            } finally {
+                try {
+                    NodeClientRuntimeSupport.runOnClientThread(client, () -> {
+                        if (client.options != null && client.options.keyUp != null) {
+                            client.options.keyUp.setDown(false);
+                        }
+                    });
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    interrupted = true;
+                }
+                if (interrupted) {
+                    future.completeExceptionally(new InterruptedException());
+                } else {
+                    future.complete(null);
+                }
+            }
+        }, "Pathmind-Walk-Until").start();
     }
 
     void executeJumpCommand(CompletableFuture<Void> future) {

@@ -3452,6 +3452,28 @@ public class NodeGraph {
         return true;
     }
 
+    public boolean handleWalkUntilToggleClick(Node node, int screenX, int screenY) {
+        if (node == null || node.getType() != NodeType.WALK || node.getParameterSlotCount() < 2) {
+            return false;
+        }
+        int worldX = screenToWorldX(screenX);
+        int worldY = screenToWorldY(screenY);
+        int left = node.getParameterSlotLeft(1);
+        int top = node.getParameterSlotTop(1) - getClientTextRenderer().lineHeight - 4;
+        int width = getClientTextRenderer().width(node.getParameterSlotLabel(1)) + 8;
+        int height = getClientTextRenderer().lineHeight + 4;
+        if (worldX < left || worldX > left + width || worldY < top || worldY > top + height) {
+            return false;
+        }
+        node.detachParameter(1);
+        node.setMode(node.isWalkUntilMode()
+            ? com.pathmind.nodes.NodeMode.WALK_FOR
+            : com.pathmind.nodes.NodeMode.WALK_UNTIL);
+        node.recalculateDimensions();
+        notifyNodeParametersChanged(node);
+        return true;
+    }
+
     public boolean isModeDropdownOpen() {
         return modeDropdown.isOpen();
     }

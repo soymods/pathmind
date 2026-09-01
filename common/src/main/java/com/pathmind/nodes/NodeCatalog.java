@@ -917,6 +917,10 @@ public final class NodeCatalog {
         modeParameters(NodeMode.FARM_WAYPOINT,
             of("Waypoint", ParameterType.STRING, "farm"),
             of("Range", ParameterType.INTEGER, "10"));
+        modeParameters(NodeMode.WALK_FOR,
+            of("Duration", ParameterType.DOUBLE, "1.0"),
+            of("Distance", ParameterType.DOUBLE, "0.0"));
+        modeParameters(NodeMode.WALK_UNTIL);
         // Click Slot's three modes declare no parameters. The Slot node attached to the node's
         // required parameter slot is the only source for the index; a write-in field beside it
         // was redundant, because the attachment overwrote whatever it held on every run.
@@ -1016,9 +1020,6 @@ public final class NodeCatalog {
         typeParameters(NodeType.LOOK,
             of("look_yaw", "Yaw", ParameterType.DOUBLE, "0.0"),
             of("look_pitch", "Pitch", ParameterType.DOUBLE, "0.0"));
-        typeParameters(NodeType.WALK,
-            of("Duration", ParameterType.DOUBLE, "1.0"),
-            of("Distance", ParameterType.DOUBLE, "0.0"));
         typeParameters(NodeType.PRESS_KEY,
             of("Key", ParameterType.STRING, "GLFW_KEY_SPACE"),
             of("Duration", ParameterType.DOUBLE, "0.0"),

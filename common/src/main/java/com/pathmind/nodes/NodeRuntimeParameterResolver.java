@@ -254,6 +254,17 @@ final class NodeRuntimeParameterResolver {
             // mark the slot handled, which would otherwise fall through as an incompatible parameter.
             handled = true;
         }
+        if (!handled
+            && owner.getType() == NodeType.WALK
+            && owner.isWalkUntilMode()
+            && slotIndex == 1
+            && parameterNode.isSensorNode()
+            && (NodeCatalog.isBooleanSensor(parameterNode.getType())
+                || parameterNode.getProvidedTraits().contains(NodeValueTrait.BOOLEAN))) {
+            // Walk Until evaluates this sensor directly while it keeps the node active. It has no
+            // host parameter to write into, so claim the attachment explicitly.
+            handled = true;
+        }
         // Special case: block parameters in slot 0 of PLACE/PLACE_HAND nodes are valid
         // even when usages is empty (they provide block type, not position)
         if (!handled

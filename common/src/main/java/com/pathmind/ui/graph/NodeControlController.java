@@ -615,6 +615,15 @@ final class NodeControlController {
         int headerColor = isOverSidebar ? UITheme.TEXT_TERTIARY : UITheme.TEXT_SECONDARY;
         int headerY = slotY - textRenderer.lineHeight - 2;
         if (headerY > node.getY() - host.cameraY() + 14) {
+            if (node.getType() == NodeType.WALK && slotIndex == 1) {
+                int buttonWidth = textRenderer.width(headerText) + 8;
+                int buttonHeight = textRenderer.lineHeight + 4;
+                int buttonTop = headerY - 2;
+                context.fill(slotX, buttonTop, slotX + buttonWidth, buttonTop + buttonHeight,
+                    isOverSidebar ? UITheme.BACKGROUND_SECONDARY : UITheme.BACKGROUND_TERTIARY);
+                DrawContextBridge.drawBorderInLayer(context, slotX, buttonTop, buttonWidth, buttonHeight,
+                    isOverSidebar ? UITheme.BORDER_SUBTLE : UITheme.BORDER_DEFAULT);
+            }
             host.drawNodeText(context, textRenderer, Component.literal(headerText), slotX + 2, headerY, headerColor);
         }
 

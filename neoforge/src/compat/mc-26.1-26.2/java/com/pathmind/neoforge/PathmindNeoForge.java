@@ -5,6 +5,13 @@ import com.pathmind.execution.BackgroundStartRunner;
 import com.pathmind.execution.ExecutionManager;
 import com.pathmind.nodes.NodeType;
 import com.pathmind.nodes.StartLaunchMode;
+import com.pathmind.schematic.SchematicBuildExecutor;
+import com.pathmind.schematic.SchematicBuildPlan;
+import com.pathmind.schematic.SchematicFiles;
+import com.pathmind.schematic.SchematicLoadException;
+import com.pathmind.schematic.SchematicLoader;
+import com.pathmind.schematic.SchematicPlacementPlanner;
+import com.pathmind.schematic.SchematicPreview;
 import com.pathmind.ui.overlay.NodeErrorNotificationOverlay;
 import com.pathmind.ui.theme.UITheme;
 import com.pathmind.util.ChatMessageTracker;
@@ -738,7 +745,7 @@ public class PathmindNeoForge {
         }
         String command = rawCommand == null ? "" : rawCommand.trim();
         if (command.isEmpty() || command.equalsIgnoreCase("help")) {
-            showNavigatorMessage("Pathmind Nav: !travel, !path, !nav debug, !stop");
+            showNavigatorMessage("Pathmind Nav: !build <schematic> <x> <y> <z>, !build preview <schematic> <x> <y> <z>, !build status|pause|resume|cancel, !travel, !path, !nav debug, !stop");
             return true;
         }
 
@@ -748,12 +755,19 @@ public class PathmindNeoForge {
         }
 
         if (parts[0].equalsIgnoreCase("stop")) {
+            if (SchematicBuildExecutor.getInstance().snapshot() != null) {
+                SchematicBuildExecutor.getInstance().stop("cancelled from chat stop");
+            }
             invokeBridge("stop Pathmind navigator from chat", () -> pathmindNavigatorStopMethod.invoke(pathmindNavigator, "chat stop"));
             showNavigatorMessage("Pathmind Nav stopped.");
             return true;
         }
         if (parts[0].equalsIgnoreCase("travel")) {
             handleNavigatorGoto(client, parts);
+            return true;
+        }
+        if (parts[0].equalsIgnoreCase("build")) {
+            handleSchematicBuildCommand(client, parts);
             return true;
         }
         if (parts[0].equalsIgnoreCase("path")) {
@@ -778,8 +792,97 @@ public class PathmindNeoForge {
             return true;
         }
 
-        showNavigatorMessage("Unknown Pathmind Nav command. Use !travel, !path, !nav water, !nav logs, !flag, or !stop.");
+        showNavigatorMessage("Unknown Pathmind Nav command. Use !build, !travel, !path, !nav debug, !nav water, !nav logs, !flag, or !stop.");
         return true;
+    }
+
+    private void handleSchematicBuildCommand(Minecraft client, String[] parts) {
+        if (client == null) {
+            return;
+        }
+        if (parts.length == 6 && "preview".equalsIgnoreCase(parts[1])) {
+            int x;
+            int y;
+            int z;
+            try {
+                x = Integer.parseInt(parts[3]);
+                y = Integer.parseInt(parts[4]);
+                z = Integer.parseInt(parts[5]);
+            } catch (NumberFormatException ignored) {
+                showNavigatorMessage("Preview coordinates must be whole numbers.");
+                return;
+            }
+            SchematicPreview.Result result = SchematicPreview.show(client, parts[2], new BlockPos(x, y, z));
+            showNavigatorMessage(result.message());
+            return;
+        }
+        if (parts.length == 2) {
+            String control = parts[1].toLowerCase(Locale.ROOT);
+            if ("status".equals(control)) {
+                SchematicBuildExecutor.Snapshot snapshot = SchematicBuildExecutor.getInstance().snapshot();
+                showNavigatorMessage(snapshot == null ? "No active or paused schematic build."
+                    : "Build " + snapshot.state() + ": " + snapshot.completedBlocks() + "/" + snapshot.totalBlocks()
+                        + " complete; " + snapshot.remainingBlocks() + " remaining. " + snapshot.status()
+                        + " " + SchematicBuildExecutor.getInstance().materialStatus(client));
+                return;
+            }
+            if ("pause".equals(control)) {
+                showNavigatorMessage(SchematicBuildExecutor.getInstance().pauseByUser() ? "Schematic build paused." : "No active schematic build to pause.");
+                return;
+            }
+            if ("resume".equals(control)) {
+                showNavigatorMessage(SchematicBuildExecutor.getInstance().resume(client) ? "Schematic build resumed." : "No paused schematic build to resume.");
+                return;
+            }
+            if ("cancel".equals(control)) {
+                SchematicBuildExecutor.getInstance().stop("cancelled from chat");
+                showNavigatorMessage("Schematic build cancelled.");
+                return;
+            }
+        }
+        if (client.gameDirectory == null || parts.length != 5) {
+            showNavigatorMessage("Usage: !build <schematic> <x> <y> <z> | !build preview <schematic> <x> <y> <z> | !build status|pause|resume|cancel");
+            return;
+        }
+        int x;
+        int y;
+        int z;
+        try {
+            x = Integer.parseInt(parts[2]);
+            y = Integer.parseInt(parts[3]);
+            z = Integer.parseInt(parts[4]);
+        } catch (NumberFormatException ignored) {
+            showNavigatorMessage("Build coordinates must be whole numbers.");
+            return;
+        }
+        Optional<java.nio.file.Path> schematic = SchematicFiles.resolve(client.gameDirectory.toPath(), parts[1]);
+        if (schematic.isEmpty()) {
+            showNavigatorMessage("Schematic not found in " + client.gameDirectory.toPath().resolve("schematics") + ": " + parts[1]);
+            return;
+        }
+        try {
+            SchematicBuildPlan plan = SchematicLoader.load(schematic.get());
+            if (client.level == null) {
+                showNavigatorMessage("Schematic loaded, but a world is required to create its placement plan.");
+                return;
+            }
+            SchematicPlacementPlanner.ConstructionPlan construction = SchematicPlacementPlanner.plan(
+                client.level, plan, new BlockPos(x, y, z), client.player == null ? null : client.player.blockPosition(),
+                SchematicBuildExecutor.configuredConflictPolicy());
+            SchematicBuildPlan.Dimensions dimensions = plan.dimensions();
+            CompletableFuture<Void> buildFuture = new CompletableFuture<>();
+            if (!SchematicBuildExecutor.getInstance().start(client, plan, new BlockPos(x, y, z), buildFuture)) {
+                showNavigatorMessage("Could not start schematic build: " + SchematicBuildExecutor.getInstance().status());
+                return;
+            }
+            showNavigatorMessage("Starting build " + parts[1] + " (" + dimensions.width() + "x" + dimensions.height() + "x"
+                + dimensions.length() + "): " + construction.placementCount() + " to place, "
+                + construction.replacementCount() + " to replace, " + construction.skippedCount() + " already correct, "
+                + construction.blockedCount() + " waiting on support, " + construction.conflictCount()
+                + " existing conflicts preserved.");
+        } catch (SchematicLoadException exception) {
+            showNavigatorMessage("Could not load schematic: " + exception.getMessage());
+        }
     }
 
     private void handleNavigatorGoto(Minecraft client, String[] parts) {

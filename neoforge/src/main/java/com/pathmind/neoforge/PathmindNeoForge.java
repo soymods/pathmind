@@ -801,7 +801,7 @@ public class PathmindNeoForge {
             return true;
         }
 
-        showNavigatorMessage("Unknown Pathmind Nav command. Use !build, !travel, !path, !nav water, !nav logs, !flag, or !stop.");
+        showNavigatorMessage("Unknown Pathmind Nav command. Use !build, !travel, !path, !nav debug, !nav water, !nav logs, !flag, or !stop.");
         return true;
     }
 

@@ -157,6 +157,7 @@ jobs:
       actions: read
     with:
       tier: full
+      ref: ${{ needs.validate.outputs.tag }}
 
   github-release:
     needs:

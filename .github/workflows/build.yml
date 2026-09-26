@@ -10,6 +10,13 @@ on:
         required: false
         default: auto
         type: string
+      ref:
+        description: >-
+          Commit, branch or tag to build. Leave empty to build the ref that
+          triggered the run.
+        required: false
+        default: ''
+        type: string
     outputs:
       tier:
         description: 'The tier that was actually built'
@@ -36,6 +43,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
 
       - name: Discover supported Minecraft targets
         id: targets
@@ -89,6 +98,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
 
       - name: Set up Java
         uses: actions/setup-java@v6
@@ -139,6 +150,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
 
       - name: Set up Java
         uses: actions/setup-java@v6

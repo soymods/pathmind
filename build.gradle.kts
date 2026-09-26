@@ -603,6 +603,10 @@ val verifyCompatibilityManifest = tasks.register("verifyCompatibilityManifest") 
         if (!workflow.contains("workflow_call")) fail("build workflow is not reusable by the main and release workflows")
         if (workflow.contains("DISCORD_BOT_TOKEN")) fail("build workflow must not notify Discord; that belongs to main.yml and release.yml")
 
+        val buildCheckoutCount = Regex("uses: actions/checkout").findAll(workflow).count()
+        val buildRefPinCount = Regex(Regex.escape("ref: \${{ inputs.ref }}")).findAll(workflow).count()
+        val buildWorkflowPinsRef = buildCheckoutCount > 0 && buildCheckoutCount == buildRefPinCount
+
         // The release path must stay derived from the same manifest, and the
         // rolling prerelease must stay off the tag-triggered release workflow.
         val mainWorkflow = layout.projectDirectory.file(".github/workflows/main.yml").asFile.readText()
@@ -612,6 +616,10 @@ val verifyCompatibilityManifest = tasks.register("verifyCompatibilityManifest") 
 
         val releaseWorkflow = layout.projectDirectory.file(".github/workflows/release.yml").asFile.readText()
         if (!releaseWorkflow.contains("./.github/workflows/build.yml")) fail("release workflow does not reuse the build workflow")
+        if (!releaseWorkflow.contains("\n      ref: \${{ needs.validate.outputs.tag }}")) {
+            fail("release workflow does not pin the reusable build to the validated tag")
+        }
+        if (!buildWorkflowPinsRef) fail("build workflow ignores its ref input on one or more checkout steps")
         if (!releaseWorkflow.contains("gradle/minecraft-versions.properties")) fail("release publishing does not read the compatibility manifest")
         if (!releaseWorkflow.contains("release_loaders")) fail("release publishing does not honour manifest release loaders")
         if (!releaseWorkflow.contains("modrinth_mc_version")) fail("release workflow does not drive the Modrinth publish task per target")

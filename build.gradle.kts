@@ -9,6 +9,10 @@ plugins {
     id("dev.architectury.loom") version "1.14.473" apply false
     id("com.gradleup.shadow") version "9.5.1" apply false
     id("com.modrinth.minotaur") version "2.9.0"
+    // Pinned: CurseForgeGradle 1.2.30+ is compiled for Java 25, but the
+    // pre26-remapped generation still builds on JDK 21 and the plugin applies
+    // to the root project for every target. 1.1.28 is the last Java 8 release.
+    id("net.darkhax.curseforgegradle") version "1.1.28"
 }
 
 // ------------------------------------------------------------
@@ -159,6 +163,58 @@ fun modrinthPublishJarFile(): File {
         downloadedArtifact
     } else {
         layout.buildDirectory.file("multiVersion/$modrinthPublishMinecraftVersion/$jarName").get().asFile
+    }
+}
+
+// CurseForge mirrors the Modrinth publish contract: one upload per Minecraft
+// target per loader, selected with -Pcurseforge_mc_version / -Pcurseforge_loader.
+val curseForgeVersionTypes = modrinthVersionTypes
+val curseForgeProjectId = providers.gradleProperty("curseforge_project_id")
+    .orElse("")
+    .get()
+val curseForgePublishMinecraftVersion = providers.gradleProperty("curseforge_mc_version")
+    .orElse(defaultMinecraftVersion)
+    .get()
+val curseForgePublishLoader = providers.gradleProperty("curseforge_loader")
+    .orElse("fabric")
+    .get()
+val curseForgePublishVersionType = providers.gradleProperty("curseforge_version_type")
+    .orElse("beta")
+    .get()
+val curseForgeDebugMode = providers.gradleProperty("curseforge_debug")
+    .map(String::toBoolean)
+    .orElse(false)
+    .get()
+
+fun curseForgePublishSpec(): MinecraftVersionSpec {
+    val spec = supportedMinecraftVersions[curseForgePublishMinecraftVersion]
+        ?: throw GradleException(
+            "No version spec configured for CurseForge Minecraft target $curseForgePublishMinecraftVersion"
+        )
+    if (curseForgePublishLoader !in spec.releaseLoaders) {
+        throw GradleException(
+            "Minecraft $curseForgePublishMinecraftVersion does not publish loader '$curseForgePublishLoader'. " +
+                "Supported loaders: ${spec.releaseLoaders.sorted().joinToString(", ")}"
+        )
+    }
+    if (curseForgePublishVersionType !in curseForgeVersionTypes) {
+        throw GradleException(
+            "Invalid CurseForge version type '$curseForgePublishVersionType'. " +
+                "Use one of: ${curseForgeVersionTypes.sorted().joinToString(", ")}"
+        )
+    }
+    return spec
+}
+
+fun curseForgePublishJarFile(): File {
+    curseForgePublishSpec()
+    val modVersion = rootProject.property("mod_version") as String
+    val jarName = "pathmind-$curseForgePublishLoader-$modVersion+mc$curseForgePublishMinecraftVersion.jar"
+    val downloadedArtifact = layout.buildDirectory.file("release-assets/$jarName").get().asFile
+    return if (downloadedArtifact.isFile) {
+        downloadedArtifact
+    } else {
+        layout.buildDirectory.file("multiVersion/$curseForgePublishMinecraftVersion/$jarName").get().asFile
     }
 }
 
@@ -375,7 +431,9 @@ val verifyCompatibilityManifest = tasks.register("verifyCompatibilityManifest") 
         layout.projectDirectory.file("docs/build-generations.md"),
         layout.projectDirectory.file("docs/compatibility-maintenance.md"),
         layout.projectDirectory.file("gradle/minecraft-version-templates/26.x.properties"),
-        layout.projectDirectory.file(".github/workflows/build.yml")
+        layout.projectDirectory.file(".github/workflows/build.yml"),
+        layout.projectDirectory.file(".github/workflows/main.yml"),
+        layout.projectDirectory.file(".github/workflows/release.yml")
     )
     inputs.files(
         supportedMinecraftVersions
@@ -542,6 +600,23 @@ val verifyCompatibilityManifest = tasks.register("verifyCompatibilityManifest") 
         if (!workflow.contains("buildSelectedTarget")) fail("CI bypasses generation-aware release task selection")
         if (!workflow.contains("fast_verification_versions")) fail("CI fast tier is not discovered from the manifest")
         if (!workflow.contains("verifySelectedCompatibilityArtifacts")) fail("CI bypasses release artifact verification")
+        if (!workflow.contains("workflow_call")) fail("build workflow is not reusable by the main and release workflows")
+        if (workflow.contains("DISCORD_BOT_TOKEN")) fail("build workflow must not notify Discord; that belongs to main.yml and release.yml")
+
+        // The release path must stay derived from the same manifest, and the
+        // rolling prerelease must stay off the tag-triggered release workflow.
+        val mainWorkflow = layout.projectDirectory.file(".github/workflows/main.yml").asFile.readText()
+        if (!mainWorkflow.contains("./.github/workflows/build.yml")) fail("main workflow does not reuse the build workflow")
+        if (!mainWorkflow.contains("branches:")) fail("main workflow must be branch-filtered to the default branch")
+        if (!mainWorkflow.contains("test-builds")) fail("main workflow no longer maintains the rolling prerelease tag")
+
+        val releaseWorkflow = layout.projectDirectory.file(".github/workflows/release.yml").asFile.readText()
+        if (!releaseWorkflow.contains("./.github/workflows/build.yml")) fail("release workflow does not reuse the build workflow")
+        if (!releaseWorkflow.contains("gradle/minecraft-versions.properties")) fail("release publishing does not read the compatibility manifest")
+        if (!releaseWorkflow.contains("release_loaders")) fail("release publishing does not honour manifest release loaders")
+        if (!releaseWorkflow.contains("modrinth_mc_version")) fail("release workflow does not drive the Modrinth publish task per target")
+        if (!releaseWorkflow.contains("curseforge_mc_version")) fail("release workflow does not drive the CurseForge publish task per target")
+        if (!releaseWorkflow.contains("mod_version")) fail("release workflow does not validate the tag against mod_version")
 
         val generationDocs = layout.projectDirectory.file("docs/build-generations.md").asFile.readText()
         buildGenerations.keys.forEach { generation ->
@@ -1098,6 +1173,108 @@ tasks.named("modrinth") {
     doFirst {
         if (!modrinthDebugMode && System.getenv("MODRINTH_TOKEN").isNullOrBlank()) {
             throw GradleException("MODRINTH_TOKEN is required when modrinth_debug is false.")
+        }
+    }
+}
+
+val verifyCurseForgePublishInputs = tasks.register("verifyCurseForgePublishInputs") {
+    group = "publishing"
+    description = "Checks the selected CurseForge publish target and staged jar"
+
+    doLast {
+        val spec = curseForgePublishSpec()
+        val jar = curseForgePublishJarFile()
+        // The checked-in default is a 000000 placeholder, which still parses as a
+        // Long, so require a positive value rather than merely a numeric one.
+        if ((curseForgeProjectId.toLongOrNull() ?: 0L) <= 0L) {
+            throw GradleException(
+                "curseforge_project_id must be the numeric CurseForge project ID, got '$curseForgeProjectId'. " +
+                    "Set it in gradle.properties or pass -Pcurseforge_project_id=<id>."
+            )
+        }
+        if (!jar.isFile) {
+            throw GradleException(
+                "Missing CurseForge upload jar: ${jar.relativeTo(projectDir)}. " +
+                    "Run buildAllTargets or download CI artifacts first."
+            )
+        }
+        verifyCompatibilityJar(jar, curseForgePublishMinecraftVersion, spec, curseForgePublishLoader)
+        println(
+            "CurseForge publish target: " +
+                "${jar.relativeTo(projectDir)} -> " +
+                "gameVersions=[$curseForgePublishMinecraftVersion], " +
+                "loaders=[$curseForgePublishLoader], " +
+                "versionType=$curseForgePublishVersionType, " +
+                "debugMode=$curseForgeDebugMode"
+        )
+    }
+}
+
+val verifyAllCurseForgePublishInputs = tasks.register("verifyAllCurseForgePublishInputs") {
+    group = "publishing"
+    description = "Checks every supported CurseForge publish target and staged jar"
+
+    doLast {
+        val modVersion = rootProject.property("mod_version") as String
+        var checkedCount = 0
+        supportedMinecraftVersions.forEach { (version, spec) ->
+            spec.releaseLoaders.forEach { loader ->
+                val jarName = "pathmind-$loader-$modVersion+mc$version.jar"
+                val downloadedArtifact = layout.buildDirectory.file("release-assets/$jarName").get().asFile
+                val jar = if (downloadedArtifact.isFile) {
+                    downloadedArtifact
+                } else {
+                    layout.buildDirectory.file("multiVersion/$version/$jarName").get().asFile
+                }
+                if (!jar.isFile) {
+                    throw GradleException(
+                        "Missing CurseForge upload jar for Minecraft $version ($loader): ${jar.relativeTo(projectDir)}"
+                    )
+                }
+                verifyCompatibilityJar(jar, version, spec, loader)
+                checkedCount++
+            }
+        }
+        println("Verified $checkedCount CurseForge publish targets.")
+    }
+}
+
+tasks.register<net.darkhax.curseforgegradle.TaskPublishCurseForge>("curseforge") {
+    group = "publishing"
+    description = "Publishes one selected Pathmind jar to CurseForge"
+    dependsOn(verifyCurseForgePublishInputs)
+
+    val modVersion = rootProject.property("mod_version") as String
+
+    apiToken = providers.environmentVariable("CURSEFORGE_TOKEN")
+        .orElse(if (curseForgeDebugMode) "debug-token" else "")
+        .get()
+    debugMode = curseForgeDebugMode
+
+    // Every jar is built for exactly one Minecraft target, so the scanner would
+    // only ever re-derive what the manifest already states.
+    disableVersionDetection()
+
+    upload(curseForgeProjectId, curseForgePublishJarFile()).apply {
+        displayName = "Pathmind $modVersion for Minecraft $curseForgePublishMinecraftVersion " +
+            "(${curseForgePublishLoader.replaceFirstChar { it.titlecase() }})"
+        releaseType = curseForgePublishVersionType
+        changelogType = "markdown"
+        changelog = providers.gradleProperty("curseforge_changelog")
+            .orElse(providers.environmentVariable("CURSEFORGE_CHANGELOG"))
+            .orElse("No changelog was specified.")
+            .get()
+        addGameVersion(curseForgePublishMinecraftVersion)
+        addModLoader(curseForgePublishLoader.replaceFirstChar { it.titlecase() })
+        addJavaVersion("Java ${curseForgePublishSpec().javaVersion}")
+        if (curseForgePublishLoader == "fabric") {
+            addRequirement("fabric-api")
+        }
+    }
+
+    doFirst {
+        if (!curseForgeDebugMode && System.getenv("CURSEFORGE_TOKEN").isNullOrBlank()) {
+            throw GradleException("CURSEFORGE_TOKEN is required when curseforge_debug is false.")
         }
     }
 }

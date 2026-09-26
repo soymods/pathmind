@@ -335,7 +335,6 @@ jobs:
       - validate
       - github-release
       - publish-modrinth
-      - publish-curseforge
     if: ${{ always() && needs.validate.outputs.dry_run != 'true' && needs.github-release.result == 'success' }}
     runs-on: ubuntu-latest
     continue-on-error: true

@@ -31,6 +31,7 @@ public final class AiBehaviorEvalRunner {
             case OPENAI -> "OPENAI_API_KEY";
             case ANTHROPIC -> "ANTHROPIC_API_KEY";
             case GEMINI -> "GEMINI_API_KEY";
+            case OPENROUTER -> "OPENROUTER_API_KEY";
             case OPENAI_COMPATIBLE -> "AI_EVAL_API_KEY";
         };
         String key = System.getenv(env);
@@ -40,6 +41,8 @@ public final class AiBehaviorEvalRunner {
             case OPENAI -> new OpenAiResponsesProvider(endpoint, key);
             case ANTHROPIC -> new AnthropicProvider(endpoint, key);
             case GEMINI -> new GeminiProvider(endpoint, key);
+            // Pinning a sort keeps a benchmark run from silently comparing different upstream hosts.
+            case OPENROUTER -> new OpenRouterProvider(endpoint, key, System.getProperty("aiEvalRoutingSort", ""), true);
             case OPENAI_COMPATIBLE -> new OpenAiCompatibleProvider(endpoint, key);
         };
         AiRunMetrics.AiPricing pricing = null;

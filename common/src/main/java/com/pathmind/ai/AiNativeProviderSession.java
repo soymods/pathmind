@@ -13,12 +13,13 @@ import java.util.concurrent.CompletableFuture;
 
 /** Native function-call history, including opaque reasoning/signature items, owned by one request. */
 final class AiNativeProviderSession implements AiProviderSession {
-    enum Dialect { OPENAI, ANTHROPIC, GEMINI }
+    enum Dialect { OPENAI, OPENAI_CHAT, ANTHROPIC, GEMINI }
     private static final int MAX_HISTORY_CHARS = 500_000;
     private final Dialect dialect;
     private final String endpoint, apiKey;
     private final AiJsonTransport transport;
     private final boolean storeOpenAiResponses;
+    private final AiRoutingPreferences routing;
     private final JsonArray history = new JsonArray();
     private final List<Call> pendingCalls = new ArrayList<>();
     private String previousResponseId;
@@ -29,11 +30,17 @@ final class AiNativeProviderSession implements AiProviderSession {
 
     AiNativeProviderSession(Dialect dialect, String endpoint, String apiKey, AiJsonTransport transport,
                             boolean storeOpenAiResponses) {
+        this(dialect, endpoint, apiKey, transport, storeOpenAiResponses, AiRoutingPreferences.DEFAULT);
+    }
+
+    AiNativeProviderSession(Dialect dialect, String endpoint, String apiKey, AiJsonTransport transport,
+                            boolean storeOpenAiResponses, AiRoutingPreferences routing) {
         this.dialect = dialect;
         this.endpoint = endpoint;
         this.apiKey = apiKey;
         this.transport = transport;
         this.storeOpenAiResponses = storeOpenAiResponses;
+        this.routing = routing == null ? AiRoutingPreferences.DEFAULT : routing;
     }
 
     @Override
@@ -58,6 +65,8 @@ final class AiNativeProviderSession implements AiProviderSession {
             ? endpoint.replace("{model}", URLEncoder.encode(request.model(), StandardCharsets.UTF_8)) : endpoint;
         Map<String, String> headers = switch (dialect) {
             case OPENAI -> Map.of("Authorization", "Bearer " + apiKey);
+            // X-Title is how an aggregator attributes usage; it carries no account data.
+            case OPENAI_CHAT -> Map.of("Authorization", "Bearer " + apiKey, "X-Title", "Pathmind");
             case ANTHROPIC -> Map.of("x-api-key", apiKey, "anthropic-version", "2023-06-01");
             case GEMINI -> Map.of("x-goog-api-key", apiKey);
         };
@@ -91,6 +100,22 @@ final class AiNativeProviderSession implements AiProviderSession {
                 body.addProperty("previous_response_id", previousResponseId);
                 body.add("input", newInput.deepCopy());
             } else body.add("input", history.deepCopy());
+        } else if (dialect == Dialect.OPENAI_CHAT) {
+            body.addProperty("model", request.model());
+            body.addProperty("max_tokens", 6000);
+            body.addProperty("parallel_tool_calls", false);
+            body.addProperty("tool_choice", "required");
+            // Chat Completions has no separate instructions field, so the system prompt leads every
+            // request instead of living in history; that keeps it editable between turns.
+            JsonArray messages = new JsonArray();
+            JsonObject system = new JsonObject();
+            system.addProperty("role", "system");
+            system.addProperty("content", request.systemPrompt());
+            messages.add(system);
+            messages.addAll(history.deepCopy());
+            body.add("messages", messages);
+            body.add("tools", nativeTools());
+            if (!routing.isDefault()) body.add("provider", routing.toJson());
         } else if (dialect == Dialect.ANTHROPIC) {
             body.addProperty("model", request.model());
             body.addProperty("max_tokens", 6000);
@@ -138,6 +163,13 @@ final class AiNativeProviderSession implements AiProviderSession {
                 tool.addProperty("type", "function");
                 tool.addProperty("strict", true);
                 tool.add("parameters", definition.get("parameters"));
+            } else if (dialect == Dialect.OPENAI_CHAT) {
+                tool.addProperty("strict", true);
+                tool.add("parameters", definition.get("parameters"));
+                JsonObject wrapped = new JsonObject();
+                wrapped.addProperty("type", "function");
+                wrapped.add("function", tool);
+                tool = wrapped;
             } else if (dialect == Dialect.ANTHROPIC) {
                 tool.addProperty("strict", true);
                 tool.add("input_schema", definition.get("parameters"));
@@ -169,6 +201,19 @@ final class AiNativeProviderSession implements AiProviderSession {
                     }
                 }
                 if (!"completed".equals(string(response, "status", "completed"))) invalidReason = "Provider response was incomplete; make a smaller function call.";
+            } else if (dialect == Dialect.OPENAI_CHAT) {
+                JsonObject choice = response.getAsJsonArray("choices").get(0).getAsJsonObject();
+                JsonObject message = choice.getAsJsonObject("message");
+                history.add(replayableAssistant(message));
+                if (message.has("tool_calls") && !message.get("tool_calls").isJsonNull()) {
+                    for (JsonElement item : message.getAsJsonArray("tool_calls")) {
+                        JsonObject call = item.getAsJsonObject();
+                        JsonObject function = call.getAsJsonObject("function");
+                        pendingCalls.add(new Call(string(call, "id", ""), string(function, "name", ""),
+                            string(function, "arguments", "{}")));
+                    }
+                }
+                if ("length".equals(string(choice, "finish_reason", ""))) invalidReason = "Provider response reached its token limit; make a smaller function call.";
             } else if (dialect == Dialect.ANTHROPIC) {
                 JsonArray content = response.getAsJsonArray("content");
                 JsonObject assistant = new JsonObject();
@@ -218,6 +263,12 @@ final class AiNativeProviderSession implements AiProviderSession {
             return new AiTokenUsage(AiTokenUsage.number(usage, "input_tokens"), AiTokenUsage.number(usage, "output_tokens"),
                 AiTokenUsage.number(details, "cached_tokens"), 0L);
         }
+        if (dialect == Dialect.OPENAI_CHAT) {
+            JsonObject usage = response.getAsJsonObject("usage");
+            JsonObject details = usage == null ? null : usage.getAsJsonObject("prompt_tokens_details");
+            return new AiTokenUsage(AiTokenUsage.number(usage, "prompt_tokens"), AiTokenUsage.number(usage, "completion_tokens"),
+                AiTokenUsage.number(details, "cached_tokens"), 0L);
+        }
         if (dialect == Dialect.ANTHROPIC) {
             JsonObject usage = response.getAsJsonObject("usage");
             Long uncached = AiTokenUsage.number(usage, "input_tokens");
@@ -244,6 +295,15 @@ final class AiNativeProviderSession implements AiProviderSession {
                 output.addProperty("output", result.toString());
                 input.add(output);
             }
+        } else if (dialect == Dialect.OPENAI_CHAT) {
+            // Chat Completions wants one top-level tool message per call, not a batched user turn.
+            for (Call call : pendingCalls) {
+                JsonObject message = new JsonObject();
+                message.addProperty("role", "tool");
+                message.addProperty("tool_call_id", call.id());
+                message.addProperty("content", result.toString());
+                input.add(message);
+            }
         } else {
             JsonArray blocks = new JsonArray();
             for (Call call : pendingCalls) {
@@ -267,6 +327,21 @@ final class AiNativeProviderSession implements AiProviderSession {
             message.add(dialect == Dialect.ANTHROPIC ? "content" : "parts", blocks);
             input.add(message);
         }
+    }
+
+    /**
+     * The assistant turn as it goes back on the wire.
+     *
+     * <p>Reasoning payloads are dropped. Chat Completions does not need them to continue a tool
+     * conversation, unlike the Responses API, and a reasoning model emits an unbounded amount of
+     * them; replaying every turn's thinking exhausted the session history budget within a dozen
+     * turns. {@code tool_calls} must survive so the following tool results still pair by call id.</p>
+     */
+    private static JsonObject replayableAssistant(JsonObject message) {
+        JsonObject replay = message.deepCopy();
+        replay.remove("reasoning");
+        replay.remove("reasoning_details");
+        return replay;
     }
 
     private JsonObject userMessage(String text) {

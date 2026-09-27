@@ -12,12 +12,12 @@ permissions:
   contents: read
   actions: read
 
-concurrency:
-  group: main-${{ github.workflow }}
-  cancel-in-progress: false
 
 jobs:
   build:
+    concurrency:
+      group: main-build
+      cancel-in-progress: true
     uses: ./.github/workflows/build.yml
     permissions:
       contents: read
@@ -26,6 +26,9 @@ jobs:
       tier: full
 
   publish-prerelease:
+    concurrency:
+      group: main-publish
+      cancel-in-progress: false
     needs:
       - build
     runs-on: ubuntu-latest

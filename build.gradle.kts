@@ -623,7 +623,6 @@ val verifyCompatibilityManifest = tasks.register("verifyCompatibilityManifest") 
         if (!releaseWorkflow.contains("gradle/minecraft-versions.properties")) fail("release publishing does not read the compatibility manifest")
         if (!releaseWorkflow.contains("release_loaders")) fail("release publishing does not honour manifest release loaders")
         if (!releaseWorkflow.contains("modrinth_mc_version")) fail("release workflow does not drive the Modrinth publish task per target")
-        if (!releaseWorkflow.contains("curseforge_mc_version")) fail("release workflow does not drive the CurseForge publish task per target")
         if (!releaseWorkflow.contains("mod_version")) fail("release workflow does not validate the tag against mod_version")
 
         val generationDocs = layout.projectDirectory.file("docs/build-generations.md").asFile.readText()

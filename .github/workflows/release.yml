@@ -349,7 +349,6 @@ jobs:
           MOD_VERSION: ${{ needs.validate.outputs.mod_version }}
           RELEASE_TYPE: ${{ needs.validate.outputs.release_type }}
           MODRINTH_RESULT: ${{ needs.publish-modrinth.result }}
-          CURSEFORGE_RESULT: ${{ needs.publish-curseforge.result }}
         run: |
           set -euo pipefail
 
@@ -376,7 +375,6 @@ jobs:
             ""
             "**Downloads**"
             "$(platform_line "Modrinth" "${MODRINTH_RESULT}" "https://modrinth.com/mod/pathmind/versions")"
-            "$(platform_line "CurseForge" "${CURSEFORGE_RESULT}" "https://www.curseforge.com/minecraft/mc-mods/pathmind/files")"
             "$(printf '* [GitHub release](<https://github.com/%s/releases/tag/%s>)' "${GITHUB_REPOSITORY}" "${TAG}")"
           )
           DESCRIPTION="$(printf '%s\n' "${lines[@]}")"

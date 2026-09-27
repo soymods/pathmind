@@ -22,8 +22,29 @@ final class AiStructuralRequirements {
                 : kind.equals("parameter") ? new String[]{"slotIndex"} : new String[]{}) {
                 if (text(r, field) == null || r.get(field).getAsInt() < 0) throw new IllegalArgumentException("Missing nonnegative " + field);
             }
+            if (kind.equals("flow")) checkOutputSocketExists(r);
         }
     }
+    /**
+     * Rejects a flow the command engine could never build.
+     *
+     * <p>A recorded requirement is permanent: validate_graph reports it until it is satisfied, and a
+     * plan correction may retune sockets but never drop an entry. Accepting a flow out of a node type
+     * with too few output sockets therefore strands the whole run, so the impossible socket has to be
+     * caught here rather than once per attempt in apply_graph_commands.</p>
+     */
+    private static void checkOutputSocketExists(JsonObject requirement) {
+        String typeName = text(requirement, "nodeType");
+        if (typeName == null) return; // Source type is optional; verify() still matches by ref.
+        com.pathmind.nodes.NodeType type = com.pathmind.nodes.NodeType.valueOf(typeName);
+        int available = com.pathmind.nodes.Node.createForEditor(type, 0, 0).getOutputSocketCount();
+        int requested = requirement.get("outputSocket").getAsInt();
+        if (requested < available) return;
+        throw new IllegalArgumentException(available == 0
+            ? type + " has no output sockets, so no flow can leave it. Record its body as an action requirement instead."
+            : type + " exposes output sockets 0.." + (available - 1) + ", so outputSocket " + requested + " can never be connected.");
+    }
+
     static JsonArray verify(NodeGraphData root, JsonArray requirements, Map<String, String> refs) {
         JsonArray issues = new JsonArray();
         for (var value : requirements) {

@@ -63,7 +63,7 @@ public final class AiAgentToolDefinitions {
         kinds.put("set_mode", new String[] {"ref", "mode"});
         kinds.put("set_parameter", new String[] {"ref", "parameterId", "value"});
         kinds.put("set_parameters", new String[] {"ref", "parameterValues"});
-        kinds.put("configure_node", new String[] {"ref", "mode", "parameterValues"});
+        kinds.put("configure_node", new String[] {"ref", "mode", "parameterValues", "messageClientSide"});
         for (String kind : new String[] {"connect", "disconnect"}) kinds.put(kind, new String[] {"from", "to", "outputSocket", "inputSocket"});
         for (String kind : new String[] {"attach_action", "attach_sensor"}) kinds.put(kind, new String[] {"host", "child"});
         kinds.put("attach_parameter", new String[] {"host", "child", "slotIndex"});

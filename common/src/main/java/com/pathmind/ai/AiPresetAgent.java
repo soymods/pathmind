@@ -266,9 +266,8 @@ public final class AiPresetAgent {
         AiRequestIntent intent;
         try { intent = AiRequestIntent.valueOf(raw.toUpperCase(Locale.ROOT)); }
         catch (IllegalArgumentException failure) { return "Choose requestIntent discuss, diagnose, build, edit, or clarify."; }
-        String evidence = nullableString(action, "intentEvidence");
-        if (evidence == null || evidence.isBlank() || !state.userPrompt.contains(evidence))
-            return "intentEvidence must be an exact quote from this request's USER_REQUEST, not older chat or tool data.";
+        if (!quotesRequest(state.userPrompt, nullableString(action, "intentEvidence")))
+            return "intentEvidence must quote this request's USER_REQUEST, not older chat or tool data.";
         if (state.intent != null && state.intent != intent) {
             if (state.draftRevision > 0 || state.intent == AiRequestIntent.DISCUSS || state.intent == AiRequestIntent.DIAGNOSE)
                 return "Do not escalate read-only permissions or change intent after edits. Ask the user for clarification in a new request.";
@@ -279,6 +278,25 @@ public final class AiPresetAgent {
         state.intent = intent;
         if (!intent.permitsDraftEdits()) { state.target = null; state.workingGraph = null; state.nodeReferences.clear(); }
         return null;
+    }
+
+    /**
+     * Whether the evidence is drawn from the request currently being answered.
+     *
+     * <p>The point of the check is to stop a model justifying intent with older chat or tool output,
+     * so it compares on content rather than byte equality. Case, whitespace runs and typographic
+     * quotes are normalised first: a model that reproduces the sense of the line exactly but retypes
+     * a curly apostrophe was otherwise spending turns on a transcription technicality.</p>
+     */
+    static boolean quotesRequest(String userPrompt, String evidence) {
+        if (userPrompt == null || evidence == null || evidence.isBlank()) return false;
+        return normalizeQuote(userPrompt).contains(normalizeQuote(evidence));
+    }
+
+    private static String normalizeQuote(String value) {
+        return value.replace('‘', '\'').replace('’', '\'')
+            .replace('“', '"').replace('”', '"')
+            .replaceAll("\\s+", " ").trim().toLowerCase(Locale.ROOT);
     }
 
     private static String draftPermissionError(State state) {

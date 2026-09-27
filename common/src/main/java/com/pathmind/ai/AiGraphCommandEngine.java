@@ -190,8 +190,29 @@ public final class AiGraphCommandEngine {
                 }
             }
         }
+        boolean scoped = applyMessageScope(graph, command, references, effects);
         if (!optionalArray(command, "parameterValues").isEmpty()) setParameters(graph, command, references, effects);
-        else if (nullableString(command, "mode") == null) throw new IllegalArgumentException("configure_node needs a mode or parameterValues.");
+        else if (nullableString(command, "mode") == null && !scoped) {
+            throw new IllegalArgumentException("configure_node needs a mode, parameterValues, or messageClientSide.");
+        }
+    }
+
+    /**
+     * Applies the MESSAGE client/server scope. It rides in the serialized graph rather than in the
+     * parameter list, so it has no instance parameter to set and needs its own command field.
+     */
+    private static boolean applyMessageScope(NodeGraphData graph, JsonObject command, Map<String, String> references,
+                                             JsonArray effects) {
+        if (!command.has("messageClientSide") || command.get("messageClientSide").isJsonNull()) return false;
+        NodeGraphData.NodeData node = resolveNode(graph, references, requiredReference(command, "ref"));
+        if (node.getType() != NodeType.MESSAGE) {
+            throw new CommandFailure("unsupported_node_field", true,
+                "messageClientSide applies to MESSAGE, not " + node.getType() + ".");
+        }
+        boolean clientSide = command.get("messageClientSide").getAsBoolean();
+        node.setMessageClientSide(clientSide);
+        effects.add("Set " + displayRef(command, "ref", node) + " to send " + (clientSide ? "client-side" : "to the server") + ".");
+        return true;
     }
 
     private static void setValidatedParameter(NodeGraphData graph, NodeGraphData.NodeData node, String parameterId, String value) {

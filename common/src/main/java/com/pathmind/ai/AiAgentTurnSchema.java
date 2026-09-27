@@ -46,6 +46,7 @@ public final class AiAgentTurnSchema {
             property("parameterId", described(nullable(string()), "The exact catalog parameter id for set_parameter.")),
             property("value", described(nullable(string()), "The user-facing parameter value for set_parameter.")),
             property("parameterValues", described(array(parameterValue), "Related typed values set atomically by set_parameters.")),
+            property("messageClientSide", described(nullable(bool()), "MESSAGE only: true shows the text client-side, false sends it to the server. Not an instance parameter; set it with configure_node.")),
             property("from", described(nullable(string()), "Source node reference for connect.")),
             property("to", described(nullable(string()), "Destination node reference for connect.")),
             property("outputSocket", described(nullable(integer()), "Zero-based source socket for connect or insertion after an anchor.")),

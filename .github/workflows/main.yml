@@ -1,0 +1,244 @@
+name: Main
+
+on:
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: '17 8 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: main-${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    uses: ./.github/workflows/build.yml
+    permissions:
+      contents: read
+      actions: read
+    with:
+      tier: full
+
+  publish-prerelease:
+    needs:
+      - build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Download release jars
+        uses: actions/download-artifact@v8
+        with:
+          path: build/release-assets
+          merge-multiple: true
+
+      - name: Publish rolling prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mapfile -t jars < <(find build/release-assets -maxdepth 1 -type f -name '*.jar' | sort)
+          if [ "${#jars[@]}" -eq 0 ]; then
+            echo "No release jars were downloaded."
+            exit 1
+          fi
+
+          MANIFEST=gradle/minecraft-versions.properties
+          MOD_VERSION="$(sed -n 's/^mod_version=//p' gradle.properties)"
+          EXPECTED_COUNT=0
+          while read -r version; do
+            LOADERS="$(awk -F= -v key="version.${version}.release_loaders" '$1 == key { print $2 }' "$MANIFEST")"
+            IFS=',' read -ra EXPECTED_LOADERS <<< "$LOADERS"
+            for loader in "${EXPECTED_LOADERS[@]}"; do
+              expected="build/release-assets/pathmind-${loader}-${MOD_VERSION}+mc${version}.jar"
+              if [ ! -f "$expected" ]; then
+                echo "Complete release matrix is missing $expected"
+                exit 1
+              fi
+              EXPECTED_COUNT=$((EXPECTED_COUNT + 1))
+            done
+          done < <(sed -n 's/^supported_versions=//p' "$MANIFEST" | tr ',' '\n')
+
+          if [ "${#jars[@]}" -ne "$EXPECTED_COUNT" ]; then
+            echo "Complete release matrix expected $EXPECTED_COUNT jars, found ${#jars[@]}."
+            exit 1
+          fi
+
+          notes_file="$(mktemp)"
+          {
+            echo "Rolling test-build prerelease for Pathmind."
+            echo
+            echo "Commit: ${GITHUB_SHA}"
+            echo "Run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          } > "$notes_file"
+
+          if gh release view test-builds >/dev/null 2>&1; then
+            gh release delete test-builds --yes --cleanup-tag
+          fi
+
+          gh release create test-builds "${jars[@]}" \
+            --target "${GITHUB_SHA}" \
+            --title "Pathmind test builds" \
+            --notes-file "$notes_file" \
+            --prerelease
+
+  notify-discord:
+    if: ${{ github.event_name == 'push' }}
+    needs:
+      - publish-prerelease
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - name: Download release jars
+        uses: actions/download-artifact@v8
+        with:
+          path: build/release-assets
+          merge-multiple: true
+
+      - name: Post build links to Discord
+        shell: bash
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_CHANNEL_ID: "1498698231796859070"
+        run: |
+          set -euo pipefail
+
+          if [ -z "${DISCORD_BOT_TOKEN:-}" ]; then
+            echo "DISCORD_BOT_TOKEN is not configured; skipping Discord notification."
+            exit 0
+          fi
+
+          COMMIT_SHA="${GITHUB_SHA}"
+          SHORT_SHA="${COMMIT_SHA:0:7}"
+          COMMIT_MESSAGE="$(jq -r '.head_commit.message // ""' "$GITHUB_EVENT_PATH" | head -n 1)"
+          if [ -z "${COMMIT_MESSAGE:-}" ] || [ "${COMMIT_MESSAGE}" = "null" ]; then
+            COMMIT_MESSAGE="No commit message available"
+          fi
+          COMMIT_MESSAGE="${COMMIT_MESSAGE:0:500}"
+          BUILD_TIMESTAMP="$(date -u +%s)"
+
+          mapfile -t jars < <(find build/release-assets -maxdepth 1 -type f -name '*.jar' | sort)
+          if [ "${#jars[@]}" -eq 0 ]; then
+            echo "No release jars were available to post."
+            exit 1
+          fi
+
+          format_downloads_by_version() {
+            printf '%s\n' "${jars[@]}" \
+              | sed 's#^.*/##' \
+              | jq -R . \
+              | jq -s -r --arg repo "${GITHUB_REPOSITORY}" '
+                  map(
+                    capture("\\+mc(?<version>[0-9.]+)\\.jar$") as $version
+                    | if test("-fabric-") then
+                        {file: ., version: $version.version, loader: "Fabric"}
+                      elif test("-neoforge-") then
+                        {file: ., version: $version.version, loader: "NeoForge"}
+                      else
+                        empty
+                      end
+                  )
+                  | sort_by(.version | split(".") | map(tonumber))
+                  | group_by(.version)
+                  | map(
+                      . as $builds
+                      |
+                      "* `"
+                      + $builds[0].version
+                      + "` - "
+                      + (
+                          $builds
+                          | sort_by(.loader)
+                          | map(
+                              "["
+                              + .loader
+                              + "](<https://github.com/"
+                              + $repo
+                              + "/releases/download/test-builds/"
+                              + .file
+                              + ">)"
+                            )
+                          | join(" | ")
+                        )
+                    )
+                  | join("\n")
+                '
+          }
+
+          DOWNLOADS="$(format_downloads_by_version)"
+
+          if [ -z "${DOWNLOADS}" ]; then
+            echo "No release download links were available to post."
+            exit 1
+          fi
+
+          SUMMARY_LINE="$(printf '**Branch:** %s\n**Commit:** [`%s`](<https://github.com/%s/commit/%s>) %s\n**Built:** <t:%s:F>' \
+            "${GITHUB_REF_NAME:-${GITHUB_REF}}" \
+            "${SHORT_SHA}" \
+            "${GITHUB_REPOSITORY}" \
+            "${COMMIT_SHA}" \
+            "${COMMIT_MESSAGE}" \
+            "${BUILD_TIMESTAMP}")"
+
+          ACTIONS_LINK="$(printf '[View GitHub Actions run](<https://github.com/%s/actions/runs/%s>)' \
+            "${GITHUB_REPOSITORY}" \
+            "${GITHUB_RUN_ID}")"
+          post_embed() {
+            local title="$1"
+            local description="$2"
+            local payload
+            payload="$(jq -cn \
+              --arg title "$title" \
+              --arg url "https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+              --arg description "$description" \
+              '{
+                embeds: [
+                  {
+                    title: $title,
+                    url: $url,
+                    description: $description,
+                    color: 5763719
+                  }
+                ]
+              }')"
+
+            curl --fail-with-body -sS \
+              -X POST \
+              "https://discord.com/api/v10/channels/${DISCORD_CHANNEL_ID}/messages" \
+              -H "Authorization: Bot ${DISCORD_BOT_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d "$payload"
+          }
+
+          MAX_DESCRIPTION_LENGTH=3800
+          DESCRIPTION="$(printf '%s\n\n%s\n\n**Downloads**' \
+            "${SUMMARY_LINE}" \
+            "${ACTIONS_LINK}")"
+          EMBED_TITLE="Pathmind test builds"
+
+          while IFS= read -r download; do
+            candidate="${DESCRIPTION}"$'\n'"${download}"
+            if [ "${#candidate}" -gt "${MAX_DESCRIPTION_LENGTH}" ]; then
+              post_embed "${EMBED_TITLE}" "${DESCRIPTION}"
+              EMBED_TITLE="Pathmind test builds (continued)"
+              DESCRIPTION="$(printf '**Downloads (continued)**\n%s' "${download}")"
+            else
+              DESCRIPTION="${candidate}"
+            fi
+          done <<< "${DOWNLOADS}"
+
+          post_embed "${EMBED_TITLE}" "${DESCRIPTION}"

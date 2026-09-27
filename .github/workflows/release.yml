@@ -1,0 +1,395 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to release (defaults to the current ref)'
+        required: false
+        default: ''
+        type: string
+      dry_run:
+        description: 'Build and verify every upload without publishing anything'
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: release-${{ github.workflow }}-${{ inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      mod_version: ${{ steps.meta.outputs.mod_version }}
+      release_type: ${{ steps.meta.outputs.release_type }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+      dry_run: ${{ steps.meta.outputs.dry_run }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Resolve and validate release metadata
+        id: meta
+        shell: bash
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+
+          if [ -n "${INPUT_TAG}" ]; then
+            TAG="${INPUT_TAG}"
+          elif [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            TAG="${GITHUB_REF_NAME}"
+          else
+            echo "No tag to release. Push a v* tag or pass one to workflow_dispatch."
+            exit 1
+          fi
+
+          MOD_VERSION="$(sed -n 's/^mod_version=//p' gradle.properties)"
+          if [ -z "${MOD_VERSION}" ]; then
+            echo "Could not read mod_version from gradle.properties."
+            exit 1
+          fi
+
+          if [ "${TAG}" != "v${MOD_VERSION}" ]; then
+            echo "Tag '${TAG}' does not match gradle.properties mod_version '${MOD_VERSION}'."
+            echo "Expected the tag to be 'v${MOD_VERSION}'."
+            echo "Bump mod_version and retag, or delete and recreate the tag."
+            exit 1
+          fi
+
+          case "${MOD_VERSION}" in
+            *alpha*) RELEASE_TYPE=alpha; PRERELEASE=true ;;
+            *beta*|*rc*) RELEASE_TYPE=beta; PRERELEASE=true ;;
+            *) RELEASE_TYPE=release; PRERELEASE=false ;;
+          esac
+
+          DRY_RUN="${INPUT_DRY_RUN:-false}"
+
+          {
+            echo "tag=${TAG}"
+            echo "mod_version=${MOD_VERSION}"
+            echo "release_type=${RELEASE_TYPE}"
+            echo "prerelease=${PRERELEASE}"
+            echo "dry_run=${DRY_RUN}"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Releasing ${TAG} as ${RELEASE_TYPE} (prerelease=${PRERELEASE}, dry_run=${DRY_RUN})."
+
+      - name: Build changelog
+        id: changelog
+        shell: bash
+        env:
+          MOD_VERSION: ${{ steps.meta.outputs.mod_version }}
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          BODY=""
+          if [ -f CHANGELOG.md ]; then
+            BODY="$(awk -v ver="$MOD_VERSION" '
+              /^##[[:space:]]/ {
+                if (found) exit
+                heading = $0
+                sub(/^##[[:space:]]+/, "", heading)
+                if (match(heading, /^\[[^]]+\]/)) {
+                  token = substr(heading, 2, RLENGTH - 2)
+                } else {
+                  split(heading, parts, /[[:space:]]/)
+                  token = parts[1]
+                }
+                if (token == ver) { found = 1 }
+                next
+              }
+              found && /^\[[^]]+\]:/ { next }
+              found { print }
+            ' CHANGELOG.md)"
+          fi
+
+          if [ -z "${BODY//[[:space:]]/}" ]; then
+            PREVIOUS_TAG="$(git tag --list 'v*' --sort=-creatordate | grep -vFx "$TAG" | head -n 1 || true)"
+            if [ -n "${PREVIOUS_TAG}" ]; then
+              BODY="$(git log --no-merges --pretty=format:'- %s' "${PREVIOUS_TAG}..${TAG}")"
+            else
+              BODY="$(git log --no-merges --pretty=format:'- %s' -n 50 "${TAG}")"
+            fi
+          fi
+
+          if [ -z "${BODY//[[:space:]]/}" ]; then
+            BODY="No changelog was specified."
+          fi
+
+          mkdir -p release-meta
+          printf '%s\n' "${BODY}" > release-meta/changelog.md
+          echo "Changelog ($(wc -l < release-meta/changelog.md) lines):"
+          cat release-meta/changelog.md
+
+      - name: Upload changelog
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-changelog
+          path: release-meta/changelog.md
+          if-no-files-found: error
+          retention-days: 7
+
+  build:
+    needs:
+      - validate
+    uses: ./.github/workflows/build.yml
+    permissions:
+      contents: read
+      actions: read
+    with:
+      tier: full
+      ref: ${{ needs.validate.outputs.tag }}
+
+  github-release:
+    needs:
+      - validate
+      - build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.validate.outputs.tag }}
+
+      - name: Download release jars
+        uses: actions/download-artifact@v8
+        with:
+          path: build/release-assets
+          pattern: pathmind-mc*
+          merge-multiple: true
+
+      - name: Download changelog
+        uses: actions/download-artifact@v8
+        with:
+          name: release-changelog
+          path: release-meta
+
+      - name: Verify the complete release matrix is present
+        shell: bash
+        env:
+          MOD_VERSION: ${{ needs.validate.outputs.mod_version }}
+        run: |
+          set -euo pipefail
+
+          MANIFEST=gradle/minecraft-versions.properties
+          EXPECTED_COUNT=0
+          while read -r version; do
+            LOADERS="$(awk -F= -v key="version.${version}.release_loaders" '$1 == key { print $2 }' "$MANIFEST")"
+            IFS=',' read -ra EXPECTED_LOADERS <<< "$LOADERS"
+            for loader in "${EXPECTED_LOADERS[@]}"; do
+              expected="build/release-assets/pathmind-${loader}-${MOD_VERSION}+mc${version}.jar"
+              if [ ! -f "$expected" ]; then
+                echo "Complete release matrix is missing $expected"
+                exit 1
+              fi
+              EXPECTED_COUNT=$((EXPECTED_COUNT + 1))
+            done
+          done < <(sed -n 's/^supported_versions=//p' "$MANIFEST" | tr ',' '\n')
+
+          STAGED_COUNT="$(find build/release-assets -maxdepth 1 -type f -name '*.jar' | wc -l | tr -d ' ')"
+          if [ "$STAGED_COUNT" -ne "$EXPECTED_COUNT" ]; then
+            echo "Complete release matrix expected $EXPECTED_COUNT jars, found $STAGED_COUNT."
+            exit 1
+          fi
+          echo "Verified $EXPECTED_COUNT release jars for Pathmind ${MOD_VERSION}."
+
+      - name: Publish GitHub release
+        if: ${{ needs.validate.outputs.dry_run != 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.validate.outputs.tag }}
+          MOD_VERSION: ${{ needs.validate.outputs.mod_version }}
+          PRERELEASE: ${{ needs.validate.outputs.prerelease }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mapfile -t jars < <(find build/release-assets -maxdepth 1 -type f -name '*.jar' | sort)
+
+          PRERELEASE_FLAG=()
+          if [ "${PRERELEASE}" = "true" ]; then
+            PRERELEASE_FLAG=(--prerelease)
+          fi
+
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "Release ${TAG} already exists; replacing its assets."
+            gh release upload "${TAG}" "${jars[@]}" --clobber
+            gh release edit "${TAG}" \
+              --title "Pathmind ${MOD_VERSION}" \
+              --notes-file release-meta/changelog.md \
+              "${PRERELEASE_FLAG[@]}"
+          else
+            gh release create "${TAG}" "${jars[@]}" \
+              --title "Pathmind ${MOD_VERSION}" \
+              --notes-file release-meta/changelog.md \
+              --verify-tag \
+              "${PRERELEASE_FLAG[@]}"
+          fi
+
+      - name: Report dry run
+        if: ${{ needs.validate.outputs.dry_run == 'true' }}
+        shell: bash
+        run: |
+          echo "Dry run: skipping GitHub release creation for ${{ needs.validate.outputs.tag }}."
+          find build/release-assets -maxdepth 1 -type f -name '*.jar' | sort
+
+  publish-modrinth:
+    needs:
+      - validate
+      - build
+      - github-release
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.build.outputs.matrix) }}
+
+    name: Modrinth ${{ matrix.minecraft_version }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.validate.outputs.tag }}
+
+      - name: Set up Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java_version }}
+          cache: gradle
+          cache-dependency-path: |
+            **/*.gradle*
+            gradle/wrapper/gradle-wrapper.properties
+
+      - name: Download release jars
+        uses: actions/download-artifact@v8
+        with:
+          name: pathmind-mc${{ matrix.minecraft_version }}
+          path: build/release-assets
+
+      - name: Download changelog
+        uses: actions/download-artifact@v8
+        with:
+          name: release-changelog
+          path: release-meta
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Publish Minecraft ${{ matrix.minecraft_version }} to Modrinth
+        shell: bash
+        env:
+          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+          MODRINTH_VERSION_TYPE: ${{ needs.validate.outputs.release_type }}
+          MODRINTH_DEBUG: ${{ needs.validate.outputs.dry_run }}
+        run: |
+          set -euo pipefail
+
+          if [ "${MODRINTH_DEBUG}" != "true" ] && [ -z "${MODRINTH_TOKEN:-}" ]; then
+            echo "MODRINTH_TOKEN is required for a real release."
+            exit 1
+          fi
+
+          MODRINTH_CHANGELOG="$(cat release-meta/changelog.md)"
+          export MODRINTH_CHANGELOG
+
+          MANIFEST=gradle/minecraft-versions.properties
+          VERSION="${{ matrix.minecraft_version }}"
+          LOADERS="$(awk -F= -v key="version.${VERSION}.release_loaders" '$1 == key { print $2 }' "$MANIFEST")"
+
+          IFS=',' read -ra RELEASE_LOADERS <<< "$LOADERS"
+          for loader in "${RELEASE_LOADERS[@]}"; do
+            echo "Publishing Pathmind for Minecraft ${VERSION} (${loader}) as ${MODRINTH_VERSION_TYPE}; debug=${MODRINTH_DEBUG}"
+            ./gradlew modrinth \
+              -Pmodrinth_mc_version="${VERSION}" \
+              -Pmodrinth_loader="${loader}" \
+              -Pmodrinth_version_type="${MODRINTH_VERSION_TYPE}" \
+              -Pmodrinth_debug="${MODRINTH_DEBUG}"
+          done
+
+  notify-discord:
+    needs:
+      - validate
+      - github-release
+      - publish-modrinth
+    if: ${{ always() && needs.validate.outputs.dry_run != 'true' && needs.github-release.result == 'success' }}
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - name: Announce the release on Discord
+        shell: bash
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_CHANNEL_ID: "1498698231796859070"
+          TAG: ${{ needs.validate.outputs.tag }}
+          MOD_VERSION: ${{ needs.validate.outputs.mod_version }}
+          RELEASE_TYPE: ${{ needs.validate.outputs.release_type }}
+          MODRINTH_RESULT: ${{ needs.publish-modrinth.result }}
+          CURSEFORGE_RESULT: ${{ needs.publish-curseforge.result }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${DISCORD_BOT_TOKEN:-}" ]; then
+            echo "DISCORD_BOT_TOKEN is not configured; skipping Discord notification."
+            exit 0
+          fi
+
+          RELEASE_TIMESTAMP="$(date -u +%s)"
+
+          platform_line() {
+            local name="$1" result="$2" url="$3"
+            if [ "${result}" = "success" ]; then
+              printf '* [%s](<%s>)' "${name}" "${url}"
+            else
+              printf '* %s - upload %s' "${name}" "${result}"
+            fi
+          }
+
+          lines=(
+            "$(printf '**Pathmind %s** is out.' "${MOD_VERSION}")"
+            "$(printf '**Channel:** %s' "${RELEASE_TYPE}")"
+            "$(printf '**Released:** <t:%s:F>' "${RELEASE_TIMESTAMP}")"
+            ""
+            "**Downloads**"
+            "$(platform_line "Modrinth" "${MODRINTH_RESULT}" "https://modrinth.com/mod/pathmind/versions")"
+            "$(platform_line "CurseForge" "${CURSEFORGE_RESULT}" "https://www.curseforge.com/minecraft/mc-mods/pathmind/files")"
+            "$(printf '* [GitHub release](<https://github.com/%s/releases/tag/%s>)' "${GITHUB_REPOSITORY}" "${TAG}")"
+          )
+          DESCRIPTION="$(printf '%s\n' "${lines[@]}")"
+
+          payload="$(jq -cn \
+            --arg title "Pathmind ${MOD_VERSION}" \
+            --arg url "https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}" \
+            --arg description "${DESCRIPTION}" \
+            '{embeds: [{title: $title, url: $url, description: $description, color: 5763719}]}')"
+
+          curl --fail-with-body -sS \
+            -X POST \
+            "https://discord.com/api/v10/channels/${DISCORD_CHANNEL_ID}/messages" \
+            -H "Authorization: Bot ${DISCORD_BOT_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "$payload"

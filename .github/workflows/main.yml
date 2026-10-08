@@ -4,6 +4,21 @@ on:
   push:
     branches:
       - main
+    paths:
+      - '**'
+      - '!.github/**'
+      - '.github/workflows/main.yml'
+      - '.github/workflows/build.yml'
+      - '!docs/**'
+      - '!*.md'
+      - '!LICENSE.txt'
+      - '!artifacts/**'
+      - '!tools/**'
+      - '!supabase/**'
+      - '!.vscode/**'
+      - '!.codex/**'
+      - '!.gitignore'
+      - '!.editorconfig'
   schedule:
     - cron: '17 8 * * *'
   workflow_dispatch:

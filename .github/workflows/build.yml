@@ -2,6 +2,25 @@ name: Build
 
 on:
   pull_request:
+    paths:
+      - '**'
+      - '!.github/**'
+      - '.github/workflows/build.yml'
+      - '.github/workflows/main.yml'
+      - '.github/workflows/release.yml'
+      - '!docs/**'
+      - 'docs/build-generations.md'
+      - 'docs/compatibility-maintenance.md'
+      - '!*.md'
+      - 'README.md'
+      - '!LICENSE.txt'
+      - '!artifacts/**'
+      - '!tools/**'
+      - '!supabase/**'
+      - '!.vscode/**'
+      - '!.codex/**'
+      - '!.gitignore'
+      - '!.editorconfig'
   workflow_dispatch:
   workflow_call:
     inputs:

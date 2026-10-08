@@ -36,3 +36,5 @@ updates:
     ignore:
       - dependency-name: "net.darkhax.curseforgegradle*"
         versions: [">=1.2.30"]
+      - dependency-name: "architectury-plugin"
+      - dependency-name: "dev.architectury.loom"

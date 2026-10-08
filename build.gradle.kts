@@ -363,9 +363,14 @@ subprojects {
             name = "PathmindCanonicalMappings"
             dirs(rootProject.layout.projectDirectory.dir("gradle/mappings"))
         }
-        maven { url = uri("https://maven.architectury.dev/") }
-        maven { url = uri("https://maven.fabricmc.net/") }
-        maven { url = uri("https://maven.neoforged.net/releases/") }
+        fun MavenArtifactRepository.remoteContent(vararg foreignGroups: String) = content {
+            excludeGroupByRegex("remapped\\..*")
+            excludeGroup("net.minecraft")
+            foreignGroups.forEach { excludeGroupAndSubgroups(it) }
+        }
+        maven { url = uri("https://maven.architectury.dev/"); remoteContent() }
+        maven { url = uri("https://maven.fabricmc.net/"); remoteContent("net.neoforged") }
+        maven { url = uri("https://maven.neoforged.net/releases/"); remoteContent("net.fabricmc") }
         val mojang = maven {
             name = "Mojang"
             url = uri("https://libraries.minecraft.net/")
@@ -382,7 +387,7 @@ subprojects {
                 includeModule("org.lwjgl", "lwjgl-freetype")
             }
         }
-        mavenCentral()
+        mavenCentral { remoteContent() }
     }
 
     val targetJavaVersion = requestedSpec.javaVersion

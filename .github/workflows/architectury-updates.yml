@@ -1,0 +1,103 @@
+name: Architectury Updates
+
+on:
+  schedule:
+    - cron: '0 8 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: architectury-updates
+  cancel-in-progress: false
+
+jobs:
+  update:
+    name: Check ${{ matrix.plugin }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - plugin: architectury-plugin
+            metadata: architectury-plugin/architectury-plugin.gradle.plugin/maven-metadata.xml
+          - plugin: dev.architectury.loom
+            metadata: dev/architectury/loom/dev.architectury.loom.gradle.plugin/maven-metadata.xml
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          token: ${{ secrets.ARCHITECTURY_UPDATES_TOKEN || github.token }}
+
+      - name: Propose the latest ${{ matrix.plugin }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.ARCHITECTURY_UPDATES_TOKEN || github.token }}
+          HAS_PR_TOKEN: ${{ secrets.ARCHITECTURY_UPDATES_TOKEN != '' }}
+          PLUGIN: ${{ matrix.plugin }}
+          METADATA_URL: https://maven.architectury.dev/${{ matrix.metadata }}
+        run: |
+          set -euo pipefail
+
+          BUILD_FILE=build.gradle.kts
+          PLUGIN_RE="${PLUGIN//./\\.}"
+          CURRENT="$(sed -n "s/^ *id(\"${PLUGIN_RE}\") version \"\([^\"]*\)\".*/\1/p" "$BUILD_FILE")"
+          if [ -z "$CURRENT" ]; then
+            echo "::error::Could not find the ${PLUGIN} version in ${BUILD_FILE}."
+            exit 1
+          fi
+
+          METADATA="$(curl --fail -sS --retry 3 --retry-all-errors "$METADATA_URL")"
+          LATEST="$(grep -o '<version>[0-9][0-9.]*</version>' <<< "$METADATA" | sed 's/<[^>]*>//g' | sort -V | tail -n 1 || true)"
+          if [ -z "$LATEST" ]; then
+            echo "::error::No release versions found in ${METADATA_URL}."
+            exit 1
+          fi
+
+          if [ "$(printf '%s\n%s\n' "$CURRENT" "$LATEST" | sort -V | tail -n 1)" = "$CURRENT" ]; then
+            echo "${PLUGIN} ${CURRENT} is up to date."
+            exit 0
+          fi
+
+          BRANCH="architectury-updates/${PLUGIN}"
+          TITLE="build: bump ${PLUGIN} from ${CURRENT} to ${LATEST}"
+
+          PRS="$(gh pr list --head "$BRANCH" --state all --limit 100 --json number,title,state)"
+          if jq -e --arg title "$TITLE" 'any(.[]; .title == $title)' <<< "$PRS" > /dev/null; then
+            echo "A PR for ${PLUGIN} ${LATEST} already exists; nothing to do."
+            exit 0
+          fi
+          OPEN_PR="$(jq -r '[.[] | select(.state == "OPEN")][0].number // empty' <<< "$PRS")"
+
+          sed -i "s/^\( *id(\"${PLUGIN_RE}\") version \"\)${CURRENT//./\\.}\"/\1${LATEST}\"/" "$BUILD_FILE"
+          if git diff --quiet -- "$BUILD_FILE"; then
+            echo "::error::Failed to rewrite the ${PLUGIN} version in ${BUILD_FILE}."
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -C "$BRANCH"
+          git commit -m "$TITLE" -- "$BUILD_FILE"
+          git push --force origin "$BRANCH"
+
+          BODY="Bumps \`${PLUGIN}\` from ${CURRENT} to ${LATEST}.
+
+          Opened by the Architectury Updates workflow, because maven.architectury.dev blocks Dependabot. Close this PR to skip ${LATEST}; the next release gets a new one."
+          if [ "$HAS_PR_TOKEN" != "true" ]; then
+            BODY="${BODY}
+
+          > [!NOTE]
+          > This PR was opened with the default \`GITHUB_TOKEN\`, so the Build workflow did not start. Close and reopen the PR to run it."
+            echo "::warning::ARCHITECTURY_UPDATES_TOKEN is not set; the Build workflow will not run on this PR automatically."
+          fi
+
+          if [ -n "$OPEN_PR" ]; then
+            gh pr edit "$OPEN_PR" --title "$TITLE" --body "$BODY"
+            echo "Updated PR #${OPEN_PR}: ${TITLE}"
+          else
+            gh pr create --head "$BRANCH" --title "$TITLE" --body "$BODY"
+          fi

@@ -407,6 +407,49 @@ class AiGraphCommandEngineTest {
         assertTrue(AiGraphIntegrityValidator.validate(parse(result.graph()), true, true).isEmpty());
     }
 
+    // messageClientSide ships in the serialized graph format and in the bundled example presets the
+    // model is invited to read, but had no command to set it. Models copied the name out of those
+    // examples and burned turns discovering it was not an instance parameter.
+    @Test
+    void configureNodeSetsTheMessageScopeCarriedBySerializedGraphs() {
+        JsonArray commands = new JsonArray();
+        commands.add(command("add_node", "ref", "notify", "nodeType", "MESSAGE"));
+        commands.add(command("configure_node", "ref", "notify", "messageClientSide", true));
+
+        var result = AiGraphCommandEngine.apply(emptyGraph(), commands, Map.of(), true, true);
+
+        assertTrue(result.success(), result.message());
+        var node = result.graph().getAsJsonArray("nodes").get(0).getAsJsonObject();
+        assertTrue(node.get("messageClientSide").getAsBoolean());
+    }
+
+    @Test
+    void configureNodeStillRejectsABatchThatChangesNothing() {
+        JsonArray commands = new JsonArray();
+        commands.add(command("add_node", "ref", "notify", "nodeType", "MESSAGE"));
+        commands.add(command("configure_node", "ref", "notify"));
+
+        var result = AiGraphCommandEngine.apply(emptyGraph(), commands, Map.of(), true, true);
+
+        assertFalse(result.success());
+        assertTrue(result.message().contains("messageClientSide"), result.message());
+    }
+
+    @Test
+    void messageScopeIsDiscoverableInTheNativeConfigureNodeSchema() {
+        var commands = AiAgentToolDefinitions.create().asList().stream()
+            .map(com.google.gson.JsonElement::getAsJsonObject)
+            .filter(tool -> tool.get("name").getAsString().equals("apply_graph_commands"))
+            .findFirst().orElseThrow();
+        var alternatives = commands.getAsJsonObject("parameters").getAsJsonObject("properties")
+            .getAsJsonObject("commands").getAsJsonObject("items").getAsJsonArray("anyOf");
+        boolean exposed = alternatives.asList().stream().map(com.google.gson.JsonElement::getAsJsonObject)
+            .filter(alternative -> alternative.getAsJsonObject("properties").getAsJsonObject("kind")
+                .getAsJsonArray("enum").get(0).getAsString().equals("configure_node"))
+            .anyMatch(alternative -> alternative.getAsJsonObject("properties").has("messageClientSide"));
+        assertTrue(exposed, "configure_node must advertise messageClientSide");
+    }
+
     private static JsonObject command(String kind, Object... fields) {
         JsonObject command = new JsonObject();
         command.addProperty("kind", kind);
@@ -414,6 +457,7 @@ class AiGraphCommandEngineTest {
             String key = (String) fields[index];
             Object value = fields[index + 1];
             if (value instanceof Number number) command.addProperty(key, number);
+            else if (value instanceof Boolean flag) command.addProperty(key, flag);
             else command.addProperty(key, String.valueOf(value));
         }
         return command;

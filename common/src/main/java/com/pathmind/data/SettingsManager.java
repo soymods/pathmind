@@ -80,6 +80,10 @@ public final class SettingsManager {
             public String endpoint = "";
             /** Explicit opt-in to OpenAI response storage/chaining. Local native history is the default. */
             public Boolean storeConversation = false;
+            /** Gateway provider ranking: throughput, price, latency, or blank for the gateway default. */
+            public String routingSort = "";
+            /** Whether a gateway may retry a different upstream provider when the first one fails. */
+            public Boolean allowFallbacks = true;
 
             public AiProviderSettings() {
             }

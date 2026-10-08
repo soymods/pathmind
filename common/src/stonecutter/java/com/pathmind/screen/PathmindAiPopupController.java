@@ -39,19 +39,26 @@ final class PathmindAiPopupController {
         void showAiError(String message);
     }
     private enum View { CHAT, SETTINGS }
-    private enum Field { NONE, KEY, PROMPT }
+    private enum Field { NONE, KEY, ENDPOINT, MODEL, PROMPT }
     private enum ResizeCorner { TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT }
-    private static final int MIN_WIDTH = 185, MIN_HEIGHT = 220, DEFAULT_WIDTH = MIN_WIDTH, DEFAULT_HEIGHT = 310, HEADER = 22, COMPOSER_LINES = 3;
+    // The settings form stacks four labelled rows for a gateway provider, so the popup cannot be
+    // shorter than that form; DEFAULT_WIDTH keeps every provider tab on one row at the default size.
+    private static final int MIN_WIDTH = 185, MIN_HEIGHT = 265, DEFAULT_WIDTH = 215, DEFAULT_HEIGHT = 330, HEADER = 22, COMPOSER_LINES = 3;
     private static final int ACTION_BUTTON_SIZE = 16, ACTION_BUTTON_INSET = 4;
+    private static final int SETTINGS_ROW = 34, SETTINGS_INPUT_OFFSET = 12, SETTINGS_INPUT_HEIGHT = 20;
+    private static final int KEY_LIMIT = 512, ENDPOINT_LIMIT = 256, MODEL_LIMIT = 128;
     private final Host host;
     private final AnimatedValue modelDropdownAnimation = AnimatedValue.forHover();
-    private boolean visible, dragging, resizing, requesting, replaceOnType, modelDropdownOpen;
+    private final AnimatedValue routingDropdownAnimation = AnimatedValue.forHover();
+    private boolean visible, dragging, resizing, requesting, replaceOnType, modelDropdownOpen, routingDropdownOpen;
     private int x = -1, y = -1, width = DEFAULT_WIDTH, height = DEFAULT_HEIGHT, dragOffsetX, dragOffsetY, resizeStartX, resizeStartY, resizeStartWidth, resizeStartHeight;
     private ResizeCorner resizeCorner;
     private View view = View.CHAT;
     private Field activeField = Field.NONE;
     private AiProviderType provider = AiProviderType.OPENAI;
-    private String apiKey = "", model = provider.defaultModel(), prompt = "", status = "";
+    private String apiKey = "", model = provider.defaultModel(), endpoint = provider.defaultEndpoint(), prompt = "", status = "";
+    private String routingSort = "";
+    private boolean allowFallbacks = true;
     private AiPresetService.Proposal pendingProposal;
     private Font currentFont;
     private int promptCursor, promptScrollLine, promptAnchor, promptDragAnchor;
@@ -91,10 +98,40 @@ final class PathmindAiPopupController {
         if (x < 0 || y < 0) { x = Math.max(10, screenWidth - width - 55); y = 28; }
         clampToScreen(screenWidth, screenHeight);
         view = AiProviderRegistry.hasConfiguredProvider() ? View.CHAT : View.SETTINGS;
-        model = configuredModel(); visible = true;
+        loadProviderConfiguration(); visible = true;
         if (!conversationHistory.warning().isBlank()) status = conversationHistory.warning();
     }
-    void close() { visible = false; dragging = false; resizing = false; scrollbarDragging = false; modelDropdownOpen = false; activeField = Field.NONE; resetArmed = false; }
+    void close() { visible = false; dragging = false; resizing = false; scrollbarDragging = false; closeDropdowns(); activeField = Field.NONE; resetArmed = false; }
+    private void closeDropdowns() { modelDropdownOpen = false; routingDropdownOpen = false; }
+
+    /**
+     * One provider tab with its resolved bounds. Render and hit-testing both read this list, so a
+     * wrapped row can never drift between the two.
+     */
+    private record TabSlot(AiProviderType provider, int x, int y, int width) { }
+
+    private java.util.List<TabSlot> chatTabSlots(Font f) { return tabSlots(f, x + 9, y + 3, 14, x + width - 40); }
+    private java.util.List<TabSlot> settingsTabSlots(Font f) { return tabSlots(f, x + 12, y + HEADER + 8, 12, x + width - 12); }
+
+    private java.util.List<TabSlot> tabSlots(Font f, int originX, int originY, int padding, int rightLimit) {
+        java.util.List<TabSlot> slots = new java.util.ArrayList<>();
+        int tabX = originX, tabY = originY;
+        for (AiProviderType candidate : supportedProviders()) {
+            int tabWidth = textWidth(f, tabLabel(candidate)) + padding;
+            if (tabX > originX && tabX + tabWidth > rightLimit) { tabX = originX; tabY += tabRowHeight(); }
+            slots.add(new TabSlot(candidate, tabX, tabY, tabWidth));
+            tabX += tabWidth + 2;
+        }
+        return slots;
+    }
+    private static int tabRowHeight() { return HEADER - 2; }
+    private static int textWidth(Font f, String value) { return f == null ? value.length() * 6 : f.width(value); }
+    /** The chat header grows when provider tabs wrap; the settings header keeps its tabs in the body. */
+    private int headerHeight() {
+        if (view == View.SETTINGS) return HEADER;
+        java.util.List<TabSlot> slots = chatTabSlots(currentFont);
+        return HEADER + slots.get(slots.size() - 1).y() - slots.get(0).y();
+    }
 
     void render(GuiGraphics c, Font font, int mouseX, int mouseY, int accent) {
         if (!visible) return;
@@ -102,9 +139,9 @@ final class PathmindAiPopupController {
         renderMouseX = mouseX; renderMouseY = mouseY; hoveredTooltip = null;
         renderedButtonKeys.clear();
         UIStyleHelper.drawBeveledPanel(c, x, y, width, height, UITheme.BACKGROUND_SECONDARY, UITheme.BORDER_DEFAULT, UITheme.PANEL_INNER_BORDER);
-        c.fill(x + 1, y + 1, x + width - 1, y + HEADER, UITheme.BACKGROUND_SECTION);
+        c.fill(x + 1, y + 1, x + width - 1, y + headerHeight(), UITheme.BACKGROUND_SECTION);
         if (view == View.CHAT) renderChatHeader(c, font, mouseX, mouseY, accent); else renderSettingsHeader(c, font, mouseX, mouseY, accent);
-        c.hLine(x + 1, x + width - 2, y + HEADER, UITheme.BORDER_SUBTLE);
+        c.hLine(x + 1, x + width - 2, y + headerHeight(), UITheme.BORDER_SUBTLE);
         if (view != View.SETTINGS) renderChat(c, font, mouseX, mouseY, accent); else renderSettings(c, font, mouseX, mouseY, accent);
         renderCornerHandles(c);
         buttonHoverKeys.forEach((key, identity) -> { if (!renderedButtonKeys.contains(key)) HoverAnimator.getProgress(identity, false); });
@@ -114,12 +151,8 @@ final class PathmindAiPopupController {
     }
 
     private void renderChatHeader(GuiGraphics c, Font f, int mouseX, int mouseY, int accent) {
-        int tabX = x + 9;
-        for (AiProviderType candidate : supportedProviders()) {
-            int tabWidth = f.width(tabLabel(candidate)) + 14;
-            boolean selected = candidate == provider;
-            drawTab(c, f, tabLabel(candidate), tabX, y + 3, tabWidth, selected, mouseX, mouseY, accent);
-            tabX += tabWidth + 2;
+        for (TabSlot slot : chatTabSlots(f)) {
+            drawTab(c, f, tabLabel(slot.provider()), slot.x(), slot.y(), slot.width(), slot.provider() == provider, mouseX, mouseY, accent);
         }
         int settingsColor = iconButton(c, "settings", x + width - 38, y + 2, 18, 18, accent, false, "AI settings");
         PathmindWorkspaceChrome.drawSettingsIcon(c, x + width - 38, y + 2, 18, settingsColor);
@@ -140,7 +173,7 @@ final class PathmindAiPopupController {
         String headline = connected ? "Ask a question or describe a preset change" : "Configure " + provider.displayName() + " to begin";
         renderClearContextButton(c, f, mouseX, mouseY, accent);
         if (!requesting && history().isEmpty()) {
-            drawCenteredWrapped(c, f, headline, x + width / 2, y + HEADER + 40, width - 24, 2, UITheme.TEXT_TERTIARY);
+            drawCenteredWrapped(c, f, headline, x + width / 2, y + headerHeight() + 40, width - 24, 2, UITheme.TEXT_TERTIARY);
         }
         if (requesting || !history().isEmpty() || status.startsWith("Error")) renderThinking(c, f, chatBottomY());
         else if (!status.isBlank()) renderActivity(c, f, status.startsWith("Error") ? "Error" : "Result", status, composerY - 18, status.startsWith("Error") ? UITheme.STATE_ERROR : UITheme.TEXT_SECONDARY);
@@ -170,10 +203,10 @@ final class PathmindAiPopupController {
         } else {
             PathmindIconRenderer.drawSendArrow(c, actionX, actionY, ACTION_BUTTON_SIZE, actionPalette.textColor());
         }
-        if (requesting) PathmindIconRenderer.drawLoadingDots(c, x + 10, y + HEADER + 5, 16, UITheme.TEXT_HEADER, System.currentTimeMillis());
+        if (requesting) PathmindIconRenderer.drawLoadingDots(c, x + 10, y + headerHeight() + 5, 16, UITheme.TEXT_HEADER, System.currentTimeMillis());
         String activity = requesting ? progressLabel : pendingProposal != null ? "Awaiting review" : status;
         c.drawString(f, Component.literal(trim(activity, Math.max(1, (width - (requesting ? 62 : 42)) / 6))),
-            x + (requesting ? 29 : 12), y + HEADER + 8, status.startsWith("Error") ? UITheme.STATE_ERROR : UITheme.TEXT_SECONDARY);
+            x + (requesting ? 29 : 12), y + headerHeight() + 8, status.startsWith("Error") ? UITheme.STATE_ERROR : UITheme.TEXT_SECONDARY);
         if (!chatScroll.atEnd()) {
             textButton(c, f, "latest", "↓ Latest", x + width - 68, chatBottomY() + 1, 58, 13, UIStyleHelper.TextButtonStyle.DEFAULT, accent, null);
         }
@@ -189,53 +222,109 @@ final class PathmindAiPopupController {
     }
 
     private void renderClearContextButton(GuiGraphics c, Font f, int mouseX, int mouseY, int accent) {
-        int bx = resetButtonX(), by = y + HEADER + 4;
+        int bx = resetButtonX(), by = y + headerHeight() + 4;
         int iconColor = iconButton(c, "clear-history", bx, by, 16, 16, resetArmed ? UITheme.STATE_ERROR : accent,
             resetArmed, resetArmed ? "Click again to reset chat and context" : "Reset chat and context");
         PathmindWorkspaceChrome.drawClearIcon(c, bx, by, 16, resetArmed ? UITheme.STATE_ERROR : iconColor);
     }
     private int resetButtonX() { return x + width - 26; }
 
+    /**
+     * Row origins for the settings form. Gateway providers get two extra controls, so the layout is
+     * derived once and shared by rendering and hit-testing instead of being repeated as offsets.
+     */
+    private record SettingsForm(int keyY, int endpointY, int modelY, int routingY, boolean routing) {
+        int inputY(int rowY) { return rowY + SETTINGS_INPUT_OFFSET; }
+    }
+
+    private SettingsForm settingsForm(Font f) {
+        java.util.List<TabSlot> slots = settingsTabSlots(f);
+        int keyY = slots.get(slots.size() - 1).y() + tabRowHeight() + 10;
+        int endpointY = keyY + SETTINGS_ROW;
+        int modelY = endpointY + SETTINGS_ROW;
+        return new SettingsForm(keyY, endpointY, modelY, modelY + SETTINGS_ROW, supportsRouting());
+    }
+    private boolean supportsRouting() { return provider == AiProviderType.OPENROUTER; }
+    /** Gemini addresses the model through the URL, so an edited endpoint must keep the placeholder. */
+    private String settingsHint() {
+        return provider == AiProviderType.GEMINI
+            ? "Keep {model} in the endpoint. Keys are stored encrypted locally."
+            : "Stored encrypted in your local Pathmind settings.";
+    }
+    private int saveButtonY() { return y + height - 30; }
+
     private void renderSettings(GuiGraphics c, Font f, int mouseX, int mouseY, int accent) {
         modelDropdownAnimation.animateTo(modelDropdownOpen ? 1f : 0f, UITheme.TRANSITION_ANIM_MS, AnimationHelper::easeOutQuad);
         modelDropdownAnimation.tick();
-        int tabX = x + 12;
-        for (AiProviderType candidate : supportedProviders()) {
-            int tabWidth = f.width(tabLabel(candidate)) + 12;
-            drawTab(c, f, tabLabel(candidate), tabX, y + HEADER + 8, tabWidth, candidate == provider, mouseX, mouseY, accent);
-            tabX += tabWidth + 2;
+        routingDropdownAnimation.animateTo(routingDropdownOpen ? 1f : 0f, UITheme.TRANSITION_ANIM_MS, AnimationHelper::easeOutQuad);
+        routingDropdownAnimation.tick();
+        for (TabSlot slot : settingsTabSlots(f)) {
+            drawTab(c, f, tabLabel(slot.provider()), slot.x(), slot.y(), slot.width(), slot.provider() == provider, mouseX, mouseY, accent);
         }
-        int keyY = y + HEADER + 42;
-        c.drawString(f, Component.literal(provider.displayName() + " API key"), x + 12, keyY, UITheme.TEXT_SECONDARY);
-        input(c, f, masked(apiKey), Field.KEY, x + 12, keyY + 12, width - 24);
-        int modelY = keyY + 48;
-        c.drawString(f, Component.literal("Model"), x + 12, modelY, UITheme.TEXT_SECONDARY);
-        renderModelDropdown(c, f, modelY + 12, mouseX, mouseY, accent);
-        drawWrapped(c, f, "Stored encrypted in your local Pathmind settings.", x + 12, modelY + 43, width - 24, 2, UITheme.TEXT_TERTIARY);
-        int saveX = x + width - 72, saveY = y + height - 30;
-        textButton(c, f, "save-settings", "Save", saveX, saveY, 60, 18, UIStyleHelper.TextButtonStyle.PRIMARY, accent, null);
-        renderModelDropdownOptions(c, f, modelY + 12, mouseX, mouseY, accent);
+        SettingsForm form = settingsForm(f);
+        c.drawString(f, Component.literal(provider.displayName() + " API key"), x + 12, form.keyY(), UITheme.TEXT_SECONDARY);
+        input(c, f, masked(apiKey), Field.KEY, x + 12, form.inputY(form.keyY()), width - 24);
+        c.drawString(f, Component.literal("Endpoint"), x + 12, form.endpointY(), UITheme.TEXT_SECONDARY);
+        input(c, f, endpoint, Field.ENDPOINT, x + 12, form.inputY(form.endpointY()), width - 24);
+        c.drawString(f, Component.literal("Model"), x + 12, form.modelY(), UITheme.TEXT_SECONDARY);
+        renderModelField(c, f, form.inputY(form.modelY()), mouseX, mouseY, accent);
+        if (form.routing()) {
+            c.drawString(f, Component.literal("Routing"), x + 12, form.routingY(), UITheme.TEXT_SECONDARY);
+            renderFallbackToggle(c, f, form.routingY(), accent);
+            renderRoutingField(c, f, form.inputY(form.routingY()), mouseX, mouseY, accent);
+        }
+        drawWrapped(c, f, settingsHint(), x + 12, saveButtonY() - 24, width - 84, 2, UITheme.TEXT_TERTIARY);
+        textButton(c, f, "save-settings", "Save", x + width - 72, saveButtonY(), 60, 18, UIStyleHelper.TextButtonStyle.PRIMARY, accent, null);
+        // Overlays draw last so an open list covers the rows beneath it.
+        renderModelDropdownOptions(c, f, form.inputY(form.modelY()), mouseX, mouseY, accent);
+        if (form.routing()) renderRoutingDropdownOptions(c, f, form.inputY(form.routingY()), mouseX, mouseY, accent);
+    }
+
+    private void renderFallbackToggle(GuiGraphics c, Font f, int rowY, int accent) {
+        Bounds bounds = fallbackToggleBounds(f, rowY);
+        int color = framelessColor("fallback-toggle", bounds.x(), bounds.y(), bounds.width(), bounds.height(),
+            allowFallbacks ? accent : UITheme.TEXT_HEADER);
+        c.drawString(f, Component.literal("Fallbacks"), bounds.x(), rowY, color);
+        int boxX = x + width - 21, boxY = rowY - 1;
+        DrawBorder(c, boxX, boxY, 10, 10, allowFallbacks ? accent : UITheme.BORDER_DEFAULT);
+        if (allowFallbacks) c.fill(boxX + 3, boxY + 3, boxX + 7, boxY + 7, accent);
+    }
+    private record Bounds(int x, int y, int width, int height) { }
+    /** Label and box share one hit target; the box alone is a 10px square and hard to hit. */
+    private Bounds fallbackToggleBounds(Font f, int rowY) {
+        int left = x + width - 25 - textWidth(f, "Fallbacks");
+        return new Bounds(left, rowY - 2, x + width - 11 - left, 13);
+    }
+
+    private void renderRoutingField(GuiGraphics c, Font f, int iy, int mouseX, int mouseY, int accent) {
+        dropdownField(c, f, routingLabel(routingSort), "routing-dropdown", routingDropdownOpen, iy, mouseX, mouseY, accent);
+    }
+    private void renderRoutingDropdownOptions(GuiGraphics c, Font f, int iy, int mouseX, int mouseY, int accent) {
+        String[] options = ROUTING_LABELS;
+        renderDropdownOptions(c, f, iy, mouseX, mouseY, accent, routingDropdownAnimation, options,
+            index -> options[index].equals(routingLabel(routingSort)));
     }
 
     boolean mouseClicked(int mouseX, int mouseY, int button) {
         if (!visible || button != 0) return false;
         ResizeCorner corner = resizeCornerAt(mouseX, mouseY);
         if (corner != null) { beginResize(corner); return true; }
-        if (!contains(mouseX, mouseY, x, y, width, height)) { activeField = Field.NONE; modelDropdownOpen = false; return false; }
+        if (!contains(mouseX, mouseY, x, y, width, height)) { activeField = Field.NONE; closeDropdowns(); return false; }
         activeField = Field.NONE;
         if (contains(mouseX, mouseY, x + width - 18, y + 2, 16, 18)) { close(); return true; }
         if (view == View.CHAT) return chatClick(mouseX, mouseY);
         return settingsClick(mouseX, mouseY);
     }
     private boolean chatClick(int mouseX, int mouseY) {
-        if (contains(mouseX, mouseY, resetButtonX(), y + HEADER + 4, 16, 16)) {
+        if (contains(mouseX, mouseY, resetButtonX(), y + headerHeight() + 4, 16, 16)) {
             if (resetArmed) clearConversation(); else resetArmed = true;
             return true;
         }
         resetArmed = false;
-        if (contains(mouseX, mouseY, x + width - 38, y + 2, 18, 18)) { view = View.SETTINGS; modelDropdownOpen = false; return true; }
-        int tabX = x + 9;
-        for (AiProviderType candidate : supportedProviders()) { int tabWidth = (currentFont == null ? tabLabel(candidate).length() * 6 : currentFont.width(tabLabel(candidate))) + 14; if (contains(mouseX, mouseY, tabX, y + 3, tabWidth, HEADER - 4)) { selectProvider(candidate); return true; } tabX += tabWidth + 2; }
+        if (contains(mouseX, mouseY, x + width - 38, y + 2, 18, 18)) { view = View.SETTINGS; closeDropdowns(); return true; }
+        for (TabSlot slot : chatTabSlots(currentFont)) {
+            if (contains(mouseX, mouseY, slot.x(), slot.y(), slot.width(), HEADER - 4)) { selectProvider(slot.provider()); return true; }
+        }
         int composerHeight = COMPOSER_LINES * ((currentFont == null ? 9 : currentFont.lineHeight) + 1) + 12;
         int composerY = y + height - composerHeight - 12;
         if (!chatScroll.atEnd() && contains(mouseX, mouseY, x + width - 68, chatBottomY() + 1, 58, 13)) { chatScroll.end(); return true; }
@@ -275,22 +364,49 @@ final class PathmindAiPopupController {
         dragging = true; dragOffsetX = mouseX - x; dragOffsetY = mouseY - y; return true;
     }
     private boolean settingsClick(int mouseX, int mouseY) {
-        if (contains(mouseX, mouseY, x + 7, y + 2, 48, 18)) { view = View.CHAT; modelDropdownOpen = false; return true; }
-        int tabX = x + 12;
-        for (AiProviderType candidate : supportedProviders()) { int tabWidth = (currentFont == null ? tabLabel(candidate).length() * 6 : currentFont.width(tabLabel(candidate))) + 12; if (contains(mouseX, mouseY, tabX, y + HEADER + 8, tabWidth, HEADER - 4)) { selectProvider(candidate); return true; } tabX += tabWidth + 2; }
-        int keyY = y + HEADER + 54;
-        if (contains(mouseX, mouseY, x + 12, keyY, width - 24, 20)) { activeField = Field.KEY; replaceOnType = false; return true; }
-        int modelY = y + HEADER + 42 + 48;
-        if (modelDropdownOpen && contains(mouseX, mouseY, x + 12, modelY + 34, width - 24, modelOptions().length * 20)) {
-            int index = (mouseY - (modelY + 34)) / 20;
-            model = modelOptions()[index];
-            modelDropdownOpen = false;
-            return true;
+        if (contains(mouseX, mouseY, x + 7, y + 2, 48, 18)) { view = View.CHAT; closeDropdowns(); return true; }
+        for (TabSlot slot : settingsTabSlots(currentFont)) {
+            if (contains(mouseX, mouseY, slot.x(), slot.y(), slot.width(), HEADER - 4)) { selectProvider(slot.provider()); return true; }
         }
-        if (contains(mouseX, mouseY, x + 12, modelY + 12, width - 24, 20)) { modelDropdownOpen = !modelDropdownOpen; return true; }
-        modelDropdownOpen = false;
-        if (contains(mouseX, mouseY, x + width - 72, y + height - 30, 60, 18)) { saveConfiguration(); return true; }
+        SettingsForm form = settingsForm(currentFont);
+        // Open option lists overlay the rows below them, so they claim the click first.
+        if (modelDropdownOpen) {
+            Integer picked = optionIndexAt(mouseX, mouseY, form.inputY(form.modelY()), modelOptions().length);
+            if (picked != null) { model = modelOptions()[picked]; modelDropdownOpen = false; return true; }
+        }
+        if (routingDropdownOpen) {
+            Integer picked = optionIndexAt(mouseX, mouseY, form.inputY(form.routingY()), ROUTING_SORTS.length);
+            if (picked != null) { routingSort = ROUTING_SORTS[picked]; routingDropdownOpen = false; return true; }
+        }
+        if (textFieldClick(mouseX, mouseY, Field.KEY, form.inputY(form.keyY()), width - 24)) return true;
+        if (textFieldClick(mouseX, mouseY, Field.ENDPOINT, form.inputY(form.endpointY()), width - 24)) return true;
+        if (contains(mouseX, mouseY, modelChevronX(), form.inputY(form.modelY()), 18, SETTINGS_INPUT_HEIGHT)) {
+            modelDropdownOpen = !modelDropdownOpen; routingDropdownOpen = false; activeField = Field.NONE; return true;
+        }
+        if (textFieldClick(mouseX, mouseY, Field.MODEL, form.inputY(form.modelY()), width - 42)) return true;
+        if (form.routing()) {
+            Bounds toggle = fallbackToggleBounds(currentFont, form.routingY());
+            if (contains(mouseX, mouseY, toggle.x(), toggle.y(), toggle.width(), toggle.height())) {
+                allowFallbacks = !allowFallbacks; closeDropdowns(); activeField = Field.NONE; return true;
+            }
+            if (contains(mouseX, mouseY, x + 12, form.inputY(form.routingY()), width - 24, SETTINGS_INPUT_HEIGHT)) {
+                routingDropdownOpen = !routingDropdownOpen; modelDropdownOpen = false; activeField = Field.NONE; return true;
+            }
+        }
+        closeDropdowns();
+        if (contains(mouseX, mouseY, x + width - 72, saveButtonY(), 60, 18)) { saveConfiguration(); return true; }
         dragging = true; dragOffsetX = mouseX - x; dragOffsetY = mouseY - y; return true;
+    }
+    private boolean textFieldClick(int mouseX, int mouseY, Field field, int iy, int fieldWidth) {
+        if (!contains(mouseX, mouseY, x + 12, iy, fieldWidth, SETTINGS_INPUT_HEIGHT)) return false;
+        activeField = field; replaceOnType = false; closeDropdowns();
+        return true;
+    }
+    /** Option lists render 22px below their field; returns null when the click missed the list. */
+    private Integer optionIndexAt(int mouseX, int mouseY, int fieldY, int optionCount) {
+        int top = fieldY + 22;
+        if (!contains(mouseX, mouseY, x + 12, top, width - 24, optionCount * 20)) return null;
+        return (mouseY - top) / 20;
     }
     boolean mouseDragged(int mouseX, int mouseY, int screenWidth, int screenHeight) {
         if (!visible) return false;
@@ -303,11 +419,11 @@ final class PathmindAiPopupController {
     boolean mouseReleased() { boolean handled = dragging || resizing || promptSelecting || scrollbarDragging; dragging = false; resizing = false; scrollbarDragging = false; resizeCorner = null; promptSelecting = false; return handled; }
     boolean keyPressed(int keyCode, int modifiers) {
         if (!visible) return false;
-        if (modelDropdownOpen) { modelDropdownOpen = false; return true; }
+        if (modelDropdownOpen || routingDropdownOpen) { closeDropdowns(); return true; }
         if (keyCode == GLFW.GLFW_KEY_ESCAPE) { close(); return true; }
         boolean shortcut = (modifiers & (GLFW.GLFW_MOD_CONTROL | GLFW.GLFW_MOD_SUPER)) != 0;
-        if (shortcut && activeField == Field.KEY && keyCode == GLFW.GLFW_KEY_A) { replaceOnType = true; return true; }
-        if (shortcut && activeField == Field.KEY && keyCode == GLFW.GLFW_KEY_V) { pasteApiKey(); return true; }
+        if (shortcut && isTextField(activeField) && keyCode == GLFW.GLFW_KEY_A) { replaceOnType = true; return true; }
+        if (shortcut && isTextField(activeField) && keyCode == GLFW.GLFW_KEY_V) { pasteField(); return true; }
         if (shortcut && keyCode == GLFW.GLFW_KEY_A && activeField == Field.PROMPT) { promptAnchor = 0; promptCursor = prompt.length(); return true; }
         if (shortcut && activeField == Field.PROMPT && keyCode == GLFW.GLFW_KEY_C) { copyPromptSelection(); return true; }
         if (shortcut && activeField == Field.PROMPT && keyCode == GLFW.GLFW_KEY_X) { copyPromptSelection(); deletePromptSelection(); return true; }
@@ -327,7 +443,10 @@ final class PathmindAiPopupController {
         if ((keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) && activeField == Field.PROMPT) { if ((modifiers & GLFW.GLFW_MOD_SHIFT) != 0) insertPromptText("\n"); else activateAction(); return true; }
         return activeField != Field.NONE;
     }
-    boolean charTyped(char character) { if (!visible || activeField == Field.NONE || Character.isISOControl(character)) return visible; type(character); return true; }
+    // Decline characters unless a field actually has focus. The popup is non-modal and the editor
+    // routes charTyped to it before the preset and rename controllers, so consuming while unfocused
+    // silently kills every other text input on the screen. keyPressed already declines this way.
+    boolean charTyped(char character) { if (!visible || activeField == Field.NONE || Character.isISOControl(character)) return false; type(character); return true; }
 
     private void activateAction() {
         if (requesting) return;
@@ -428,8 +547,11 @@ final class PathmindAiPopupController {
     }
     private void saveConfiguration() {
         if (apiKey.isBlank() && !com.pathmind.ai.AiSecretStore.hasSecret(provider)) { status = "Error: enter an API key."; return; }
-        AiProviderRegistry.saveConfiguration(provider, true, model, provider.defaultEndpoint(), apiKey.isBlank() ? null : apiKey);
-        apiKey = ""; status = "Saved."; view = View.CHAT;
+        if (model.isBlank()) { status = "Error: enter a model."; return; }
+        // Routing is only passed for providers that expose it, so a direct provider never overwrites it.
+        AiProviderRegistry.saveConfiguration(provider, true, model, endpoint, apiKey.isBlank() ? null : apiKey,
+            supportsRouting() ? routingSort : null, supportsRouting() ? allowFallbacks : null);
+        apiKey = ""; loadProviderConfiguration(); status = "Saved."; view = View.CHAT;
     }
     private void reportError(String message) { status = "Error: " + (message == null || message.isBlank() ? "AI request failed." : message); host.showAiError(status); }
     private void cancelRequest() { stopWork(true); }
@@ -443,7 +565,7 @@ final class PathmindAiPopupController {
     }
     void dispose() { stopWork(true); try { conversationHistory.flush(); } catch (IllegalStateException failure) { host.showAiError(failure.getMessage()); } close(); }
     private int chatRowHeight() { return (currentFont == null ? 9 : currentFont.lineHeight) + 3; }
-    private int chatTopY() { return y + HEADER + 25; }
+    private int chatTopY() { return y + headerHeight() + 25; }
     private int chatBottomY() {
         int composerHeight = COMPOSER_LINES * ((currentFont == null ? 9 : currentFont.lineHeight) + 1) + 12;
         return y + height - composerHeight - 12 - (pendingProposal == null ? 24 : 40);
@@ -476,7 +598,7 @@ final class PathmindAiPopupController {
         c.disableScissor();
         ScrollbarHelper.renderSettingsStyle(c, chatScrollMetrics(), UITheme.BACKGROUND_SIDEBAR, UITheme.BORDER_DEFAULT, UITheme.BORDER_DEFAULT);
     }
-    private void renderActivity(GuiGraphics c, Font f, String label, String message, int bottomY, int color) { int topY = Math.max(y + HEADER + 58, bottomY - 3 * (f.lineHeight + 3)); c.drawString(f, Component.literal(label), x + 12, topY, color); drawWrapped(c, f, message, x + 16, topY + f.lineHeight + 3, width - 32, 2, color); }
+    private void renderActivity(GuiGraphics c, Font f, String label, String message, int bottomY, int color) { int topY = Math.max(y + headerHeight() + 58, bottomY - 3 * (f.lineHeight + 3)); c.drawString(f, Component.literal(label), x + 12, topY, color); drawWrapped(c, f, message, x + 16, topY + f.lineHeight + 3, width - 32, 2, color); }
     private record ChatLine(String text, int color) { }
     private java.util.List<AiChatLayout.Row> thinkingLines(Font font) {
         long revision = conversationHistory.revision(provider);
@@ -496,24 +618,59 @@ final class PathmindAiPopupController {
         updateChatScroll(thinkingLines(currentFont));
         chatScroll.wheel(amount); return true;
     }
-    private void selectProvider(AiProviderType next) { if (next != provider) { stopWork(true); conversationGeneration++; requesting = false; pendingProposal = null; requestStartedAt = 0; status = ""; prompt = ""; promptCursor = promptAnchor = promptScrollLine = 0; chatScroll.reset(); expandedDetails.clear(); resetArmed = false; } provider = next; apiKey = ""; model = configuredModel(); modelDropdownOpen = false; activeField = Field.NONE; replaceOnType = false; }
-    private void type(char character) { if (replaceOnType) clearField(); replaceOnType = false; if (activeField == Field.KEY && apiKey.length() < 512) apiKey += character; else if (activeField == Field.PROMPT) insertPromptText(String.valueOf(character)); }
-    private void backspace() { if (replaceOnType) { clearField(); return; } if (activeField == Field.KEY && !apiKey.isEmpty()) apiKey = apiKey.substring(0, apiKey.length() - 1); else if (activeField == Field.PROMPT) { if (promptAnchor != promptCursor) deletePromptSelection(); else if (promptCursor > 0) { prompt = prompt.substring(0, promptCursor - 1) + prompt.substring(promptCursor); promptCursor--; promptAnchor = promptCursor; } } }
-    private void clearField() { if (activeField == Field.KEY) apiKey = ""; else if (activeField == Field.PROMPT) { prompt = ""; promptCursor = 0; promptScrollLine = 0; } replaceOnType = false; }
+    private void selectProvider(AiProviderType next) { if (next != provider) { stopWork(true); conversationGeneration++; requesting = false; pendingProposal = null; requestStartedAt = 0; status = ""; prompt = ""; promptCursor = promptAnchor = promptScrollLine = 0; chatScroll.reset(); expandedDetails.clear(); resetArmed = false; } provider = next; apiKey = ""; loadProviderConfiguration(); closeDropdowns(); activeField = Field.NONE; replaceOnType = false; }
+    private static boolean isTextField(Field field) { return field == Field.KEY || field == Field.ENDPOINT || field == Field.MODEL; }
+    private String fieldValue(Field field) { return switch (field) { case KEY -> apiKey; case ENDPOINT -> endpoint; case MODEL -> model; default -> ""; }; }
+    private void setFieldValue(Field field, String value) { switch (field) { case KEY -> apiKey = value; case ENDPOINT -> endpoint = value; case MODEL -> model = value; default -> { } } }
+    private static int fieldLimit(Field field) { return switch (field) { case KEY -> KEY_LIMIT; case ENDPOINT -> ENDPOINT_LIMIT; default -> MODEL_LIMIT; }; }
+    private void type(char character) { if (replaceOnType) clearField(); replaceOnType = false; if (activeField == Field.PROMPT) { insertPromptText(String.valueOf(character)); return; } if (!isTextField(activeField)) return; String current = fieldValue(activeField); if (current.length() < fieldLimit(activeField)) setFieldValue(activeField, current + character); }
+    private void backspace() { if (replaceOnType) { clearField(); return; } if (activeField == Field.PROMPT) { if (promptAnchor != promptCursor) deletePromptSelection(); else if (promptCursor > 0) { prompt = prompt.substring(0, promptCursor - 1) + prompt.substring(promptCursor); promptCursor--; promptAnchor = promptCursor; } return; } if (!isTextField(activeField)) return; String current = fieldValue(activeField); if (!current.isEmpty()) setFieldValue(activeField, current.substring(0, current.length() - 1)); }
+    private void clearField() { if (activeField == Field.PROMPT) { prompt = ""; promptCursor = 0; promptScrollLine = 0; } else if (isTextField(activeField)) setFieldValue(activeField, ""); replaceOnType = false; }
     private String configuredModel() { String configured = AiProviderRegistry.config(provider).model; return configured == null || configured.isBlank() ? provider.defaultModel() : configured; }
-    private void renderModelDropdown(GuiGraphics c, Font f, int iy, int mouseX, int mouseY, int accent) {
-        int ix = x + 12, iw = width - 24;
-        boolean hovered = contains(mouseX, mouseY, ix, iy, iw, 20);
-        var palette = UIStyleHelper.getDropdownFieldPalette(accent, hover("model-dropdown", hovered), modelDropdownOpen, false);
-        UIStyleHelper.drawBeveledPanel(c, ix, iy, iw, 20, palette.backgroundColor(), palette.borderColor(), palette.innerBorderColor());
-        c.drawString(f, Component.literal(trim(model, Math.max(16, (iw - 30) / 6))), ix + 8, iy + 6, modelDropdownOpen ? accent : UITheme.TEXT_PRIMARY);
-        PathmindPopupRenderer.drawDropdownChevron(c, ix + iw - 12, iy + 6, modelDropdownOpen ? accent : UITheme.TEXT_SECONDARY, modelDropdownOpen);
+    /** Mirrors the stored configuration into the editable fields whenever the active provider changes. */
+    private void loadProviderConfiguration() {
+        var config = AiProviderRegistry.config(provider);
+        model = configuredModel();
+        endpoint = config.endpoint == null || config.endpoint.isBlank() ? provider.defaultEndpoint() : config.endpoint;
+        routingSort = config.routingSort == null ? "" : config.routingSort;
+        allowFallbacks = !Boolean.FALSE.equals(config.allowFallbacks);
     }
+    /**
+     * The model row is a free-text field with a suggestion list attached, not a closed dropdown:
+     * provider catalogues move faster than this list, and a gateway exposes hundreds of slugs.
+     */
+    private void renderModelField(GuiGraphics c, Font f, int iy, int mouseX, int mouseY, int accent) {
+        int ix = x + 12, iw = width - 24;
+        input(c, f, model, Field.MODEL, ix, iy, iw - 18);
+        boolean hovered = contains(mouseX, mouseY, modelChevronX(), iy, 18, SETTINGS_INPUT_HEIGHT);
+        var palette = UIStyleHelper.getDropdownFieldPalette(accent, hover("model-dropdown", hovered), modelDropdownOpen, false);
+        UIStyleHelper.drawBeveledPanel(c, modelChevronX(), iy, 18, SETTINGS_INPUT_HEIGHT,
+            palette.backgroundColor(), palette.borderColor(), palette.innerBorderColor());
+        PathmindPopupRenderer.drawDropdownChevron(c, modelChevronX() + 6, iy + 6,
+            modelDropdownOpen ? accent : UITheme.TEXT_SECONDARY, modelDropdownOpen);
+    }
+    private int modelChevronX() { return x + width - 30; }
+
+    private void dropdownField(GuiGraphics c, Font f, String value, String key, boolean open, int iy, int mouseX, int mouseY, int accent) {
+        int ix = x + 12, iw = width - 24;
+        boolean hovered = contains(mouseX, mouseY, ix, iy, iw, SETTINGS_INPUT_HEIGHT);
+        var palette = UIStyleHelper.getDropdownFieldPalette(accent, hover(key, hovered), open, false);
+        UIStyleHelper.drawBeveledPanel(c, ix, iy, iw, SETTINGS_INPUT_HEIGHT, palette.backgroundColor(), palette.borderColor(), palette.innerBorderColor());
+        c.drawString(f, Component.literal(trim(value, Math.max(16, (iw - 30) / 6))), ix + 8, iy + 6, open ? accent : UITheme.TEXT_PRIMARY);
+        PathmindPopupRenderer.drawDropdownChevron(c, ix + iw - 12, iy + 6, open ? accent : UITheme.TEXT_SECONDARY, open);
+    }
+
     private void renderModelDropdownOptions(GuiGraphics c, Font f, int iy, int mouseX, int mouseY, int accent) {
-        float progress = AnimationHelper.easeOutQuad(modelDropdownAnimation.getValue());
+        String[] options = modelOptions();
+        renderDropdownOptions(c, f, iy, mouseX, mouseY, accent, modelDropdownAnimation, options,
+            index -> options[index].equals(model));
+    }
+
+    private void renderDropdownOptions(GuiGraphics c, Font f, int iy, int mouseX, int mouseY, int accent,
+                                       AnimatedValue animation, String[] options, java.util.function.IntPredicate selected) {
+        float progress = AnimationHelper.easeOutQuad(animation.getValue());
         if (progress <= 0.001f) return;
         int ix = x + 12, iw = width - 24;
-        String[] options = modelOptions();
         PathmindDropdownRenderer.renderTextList(c, f, PathmindDropdownRenderer.TextListSpec.builder()
             .bounds(ix, iy + 22, iw)
             .rows(20, options.length, options.length)
@@ -523,17 +680,27 @@ final class PathmindAiPopupController {
             .colors(accent, UITheme.TEXT_SECONDARY)
             .textLayout(6, 6, false, true)
             .labels("", index -> options[index])
-            .textColors(index -> options[index].equals(model) ? UITheme.TEXT_PRIMARY : UITheme.TEXT_SECONDARY)
+            .textColors(index -> selected.test(index) ? UITheme.TEXT_PRIMARY : UITheme.TEXT_SECONDARY)
             .chrome(UIStyleHelper.getScrollContainerPalette(accent, 1f, true, false), UITheme.BORDER_DEFAULT, UITheme.BORDER_HIGHLIGHT, UITheme.BORDER_DEFAULT)
             .build());
     }
+
     private String[] modelOptions() { return switch (provider) {
         case OPENAI -> new String[]{provider.defaultModel(), "gpt-5.5"};
         case ANTHROPIC -> new String[]{provider.defaultModel(), "claude-sonnet-5", "claude-haiku-4-5-20251001"};
         case GEMINI -> new String[]{provider.defaultModel(), "gemini-3.7-flash", "gemini-3.1-pro-preview"};
+        case OPENROUTER -> new String[]{provider.defaultModel(), "openai/gpt-5.4-mini", "google/gemini-2.5-flash"};
         default -> new String[]{provider.defaultModel()};
     }; }
-    private void input(GuiGraphics c, Font f, String value, Field field, int ix, int iy, int iw) { String visible = trim(value, Math.max(16, (iw - 14) / 6)); c.fill(ix, iy, ix + iw, iy + 20, UITheme.BACKGROUND_PRIMARY); DrawBorder(c, ix, iy, iw, 20, activeField == field ? UITheme.ACCENT_SKY : UITheme.BORDER_DEFAULT); c.drawString(f, Component.literal(visible), ix + 6, iy + 6, UITheme.TEXT_PRIMARY); if (activeField == field && ((System.currentTimeMillis() / 300L) & 1L) == 0L) c.vLine(Math.min(ix + iw - 6, ix + 6 + f.width(visible)), iy + 5, iy + 15, UITheme.CARET_COLOR); }
+
+    // Gateway sort keys, paired with the labels shown in the dropdown.
+    private static final String[] ROUTING_SORTS = {"", "throughput", "price", "latency"};
+    private static final String[] ROUTING_LABELS = {"Default", "Throughput", "Price", "Latency"};
+    private static String routingLabel(String sort) {
+        for (int i = 0; i < ROUTING_SORTS.length; i++) if (ROUTING_SORTS[i].equals(sort == null ? "" : sort)) return ROUTING_LABELS[i];
+        return ROUTING_LABELS[0];
+    }
+    private void input(GuiGraphics c, Font f, String value, Field field, int ix, int iy, int iw) { String visible = trim(value, Math.max(16, (iw - 14) / 6)); c.fill(ix, iy, ix + iw, iy + SETTINGS_INPUT_HEIGHT, UITheme.BACKGROUND_PRIMARY); DrawBorder(c, ix, iy, iw, SETTINGS_INPUT_HEIGHT, activeField == field ? UITheme.ACCENT_SKY : UITheme.BORDER_DEFAULT); c.drawString(f, Component.literal(visible), ix + 6, iy + 6, UITheme.TEXT_PRIMARY); if (activeField == field && ((System.currentTimeMillis() / 300L) & 1L) == 0L) c.vLine(Math.min(ix + iw - 6, ix + 6 + f.width(visible)), iy + 5, iy + 15, UITheme.CARET_COLOR); }
     private void clampToScreen(int screenWidth, int screenHeight) { width = Math.min(width, Math.max(MIN_WIDTH, screenWidth - 8)); height = Math.min(height, Math.max(MIN_HEIGHT, screenHeight - 8)); x = clamp(x, 0, Math.max(0, screenWidth - width)); y = clamp(y, 0, Math.max(0, screenHeight - height)); }
     Identifier cursorTexture(int mouseX, int mouseY) { if (!visible) return null; if (resizing) return textureFor(resizeCorner); ResizeCorner corner = resizeCornerAt(mouseX, mouseY); if (corner != null) return textureFor(corner); if (dragging) return PathmindCursor.GRABBING_TEXTURE; if (contains(mouseX, mouseY, x, y, width, HEADER)) return PathmindCursor.GRAB_TEXTURE; return null; }
     private Identifier textureFor(ResizeCorner corner) { return switch (corner) { case TOP_LEFT -> PathmindCursor.SCALE_TOP_LEFT_TEXTURE; case TOP_RIGHT -> PathmindCursor.SCALE_TOP_RIGHT_TEXTURE; case BOTTOM_LEFT -> PathmindCursor.SCALE_BOTTOM_LEFT_TEXTURE; case BOTTOM_RIGHT -> PathmindCursor.SCALE_TEXTURE; }; }
@@ -577,8 +744,8 @@ final class PathmindAiPopupController {
         if (hovered && tooltip != null) hoveredTooltip = tooltip;
         return AnimationHelper.lerpColor(UITheme.TEXT_SECONDARY, UITheme.TEXT_HEADER, AnimationHelper.easeOutQuad(progress));
     }
-    private static AiProviderType[] supportedProviders() { return new AiProviderType[]{AiProviderType.OPENAI, AiProviderType.ANTHROPIC, AiProviderType.GEMINI}; }
-    private static String tabLabel(AiProviderType provider) { return switch (provider) { case OPENAI -> "GPT"; case ANTHROPIC -> "Claude"; case GEMINI -> "Gemini"; default -> provider.displayName(); }; }
+    private static AiProviderType[] supportedProviders() { return new AiProviderType[]{AiProviderType.OPENAI, AiProviderType.ANTHROPIC, AiProviderType.GEMINI, AiProviderType.OPENROUTER}; }
+    private static String tabLabel(AiProviderType provider) { return switch (provider) { case OPENAI -> "GPT"; case ANTHROPIC -> "Claude"; case GEMINI -> "Gemini"; case OPENROUTER -> "ORouter"; default -> provider.displayName(); }; }
     private static void DrawBorder(GuiGraphics c, int bx, int by, int bw, int bh, int color) { c.hLine(bx, bx + bw - 1, by, color); c.hLine(bx, bx + bw - 1, by + bh - 1, color); c.vLine(bx, by, by + bh - 1, color); c.vLine(bx + bw - 1, by, by + bh - 1, color); }
     private static boolean contains(int px, int py, int bx, int by, int bw, int bh) { return px >= bx && px < bx + bw && py >= by && py < by + bh; }
     private static int clamp(int value, int min, int max) { return Math.max(min, Math.min(max, value)); }
@@ -627,7 +794,7 @@ final class PathmindAiPopupController {
     private void deletePromptSelection() { int start = Math.min(promptAnchor, promptCursor), end = Math.max(promptAnchor, promptCursor); if (start == end) return; prompt = prompt.substring(0, start) + prompt.substring(end); promptCursor = start; promptAnchor = start; }
     private void copyPromptSelection() { int start = Math.min(promptAnchor, promptCursor), end = Math.max(promptAnchor, promptCursor); if (end > start && Minecraft.getInstance() != null) Minecraft.getInstance().keyboardHandler.setClipboard(prompt.substring(start, end)); }
     private String clipboardText() { return Minecraft.getInstance() == null ? "" : Minecraft.getInstance().keyboardHandler.getClipboard(); }
-    private void pasteApiKey() { String value = clipboardText().replace("\r", "").replace("\n", "").trim(); if (value.isEmpty()) return; if (replaceOnType) apiKey = ""; replaceOnType = false; int remaining = 512 - apiKey.length(); if (remaining > 0) apiKey += value.substring(0, Math.min(value.length(), remaining)); }
+    private void pasteField() { if (!isTextField(activeField)) return; String value = clipboardText().replace("\r", "").replace("\n", "").trim(); if (value.isEmpty()) return; if (replaceOnType) setFieldValue(activeField, ""); replaceOnType = false; String current = fieldValue(activeField); int remaining = fieldLimit(activeField) - current.length(); if (remaining > 0) setFieldValue(activeField, current + value.substring(0, Math.min(value.length(), remaining))); }
     private static void drawCenteredWrapped(GuiGraphics c, Font f, String value, int centerX, int topY, int maxWidth, int maxLines, int color) { java.util.List<String> lines = wrap(f, value, maxWidth); for (int i = 0; i < lines.size() && i < maxLines; i++) c.drawCenteredString(f, Component.literal(lines.get(i)), centerX, topY + i * (f.lineHeight + 2), color); }
     private static void drawWrapped(GuiGraphics c, Font f, String value, int leftX, int topY, int maxWidth, int maxLines, int color) { java.util.List<String> lines = wrap(f, value, maxWidth); for (int i = 0; i < lines.size() && i < maxLines; i++) c.drawString(f, Component.literal(lines.get(i)), leftX, topY + i * (f.lineHeight + 2), color); }
 }

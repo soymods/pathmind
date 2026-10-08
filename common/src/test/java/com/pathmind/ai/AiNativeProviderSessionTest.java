@@ -98,11 +98,95 @@ class AiNativeProviderSessionTest {
     }
 
     private AiNativeProviderSession session(AiNativeProviderSession.Dialect dialect, List<JsonObject> bodies, String response, boolean store) {
-        return new AiNativeProviderSession(dialect, "https://example.invalid/{model}", "test-key", (url, headers, body) -> {
+        return new AiNativeProviderSession(dialect, "https://example.invalid/{model}", "test-key",
+            transport(bodies, response), store);
+    }
+
+    private AiJsonTransport transport(List<JsonObject> bodies, String response) {
+        return (url, headers, body) -> {
             assertFalse(url.contains("test-key"));
             bodies.add(body.deepCopy());
             return CompletableFuture.completedFuture(json(response));
-        }, store);
+        };
+    }
+
+    private static final String OPENAI_CHAT = """
+        {"id":"gen-1","choices":[{"finish_reason":"tool_calls","message":{"role":"assistant","content":null,
+          "reasoning_details":[{"type":"reasoning.encrypted","data":"opaque"}],
+          "tool_calls":[{"id":"call-1","type":"function",
+            "function":{"name":"inspect_preset","arguments":"{\\"target\\":\\"inspect\\"}"}}]}}],
+          "usage":{"prompt_tokens":100,"completion_tokens":20,"prompt_tokens_details":{"cached_tokens":40}}}
+        """;
+
+    @Test void openAiChatDropsReasoningFromReplayedHistoryButKeepsToolCalls() {
+        List<JsonObject> bodies = new ArrayList<>();
+        var session = session(AiNativeProviderSession.Dialect.OPENAI_CHAT, bodies, OPENAI_CHAT, false);
+        session.generate(REQUEST, null).join();
+        session.generate(REQUEST, RESULT).join();
+        var assistant = bodies.get(1).getAsJsonArray("messages").get(2).getAsJsonObject();
+        // Unbounded per-turn reasoning would otherwise exhaust the session history budget.
+        assertFalse(assistant.has("reasoning_details"));
+        assertFalse(assistant.has("reasoning"));
+        assertEquals("call-1", assistant.getAsJsonArray("tool_calls").get(0).getAsJsonObject().get("id").getAsString());
+    }
+
+    @Test void openAiChatPairsToolCallIds() {
+        List<JsonObject> bodies = new ArrayList<>();
+        var session = session(AiNativeProviderSession.Dialect.OPENAI_CHAT, bodies, OPENAI_CHAT, false);
+        var first = session.generate(REQUEST, null).join();
+        assertEquals("inspect_preset", json(first.action()).get("tool").getAsString());
+        assertEquals(100L, first.usage().inputTokens());
+        assertEquals(40L, first.usage().cachedInputTokens());
+        session.generate(REQUEST, RESULT).join();
+        var messages = bodies.get(1).getAsJsonArray("messages");
+        assertEquals("system", messages.get(0).getAsJsonObject().get("role").getAsString());
+        assertEquals("request", messages.get(1).getAsJsonObject().get("content").getAsString());
+        var toolMessage = messages.get(3).getAsJsonObject();
+        assertEquals("tool", toolMessage.get("role").getAsString());
+        assertEquals("call-1", toolMessage.get("tool_call_id").getAsString());
+        assertEquals(RESULT.toString(), toolMessage.get("content").getAsString());
+        var tool = bodies.getFirst().getAsJsonArray("tools").get(0).getAsJsonObject();
+        assertEquals("function", tool.get("type").getAsString());
+        assertTrue(tool.getAsJsonObject("function").get("strict").getAsBoolean());
+        assertEquals("required", bodies.getFirst().get("tool_choice").getAsString());
+        assertFalse(bodies.getFirst().get("parallel_tool_calls").getAsBoolean());
+        assertFalse(bodies.getFirst().has("provider"));
+    }
+
+    @Test void openRouterRoutingPreferencesTravelInTheProviderBlock() {
+        List<JsonObject> bodies = new ArrayList<>();
+        var session = new AiNativeProviderSession(AiNativeProviderSession.Dialect.OPENAI_CHAT,
+            "https://example.invalid", "test-key", transport(bodies, OPENAI_CHAT), false,
+            new AiRoutingPreferences("throughput", false));
+        session.generate(REQUEST, null).join();
+        var routing = bodies.getFirst().getAsJsonObject("provider");
+        assertEquals("throughput", routing.get("sort").getAsString());
+        assertFalse(routing.get("allow_fallbacks").getAsBoolean());
+    }
+
+    @Test void openAiChatTruncationAsksForASmallerCall() {
+        var response = json(OPENAI_CHAT);
+        response.getAsJsonArray("choices").get(0).getAsJsonObject().addProperty("finish_reason", "length");
+        var session = session(AiNativeProviderSession.Dialect.OPENAI_CHAT, new ArrayList<>(), response.toString(), false);
+        var action = json(session.generate(REQUEST, null).join().action());
+        assertEquals("invalid_provider_response", action.get("tool").getAsString());
+        assertTrue(action.get("response").getAsString().contains("token limit"));
+    }
+
+    @Test void openAiChatAcknowledgesEveryParallelToolCallBeforeRecovery() {
+        var response = json(OPENAI_CHAT);
+        var calls = response.getAsJsonArray("choices").get(0).getAsJsonObject()
+            .getAsJsonObject("message").getAsJsonArray("tool_calls");
+        var second = calls.get(0).deepCopy().getAsJsonObject();
+        second.addProperty("id", "call-2");
+        calls.add(second);
+        List<JsonObject> bodies = new ArrayList<>();
+        var session = session(AiNativeProviderSession.Dialect.OPENAI_CHAT, bodies, response.toString(), false);
+        assertEquals("invalid_provider_response", json(session.generate(REQUEST, null).join().action()).get("tool").getAsString());
+        session.generate(REQUEST, json("{\"ok\":false}")).join();
+        var messages = bodies.get(1).getAsJsonArray("messages");
+        assertEquals("call-1", messages.get(3).getAsJsonObject().get("tool_call_id").getAsString());
+        assertEquals("call-2", messages.get(4).getAsJsonObject().get("tool_call_id").getAsString());
     }
 
     @Test void perToolAndCommandSchemasExcludeUnrelatedFields() {

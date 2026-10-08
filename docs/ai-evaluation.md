@@ -15,7 +15,8 @@ Offline, without credentials or network requests:
 ```
 
 Live runs incur provider charges. Supply an environment key (`OPENAI_API_KEY`,
-`ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, or `AI_EVAL_API_KEY` for the compatible provider).
+`ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, or `AI_EVAL_API_KEY` for
+the compatible provider).
 The harness does not read the player's encrypted keys. Set a model explicitly:
 
 ```sh
@@ -23,7 +24,9 @@ The harness does not read the player's encrypted keys. Set a model explicitly:
   -PaiEvalModel=YOUR_MODEL -PaiEvalLimit=5
 ```
 
-Provider values: `OPENAI`, `ANTHROPIC`, `GEMINI`, `OPENAI_COMPATIBLE`.
+Provider values: `OPENAI`, `ANTHROPIC`, `GEMINI`, `OPENROUTER`, `OPENAI_COMPATIBLE`.
+For `OPENROUTER`, `-PaiEvalRoutingSort=throughput|price|latency` pins upstream selection so
+repeated runs are not silently compared across different hosts.
 Optional `-PaiEvalDifficulty=simple|medium|complex|regression` filters before the limit.
 Increase `-PaiEvalLimit=68` to run the entire corpus. Repeat separately for each model
 and difficulty; reports identify both provider and model. A filtered run is a sample,
@@ -73,6 +76,10 @@ custom URLs are left alone. Generic OpenAI-compatible endpoints retain the exist
 JSON-envelope adapter rather than assuming Responses support.
 
 Anthropic uses native tool-use/result blocks. Gemini uses function calls/responses.
+OpenRouter uses Chat Completions `tool_calls` with one `role:"tool"` message per call, and
+replays assistant turns verbatim so upstream `reasoning_details` survive the round trip. Its
+Responses-shaped endpoint is deliberately not used: it is alpha, rejects `store` and
+`previous_response_id`, and covers far fewer models than Chat Completions.
 Opaque reasoning/signature output is preserved unchanged in request-scoped histories.
 Parallel calls are rejected without graph edits, and results are paired with native
 call IDs before recovery. Local history is bounded, never silently truncated.

@@ -241,7 +241,7 @@ The machine-readable version source of truth is [`gradle/minecraft-versions.prop
 
 | Component | Version |
 |-----------|---------|
-| Mod Version | `1.1.5` |
+| Mod Version | `1.1.6` |
 | Supported Minecraft Versions | `1.21 - 1.21.11`, `26.1 - 26.2` |
 | Fabric Loader | `0.17.3+` |
 | NeoForge | Patched builds only (see [NeoForge builds](#neoforge-builds)) |

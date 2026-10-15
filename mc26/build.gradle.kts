@@ -96,7 +96,11 @@ val versionSourceTransforms: Map<String, String> = when (sourceTransformVersion)
         "\"collectPerFrameGizmos\"" to "\"collectPerFrameRenderThreadGizmos\"",
         "@Mixin(net.minecraft.client.gui.Gui.class)" to "@Mixin(net.minecraft.client.gui.Hud.class)",
         "method = \"renderLevel\"" to "method = \"render\"",
-        "EntityType.VILLAGER" to "net.minecraft.world.entity.EntityTypes.VILLAGER"
+        "EntityType.VILLAGER" to "net.minecraft.world.entity.EntityTypes.VILLAGER",
+        // NeoForge 26.2.0.93 folded EntityInteractSpecific into EntityInteract (now with getLocation()).
+        "NeoForge.EVENT_BUS.addListener(this::onEntityInteractSpecific);" to
+            "// EntityInteract also covers EntityInteractSpecific on NeoForge 26.2.",
+        "PlayerInteractEvent.EntityInteractSpecific event" to "PlayerInteractEvent.EntityInteract event"
     )
     else -> throw GradleException("No source-transform contract for Minecraft $minecraftVersion")
 }

@@ -221,7 +221,10 @@ final class GuiTextureRenderer {
         }
 
         static RendererBackend tryCreate() {
-            Class<?> pipelineClass = tryLoadClass("com.mojang.blaze3d.pipeline.RenderPipeline");
+            Class<?> pipelineClass = tryLoadClass(
+                "com.mojang.blaze3d.pipeline.RenderPipeline",
+                "com.mojang.renderpearl.api.pipeline.RenderPipeline"
+            );
             if (pipelineClass == null) {
                 return null;
             }
@@ -280,15 +283,22 @@ final class GuiTextureRenderer {
         }
 
         private static Method findDrawTextureMethod(Class<?> pipelineClass) {
+            Method untinted = null;
             for (Method method : GuiGraphics.class.getMethods()) {
                 Class<?>[] parameters = method.getParameterTypes();
                 if (!matchesCommonParameters(parameters, pipelineClass)) {
                     continue;
                 }
                 method.setAccessible(true);
-                return method;
+                // Prefer the variant that carries an explicit tint color.
+                if (parameters.length == 11) {
+                    return method;
+                }
+                if (untinted == null) {
+                    untinted = method;
+                }
             }
-            return null;
+            return untinted;
         }
 
         private static Method findDrawGuiTextureMethod(Class<?> pipelineClass) {

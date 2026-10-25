@@ -306,6 +306,7 @@ public class PathmindMarketplaceScreen extends Screen {
 
     @Override
     public void render(GuiGraphics context, int mouseX, int mouseY, float delta) {
+        com.pathmind.util.TextInputBridge.start(this);
         int popupMouseX = mouseX;
         int popupMouseY = mouseY;
         if (editorPopupMode && parent != null) {
@@ -1613,6 +1614,7 @@ public class PathmindMarketplaceScreen extends Screen {
 
     @Override
     public void removed() {
+        com.pathmind.util.TextInputBridge.stop(this);
         restoreSystemCursor();
         super.removed();
     }

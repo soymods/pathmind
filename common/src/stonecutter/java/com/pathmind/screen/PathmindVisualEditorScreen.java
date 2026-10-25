@@ -1665,6 +1665,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
     @Override
     public void render(GuiGraphics context, int mouseX, int mouseY, float delta) {
+        com.pathmind.util.TextInputBridge.start(this);
         OverlayProtection.setPathmindRendering(true);
         try {
         workspaceDragController.recoverStaleLeftMouseDrag(mouseX, mouseY);
@@ -2998,6 +2999,7 @@ public class PathmindVisualEditorScreen extends Screen {
 
     @Override
     public void removed() {
+        com.pathmind.util.TextInputBridge.stop(this);
         aiPopupController.dispose();
         nodeGraph.persistSessionViewportState();
         autoSaveWorkspace();

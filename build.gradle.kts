@@ -587,8 +587,8 @@ val verifyCompatibilityManifest = tasks.register("verifyCompatibilityManifest") 
         if (documentedVersions != supportedMinecraftVersionIds) {
             fail("README supported targets $documentedVersions do not match $supportedMinecraftVersionIds")
         }
-        if (!readme.contains("Minecraft-1.21.x%20%7C%2026.1--26.2")) fail("README Minecraft support badge is stale")
-        if (!readme.contains("`1.21 - 1.21.11`, `26.1 - 26.2`")) fail("README version summary is stale")
+        if (!readme.contains("Minecraft-1.21.x%20%7C%2026.1--26.3")) fail("README Minecraft support badge is stale")
+        if (!readme.contains("`1.21 - 1.21.11`, `26.1 - 26.3`")) fail("README version summary is stale")
 
         val fabricMetadata = layout.projectDirectory.file("fabric/src/main/resources/fabric.mod.json").asFile.readText()
         if (!fabricMetadata.contains("\${minecraft_version}")) fail("Fabric metadata must expand minecraft_version")

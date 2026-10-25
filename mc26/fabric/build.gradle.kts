@@ -10,6 +10,7 @@ val fabricLoaderMinimumVersion = rootProject.extra["fabricLoaderMinimumVersion"]
 val fabricApiVersion = rootProject.extra["fabricApiVersion"] as String
 val targetJavaVersion = rootProject.extra["targetJavaVersion"] as Int
 val commonSourceFamily = rootProject.extra["commonSourceFamily"] as String
+val compatibilityFamily = rootProject.extra["compatibilityFamily"] as String
 val fabricBaseFamily = rootProject.extra["fabricBaseFamily"] as String
 @Suppress("UNCHECKED_CAST")
 val mc26SourceTransforms = rootProject.extra["mc26SourceTransforms"] as Map<String, String>
@@ -17,6 +18,8 @@ val mc26SourceTransforms = rootProject.extra["mc26SourceTransforms"] as Map<Stri
 val mc26SharedSourceTransforms = rootProject.extra["mc26SharedSourceTransforms"] as Map<String, String>
 @Suppress("UNCHECKED_CAST")
 val mc26VersionSourceTransforms = rootProject.extra["mc26VersionSourceTransforms"] as Map<String, String>
+@Suppress("UNCHECKED_CAST")
+val mc26SdlSourceTransforms = rootProject.extra["mc26SdlSourceTransforms"] as Map<String, String>
 val mc26SourceTransformRevision = rootProject.extra["mc26SourceTransformRevision"] as Int
 
 // Minecraft 26.x ships unobfuscated names directly. Keep the authored shared
@@ -33,6 +36,9 @@ val prepareMc26Sources by tasks.registering(Sync::class) {
     from(repositoryRoot.resolve("common/src/main/java"))
     from(repositoryRoot.resolve("common/src/stonecutter/java"))
     from(repositoryRoot.resolve("common/src/compat/$commonSourceFamily/java"))
+    // Optional family overlay for API boundaries that the shared transforms
+    // cannot resolve mechanically (for example the 26.3 SDL input helpers).
+    from(repositoryRoot.resolve("common/src/compat/$compatibilityFamily/java"))
     from(repositoryRoot.resolve("fabric/src/compat/$fabricBaseFamily/java"))
     into(layout.buildDirectory.dir("generated/sources/pathmindMc26/main/java"))
     filteringCharset = "UTF-8"
@@ -45,6 +51,9 @@ val prepareMc26Sources by tasks.registering(Sync::class) {
             mc26VersionSourceTransforms.forEach { (source, target) ->
                 transformed = transformed.replace(source, target)
             }
+        }
+        mc26SdlSourceTransforms.forEach { (source, target) ->
+            transformed = transformed.replace(source, target)
         }
         transformed = Regex("""\.displayClientMessage\((.*), false\);""").replace(transformed) {
             ".sendSystemMessage(${it.groupValues[1]});"

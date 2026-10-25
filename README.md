@@ -2,7 +2,7 @@
 
 # Pathmind
 
-[![Minecraft](https://img.shields.io/badge/Minecraft-1.21.x%20%7C%2026.1--26.2-00AA00?style=for-the-badge&logo=minecraft)](https://minecraft.net)
+[![Minecraft](https://img.shields.io/badge/Minecraft-1.21.x%20%7C%2026.1--26.3-00AA00?style=for-the-badge&logo=minecraft)](https://minecraft.net)
 [![Fabric](https://img.shields.io/badge/Fabric-0.17.3%2B-CC6E3E?style=for-the-badge&logo=modrinth)](https://fabricmc.net)
 [![NeoForge](https://img.shields.io/badge/NeoForge-patched%20builds-E04E14?style=for-the-badge)](https://neoforged.net)
 [![Java](https://img.shields.io/badge/Java-21+-FF6B6B?style=for-the-badge&logo=openjdk)](https://openjdk.java.net)
@@ -101,7 +101,7 @@ Pathmind also adds main-menu integration so the editor is reachable before joini
 
 ### Required
 
-- Minecraft `1.21` through `1.21.11`, or `26.1` through `26.2`
+- Minecraft `1.21` through `1.21.11`, or `26.1` through `26.3`
 - Java `21` for Minecraft 1.21.x; Java `25` for Minecraft 26.x
 - **Fabric:** Fabric Loader `0.17.3` or newer + matching Fabric API
 - **NeoForge:** only on the Minecraft versions listed under [NeoForge builds](#neoforge-builds), with that version's patched NeoForge or newer
@@ -143,7 +143,7 @@ Imported marketplace presets and exported graphs also flow through this preset s
 ## Compatibility
 
 - Release jars are versioned as `pathmind-{fabric|neoforge}-<modVersion>+mc<gameVersion>.jar`.
-- Fabric builds are published for every supported Minecraft target from `1.21` through `1.21.11` and `26.1` through `26.2`.
+- Fabric builds are published for every supported Minecraft target from `1.21` through `1.21.11` and `26.1` through `26.3`.
 - NeoForge builds are published only where NeoForge has released a fix for its October 2026 networking advisories ([GHSA-cpm9-qrxg-6x27](https://github.com/neoforged/NeoForge/security/advisories/GHSA-cpm9-qrxg-6x27), [GHSA-xmvj-vxj4-4846](https://github.com/neoforged/NeoForge/security/advisories/GHSA-xmvj-vxj4-4846), [GHSA-w776-qpv9-86xq](https://github.com/neoforged/NeoForge/security/advisories/GHSA-w776-qpv9-86xq)). See [NeoForge builds](#neoforge-builds).
 - Multiple language files are included.
 - Marketplace listings include version compatibility metadata.
@@ -162,6 +162,7 @@ Each NeoForge jar requires at least the patched NeoForge release for its Minecra
 | 1.21.11 | 21.11.48 |
 | 26.1.2 | 26.1.2.120 |
 | 26.2 | 26.2.0.93 |
+| 26.3 | 26.3.0.99 |
 
 Minecraft 1.21, 1.21.2, 1.21.6, 1.21.7, 1.21.9, 1.21.10, 26.1 and 26.1.1 have no patched NeoForge release, so Pathmind no longer publishes NeoForge builds for them. Fabric builds for those versions are unaffected.
 
@@ -235,14 +236,14 @@ The machine-readable version source of truth is [`gradle/minecraft-versions.prop
 
 ### Supported Build Targets
 
-`1.21`, `1.21.1`, `1.21.2`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.6`, `1.21.7`, `1.21.8`, `1.21.9`, `1.21.10`, `1.21.11`, `26.1`, `26.1.1`, `26.1.2`, `26.2`
+`1.21`, `1.21.1`, `1.21.2`, `1.21.3`, `1.21.4`, `1.21.5`, `1.21.6`, `1.21.7`, `1.21.8`, `1.21.9`, `1.21.10`, `1.21.11`, `26.1`, `26.1.1`, `26.1.2`, `26.2`, `26.3`
 
 ## Version Information
 
 | Component | Version |
 |-----------|---------|
 | Mod Version | `1.1.6` |
-| Supported Minecraft Versions | `1.21 - 1.21.11`, `26.1 - 26.2` |
+| Supported Minecraft Versions | `1.21 - 1.21.11`, `26.1 - 26.3` |
 | Fabric Loader | `0.17.3+` |
 | NeoForge | Patched builds only (see [NeoForge builds](#neoforge-builds)) |
 | Java | `21` for 1.21.x; `25` for 26.x |

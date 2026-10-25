@@ -114,8 +114,8 @@ public final class InputCompatibilityBridge {
                 && parameterTypes[0] == long.class
                 && parameterTypes[2] == int.class
                 && MOUSE_INPUT_CONSTRUCTOR != null) {
-                Object mouseInput = MOUSE_INPUT_CONSTRUCTOR.newInstance(buttonCode, action);
-                MOUSE_BUTTON_CALLBACK.invoke(mouse, window.handle(), mouseInput, mods);
+                Object mouseInput = MOUSE_INPUT_CONSTRUCTOR.newInstance(buttonCode, mods);
+                MOUSE_BUTTON_CALLBACK.invoke(mouse, window.handle(), mouseInput, action);
                 return true;
             }
         } catch (InstantiationException | IllegalAccessException | InvocationTargetException ignored) {
@@ -138,7 +138,11 @@ public final class InputCompatibilityBridge {
         }
         GLFW.glfwSetCursorPos(window.handle(), x, y);
         try {
-            MOUSE_CURSOR_POS_CALLBACK.invoke(mouse, window.handle(), x, y);
+            if (MOUSE_CURSOR_POS_CALLBACK.getParameterCount() == 5) {
+                MOUSE_CURSOR_POS_CALLBACK.invoke(mouse, window.handle(), x, y, 0.0d, 0.0d);
+            } else {
+                MOUSE_CURSOR_POS_CALLBACK.invoke(mouse, window.handle(), x, y);
+            }
             return true;
         } catch (IllegalAccessException | InvocationTargetException ignored) {
             return false;
@@ -191,7 +195,9 @@ public final class InputCompatibilityBridge {
         }
         if (SCREEN_CHAR_TYPED_MODERN != null && CHARACTER_EVENT_CONSTRUCTOR != null) {
             try {
-                Object characterEvent = CHARACTER_EVENT_CONSTRUCTOR.newInstance((int) character, modifiers);
+                Object characterEvent = CHARACTER_EVENT_CONSTRUCTOR.getParameterCount() == 1
+                    ? CHARACTER_EVENT_CONSTRUCTOR.newInstance((int) character)
+                    : CHARACTER_EVENT_CONSTRUCTOR.newInstance((int) character, modifiers);
                 Object result = SCREEN_CHAR_TYPED_MODERN.invoke(screen, characterEvent);
                 return result instanceof Boolean value && value;
             } catch (InstantiationException | IllegalAccessException | InvocationTargetException ignored) {
@@ -274,14 +280,20 @@ public final class InputCompatibilityBridge {
     }
 
     private static Constructor<?> resolveKeyInputConstructor() {
-        try {
-            Class<?> keyInputClass = Class.forName("net.minecraft.client.input.KeyInput");
-            Constructor<?> constructor = keyInputClass.getConstructor(int.class, int.class, int.class);
-            constructor.setAccessible(true);
-            return constructor;
-        } catch (ReflectiveOperationException ignored) {
-            return null;
+        // 26.3 renamed the screen key event record from KeyInput to KeyEvent.
+        for (String className : new String[]{
+            "net.minecraft.client.input.KeyInput",
+            "net.minecraft.client.input.KeyEvent"
+        }) {
+            try {
+                Class<?> keyInputClass = Class.forName(className);
+                Constructor<?> constructor = keyInputClass.getConstructor(int.class, int.class, int.class);
+                constructor.setAccessible(true);
+                return constructor;
+            } catch (ReflectiveOperationException ignored) {
+            }
         }
+        return null;
     }
 
     private static Method resolveScreenKeyPressedModern() {
@@ -301,9 +313,16 @@ public final class InputCompatibilityBridge {
     private static Constructor<?> resolveCharacterEventConstructor() {
         try {
             Class<?> characterEventClass = Class.forName("net.minecraft.client.input.CharacterEvent");
-            Constructor<?> constructor = characterEventClass.getConstructor(int.class, int.class);
-            constructor.setAccessible(true);
-            return constructor;
+            try {
+                Constructor<?> withModifiers = characterEventClass.getConstructor(int.class, int.class);
+                withModifiers.setAccessible(true);
+                return withModifiers;
+            } catch (NoSuchMethodException ignored) {
+                // 26.3 dropped the explicit modifiers argument from CharacterEvent.
+                Constructor<?> codepointOnly = characterEventClass.getConstructor(int.class);
+                codepointOnly.setAccessible(true);
+                return codepointOnly;
+            }
         } catch (ReflectiveOperationException ignored) {
             return null;
         }
@@ -371,15 +390,15 @@ public final class InputCompatibilityBridge {
                     continue;
                 }
                 int doubleCount = 0;
-                int intCount = 0;
+                boolean buttonArgument = false;
                 for (Class<?> parameterType : parameterTypes) {
                     if (parameterType == double.class) {
                         doubleCount++;
-                    } else if (parameterType == int.class) {
-                        intCount++;
+                    } else if (parameterType == int.class || resolveTwoIntConstructor(parameterType) != null) {
+                        buttonArgument = true;
                     }
                 }
-                if (doubleCount == 2 && intCount == 1) {
+                if (doubleCount == 2 && buttonArgument) {
                     constructor.setAccessible(true);
                     return constructor;
                 }
@@ -391,7 +410,13 @@ public final class InputCompatibilityBridge {
     }
 
     private static boolean isScreenClickClass(Class<?> type) {
-        return type != null && "net.minecraft.client.gui.Click".equals(type.getName());
+        if (type == null) {
+            return false;
+        }
+        String name = type.getName();
+        // 26.3 replaced the Click argument with MouseButtonEvent.
+        return "net.minecraft.client.gui.Click".equals(name)
+            || "net.minecraft.client.input.MouseButtonEvent".equals(name);
     }
 
     private static Object createScreenClick(double x, double y, int button) {
@@ -401,18 +426,22 @@ public final class InputCompatibilityBridge {
         Class<?>[] parameterTypes = SCREEN_CLICK_CONSTRUCTOR.getParameterTypes();
         Object[] arguments = new Object[parameterTypes.length];
         boolean xAssigned = false;
-        for (int i = 0; i < parameterTypes.length; i++) {
-            Class<?> parameterType = parameterTypes[i];
-            if (parameterType == double.class) {
-                arguments[i] = xAssigned ? y : x;
-                xAssigned = true;
-            } else if (parameterType == int.class) {
-                arguments[i] = button;
-            } else {
-                return null;
-            }
-        }
         try {
+            for (int i = 0; i < parameterTypes.length; i++) {
+                Class<?> parameterType = parameterTypes[i];
+                if (parameterType == double.class) {
+                    arguments[i] = xAssigned ? y : x;
+                    xAssigned = true;
+                } else if (parameterType == int.class) {
+                    arguments[i] = button;
+                } else {
+                    Constructor<?> buttonConstructor = resolveTwoIntConstructor(parameterType);
+                    if (buttonConstructor == null) {
+                        return null;
+                    }
+                    arguments[i] = buttonConstructor.newInstance(button, 0);
+                }
+            }
             return SCREEN_CLICK_CONSTRUCTOR.newInstance(arguments);
         } catch (InstantiationException | IllegalAccessException | InvocationTargetException ignored) {
             return null;
@@ -453,6 +482,14 @@ public final class InputCompatibilityBridge {
                 continue;
             }
             if (parameterTypes.length == 3
+                && parameterTypes[0] == long.class
+                && parameterTypes[1] == double.class
+                && parameterTypes[2] == double.class) {
+                method.setAccessible(true);
+                return method;
+            }
+            // 26.3 extended the movement callback with delta arguments.
+            if (parameterTypes.length == 5
                 && parameterTypes[0] == long.class
                 && parameterTypes[1] == double.class
                 && parameterTypes[2] == double.class) {

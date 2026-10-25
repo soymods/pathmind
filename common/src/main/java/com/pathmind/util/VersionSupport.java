@@ -9,7 +9,7 @@ import java.util.Locale;
  */
 public final class VersionSupport {
     public static final String MIN_VERSION = "1.21";
-    public static final String MAX_VERSION = "26.2";
+    public static final String MAX_VERSION = "26.3";
     public static final List<String> SUPPORTED_VERSIONS = List.of(
         "1.21",
         "1.21.1",
@@ -26,7 +26,8 @@ public final class VersionSupport {
         "26.1",
         "26.1.1",
         "26.1.2",
-        "26.2"
+        "26.2",
+        "26.3"
     );
     public static final String SUPPORTED_RANGE = MIN_VERSION + " - " + MAX_VERSION;
 

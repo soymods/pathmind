@@ -5,8 +5,8 @@ import java.util.Properties
 import java.util.zip.ZipFile
 
 plugins {
-    id("architectury-plugin") version "3.4.161"
-    id("dev.architectury.loom") version "1.17.493" apply false
+    id("architectury-plugin") version "3.5.170"
+    id("dev.architectury.loom") version "1.14.473" apply false
     id("com.gradleup.shadow") version "9.6.1" apply false
     id("com.modrinth.minotaur") version "2.10.0"
     // Pinned: CurseForgeGradle 1.2.30+ is compiled for Java 25, but the

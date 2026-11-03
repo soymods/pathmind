@@ -75,7 +75,7 @@ dependencies {
     }
     modImplementation("net.fabricmc:fabric-loader:${rootProject.extra["fabricLoaderVersion"] as String}")
 
-    implementation("com.google.code.gson:gson:2.14.0")
+    implementation("com.google.code.gson:gson:2.15.0")
 
     testImplementation("org.junit.jupiter:junit-jupiter:6.1.3")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
